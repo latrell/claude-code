@@ -11,6 +11,8 @@ import { isEnvTruthy } from '../utils/envUtils.js';
 if (typeof globalThis.MACRO === 'undefined') {
   (globalThis as any).MACRO = {
     VERSION: process.env.CLAUDE_CODE_VERSION || '2.1.888',
+    VERSION_DISPLAY:
+      process.env.CLAUDE_CODE_VERSION_DISPLAY || `${process.env.CLAUDE_CODE_VERSION || '2.1.888'} by latrell`,
     BUILD_TIME: new Date().toISOString(),
     FEEDBACK_CHANNEL: '',
     ISSUES_EXPLAINER: '',
@@ -79,7 +81,7 @@ async function main(): Promise<void> {
   // Fast-path for --version/-v: zero module loading needed
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time
-    console.log(`${MACRO.VERSION} (Claude Code)`);
+    console.log(`${MACRO.VERSION_DISPLAY} (Claude Code)`);
     return;
   }
 

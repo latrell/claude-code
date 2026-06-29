@@ -28,4 +28,5 @@ export const authMock = () => ({
   isProSubscriber: () => false,
   isMaxSubscriber: () => false,
   isTeamSubscriber: () => false,
+  getSubscriptionName: () => 'Claude Max',
 })

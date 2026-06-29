@@ -14,6 +14,7 @@ import {
   getAgentModelDisplay,
   getDefaultSubagentModel,
 } from './model/agent.js'
+import { getAPIProvider } from './model/providers.js'
 import {
   getSubagentProviderRuntimeConfig,
   type ProviderRuntimeConfig,
@@ -22,6 +23,7 @@ import { getStoredChangelogFromMemory, parseChangelog } from './releaseNotes.js'
 import { gt } from './semver.js'
 import { loadMessageLogs } from './sessionStorage.js'
 import { getInitialSettings } from './settings/settings.js'
+import type { SettingsJson } from './settings/types.js'
 
 // Layout constants
 const MAX_LEFT_WIDTH = 50
@@ -140,6 +142,113 @@ function formatProviderName(runtimeConfig: ProviderRuntimeConfig): string {
 }
 
 /**
+ * Computes the human-readable billing/entitlement name for the main model.
+ *
+ * @param settings - Optional settings override (for testing)
+ * @param env - Optional env override (for testing)
+ */
+export function getBillingDisplayName(
+  settings?: Pick<SettingsJson, 'modelType'>,
+  env?: Record<string, string | undefined>,
+): string {
+  const provider = getAPIProvider(settings, env)
+  switch (provider) {
+    case 'firstParty': {
+      if (isClaudeAISubscriber()) return getSubscriptionName()
+      return 'Anthropic API'
+    }
+    case 'openai': {
+      const authMode = env?.OPENAI_AUTH_MODE ?? process.env.OPENAI_AUTH_MODE
+      const baseUrl = env?.OPENAI_BASE_URL ?? process.env.OPENAI_BASE_URL
+      if (authMode === 'chatgpt') return 'ChatGPT Subscription'
+      if (isDeepSeekBaseUrl(baseUrl)) return 'DeepSeek API'
+      if (baseUrl) return 'OpenAI-compatible API'
+      return 'OpenAI API'
+    }
+    case 'gemini':
+      return 'Gemini API'
+    case 'grok':
+      return 'Grok API'
+    case 'bedrock':
+      return 'AWS Bedrock'
+    case 'vertex':
+      return 'Vertex AI'
+    case 'foundry':
+      return 'Foundry'
+  }
+}
+
+/**
+ * Computes the billing display name for a subagent based on its provider
+ * runtime config and the parent model's billing type.
+ *
+ * For Anthropic subagents, inherits the parent billing type since both
+ * share the same credentials. For other providers, computes the billing
+ * name independently using the subagent's env configuration.
+ *
+ * @param runtimeConfig - The subagent provider runtime config
+ * @param parentBillingType - The parent (main model) billing display name
+ */
+export function getSubagentBillingDisplayName(
+  runtimeConfig: ProviderRuntimeConfig | undefined,
+  parentBillingType: string,
+): string | undefined {
+  if (!runtimeConfig) return undefined
+
+  const provider = runtimeConfig.provider
+  const modelType = runtimeConfig.modelType
+  const env = runtimeConfig.env ?? {}
+
+  // Anthropic subagent: use parent billing if it's Claude subscription or Anthropic API
+  const isAnthropicType =
+    modelType === 'anthropic' ||
+    (modelType === undefined && provider === 'firstParty')
+
+  if (isAnthropicType) {
+    return parentBillingType
+  }
+
+  // Non-Anthropic subagent: compute billing from runtime config
+  const effectiveModelType =
+    modelType ??
+    (provider === 'openai'
+      ? ('openai' as const)
+      : provider === 'gemini'
+        ? ('gemini' as const)
+        : provider === 'grok'
+          ? ('grok' as const)
+          : undefined)
+
+  switch (effectiveModelType) {
+    case 'openai': {
+      const baseUrl = env.OPENAI_BASE_URL
+      const authMode = env.OPENAI_AUTH_MODE
+      if (authMode === 'chatgpt') return 'ChatGPT Subscription'
+      if (isDeepSeekBaseUrl(baseUrl)) return 'DeepSeek API'
+      if (baseUrl) return 'OpenAI-compatible API'
+      return 'OpenAI API'
+    }
+    case 'gemini':
+      return 'Gemini API'
+    case 'grok':
+      return 'Grok API'
+    default:
+      break
+  }
+
+  switch (provider) {
+    case 'bedrock':
+      return 'AWS Bedrock'
+    case 'vertex':
+      return 'Vertex AI'
+    case 'foundry':
+      return 'Foundry'
+    default:
+      return undefined
+  }
+}
+
+/**
  * Formats the subagent provider display line for the startup banner.
  * Returns undefined when no subagent provider is configured.
  *
@@ -147,10 +256,15 @@ function formatProviderName(runtimeConfig: ProviderRuntimeConfig): string {
  * provider runtime config. When the resolved model matches the parent model
  * (i.e. the subagent truly inherits), displays "Inherit from parent".
  * Otherwise displays the resolved model name (e.g. "deepseek-v4-pro").
+ *
+ * @param runtimeConfig - The subagent provider runtime config
+ * @param parentModel - The resolved main loop model name
+ * @param billingType - Optional billing/entitlement name to append
  */
 export function formatSubagentDisplayLine(
   runtimeConfig: ProviderRuntimeConfig | undefined,
   parentModel: string,
+  billingType?: string,
 ): string | undefined {
   if (!runtimeConfig) return undefined
   const providerName = formatProviderName(runtimeConfig)
@@ -161,11 +275,13 @@ export function formatSubagentDisplayLine(
     'default',
     runtimeConfig,
   )
-  if (resolvedModel === parentModel) {
-    return `Subagent: ${providerName} · Inherit from parent`
-  }
-  const modelDisplay = getAgentModelDisplay(resolvedModel)
-  return `Subagent: ${providerName} · ${modelDisplay}`
+  const modelPart =
+    resolvedModel === parentModel
+      ? 'Inherit from parent'
+      : getAgentModelDisplay(resolvedModel)
+
+  const billingSuffix = billingType ? ` · ${billingType}` : ''
+  return `Subagent: ${providerName} · ${modelPart}${billingSuffix}`
 }
 
 /**
@@ -348,7 +464,7 @@ export function getLogoDisplayData(parentModel: string): {
   agentName: string | undefined
   subagentLine?: string
 } {
-  const version = process.env.DEMO_VERSION ?? MACRO.VERSION
+  const version = process.env.DEMO_VERSION ?? MACRO.VERSION_DISPLAY
   const serverUrl = getDirectConnectServerUrl()
   const displayPath = process.env.DEMO_VERSION
     ? '/code/claude'
@@ -356,14 +472,17 @@ export function getLogoDisplayData(parentModel: string): {
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
-  const billingType = isClaudeAISubscriber()
-    ? getSubscriptionName()
-    : 'API Usage Billing'
+  const billingType = getBillingDisplayName()
   const agentName = getInitialSettings().agent
   const subagentRuntimeConfig = getSubagentProviderRuntimeConfig()
+  const subagentBillingType = getSubagentBillingDisplayName(
+    subagentRuntimeConfig,
+    billingType,
+  )
   const subagentLine = formatSubagentDisplayLine(
     subagentRuntimeConfig,
     parentModel,
+    subagentBillingType,
   )
 
   return {

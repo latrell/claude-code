@@ -18,6 +18,7 @@ const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
 export function getMacroDefines(): Record<string, string> {
   return {
     'MACRO.VERSION': JSON.stringify(pkg.version),
+    'MACRO.VERSION_DISPLAY': JSON.stringify(`${pkg.version} by latrell`),
     'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
     'MACRO.FEEDBACK_CHANNEL': JSON.stringify(''),
     'MACRO.ISSUES_EXPLAINER': JSON.stringify(''),
