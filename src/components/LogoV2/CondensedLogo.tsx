@@ -24,7 +24,7 @@ export function CondensedLogo(): ReactNode {
   const effortValue = useAppState(s => s.effortValue);
   const model = useMainLoopModel();
   const modelDisplayName = renderModelSetting(model);
-  const { version, cwd, billingType, agentName: agentNameFromSettings } = getLogoDisplayData();
+  const { version, cwd, billingType, agentName: agentNameFromSettings, subagentLine } = getLogoDisplayData(model);
 
   // Prefer AppState.agent (set from --agent CLI flag) over settings
   const agentName = agent ?? agentNameFromSettings;
@@ -90,6 +90,7 @@ export function CondensedLogo(): ReactNode {
               {truncatedModel} · {truncatedBilling}
             </Text>
           )}
+          {subagentLine && <Text dimColor>{subagentLine}</Text>}
           <Text dimColor>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text>
           {showGuestPassesUpsell && <GuestPassesUpsell />}
           {!showGuestPassesUpsell && showOverageCreditUpsell && <OverageCreditUpsell maxWidth={textWidth} twoLine />}

@@ -136,7 +136,7 @@ export function LogoV2(): React.ReactNode {
 
   const model = useMainLoopModel();
   const fullModelDisplayName = renderModelSetting(model);
-  const { version, cwd, billingType, agentName: agentNameFromSettings } = getLogoDisplayData();
+  const { version, cwd, billingType, agentName: agentNameFromSettings, subagentLine } = getLogoDisplayData(model);
   // Prefer AppState.agent (set from --agent CLI flag) over settings
   const agentName = agent ?? agentNameFromSettings;
   // -20 to account for the max length of subscription name " · Claude Enterprise".
@@ -246,6 +246,7 @@ export function LogoV2(): React.ReactNode {
             </Box>
             <Text dimColor>{modelDisplayName}</Text>
             <Text dimColor>{billingType}</Text>
+            {subagentLine && <Text dimColor>{subagentLine}</Text>}
             <Text dimColor>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text>
           </Box>
         </OffscreenFreeze>
@@ -276,7 +277,7 @@ export function LogoV2(): React.ReactNode {
     : LEFT_PANEL_MAX_WIDTH;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   const cwdLine = agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd;
-  const optimalLeftWidth = calculateOptimalLeftWidth(welcomeMessage, cwdLine, modelLine);
+  const optimalLeftWidth = calculateOptimalLeftWidth(welcomeMessage, cwdLine, modelLine, subagentLine);
 
   // Calculate layout dimensions
   const { leftWidth, rightWidth } = calculateLayoutDimensions(columns, layoutMode, optimalLeftWidth);
@@ -313,6 +314,7 @@ export function LogoV2(): React.ReactNode {
 
               <Box flexDirection="column" alignItems="center">
                 <Text dimColor>{modelLine}</Text>
+                {subagentLine && <Text dimColor>{subagentLine}</Text>}
                 <Text dimColor>{cwdLine}</Text>
               </Box>
             </Box>

@@ -9,6 +9,15 @@ import {
   truncateToWidth,
   truncateToWidthNoEllipsis,
 } from './format.js'
+import {
+  getAgentModel,
+  getAgentModelDisplay,
+  getDefaultSubagentModel,
+} from './model/agent.js'
+import {
+  getSubagentProviderRuntimeConfig,
+  type ProviderRuntimeConfig,
+} from './model/subagentProvider.js'
 import { getStoredChangelogFromMemory, parseChangelog } from './releaseNotes.js'
 import { gt } from './semver.js'
 import { loadMessageLogs } from './sessionStorage.js'
@@ -75,19 +84,109 @@ export function calculateLayoutDimensions(
 }
 
 /**
+ * Detects whether an OpenAI-compatible BASE_URL points to DeepSeek.
+ */
+function isDeepSeekBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false
+  try {
+    const hostname = new URL(baseUrl).hostname
+    return hostname.includes('deepseek')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Maps a provider runtime config to a human-readable provider name.
+ * Priority: modelType (e.g. 'openai') > provider (e.g. 'firstParty').
+ */
+function formatProviderName(runtimeConfig: ProviderRuntimeConfig): string {
+  if (runtimeConfig.modelType) {
+    switch (runtimeConfig.modelType) {
+      case 'anthropic':
+        return 'Anthropic'
+      case 'openai':
+        return isDeepSeekBaseUrl(runtimeConfig.env?.OPENAI_BASE_URL)
+          ? 'DeepSeek'
+          : 'OpenAI'
+      case 'gemini':
+        return 'Gemini'
+      case 'grok':
+        return 'Grok'
+      default:
+        return runtimeConfig.modelType
+    }
+  }
+  switch (runtimeConfig.provider) {
+    case 'firstParty':
+      return 'Anthropic'
+    case 'openai':
+      return isDeepSeekBaseUrl(runtimeConfig.env?.OPENAI_BASE_URL)
+        ? 'DeepSeek'
+        : 'OpenAI'
+    case 'gemini':
+      return 'Gemini'
+    case 'grok':
+      return 'Grok'
+    case 'bedrock':
+      return 'Bedrock'
+    case 'vertex':
+      return 'Vertex'
+    case 'foundry':
+      return 'Foundry'
+    default:
+      return runtimeConfig.provider
+  }
+}
+
+/**
+ * Formats the subagent provider display line for the startup banner.
+ * Returns undefined when no subagent provider is configured.
+ *
+ * Uses getAgentModel() to resolve the effective subagent model from the
+ * provider runtime config. When the resolved model matches the parent model
+ * (i.e. the subagent truly inherits), displays "Inherit from parent".
+ * Otherwise displays the resolved model name (e.g. "deepseek-v4-pro").
+ */
+export function formatSubagentDisplayLine(
+  runtimeConfig: ProviderRuntimeConfig | undefined,
+  parentModel: string,
+): string | undefined {
+  if (!runtimeConfig) return undefined
+  const providerName = formatProviderName(runtimeConfig)
+  const resolvedModel = getAgentModel(
+    getDefaultSubagentModel(),
+    parentModel,
+    undefined,
+    'default',
+    runtimeConfig,
+  )
+  if (resolvedModel === parentModel) {
+    return `Subagent: ${providerName} · Inherit from parent`
+  }
+  const modelDisplay = getAgentModelDisplay(resolvedModel)
+  return `Subagent: ${providerName} · ${modelDisplay}`
+}
+
+/**
  * Calculates optimal left panel width based on content
  */
 export function calculateOptimalLeftWidth(
   welcomeMessage: string,
   truncatedCwd: string,
   modelLine: string,
+  subagentLine?: string,
 ): number {
-  const contentWidth = Math.max(
+  const widths = [
     stringWidth(welcomeMessage),
     stringWidth(truncatedCwd),
     stringWidth(modelLine),
     20, // Minimum for clawd art
-  )
+  ]
+  if (subagentLine) {
+    widths.push(stringWidth(subagentLine))
+  }
+  const contentWidth = Math.max(...widths)
   return Math.min(contentWidth + 4, MAX_LEFT_WIDTH) // +4 for padding
 }
 
@@ -237,13 +336,17 @@ export function formatReleaseNoteForDisplay(
 }
 
 /**
- * Gets the common logo display data used by both LogoV2 and CondensedLogo
+ * Gets the common logo display data used by both LogoV2 and CondensedLogo.
+ *
+ * @param parentModel - The resolved main loop model name (e.g. from useMainLoopModel()),
+ *   used to resolve the effective subagent model for display.
  */
-export function getLogoDisplayData(): {
+export function getLogoDisplayData(parentModel: string): {
   version: string
   cwd: string
   billingType: string
   agentName: string | undefined
+  subagentLine?: string
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION
   const serverUrl = getDirectConnectServerUrl()
@@ -257,12 +360,18 @@ export function getLogoDisplayData(): {
     ? getSubscriptionName()
     : 'API Usage Billing'
   const agentName = getInitialSettings().agent
+  const subagentRuntimeConfig = getSubagentProviderRuntimeConfig()
+  const subagentLine = formatSubagentDisplayLine(
+    subagentRuntimeConfig,
+    parentModel,
+  )
 
   return {
     version,
     cwd,
     billingType,
     agentName,
+    subagentLine,
   }
 }
 
