@@ -86,8 +86,9 @@ function convertToResponsesReasoningEffort(
 
 function getChatGPTResponsesReasoningEffort(
   effortValue: unknown,
+  env: Record<string, string | undefined> = process.env,
 ): ResponsesReasoningEffort | undefined {
-  const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
+  const envOverride = env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
   if (envOverride === 'auto' || envOverride === 'unset') return undefined
   return (
     convertToResponsesReasoningEffort(envOverride) ??
@@ -222,8 +223,10 @@ export async function* queryModelOpenAI(
   void
 > {
   try {
+    const providerEnv = options.providerRuntimeConfig?.env ?? process.env
+
     // 1. Resolve model name
-    const openaiModel = resolveOpenAIModel(options.model)
+    const openaiModel = resolveOpenAIModel(options.model, providerEnv)
 
     // 2. Normalize messages using shared preprocessing
     const messagesForAPI = normalizeMessagesForAPI(messages, tools)
@@ -287,7 +290,7 @@ export async function* queryModelOpenAI(
     )
 
     // 8. Convert messages and tools to OpenAI format
-    const enableThinking = isOpenAIThinkingEnabled(openaiModel)
+    const enableThinking = isOpenAIThinkingEnabled(openaiModel, providerEnv)
     const openAIConvertibleMessages = messagesForAPI.filter(
       isOpenAIConvertibleMessage,
     )
@@ -306,6 +309,7 @@ export async function* queryModelOpenAI(
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
     const reasoningEffort = getChatGPTResponsesReasoningEffort(
       options.effortValue,
+      providerEnv,
     )
 
     // 9. Log tool filtering details
@@ -343,6 +347,7 @@ export async function* queryModelOpenAI(
     const maxTokens = resolveOpenAIMaxTokens(
       upperLimit,
       options.maxOutputTokensOverride,
+      providerEnv,
     )
 
     logForDebugging(
@@ -352,7 +357,7 @@ export async function* queryModelOpenAI(
     // 11. Call OpenAI API with streaming. ChatGPT subscription auth uses the
     // Codex Responses backend; API-key/OpenAI-compatible auth keeps the
     // existing Chat Completions adapter.
-    const adaptedStream = isChatGPTAuthEnabled()
+    const adaptedStream = isChatGPTAuthEnabled(providerEnv)
       ? adaptResponsesStreamToAnthropic(
           await createChatGPTResponsesStream({
             request: buildResponsesRequest({
@@ -364,6 +369,7 @@ export async function* queryModelOpenAI(
             }),
             signal,
             fetchOverride: options.fetchOverride as unknown as typeof fetch,
+            credentialScope: options.providerRuntimeConfig?.credentialScope,
           }),
           openaiModel,
         )
@@ -372,6 +378,7 @@ export async function* queryModelOpenAI(
             maxRetries: 0,
             fetchOverride: options.fetchOverride as unknown as typeof fetch,
             source: options.querySource,
+            envOverride: options.providerRuntimeConfig?.env,
           }).chat.completions.create(
             buildOpenAIRequestBody({
               model: openaiModel,

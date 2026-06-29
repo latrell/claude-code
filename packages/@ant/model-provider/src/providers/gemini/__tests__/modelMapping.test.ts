@@ -33,6 +33,15 @@ describe('resolveGeminiModel', () => {
     expect(resolveGeminiModel('claude-sonnet-4-6')).toBe('gemini-2.5-pro')
   })
 
+  test('scoped env overrides process env', () => {
+    process.env.GEMINI_MODEL = 'global-gemini'
+    expect(
+      resolveGeminiModel('claude-sonnet-4-6', {
+        GEMINI_MODEL: 'scoped-gemini',
+      }),
+    ).toBe('scoped-gemini')
+  })
+
   test('GEMINI_DEFAULT_*_MODEL takes precedence over ANTHROPIC_DEFAULT_*', () => {
     process.env.GEMINI_DEFAULT_SONNET_MODEL = 'gemini-2.5-flash-priority'
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'gemini-2.5-flash-fallback'

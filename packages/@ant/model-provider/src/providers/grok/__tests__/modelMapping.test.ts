@@ -24,6 +24,15 @@ describe('resolveGrokModel', () => {
     expect(resolveGrokModel('claude-sonnet-4-6')).toBe('grok-custom')
   })
 
+  test('scoped env overrides process env', () => {
+    process.env.GROK_MODEL = 'global-grok'
+    expect(
+      resolveGrokModel('claude-sonnet-4-6', {
+        GROK_MODEL: 'scoped-grok',
+      }),
+    ).toBe('scoped-grok')
+  })
+
   test('maps opus models to grok-4.20-reasoning', () => {
     expect(resolveGrokModel('claude-opus-4-6')).toBe('grok-4.20-reasoning')
   })

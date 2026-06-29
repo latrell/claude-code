@@ -5,9 +5,12 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
   return null
 }
 
-export function resolveGeminiModel(anthropicModel: string): string {
-  if (process.env.GEMINI_MODEL) {
-    return process.env.GEMINI_MODEL
+export function resolveGeminiModel(
+  anthropicModel: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (env.GEMINI_MODEL) {
+    return env.GEMINI_MODEL
   }
 
   const cleanModel = anthropicModel.replace(/\[1m\]$/i, '')
@@ -18,13 +21,13 @@ export function resolveGeminiModel(anthropicModel: string): string {
   }
 
   const geminiEnvVar = `GEMINI_DEFAULT_${family.toUpperCase()}_MODEL`
-  const geminiModel = process.env[geminiEnvVar]
+  const geminiModel = env[geminiEnvVar]
   if (geminiModel) {
     return geminiModel
   }
 
   const sharedEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
-  const resolvedModel = process.env[sharedEnvVar]
+  const resolvedModel = env[sharedEnvVar]
   if (resolvedModel) {
     return resolvedModel
   }

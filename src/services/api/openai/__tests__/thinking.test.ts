@@ -48,6 +48,13 @@ describe('isOpenAIThinkingEnabled', () => {
       expect(isOpenAIThinkingEnabled('gpt-4o')).toBe(true)
     })
 
+    test('uses scoped env instead of process env when provided', () => {
+      process.env.OPENAI_ENABLE_THINKING = '0'
+      expect(
+        isOpenAIThinkingEnabled('gpt-4o', { OPENAI_ENABLE_THINKING: '1' }),
+      ).toBe(true)
+    })
+
     test('returns true when OPENAI_ENABLE_THINKING=true', () => {
       process.env.OPENAI_ENABLE_THINKING = 'true'
       expect(isOpenAIThinkingEnabled('gpt-4o')).toBe(true)

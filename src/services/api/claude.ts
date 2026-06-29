@@ -25,6 +25,7 @@ import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
 } from 'src/utils/model/providers.js'
+import type { ProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -719,6 +720,7 @@ export type Options = {
   outputFormat?: BetaJSONOutputFormat
   fastMode?: boolean
   advisorModel?: string
+  providerRuntimeConfig?: ProviderRuntimeConfig
   addNotification?: (notif: Notification) => void
   // API-side task budget (output_config.task_budget). Distinct from the
   // tokenBudget.ts +500k auto-continue feature — this one is sent to the API
@@ -1057,6 +1059,9 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
+  const scopedProvider =
+    options.providerRuntimeConfig?.provider ?? getAPIProvider()
+
   // Check cheap conditions first — the off-switch await blocks on GrowthBook
   // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
   // entirely. Subscribers don't hit this path at all.
@@ -1087,7 +1092,7 @@ async function* queryModel(
   const previousRequestId = getPreviousRequestIdFromMessages(messages)
 
   const resolvedModel =
-    getAPIProvider() === 'bedrock' &&
+    scopedProvider === 'bedrock' &&
     options.model.includes('application-inference-profile')
       ? ((await getInferenceProfileBackingModel(options.model)) ??
         options.model)
@@ -1341,7 +1346,7 @@ async function* queryModel(
   // OpenAI-compatible provider: delegate to the OpenAI adapter layer
   // after shared preprocessing (message normalization, tool filtering,
   // media stripping) but before Anthropic-specific logic (betas, thinking, caching).
-  if (getAPIProvider() === 'openai') {
+  if (scopedProvider === 'openai') {
     const { queryModelOpenAI } = await import('./openai/index.js')
     // OpenAI emulates Anthropic's dynamic tool loading client-side. It needs
     // the full tool pool so SearchExtraToolsTool can search deferred MCP tools that
@@ -1356,7 +1361,7 @@ async function* queryModel(
     return
   }
 
-  if (getAPIProvider() === 'gemini') {
+  if (scopedProvider === 'gemini') {
     const { queryModelGemini } = await import('./gemini/index.js')
     yield* queryModelGemini(
       messagesForAPI,
@@ -1369,7 +1374,7 @@ async function* queryModel(
     return
   }
 
-  if (getAPIProvider() === 'grok') {
+  if (scopedProvider === 'grok') {
     const { queryModelGrok } = await import('./grok/index.js')
     yield* queryModelGrok(
       messagesForAPI,
@@ -1539,7 +1544,7 @@ async function* queryModel(
     if (
       !cacheEditingHeaderLatched &&
       cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
+      scopedProvider === 'firstParty' &&
       options.querySource === 'repl_main_thread'
     ) {
       cacheEditingHeaderLatched = true
@@ -1640,7 +1645,7 @@ async function* queryModel(
 
     // For Bedrock, include model-based betas (no tool search header — self-built search)
     const bedrockBetas =
-      getAPIProvider() === 'bedrock'
+      scopedProvider === 'bedrock'
         ? [...getBedrockExtraBodyParamsBetas(retryContext.model)]
         : []
     const extraBodyParams = getExtraBodyParams(bedrockBetas)
@@ -1763,12 +1768,12 @@ async function* queryModel(
     // the feature disables but the header doesn't flip.
     const useCachedMC =
       cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
+      scopedProvider === 'firstParty' &&
       options.querySource === 'repl_main_thread'
     if (
       cacheEditingHeaderLatched &&
       cacheEditingBetaHeader &&
-      getAPIProvider() === 'firstParty' &&
+      scopedProvider === 'firstParty' &&
       options.querySource === 'repl_main_thread' &&
       !betasParams.includes(cacheEditingBetaHeader)
     ) {
@@ -1913,7 +1918,7 @@ async function* queryModel(
         // server request ID) can still be correlated with server logs.
         // First-party only — 3P providers don't log it (inc-4029 class).
         clientRequestId =
-          getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+          scopedProvider === 'firstParty' && isFirstPartyAnthropicBaseUrl()
             ? randomUUID()
             : undefined
 
@@ -2517,7 +2522,7 @@ async function* queryModel(
         // (Bedrock) expose their own throttle headers — let their adapter
         // overwrite the store with its bucket(s). Anthropic's adapter runs
         // inside extractQuotaStatusFromHeaders.
-        if (getAPIProvider() === 'bedrock') {
+        if (scopedProvider === 'bedrock') {
           updateProviderBuckets(
             'bedrock',
             bedrockAdapter.parseHeaders(resp.headers),
@@ -2996,7 +3001,7 @@ async function* queryModel(
   // Record LLM observation in Langfuse (no-op if not configured)
   recordLLMObservation(options.langfuseTrace ?? null, {
     model: resolvedModel,
-    provider: getAPIProvider(),
+    provider: scopedProvider,
     input: convertMessagesToLangfuse(messagesForAPI, systemPrompt),
     output: convertOutputToLangfuse(newMessages),
     usage: {

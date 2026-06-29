@@ -58,6 +58,7 @@ import { executeSubagentStartHooks } from 'src/utils/hooks.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import { getAgentModel } from 'src/utils/model/agent.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getSubagentProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
 import {
   createSubagentTrace,
   endTrace,
@@ -346,11 +347,16 @@ export async function* runAgent({
   const rootSetAppState =
     toolUseContext.setAppStateForTasks ?? toolUseContext.setAppState
 
+  const providerRuntimeConfig =
+    toolUseContext.options.providerRuntimeConfig ??
+    getSubagentProviderRuntimeConfig()
+
   const resolvedAgentModel = getAgentModel(
     agentDefinition.model,
     toolUseContext.options.mainLoopModel,
     model,
     permissionMode,
+    providerRuntimeConfig,
   )
 
   const agentId = override?.agentId ? override.agentId : createAgentId()
@@ -694,6 +700,7 @@ export async function* runAgent({
     mcpClients: mergedMcpClients,
     mcpResources: toolUseContext.options.mcpResources,
     agentDefinitions: toolUseContext.options.agentDefinitions,
+    ...(providerRuntimeConfig && { providerRuntimeConfig }),
     // Fork children (useExactTools path) need querySource on context.options
     // for the recursive-fork guard at AgentTool.tsx call() — it checks
     // options.querySource === 'agent:builtin:fork'. This survives autocompact
@@ -762,7 +769,7 @@ export async function* runAgent({
         agentType: agentDefinition.agentType,
         agentId,
         model: resolvedAgentModel,
-        provider: getAPIProvider(),
+        provider: providerRuntimeConfig?.provider ?? getAPIProvider(),
         input: initialMessages,
       })
     : null

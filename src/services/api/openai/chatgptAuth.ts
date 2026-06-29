@@ -2,10 +2,12 @@ import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { logForDebugging } from 'src/utils/debug.js'
+import { SUBAGENT_CREDENTIAL_SCOPE } from 'src/utils/model/subagentProvider.js'
 
 const ISSUER = 'https://auth.openai.com'
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const AUTH_FILE = 'openai-chatgpt-auth.json'
+const SUBAGENT_AUTH_FILE = 'openai-chatgpt-auth.subagent.json'
 const REFRESH_SKEW_MS = 5 * 60 * 1000
 
 export type ChatGPTDeviceCode = {
@@ -39,8 +41,11 @@ type StoredAuthFile = {
   last_refresh?: string
 }
 
-function authFilePath(): string {
-  return join(getClaudeConfigHomeDirLocal(), AUTH_FILE)
+function authFilePath(scope?: string): string {
+  return join(
+    getClaudeConfigHomeDirLocal(),
+    scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_AUTH_FILE : AUTH_FILE,
+  )
 }
 
 function getClaudeConfigHomeDirLocal(): string {
@@ -145,8 +150,11 @@ async function readStoredAuth(path: string): Promise<ChatGPTAuthTokens | null> {
   }
 }
 
-async function saveStoredAuth(tokens: ChatGPTAuthTokens): Promise<void> {
-  const path = authFilePath()
+async function saveStoredAuth(
+  tokens: ChatGPTAuthTokens,
+  scope?: string,
+): Promise<void> {
+  const path = authFilePath(scope)
   await mkdir(getClaudeConfigHomeDirLocal(), { recursive: true })
   const body: StoredAuthFile = {
     auth_mode: 'chatgpt',
@@ -317,28 +325,33 @@ async function refreshTokens(
 export async function completeChatGPTDeviceLogin(
   deviceCode: ChatGPTDeviceCode,
   signal?: AbortSignal,
+  scope?: string,
 ): Promise<ChatGPTAuthTokens> {
   const code = await pollForAuthorizationCode(deviceCode, signal)
   const tokens = await exchangeAuthorizationCode(code)
-  await saveStoredAuth(tokens)
+  await saveStoredAuth(tokens, scope)
   return tokens
 }
 
-export function isChatGPTAuthEnabled(): boolean {
-  return process.env.OPENAI_AUTH_MODE === 'chatgpt'
+export function isChatGPTAuthEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.OPENAI_AUTH_MODE === 'chatgpt'
 }
 
-export async function removeChatGPTAuth(): Promise<void> {
-  await unlink(authFilePath()).catch(error => {
+export async function removeChatGPTAuth(scope?: string): Promise<void> {
+  await unlink(authFilePath(scope)).catch(error => {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error
     }
   })
 }
 
-export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
-  let tokens = await readStoredAuth(authFilePath())
-  if (!tokens) {
+export async function getValidChatGPTAuth(
+  scope?: string,
+): Promise<ChatGPTAuth> {
+  let tokens = await readStoredAuth(authFilePath(scope))
+  if (!tokens && !scope) {
     tokens = await readStoredAuth(codexAuthFilePath())
     if (tokens) {
       logForDebugging('[OpenAI] Using ChatGPT auth from Codex auth.json')
@@ -352,7 +365,7 @@ export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
   const expiresAt = getTokenExpiryMs(tokens.accessToken)
   if (expiresAt !== null && expiresAt <= Date.now() + REFRESH_SKEW_MS) {
     tokens = await refreshTokens(tokens)
-    await saveStoredAuth(tokens)
+    await saveStoredAuth(tokens, scope)
   }
   return {
     accessToken: tokens.accessToken,

@@ -33,6 +33,23 @@ export const EnvironmentVariablesSchema = lazySchema(() =>
   z.record(z.string(), z.coerce.string()),
 )
 
+export const ProviderLoginConfigSchema = lazySchema(() =>
+  z
+    .object({
+      modelType: z
+        .enum(['anthropic', 'openai', 'gemini', 'grok'])
+        .describe('Provider type for this scoped login configuration'),
+      env: EnvironmentVariablesSchema()
+        .optional()
+        .describe('Provider-specific environment values for scoped requests'),
+      credentialScope: z
+        .string()
+        .optional()
+        .describe('Credential/token namespace for scoped provider auth'),
+    })
+    .passthrough(),
+)
+
 /**
  * Schema for permissions section
  */
@@ -371,6 +388,11 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'API provider type. "anthropic" uses the Anthropic API (default), "openai" uses the OpenAI Chat Completions API, "gemini" uses the Gemini API, and "grok" uses the xAI Grok API (OpenAI-compatible). ' +
             'When set to "openai", configure OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL. When set to "gemini", configure GEMINI_API_KEY and optional GEMINI_BASE_URL. When set to "grok", configure GROK_API_KEY (or XAI_API_KEY), optional GROK_BASE_URL, GROK_MODEL, and GROK_MODEL_MAP.',
+        ),
+      subagentProvider: ProviderLoginConfigSchema()
+        .optional()
+        .describe(
+          'Provider/account override used only by Agent/subagent sessions. When unset, subagents inherit the global login provider.',
         ),
       model: z
         .string()
@@ -1202,6 +1224,9 @@ export type AllowedMcpServerEntry = z.infer<
 >
 export type DeniedMcpServerEntry = z.infer<
   ReturnType<typeof DeniedMcpServerEntrySchema>
+>
+export type ProviderLoginConfig = z.infer<
+  ReturnType<typeof ProviderLoginConfigSchema>
 >
 export type SettingsJson = z.infer<ReturnType<typeof SettingsSchema>>
 

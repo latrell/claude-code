@@ -49,7 +49,8 @@ export async function* queryModelGemini(
   void
 > {
   try {
-    const geminiModel = resolveGeminiModel(options.model)
+    const providerEnv = options.providerRuntimeConfig?.env ?? process.env
+    const geminiModel = resolveGeminiModel(options.model, providerEnv)
     const messagesForAPI = normalizeMessagesForAPI(messages, tools)
 
     const toolSchemas = await Promise.all(
@@ -85,6 +86,7 @@ export async function* queryModelGemini(
       model: geminiModel,
       signal,
       fetchOverride: options.fetchOverride as typeof fetch | undefined,
+      envOverride: providerEnv,
       body: {
         contents,
         ...(systemInstruction && { systemInstruction }),

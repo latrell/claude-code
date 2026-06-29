@@ -7,7 +7,9 @@ import {
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
 } from './model.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, type APIProvider } from './providers.js'
+import type { ProviderRuntimeConfig } from './subagentProvider.js'
+import { getInitialSettings } from '../settings/settings.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
@@ -39,9 +41,16 @@ export function getAgentModel(
   parentModel: string,
   toolSpecifiedModel?: ModelAlias,
   permissionMode?: PermissionMode,
+  providerRuntimeConfig?: ProviderRuntimeConfig,
 ): string {
-  if (process.env.CLAUDE_CODE_SUBAGENT_MODEL) {
-    return parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
+  const scopedEnv = providerRuntimeConfig?.env
+  const subagentModel =
+    scopedEnv?.CLAUDE_CODE_SUBAGENT_MODEL ??
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL
+  const provider = getAgentProvider(providerRuntimeConfig)
+
+  if (subagentModel) {
+    return parseUserSpecifiedModel(subagentModel)
   }
 
   // Extract Bedrock region prefix from parent model to inherit for subagents.
@@ -59,7 +68,7 @@ export function getAgentModel(
     resolvedModel: string,
     originalSpec: string,
   ): string => {
-    if (parentRegionPrefix && getAPIProvider() === 'bedrock') {
+    if (parentRegionPrefix && provider === 'bedrock') {
       if (getBedrockRegionPrefix(originalSpec)) return resolvedModel
       return applyBedrockRegionPrefix(resolvedModel, parentRegionPrefix)
     }
@@ -107,6 +116,18 @@ export function getAgentModel(
  * Only bare family aliases match. `opus[1m]`, `best`, `opusplan` fall through
  * since they carry semantics beyond "same tier as parent".
  */
+function getAgentProvider(
+  providerRuntimeConfig: ProviderRuntimeConfig | undefined,
+): APIProvider {
+  return (
+    providerRuntimeConfig?.provider ??
+    getAPIProvider(
+      getInitialSettings(),
+      providerRuntimeConfig?.env ?? process.env,
+    )
+  )
+}
+
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
   const canonical = getCanonicalName(parentModel)
   switch (alias.toLowerCase()) {

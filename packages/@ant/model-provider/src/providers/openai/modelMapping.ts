@@ -33,9 +33,12 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
  * 4. DEFAULT_MODEL_MAP lookup
  * 5. Pass through original model name
  */
-export function resolveOpenAIModel(anthropicModel: string): string {
-  if (process.env.OPENAI_MODEL) {
-    return process.env.OPENAI_MODEL
+export function resolveOpenAIModel(
+  anthropicModel: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (env.OPENAI_MODEL) {
+    return env.OPENAI_MODEL
   }
 
   const cleanModel = anthropicModel.replace(/\[1m\]$/, '')
@@ -43,11 +46,11 @@ export function resolveOpenAIModel(anthropicModel: string): string {
   const family = getModelFamily(cleanModel)
   if (family) {
     const openaiEnvVar = `OPENAI_DEFAULT_${family.toUpperCase()}_MODEL`
-    const openaiOverride = process.env[openaiEnvVar]
+    const openaiOverride = env[openaiEnvVar]
     if (openaiOverride) return openaiOverride
 
     const anthropicEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
-    const anthropicOverride = process.env[anthropicEnvVar]
+    const anthropicOverride = env[anthropicEnvVar]
     if (anthropicOverride) return anthropicOverride
   }
 

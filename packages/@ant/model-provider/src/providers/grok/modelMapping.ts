@@ -31,13 +31,18 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
   return null
 }
 
-function getUserModelMap(): Record<string, string> | null {
-  const raw = process.env.GROK_MODEL_MAP
+function getUserModelMap(
+  env: Record<string, string | undefined>,
+): Record<string, string> | null {
+  const raw = env.GROK_MODEL_MAP
   if (!raw) return null
   try {
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(raw) as unknown
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>
+      const entries = Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      )
+      return Object.fromEntries(entries)
     }
   } catch {
     // ignore invalid JSON
@@ -48,26 +53,29 @@ function getUserModelMap(): Record<string, string> | null {
 /**
  * Resolve the Grok model name for a given Anthropic model.
  */
-export function resolveGrokModel(anthropicModel: string): string {
-  if (process.env.GROK_MODEL) {
-    return process.env.GROK_MODEL
+export function resolveGrokModel(
+  anthropicModel: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (env.GROK_MODEL) {
+    return env.GROK_MODEL
   }
 
   const cleanModel = anthropicModel.replace(/\[1m\]$/, '')
   const family = getModelFamily(cleanModel)
 
-  const userMap = getUserModelMap()
+  const userMap = getUserModelMap(env)
   if (userMap && family && userMap[family]) {
     return userMap[family]
   }
 
   if (family) {
     const grokEnvVar = `GROK_DEFAULT_${family.toUpperCase()}_MODEL`
-    const grokOverride = process.env[grokEnvVar]
+    const grokOverride = env[grokEnvVar]
     if (grokOverride) return grokOverride
 
     const anthropicEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
-    const anthropicOverride = process.env[anthropicEnvVar]
+    const anthropicOverride = env[anthropicEnvVar]
     if (anthropicOverride) return anthropicOverride
   }
 

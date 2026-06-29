@@ -446,8 +446,9 @@ export async function createChatGPTResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
+  credentialScope?: string
 }): Promise<AsyncIterable<Record<string, unknown>>> {
-  const auth = await getValidChatGPTAuth()
+  const auth = await getValidChatGPTAuth(params.credentialScope)
   const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const headers: Record<string, string> = {
     Authorization: `Bearer ${auth.accessToken}`,

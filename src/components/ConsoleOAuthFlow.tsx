@@ -22,15 +22,23 @@ import { openBrowser } from '../utils/browser.js';
 import { logError } from '../utils/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
+import { SUBAGENT_CREDENTIAL_SCOPE } from '../utils/model/subagentProvider.js';
+import type { ProviderLoginConfig } from '../utils/settings/types.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
+
+type LoginScope = 'global' | typeof SUBAGENT_CREDENTIAL_SCOPE;
+type ProviderLoginConfigInput = Omit<ProviderLoginConfig, 'env'> & {
+  env?: Record<string, string | undefined>;
+};
 
 type Props = {
   onDone(): void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
   forceLoginMethod?: 'claudeai' | 'console';
+  scope?: LoginScope;
 };
 
 type OAuthStatus =
@@ -89,6 +97,7 @@ export function ConsoleOAuthFlow({
   startingMessage,
   mode = 'login',
   forceLoginMethod: forceLoginMethodProp,
+  scope = 'global',
 }: Props): React.ReactNode {
   const settings = getSettings_DEPRECATED() || {};
   const forceLoginMethod = forceLoginMethodProp ?? settings.forceLoginMethod;
@@ -124,6 +133,53 @@ export function ConsoleOAuthFlow({
   // copy the code from the browser and paste it in the terminal
   const [showPastePrompt, setShowPastePrompt] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
+
+  const saveProviderConfig = useCallback(
+    (config: ProviderLoginConfigInput) => {
+      const sanitizedEnv = config.env
+        ? Object.fromEntries(
+            Object.entries(config.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+          )
+        : undefined;
+      const env = sanitizedEnv && Object.keys(sanitizedEnv).length > 0 ? sanitizedEnv : undefined;
+      if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
+        return updateSettingsForSource('userSettings', {
+          subagentProvider: {
+            modelType: config.modelType,
+            ...(env && { env }),
+            credentialScope: config.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
+          },
+        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+      }
+      return updateSettingsForSource('userSettings', {
+        modelType: config.modelType,
+        ...(env ? { env: config.env } : {}),
+      } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+    },
+    [scope],
+  );
+
+  const clearSubagentProviderConfig = useCallback(
+    () =>
+      updateSettingsForSource('userSettings', {
+        subagentProvider: undefined,
+      } as unknown as Parameters<typeof updateSettingsForSource>[1]),
+    [],
+  );
+
+  const applyGlobalEnv = useCallback(
+    (env: Record<string, string | undefined>) => {
+      if (scope !== 'global') return;
+      for (const [k, v] of Object.entries(env)) {
+        if (v === undefined) {
+          delete process.env[k];
+        } else {
+          process.env[k] = v;
+        }
+      }
+    },
+    [scope],
+  );
 
   const textInputColumns = useTerminalSize().columns - PASTE_HERE_MSG.length - 1;
 
@@ -272,6 +328,12 @@ export function ConsoleOAuthFlow({
         // Don't save to keychain - the token is displayed for manual use with CLAUDE_CODE_OAUTH_TOKEN
         setOAuthStatus({ state: 'success', token: result.accessToken });
       } else {
+        if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
+          clearSubagentProviderConfig();
+          setOAuthStatus({ state: 'success' });
+          return;
+        }
+
         await installOAuthTokens(result);
 
         const orgResult = await validateForceLoginOrg();
@@ -279,9 +341,7 @@ export function ConsoleOAuthFlow({
           throw new Error((orgResult as { valid: false; message: string }).message);
         }
         // Reset modelType to anthropic when using OAuth login
-        updateSettingsForSource('userSettings', { modelType: 'anthropic' } as unknown as Parameters<
-          typeof updateSettingsForSource
-        >[1]);
+        saveProviderConfig({ modelType: 'anthropic' });
 
         setOAuthStatus({ state: 'success' });
         void sendNotification(
@@ -307,7 +367,17 @@ export function ConsoleOAuthFlow({
         ssl_error: sslHint !== null,
       });
     }
-  }, [oauthService, setShowPastePrompt, loginWithClaudeAi, mode, orgUUID]);
+  }, [
+    oauthService,
+    setShowPastePrompt,
+    loginWithClaudeAi,
+    mode,
+    orgUUID,
+    scope,
+    saveProviderConfig,
+    clearSubagentProviderConfig,
+    terminal,
+  ]);
 
   const pendingOAuthStartRef = useRef(false);
 
@@ -392,6 +462,9 @@ export function ConsoleOAuthFlow({
           setOAuthStatus={setOAuthStatus}
           setLoginWithClaudeAi={setLoginWithClaudeAi}
           onDone={onDone}
+          scope={scope}
+          saveProviderConfig={saveProviderConfig}
+          applyGlobalEnv={applyGlobalEnv}
         />
       </Box>
     </Box>
@@ -413,6 +486,9 @@ type OAuthStatusMessageProps = {
   handleSubmitCode: (value: string, url: string) => void;
   setOAuthStatus: (status: OAuthStatus) => void;
   setLoginWithClaudeAi: (value: boolean) => void;
+  scope: LoginScope;
+  saveProviderConfig: (config: ProviderLoginConfigInput) => { error: Error | null };
+  applyGlobalEnv: (env: Record<string, string | undefined>) => void;
 };
 
 function OAuthStatusMessage({
@@ -430,6 +506,9 @@ function OAuthStatusMessage({
   setOAuthStatus,
   setLoginWithClaudeAi,
   onDone,
+  scope,
+  saveProviderConfig,
+  applyGlobalEnv,
 }: OAuthStatusMessageProps): React.ReactNode {
   switch (oauthStatus.state) {
     case 'idle':
@@ -682,10 +761,10 @@ function OAuthStatusMessage({
         if (finalVals.haiku_model) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.ANTHROPIC_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.ANTHROPIC_DEFAULT_OPUS_MODEL = finalVals.opus_model;
-        const { error } = updateSettingsForSource('userSettings', {
+        const { error } = saveProviderConfig({
           modelType: 'anthropic',
           env,
-        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+        });
         if (error) {
           setOAuthStatus({
             state: 'error',
@@ -701,11 +780,11 @@ function OAuthStatusMessage({
             },
           });
         } else {
-          for (const [k, v] of Object.entries(env)) process.env[k] = v;
+          applyGlobalEnv(env);
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
-      }, [activeField, inputValue, displayValues, setOAuthStatus, onDone]);
+      }, [activeField, inputValue, displayValues, setOAuthStatus, onDone, saveProviderConfig, applyGlobalEnv]);
 
       const handleEnter = useCallback(() => {
         const idx = FIELDS.indexOf(activeField);
@@ -884,11 +963,10 @@ function OAuthStatusMessage({
         if (finalVals.haiku_model) env.OPENAI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.OPENAI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.OPENAI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
-        const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+        const { error } = saveProviderConfig({
           modelType: 'openai',
-          env: env as unknown as Record<string, string>,
-        };
-        const { error } = updateSettingsForSource('userSettings', settingsUpdate);
+          env,
+        });
         if (error) {
           setOAuthStatus({
             state: 'error',
@@ -904,22 +982,27 @@ function OAuthStatusMessage({
             },
           });
         } else {
-          for (const [k, v] of Object.entries(env)) {
-            if (v === undefined) {
-              delete process.env[k];
-            } else {
-              process.env[k] = v;
-            }
-          }
+          applyGlobalEnv(env);
           // Drop any cached OpenAI client so the next request rebuilds it
-          // with the new env vars. Also clear ChatGPT auth file so a prior
+          // with the new env vars. Also clear scoped ChatGPT auth so a prior
           // ChatGPT Subscription login can't leak into the OpenAI Compatible path.
           clearOpenAIClientCache();
-          void removeChatGPTAuth().catch(() => {});
+          void removeChatGPTAuth(scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined).catch(
+            () => {},
+          );
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
-      }, [activeField, openaiInputValue, openaiDisplayValues, setOAuthStatus, onDone]);
+      }, [
+        activeField,
+        openaiInputValue,
+        openaiDisplayValues,
+        setOAuthStatus,
+        onDone,
+        saveProviderConfig,
+        applyGlobalEnv,
+        scope,
+      ]);
 
       const handleOpenAIEnter = useCallback(() => {
         const idx = OPENAI_FIELDS.indexOf(activeField);
@@ -1036,20 +1119,24 @@ function OAuthStatusMessage({
               deviceCode,
             });
             void openBrowser(deviceCode.verificationUrl);
-            await completeChatGPTDeviceLogin(deviceCode, controller.signal);
+            await completeChatGPTDeviceLogin(
+              deviceCode,
+              controller.signal,
+              scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined,
+            );
             if (cancelled) return;
             const env: Record<string, string> = {
               OPENAI_AUTH_MODE: 'chatgpt',
             };
-            const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+            const { error } = saveProviderConfig({
               modelType: 'openai',
               env,
-            };
-            const { error } = updateSettingsForSource('userSettings', settingsUpdate);
+              credentialScope: scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined,
+            });
             if (error) {
               throw new Error('Failed to save settings. Please try again.');
             }
-            for (const [k, v] of Object.entries(env)) process.env[k] = v;
+            applyGlobalEnv(env);
             // Drop any cached OpenAI client built from prior OpenAI Compatible
             // env vars; the ChatGPT Subscription path bypasses the SDK client
             // entirely (uses createChatGPTResponsesStream) but a stale cached
@@ -1074,7 +1161,7 @@ function OAuthStatusMessage({
           cancelled = true;
           controller.abort();
         };
-      }, [setOAuthStatus, onDone]);
+      }, [setOAuthStatus, onDone, saveProviderConfig, applyGlobalEnv, scope]);
 
       return (
         <Box flexDirection="column" gap={1}>
@@ -1183,10 +1270,10 @@ function OAuthStatusMessage({
         if (finalVals.haiku_model) env.GEMINI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.GEMINI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.GEMINI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
-        const { error } = updateSettingsForSource('userSettings', {
+        const { error } = saveProviderConfig({
           modelType: 'gemini',
           env,
-        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+        });
         if (error) {
           setOAuthStatus({
             state: 'error',
@@ -1202,11 +1289,19 @@ function OAuthStatusMessage({
             },
           });
         } else {
-          for (const [k, v] of Object.entries(env)) process.env[k] = v;
+          applyGlobalEnv(env);
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
-      }, [activeField, geminiInputValue, geminiDisplayValues, onDone, setOAuthStatus]);
+      }, [
+        activeField,
+        geminiInputValue,
+        geminiDisplayValues,
+        onDone,
+        setOAuthStatus,
+        saveProviderConfig,
+        applyGlobalEnv,
+      ]);
 
       const handleGeminiEnter = useCallback(() => {
         const idx = GEMINI_FIELDS.indexOf(activeField);
@@ -1461,11 +1556,10 @@ function OAuthStatusMessage({
           OPENAI_DEFAULT_HAIKU_MODEL: modelId,
           OPENAI_DEFAULT_OPUS_MODEL: modelId,
         };
-        const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+        const { error } = saveProviderConfig({
           modelType: 'openai',
-          env: env as unknown as Record<string, string>,
-        };
-        const { error } = updateSettingsForSource('userSettings', settingsUpdate);
+          env,
+        });
         if (error) {
           setOAuthStatus({
             state: 'error',
@@ -1473,22 +1567,28 @@ function OAuthStatusMessage({
             toRetry: { state: 'china_apikey', provider, mode: accessMode, modelId, apiKey: chinaKeyValue },
           });
         } else {
-          for (const [k, v] of Object.entries(env)) {
-            if (v === undefined) {
-              delete process.env[k];
-            } else {
-              process.env[k] = v;
-            }
-          }
-          // Drop any cached OpenAI client and ChatGPT auth so the new
+          applyGlobalEnv(env);
+          // Drop any cached OpenAI client and scoped ChatGPT auth so the new
           // provider/credentials take effect on the next request.
           clearOpenAIClientCache();
-          void removeChatGPTAuth().catch(() => {});
+          void removeChatGPTAuth(scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined).catch(
+            () => {},
+          );
           logEvent('tengu_china_login_success', {});
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
-      }, [chinaKeyValue, provider, accessMode, modelId, onDone, setOAuthStatus]);
+      }, [
+        chinaKeyValue,
+        provider,
+        accessMode,
+        modelId,
+        onDone,
+        setOAuthStatus,
+        saveProviderConfig,
+        applyGlobalEnv,
+        scope,
+      ]);
 
       useKeybinding(
         'confirm:no',

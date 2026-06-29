@@ -59,7 +59,8 @@ export async function* queryModelGrok(
   void
 > {
   try {
-    const grokModel = resolveGrokModel(options.model)
+    const providerEnv = options.providerRuntimeConfig?.env ?? process.env
+    const grokModel = resolveGrokModel(options.model, providerEnv)
     const messagesForAPI = normalizeMessagesForAPI(messages, tools)
 
     const toolSchemas = await Promise.all(
@@ -93,6 +94,7 @@ export async function* queryModelGrok(
       maxRetries: 0,
       fetchOverride: options.fetchOverride as typeof fetch | undefined,
       source: options.querySource,
+      envOverride: providerEnv,
     })
 
     logForDebugging(

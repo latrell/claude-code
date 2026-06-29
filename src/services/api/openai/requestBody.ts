@@ -18,11 +18,14 @@ import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
  *
  * @param model - The resolved OpenAI model name
  */
-export function isOpenAIThinkingEnabled(model: string): boolean {
+export function isOpenAIThinkingEnabled(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
   // Explicit disable takes priority (overrides model auto-detect)
-  if (isEnvDefinedFalsy(process.env.OPENAI_ENABLE_THINKING)) return false
+  if (isEnvDefinedFalsy(env.OPENAI_ENABLE_THINKING)) return false
   // Explicit enable
-  if (isEnvTruthy(process.env.OPENAI_ENABLE_THINKING)) return true
+  if (isEnvTruthy(env.OPENAI_ENABLE_THINKING)) return true
   // Auto-detect from model name (DeepSeek and MiMo models support thinking mode).
   // Grok is intentionally excluded — Grok reasoning models reason automatically
   // and do NOT require thinking/enable_thinking request body parameters.
@@ -43,14 +46,15 @@ export function isOpenAIThinkingEnabled(model: string): boolean {
 export function resolveOpenAIMaxTokens(
   upperLimit: number,
   maxOutputTokensOverride?: number,
+  env: Record<string, string | undefined> = process.env,
 ): number {
   return (
     maxOutputTokensOverride ??
-    (process.env.OPENAI_MAX_TOKENS
-      ? parseInt(process.env.OPENAI_MAX_TOKENS, 10) || undefined
+    (env.OPENAI_MAX_TOKENS
+      ? parseInt(env.OPENAI_MAX_TOKENS, 10) || undefined
       : undefined) ??
-    (process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
-      ? parseInt(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, 10) || undefined
+    (env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+      ? parseInt(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, 10) || undefined
       : undefined) ??
     upperLimit
   )

@@ -59,6 +59,7 @@ import type {
 } from './types/tools.js'
 import type { FileStateCache } from './utils/fileStateCache.js'
 import type { DenialTrackingState } from './utils/permissions/denialTracking.js'
+import type { ProviderRuntimeConfig } from './utils/model/subagentProvider.js'
 import type { SystemPrompt } from './utils/systemPromptType.js'
 import type { ContentReplacementState } from './utils/toolResultStorage.js'
 
@@ -165,6 +166,8 @@ export type ToolUseContext = {
     appendSystemPrompt?: string
     /** Override querySource for analytics tracking */
     querySource?: QuerySource
+    /** Request-scoped provider/account config for Agent/subagent sessions */
+    providerRuntimeConfig?: ProviderRuntimeConfig
     /** Optional callback to get the latest tools (e.g., after MCP servers connect mid-query) */
     refreshTools?: () => Tools
     /**

@@ -31,6 +31,15 @@ describe('resolveOpenAIModel', () => {
     expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('my-custom-model')
   })
 
+  test('scoped env overrides process env', () => {
+    process.env.OPENAI_MODEL = 'global-model'
+    expect(
+      resolveOpenAIModel('claude-sonnet-4-6', {
+        OPENAI_MODEL: 'scoped-model',
+      }),
+    ).toBe('scoped-model')
+  })
+
   test('ANTHROPIC_DEFAULT_SONNET_MODEL overrides default map', () => {
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'my-sonnet'
     expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('my-sonnet')

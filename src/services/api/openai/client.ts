@@ -40,11 +40,13 @@ export function getOpenAIClient(options?: {
   maxRetries?: number
   fetchOverride?: typeof fetch
   source?: string
+  envOverride?: Record<string, string | undefined>
 }): OpenAI {
-  if (cachedClient) return cachedClient
+  if (!options?.envOverride && cachedClient) return cachedClient
 
-  const apiKey = process.env.OPENAI_API_KEY || ''
-  const baseURL = process.env.OPENAI_BASE_URL
+  const env = options?.envOverride ?? process.env
+  const apiKey = env.OPENAI_API_KEY || ''
+  const baseURL = env.OPENAI_BASE_URL
 
   const baseFetch = options?.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const wrappedFetch = wrapFetchForUsage(baseFetch)
@@ -53,19 +55,19 @@ export function getOpenAIClient(options?: {
     apiKey,
     ...(baseURL && { baseURL }),
     maxRetries: options?.maxRetries ?? 0,
-    timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
+    timeout: parseInt(env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
-    ...(process.env.OPENAI_ORG_ID && {
-      organization: process.env.OPENAI_ORG_ID,
+    ...(env.OPENAI_ORG_ID && {
+      organization: env.OPENAI_ORG_ID,
     }),
-    ...(process.env.OPENAI_PROJECT_ID && {
-      project: process.env.OPENAI_PROJECT_ID,
+    ...(env.OPENAI_PROJECT_ID && {
+      project: env.OPENAI_PROJECT_ID,
     }),
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
     fetch: wrappedFetch,
   })
 
-  if (!options?.fetchOverride) {
+  if (!options?.fetchOverride && !options?.envOverride) {
     cachedClient = client
   }
 

@@ -16,23 +16,25 @@ export function getGrokClient(options?: {
   maxRetries?: number
   fetchOverride?: typeof fetch
   source?: string
+  envOverride?: Record<string, string | undefined>
 }): OpenAI {
-  if (cachedClient) return cachedClient
+  if (!options?.envOverride && cachedClient) return cachedClient
 
-  const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || ''
-  const baseURL = process.env.GROK_BASE_URL || DEFAULT_BASE_URL
+  const env = options?.envOverride ?? process.env
+  const apiKey = env.GROK_API_KEY || env.XAI_API_KEY || ''
+  const baseURL = env.GROK_BASE_URL || DEFAULT_BASE_URL
 
   const client = new OpenAI({
     apiKey,
     baseURL,
     maxRetries: options?.maxRetries ?? 0,
-    timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
+    timeout: parseInt(env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
     ...(options?.fetchOverride && { fetch: options.fetchOverride }),
   })
 
-  if (!options?.fetchOverride) {
+  if (!options?.fetchOverride && !options?.envOverride) {
     cachedClient = client
   }
 

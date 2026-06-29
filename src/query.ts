@@ -299,7 +299,9 @@ export async function* query(
       ? createTrace({
           sessionId: getSessionId(),
           model: params.toolUseContext.options.mainLoopModel,
-          provider: getAPIProvider(),
+          provider:
+            params.toolUseContext.options.providerRuntimeConfig?.provider ??
+            getAPIProvider(),
           input: params.messages,
           querySource: params.querySource,
         })
@@ -945,6 +947,8 @@ async function* queryLoop(
                 },
               }),
               langfuseTrace: toolUseContext.langfuseTrace,
+              providerRuntimeConfig:
+                toolUseContext.options.providerRuntimeConfig,
             },
           })) {
             // We won't use the tool_calls from the first attempt
