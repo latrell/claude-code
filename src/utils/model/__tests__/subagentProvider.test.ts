@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { getAgentModel } from '../agent.js'
 import {
   getSubagentProviderFromEnv,
   getSubagentProviderRuntimeConfig,
@@ -82,5 +83,62 @@ describe('subagent provider config', () => {
       env: { GEMINI_API_KEY: 'gemini-key' },
       credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
     })
+  })
+
+  test('uses provider runtime OPENAI_MODEL before parent and CLAUDE_CODE_SUBAGENT_MODEL', () => {
+    const originalSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = 'haiku'
+
+    try {
+      expect(
+        getAgentModel(undefined, 'gpt-5.5', undefined, 'default', {
+          provider: 'openai',
+          env: { OPENAI_MODEL: 'deepseek-v4-pro' },
+        }),
+      ).toBe('deepseek-v4-pro')
+    } finally {
+      if (originalSubagentModel === undefined) {
+        delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
+      } else {
+        process.env.CLAUDE_CODE_SUBAGENT_MODEL = originalSubagentModel
+      }
+    }
+  })
+
+  test('uses provider runtime OPENAI_DEFAULT_SONNET_MODEL before parent and CLAUDE_CODE_SUBAGENT_MODEL', () => {
+    const originalSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = 'haiku'
+
+    try {
+      expect(
+        getAgentModel(undefined, 'gpt-5.5', undefined, 'default', {
+          provider: 'openai',
+          env: { OPENAI_DEFAULT_SONNET_MODEL: 'deepseek-v4-flash' },
+        }),
+      ).toBe('deepseek-v4-flash')
+    } finally {
+      if (originalSubagentModel === undefined) {
+        delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
+      } else {
+        process.env.CLAUDE_CODE_SUBAGENT_MODEL = originalSubagentModel
+      }
+    }
+  })
+
+  test('uses CLAUDE_CODE_SUBAGENT_MODEL when provider runtime config is absent', () => {
+    const originalSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-v4-flash'
+
+    try {
+      expect(getAgentModel(undefined, 'gpt-5.5', undefined, 'default')).toBe(
+        'deepseek-v4-flash',
+      )
+    } finally {
+      if (originalSubagentModel === undefined) {
+        delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
+      } else {
+        process.env.CLAUDE_CODE_SUBAGENT_MODEL = originalSubagentModel
+      }
+    }
   })
 })

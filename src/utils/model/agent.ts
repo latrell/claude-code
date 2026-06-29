@@ -44,10 +44,21 @@ export function getAgentModel(
   providerRuntimeConfig?: ProviderRuntimeConfig,
 ): string {
   const scopedEnv = providerRuntimeConfig?.env
+  const provider = getAgentProvider(providerRuntimeConfig)
+  const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
+  const providerConfiguredModel = getProviderConfiguredAgentModel(
+    providerRuntimeConfig,
+    toolSpecifiedModel ?? agentModelWithExp,
+    parentModel,
+  )
+
+  if (providerConfiguredModel) {
+    return providerConfiguredModel
+  }
+
   const subagentModel =
     scopedEnv?.CLAUDE_CODE_SUBAGENT_MODEL ??
     process.env.CLAUDE_CODE_SUBAGENT_MODEL
-  const provider = getAgentProvider(providerRuntimeConfig)
 
   if (subagentModel) {
     return parseUserSpecifiedModel(subagentModel)
@@ -83,8 +94,6 @@ export function getAgentModel(
     const model = parseUserSpecifiedModel(toolSpecifiedModel)
     return applyParentRegionPrefix(model, toolSpecifiedModel)
   }
-
-  const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
 
   if (agentModelWithExp === 'inherit') {
     // Apply runtime model resolution for inherit to get the effective model
@@ -126,6 +135,69 @@ function getAgentProvider(
       providerRuntimeConfig?.env ?? process.env,
     )
   )
+}
+
+function getProviderConfiguredAgentModel(
+  providerRuntimeConfig: ProviderRuntimeConfig | undefined,
+  requestedModel: string,
+  parentModel: string,
+): string | undefined {
+  if (!providerRuntimeConfig) return undefined
+
+  const env = providerRuntimeConfig.env
+  if (!env) return undefined
+
+  switch (providerRuntimeConfig.provider) {
+    case 'openai':
+      return getOpenAIConfiguredAgentModel(env, requestedModel, parentModel)
+    case 'gemini':
+      return getGeminiConfiguredAgentModel(env, requestedModel, parentModel)
+    case 'grok':
+      return env.GROK_MODEL
+    default:
+      return undefined
+  }
+}
+
+function getOpenAIConfiguredAgentModel(
+  env: Record<string, string | undefined>,
+  requestedModel: string,
+  parentModel: string,
+): string | undefined {
+  if (env.OPENAI_MODEL) return env.OPENAI_MODEL
+
+  const family = getRequestedModelFamily(requestedModel, parentModel)
+  if (!family) return undefined
+
+  return env[`OPENAI_DEFAULT_${family.toUpperCase()}_MODEL`]
+}
+
+function getGeminiConfiguredAgentModel(
+  env: Record<string, string | undefined>,
+  requestedModel: string,
+  parentModel: string,
+): string | undefined {
+  if (env.GEMINI_MODEL) return env.GEMINI_MODEL
+
+  const family = getRequestedModelFamily(requestedModel, parentModel)
+  if (!family) return undefined
+
+  return env[`GEMINI_DEFAULT_${family.toUpperCase()}_MODEL`]
+}
+
+function getRequestedModelFamily(
+  requestedModel: string,
+  parentModel: string,
+): 'haiku' | 'sonnet' | 'opus' | undefined {
+  const modelForFamily =
+    requestedModel === 'inherit' ? parentModel : requestedModel
+  const canonical = getCanonicalName(modelForFamily)
+
+  if (canonical.includes('haiku')) return 'haiku'
+  if (canonical.includes('sonnet')) return 'sonnet'
+  if (canonical.includes('opus')) return 'opus'
+  if (requestedModel === 'inherit') return 'sonnet'
+  return undefined
 }
 
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
