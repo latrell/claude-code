@@ -47,7 +47,7 @@ export async function processBashCommand(
   });
 
   // ctrl+b to background indicator
-  let jsx: React.ReactNode;
+  const jsxRef: { current: React.ReactNode } = { current: null };
 
   // Just show initial UI
   setToolJSX({
@@ -60,7 +60,7 @@ export async function processBashCommand(
       ...context,
       // TODO: Clean up this hack
       setToolJSX: _ => {
-        jsx = _?.jsx;
+        jsxRef.current = _?.jsx ?? null;
       },
     };
 
@@ -70,7 +70,7 @@ export async function processBashCommand(
         jsx: (
           <>
             <BashModeProgress input={inputString!} progress={progress.data} verbose={context.options.verbose} />
-            {jsx}
+            {jsxRef.current}
           </>
         ),
         shouldHidePromptInput: false,
