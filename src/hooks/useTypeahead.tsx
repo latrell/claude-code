@@ -27,6 +27,7 @@ import {
   getBestCommandMatch,
   isCommandInput,
 } from '../utils/suggestions/commandSuggestions.js';
+import { deferUntilNextFrame } from '../utils/deferUntilNextFrame.js';
 import {
   getDirectoryCompletions,
   getPathCompletions,
@@ -1297,26 +1298,35 @@ export function useTypeahead({
 
     if (suggestionType === 'command' && selectedSuggestion < suggestions.length) {
       if (suggestion) {
-        applyCommandSuggestion(
-          suggestion,
-          true, // execute on return
-          commands,
-          onInputChange,
-          setCursorOffset,
-          onSubmit,
-        );
+        // Dismiss the suggestion picker BEFORE executing the command,
+        // then defer execution by one tick so React/Ink can flush the
+        // cleared state before the command runs.
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        deferUntilNextFrame(() => {
+          applyCommandSuggestion(
+            suggestion,
+            true, // execute on return
+            commands,
+            onInputChange,
+            setCursorOffset,
+            onSubmit,
+          );
+        });
       }
     } else if (suggestionType === 'custom-title' && selectedSuggestion < suggestions.length) {
       // Apply custom title and execute /resume command with sessionId
       if (suggestion) {
-        const newInput = buildResumeInputFromSuggestion(suggestion);
-        onInputChange(newInput);
-        setCursorOffset(newInput.length);
-        onSubmit(newInput, /* isSubmittingSlashCommand */ true);
+        // Dismiss the suggestion picker BEFORE executing the command,
+        // then defer execution by one tick.
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        deferUntilNextFrame(() => {
+          const newInput = buildResumeInputFromSuggestion(suggestion);
+          onInputChange(newInput);
+          setCursorOffset(newInput.length);
+          onSubmit(newInput, /* isSubmittingSlashCommand */ true);
+        });
       }
     } else if (suggestionType === 'shell' && selectedSuggestion < suggestions.length) {
       const suggestion = suggestions[selectedSuggestion];

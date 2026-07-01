@@ -1028,6 +1028,48 @@ export default class Ink {
   };
 
   /**
+   * Move the terminal cursor from its current parked position (IME input
+   * area, if any) to the end of the last rendered frame, then advance one
+   * line so the shell prompt appears below all Ink content.
+   *
+   * In main-screen mode, useDeclaredCursor parks the physical cursor at
+   * the text input (for IME preedit rendering).  If the process exits
+   * while parked, the shell prompt appears in the middle of the UI
+   * instead of after the footer.  This method undoes the park, moves to
+   * frame.cursor (end of content), and writes a newline.
+   *
+   * Safe to call before detachForShutdown().  Alt-screen callers should
+   * use unmount() instead (it exits alt-screen and writes a final frame).
+   */
+  finalizeOutput(): void {
+    // Only valid in main-screen mode.  Alt-screen exits via unmount().
+    if (this.isUnmounted || this.altScreenActive) return;
+
+    // Write any throttled-but-not-yet-flushed output.  onRender() is a
+    // no-op when isUnmounted or isPaused.
+    this.onRender();
+
+    const end = this.frontFrame.cursor;
+    const parked = this.displayCursor;
+
+    // If the cursor is parked (e.g. at the text input for IME), move it
+    // to frame.cursor (end of full UI content).  If already at frame.cursor
+    // (no park active), the relative move is a no-op.
+    if (parked !== null) {
+      const dx = end.x - parked.x;
+      const dy = end.y - parked.y;
+      if (dx !== 0 || dy !== 0) {
+        writeSync(1, cursorMove(dx, dy));
+      }
+      this.displayCursor = null;
+    }
+
+    // One newline so the shell prompt starts on the next clean line.
+    // Use writeSync — called from synchronous shutdown paths.
+    writeSync(1, '\n');
+  }
+
+  /**
    * Mark this instance as unmounted so future unmount() calls early-return.
    * Called by gracefulShutdown's cleanupTerminalModes() after it has sent
    * EXIT_ALT_SCREEN but before the remaining terminal-reset sequences.

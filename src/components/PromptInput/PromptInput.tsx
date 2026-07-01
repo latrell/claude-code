@@ -63,6 +63,7 @@ import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { Cursor } from '../../utils/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
 import { logForDebugging } from '../../utils/debug.js';
+import { waitUntilNextFrame } from '../../utils/deferUntilNextFrame.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
@@ -1239,6 +1240,23 @@ function PromptInput({
       // Clear stash hint notification on submit
       removeNotification('stash-hint');
 
+      // Clear suggestions state before executing the command — ensures the
+      // slash-command picker is dismissed /before/ the command runs, not
+      // after the next render cycle via useEffect.
+      setSuggestionsState({
+        suggestions: [],
+        selectedSuggestion: -1,
+        commandArgumentHint: undefined,
+      });
+
+      // For slash commands, wait one tick so React/Ink can flush the cleared
+      // suggestions state to the terminal before the command runs. Without
+      // this, /exit can reach process.exit() before Ink re-renders, leaving
+      // the suggestion list as residual output below the shell prompt.
+      if (inputParam.startsWith('/')) {
+        await waitUntilNextFrame();
+      }
+
       // Route input to viewed agent (in-process teammate or named local_agent).
       const activeAgent = getActiveAgentForInput(store.getState());
       if (activeAgent.type !== 'leader' && onAgentSubmit) {
@@ -1275,6 +1293,7 @@ function PromptInput({
       markAccepted,
       pastedContents,
       removeNotification,
+      setSuggestionsState,
     ],
   );
 

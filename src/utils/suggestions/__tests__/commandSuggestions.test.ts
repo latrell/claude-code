@@ -246,6 +246,46 @@ describe('applyCommandSuggestion', () => {
 
     expect(submitted).toBe('/commit ')
   })
+
+  test('executes no-arg local-jsx command with isSubmittingSlashCommand=true (like /exit)', () => {
+    const captured: { value: string; isSlashCommand: boolean } = {
+      value: '',
+      isSlashCommand: false,
+    }
+    let newInput = ''
+
+    const exitCommand = makeCommand('exit', {
+      type: 'local-jsx' as Command['type'],
+      aliases: ['quit'],
+    })
+
+    const commandsWithExit: Command[] = [exitCommand]
+
+    const suggestion: SuggestionItem = {
+      id: 'exit:local-jsx',
+      displayText: '/exit',
+      description: 'Exit the REPL',
+      metadata: exitCommand,
+    }
+
+    applyCommandSuggestion(
+      suggestion,
+      true,
+      commandsWithExit,
+      v => {
+        newInput = v
+      },
+      () => {},
+      (value, isSubmittingSlashCommand) => {
+        captured.value = value
+        captured.isSlashCommand = isSubmittingSlashCommand ?? false
+      },
+    )
+
+    expect(newInput).toBe('/exit ')
+    expect(captured.value).toBe('/exit ')
+    expect(captured.isSlashCommand).toBe(true)
+  })
 })
 
 // ─── Tab completion splice behavior ───────────────────────────────────

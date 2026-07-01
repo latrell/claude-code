@@ -89,6 +89,20 @@ function cleanupTerminalModes(): void {
         // so printResumeHint still hits the main buffer.
         writeSync(1, EXIT_ALT_SCREEN)
       }
+    } else if (inst) {
+      // Non-alt-screen mode (e.g. /exit without worktree): flush any
+      // pending Ink render before detachForShutdown() cancels the throttle.
+      // Without this, handlePromptSubmit's waitForInkRenderFrame() may have
+      // started the scheduled render but Ink's trailing-edge setTimeout(16ms)
+      // hasn't fired yet — detach cancels it and the terminal never sees
+      // the cleaned-up frame (PromptInput hidden, suggestions cleared).
+      // onRender() is a no-op if isUnmounted or isPaused.
+      try {
+        inst.finalizeOutput()
+      } catch {
+        // finalizeOutput may throw if Ink is in an inconsistent state
+        // during shutdown. Ignore — terminal cleanup continues below.
+      }
     }
     // Catches events that arrived during the unmount tree-walk.
     // detachForShutdown() below also drains.
