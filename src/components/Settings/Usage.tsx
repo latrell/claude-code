@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { extraUsage as extraUsageCommand } from 'src/commands/extra-usage/index.js';
 import { formatCost } from 'src/cost-tracker.js';
 import { getSubscriptionType } from 'src/utils/auth.js';
@@ -7,6 +7,12 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { type ExtraUsage, fetchUtilization, type RateLimit, type Utilization } from '../../services/api/usage.js';
+import type { ProviderUsageBucket } from '../../services/providerUsage/types.js';
+import {
+  fetchCodexUsage,
+  type CodexRateLimitBucket,
+  type CodexUsageSnapshot,
+} from '../../services/api/openai/codexUsage.js';
 import { formatResetText } from '../../utils/format.js';
 import { logError } from '../../utils/log.js';
 import { jsonStringify } from '../../utils/slowOperations.js';
@@ -86,39 +92,133 @@ function LimitBar({ title, limit, maxWidth, showTimeInReset = true, extraSubtext
   }
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI / ChatGPT',
+  anthropic: 'Anthropic',
+  bedrock: 'AWS Bedrock',
+  vertex: 'Google Vertex AI',
+  gemini: 'Google Gemini',
+  grok: 'xAI Grok',
+};
+
+export function providerDisplayName(providerId: string): string {
+  return PROVIDER_LABELS[providerId] ?? providerId;
+}
+
+export function bucketToLimitBar(bucket: ProviderUsageBucket): { limit: RateLimit; label: string } {
+  return {
+    label: bucket.label,
+    limit: {
+      utilization: Math.round(bucket.utilization * 100),
+      resets_at: bucket.resetsAt ? new Date(bucket.resetsAt * 1000).toISOString() : null,
+    },
+  };
+}
+
+export function codexBucketToLimitBar(bucket: CodexRateLimitBucket): { title: string; limit: RateLimit } {
+  return {
+    title: bucket.label,
+    limit: {
+      utilization: bucket.limit > 0 ? Math.round((bucket.used / bucket.limit) * 100) : null,
+      resets_at: bucket.resetsAtSeconds > 0 ? new Date(bucket.resetsAtSeconds * 1000).toISOString() : null,
+    },
+  };
+}
+
+function CodexUsageSection({
+  codexUsage,
+  maxWidth,
+}: {
+  codexUsage: CodexUsageSnapshot;
+  maxWidth: number;
+}): React.ReactNode {
+  const { account, rateLimits, tokenUsage } = codexUsage;
+
+  return (
+    <Box flexDirection="column" gap={1} width="100%">
+      <Text bold>
+        ChatGPT Usage
+        {account?.subscriptionPlan ? ` (${account.subscriptionPlan})` : ''}
+      </Text>
+
+      {rateLimits && rateLimits.length > 0 ? (
+        rateLimits.map(bucket => {
+          const { title, limit } = codexBucketToLimitBar(bucket);
+          if (limit.utilization === null) return null;
+          return (
+            <Box key={title} flexDirection="column">
+              <Text bold>{title}</Text>
+              <Box flexDirection="row" gap={1}>
+                <ProgressBar
+                  ratio={limit.utilization / 100}
+                  width={Math.min(50, maxWidth - 14)}
+                  fillColor="rate_limit_fill"
+                  emptyColor="rate_limit_empty"
+                />
+                <Text>
+                  {Math.round(bucket.used)}% used
+                  {limit.resets_at ? <> (resets {formatResetText(limit.resets_at, true, true)})</> : ''}
+                </Text>
+              </Box>
+            </Box>
+          );
+        })
+      ) : (
+        <Text dimColor>No rate limit data available.</Text>
+      )}
+
+      {tokenUsage && (
+        <Box flexDirection="column">
+          <Text bold>Daily tokens</Text>
+          <Text>
+            {tokenUsage.tokensUsed.toLocaleString()} tokens used on {tokenUsage.date}
+          </Text>
+        </Box>
+      )}
+
+      <Text dimColor>
+        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+      </Text>
+    </Box>
+  );
+}
+
 export function Usage(): React.ReactNode {
   const [utilization, setUtilization] = useState<Utilization | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [codexUsage, setCodexUsage] = useState<CodexUsageSnapshot | null>(null);
   const { columns } = useTerminalSize();
 
   const availableWidth = columns - 2; // 2 for screen padding
   const maxWidth = Math.min(availableWidth, 80);
 
-  const loadUtilization = React.useCallback(async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchUtilization();
-      setUtilization(data);
-    } catch (err) {
-      logError(err as Error);
-      const axiosError = err as { response?: { data?: unknown } };
-      const responseBody = axiosError.response?.data ? jsonStringify(axiosError.response.data) : undefined;
-      setError(responseBody ? `Failed to load usage data: ${responseBody}` : 'Failed to load usage data');
+      const [anthroData, codexData] = await Promise.all([
+        fetchUtilization().catch(() => null),
+        fetchCodexUsage().catch(() => null),
+      ]);
+      setUtilization(anthroData);
+      if (codexData) setCodexUsage(codexData);
+    } catch {
+      // Individual errors are caught inside fetchUtilization / fetchCodexUsage;
+      // this outer catch protects against unexpected synchronous exceptions.
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadUtilization();
-  }, [loadUtilization]);
+    void loadData();
+  }, [loadData]);
 
   useKeybinding(
     'settings:retry',
     () => {
-      void loadUtilization();
+      void loadData();
     },
     { context: 'Settings', isActive: !!error && !isLoading },
   );
@@ -174,10 +274,29 @@ export function Usage(): React.ReactNode {
       : []),
   ];
 
+  const hasAnthropicLimits = limits.some(({ limit }) => limit);
+
+  // When Anthropic utilization is empty (non-subscriber or third-party
+  // provider), try ChatGPT Codex app-server JSON-RPC usage data.
+  // If that is unavailable, keep the existing behaviour — do NOT add a
+  // provider-usage header fallback in the UI.
+  if (!hasAnthropicLimits) {
+    if (codexUsage) {
+      return <CodexUsageSection codexUsage={codexUsage} maxWidth={maxWidth} />;
+    }
+
+    return (
+      <Box flexDirection="column" gap={1} width="100%">
+        <Text dimColor>/usage is only available for subscription plans.</Text>
+        <Text dimColor>
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+        </Text>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" gap={1} width="100%">
-      {limits.some(({ limit }) => limit) || <Text dimColor>/usage is only available for subscription plans.</Text>}
-
       {limits.map(
         ({ title, limit }) => limit && <LimitBar key={title} title={title} limit={limit} maxWidth={maxWidth} />,
       )}
