@@ -24,6 +24,7 @@ import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js';
 import { stopUltraplan } from '../../commands/ultraplan.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
+import { t } from '../../i18n/t.js';
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -245,7 +246,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
         if (current) {
           if (current.type === 'leader') {
             exitTeammateView(setAppState);
-            onDone('Viewing leader', { display: 'system' });
+            onDone(t('Viewing leader'), { display: 'system' });
           } else {
             setViewState({ mode: 'detail', itemId: current.id });
           }
@@ -263,7 +264,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
 
     if (e.key === 'left') {
       e.preventDefault();
-      onDone('Background tasks dialog dismissed', { display: 'system' });
+      onDone(t('Background tasks dialog dismissed'), { display: 'system' });
       return;
     }
 
@@ -302,11 +303,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
       if (currentSelection.type === 'in_process_teammate' && currentSelection.status === 'running') {
         e.preventDefault();
         enterTeammateView(currentSelection.id, setAppState);
-        onDone('Viewing teammate', { display: 'system' });
+        onDone(t('Viewing teammate'), { display: 'system' });
       } else if (currentSelection.type === 'leader') {
         e.preventDefault();
         exitTeammateView(setAppState);
-        onDone('Viewing leader', { display: 'system' });
+        onDone(t('Viewing leader'), { display: 'system' });
       }
     }
   };
@@ -344,7 +345,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
         // Task was removed or is no longer a background task (e.g. killed).
         // If we skipped the list on mount, close the dialog entirely.
         if (skippedListOnMount.current) {
-          onDoneEvent('Background tasks dialog dismissed', {
+          onDoneEvent(t('Background tasks dialog dismissed'), {
             display: 'system',
           });
         } else {
@@ -365,7 +366,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
   // then a second task started, 'back' should show the list — not close.
   const goBackToList = () => {
     if (skippedListOnMount.current && allSelectableItems.length <= 1) {
-      onDone('Background tasks dialog dismissed', { display: 'system' });
+      onDone(t('Background tasks dialog dismissed'), { display: 'system' });
     } else {
       skippedListOnMount.current = false;
       setViewState({ mode: 'list' });
@@ -429,7 +430,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               task.status === 'running'
                 ? () => {
                     enterTeammateView(task.id, setAppState);
-                    onDone('Viewing teammate', { display: 'system' });
+                    onDone(t('Viewing teammate'), { display: 'system' });
                   }
                 : undefined
             }
@@ -505,7 +506,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <DreamDetailDialog
             task={task}
             onDone={() =>
-              onDone('Background tasks dialog dismissed', {
+              onDone(t('Background tasks dialog dismissed'), {
                 display: 'system',
               })
             }
@@ -541,7 +542,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
       ...(runningAgentCount > 0
         ? [
             <Text key="agents">
-              {runningAgentCount} {runningAgentCount !== 1 ? 'active agents' : 'active agent'}
+              {runningAgentCount} {runningAgentCount !== 1 ? t('active agents') : t('active agent')}
             </Text>,
           ]
         : []),
@@ -571,7 +572,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
     <KeyboardShortcutHint key="esc" shortcut="←/Esc" action="close" />,
   ];
 
-  const handleCancel = () => onDone('Background tasks dialog dismissed', { display: 'system' });
+  const handleCancel = () => onDone(t('Background tasks dialog dismissed'), { display: 'system' });
 
   function renderInputGuide(exitState: ExitState): React.ReactNode {
     if (exitState.pending) {
@@ -583,21 +584,25 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
   return (
     <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       <Dialog
-        title="Background tasks"
+        title={t('Background tasks')}
         subtitle={<>{subtitle}</>}
         onCancel={handleCancel}
         color="background"
         inputGuide={renderInputGuide}
       >
         {allSelectableItems.length === 0 ? (
-          <Text dimColor>No tasks currently running</Text>
+          <Text dimColor>{t('No tasks currently running')}</Text>
         ) : (
           <Box flexDirection="column">
             {teammateTasks.length > 0 && (
               <Box flexDirection="column">
                 {(bashTasks.length > 0 || remoteSessions.length > 0 || agentTasks.length > 0) && (
                   <Text dimColor>
-                    <Text bold>{'  '}Agents</Text> ({count(teammateTasks, i => i.type !== 'leader')})
+                    <Text bold>
+                      {'  '}
+                      {t('Agents')}
+                    </Text>{' '}
+                    ({count(teammateTasks, i => i.type !== 'leader')})
                   </Text>
                 )}
                 <Box flexDirection="column">
@@ -610,7 +615,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               <Box flexDirection="column" marginTop={teammateTasks.length > 0 ? 1 : 0}>
                 {(teammateTasks.length > 0 || remoteSessions.length > 0 || agentTasks.length > 0) && (
                   <Text dimColor>
-                    <Text bold>{'  '}Shells</Text> ({bashTasks.length})
+                    <Text bold>
+                      {'  '}
+                      {t('Shells')}
+                    </Text>{' '}
+                    ({bashTasks.length})
                   </Text>
                 )}
                 <Box flexDirection="column">
@@ -624,7 +633,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
             {mcpMonitors.length > 0 && (
               <Box flexDirection="column" marginTop={teammateTasks.length > 0 || bashTasks.length > 0 ? 1 : 0}>
                 <Text dimColor>
-                  <Text bold>{'  '}Monitors</Text> ({mcpMonitors.length})
+                  <Text bold>
+                    {'  '}
+                    {t('Monitors')}
+                  </Text>{' '}
+                  ({mcpMonitors.length})
                 </Text>
                 <Box flexDirection="column">
                   {mcpMonitors.map(item => (

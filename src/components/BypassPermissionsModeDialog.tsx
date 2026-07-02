@@ -3,6 +3,8 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Link, Newline, Text } from '@anthropic/ink';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';
 
@@ -54,26 +56,28 @@ export function BypassPermissionsModeDialog({ onAccept }: Props): React.ReactNod
   }
 
   return (
-    <Dialog title="WARNING: Claude Code running in Bypass Permissions mode" color="error" onCancel={handleEscape}>
+    <Dialog title={t('WARNING: Claude Code running in Bypass Permissions mode')} color="error" onCancel={handleEscape}>
       <Box flexDirection="column" gap={1}>
         <Text>
-          In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous
-          commands.
+          <T>
+            In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous
+            commands.
+          </T>
           <Newline />
-          This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily
-          be restored if damaged.
+          <T>
+            This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily
+            be restored if damaged.
+          </T>
         </Text>
-        <Text>
-          By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.
-        </Text>
+        <T>By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.</T>
 
         <Link url="https://code.claude.com/docs/en/security" />
       </Box>
 
       <Select
         options={[
-          { label: 'No, exit', value: 'decline' },
-          { label: 'Yes, I accept', value: 'accept' },
+          { label: t('No, exit'), value: 'decline' },
+          { label: t('Yes, I accept'), value: 'accept' },
         ]}
         onChange={value => onChange(value as 'accept' | 'decline')}
       />

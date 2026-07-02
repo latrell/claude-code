@@ -7,13 +7,15 @@ import {
 import { generateKeybindingsTemplate } from '../../keybindings/template.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { editFileInEditor } from '../../utils/promptEditor.js'
+import { t, tf } from '../../i18n/t.js'
 
 export async function call(): Promise<{ type: 'text'; value: string }> {
   if (!isKeybindingCustomizationEnabled()) {
     return {
       type: 'text',
-      value:
+      value: t(
         'Keybinding customization is not enabled. This feature is currently in preview.',
+      ),
     }
   }
 
@@ -41,13 +43,23 @@ export async function call(): Promise<{ type: 'text'; value: string }> {
   if (result.error) {
     return {
       type: 'text',
-      value: `${fileExists ? 'Opened' : 'Created'} ${keybindingsPath}. Could not open in editor: ${result.error}`,
+      value: fileExists
+        ? tf('Opened {path}. Could not open in editor: {error}', {
+            path: keybindingsPath,
+            error: result.error,
+          })
+        : tf('Created {path}. Could not open in editor: {error}', {
+            path: keybindingsPath,
+            error: result.error,
+          }),
     }
   }
   return {
     type: 'text',
     value: fileExists
-      ? `Opened ${keybindingsPath} in your editor.`
-      : `Created ${keybindingsPath} with template. Opened in your editor.`,
+      ? tf('Opened {path} in your editor.', { path: keybindingsPath })
+      : tf('Created {path} with template. Opened in your editor.', {
+          path: keybindingsPath,
+        }),
   }
 }

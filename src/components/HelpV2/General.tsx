@@ -1,20 +1,21 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { PromptInputHelpMenu } from '../PromptInput/PromptInputHelpMenu.js';
+import { T } from '../../i18n/TText.js';
 
 export function General(): React.ReactNode {
   return (
     <Box flexDirection="column" paddingY={1} gap={1}>
       <Box flexDirection="column" gap={1}>
-        <Text bold>Getting started</Text>
+        <T bold>Getting started</T>
         <Box flexDirection="column">
           <Text>
             <Text bold>1. </Text>
-            <Text>Ask a question or describe a task — Claude will explore your code and respond.</Text>
+            <T>Ask a question or describe a task — Claude will explore your code and respond.</T>
           </Text>
           <Text>
             <Text bold>2. </Text>
-            <Text>When Claude wants to edit files or run commands, you review and approve each action.</Text>
+            <T>When Claude wants to edit files or run commands, you review and approve each action.</T>
           </Text>
           <Text>
             <Text bold>3. </Text>
@@ -30,7 +31,7 @@ export function General(): React.ReactNode {
       </Box>
       <Box flexDirection="column">
         <Box>
-          <Text bold>Shortcuts</Text>
+          <T bold>Shortcuts</T>
         </Box>
         <PromptInputHelpMenu gap={2} fixedWidth={true} />
       </Box>

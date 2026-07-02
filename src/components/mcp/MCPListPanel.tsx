@@ -11,6 +11,7 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { McpParsingWarnings } from './McpParsingWarnings.js';
 import type { AgentMcpServerInfo, ServerInfo } from './types.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   servers: ServerInfo[];
@@ -117,7 +118,7 @@ export function MCPListPanel({
   }, [serversByScope, claudeAiServers, agentServers, dynamicServers]);
 
   const handleCancel = useCallback((): void => {
-    onComplete('MCP dialog dismissed', {
+    onComplete(t('MCP dialog dismissed'), {
       display: 'system',
     });
   }, [onComplete]);

@@ -14,6 +14,8 @@ import type { AssistantMessage, Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { extractTextContent, stripPromptXMLTags } from '../../utils/messages.js';
 import { countCharInString } from '../../utils/stringUtils.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 const COPY_DIR = join(tmpdir(), 'claude');
 const RESPONSE_FILENAME = 'response.md';
@@ -82,9 +84,16 @@ async function copyOrWriteToFile(text: string, filename: string): Promise<string
   // terminal support), so the file provides a reliable fallback.
   try {
     const filePath = await writeToFile(text, filename);
-    return `Copied to clipboard (${charCount} characters, ${lineCount} lines)\nAlso written to ${filePath}`;
+    return tf('Copied to clipboard ({charCount} characters, {lineCount} lines)\nAlso written to {filePath}', {
+      charCount: String(charCount),
+      lineCount: String(lineCount),
+      filePath,
+    });
   } catch {
-    return `Copied to clipboard (${charCount} characters, ${lineCount} lines)`;
+    return tf('Copied to clipboard ({charCount} characters, {lineCount} lines)', {
+      charCount: String(charCount),
+      lineCount: String(lineCount),
+    });
   }
 }
 
@@ -119,9 +128,12 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
 
   const options: OptionWithDescription<PickerSelection>[] = [
     {
-      label: 'Full response',
+      label: t('Full response'),
       value: 'full' as const,
-      description: `${fullText.length} chars, ${countCharInString(fullText, '\n') + 1} lines`,
+      description: tf('{chars} chars, {lines} lines', {
+        chars: String(fullText.length),
+        lines: String(countCharInString(fullText, '\n') + 1),
+      }),
     },
     ...codeBlocks.map((block, index) => {
       const blockLines = countCharInString(block.code, '\n') + 1;
@@ -133,9 +145,9 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
       };
     }),
     {
-      label: 'Always copy full response',
+      label: t('Always copy full response'),
       value: 'always' as const,
-      description: 'Skip this picker in the future (revert via /config)',
+      description: t('Skip this picker in the future (revert via /config)'),
     },
   ];
 
@@ -167,7 +179,7 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
         message_age: messageAge,
       });
       const result = await copyOrWriteToFile(content.text, content.filename);
-      onDone(`${result}\nPreference saved. Use /config to change copyFullResponse`);
+      onDone(`${result}\n${t('Preference saved. Use /config to change copyFullResponse')}`);
       return;
     }
     logEvent('tengu_copy', {
@@ -189,9 +201,13 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
     });
     try {
       const filePath = await writeToFile(content.text, content.filename);
-      onDone(`Written to ${filePath}`);
+      onDone(tf('Written to {filePath}', { filePath }));
     } catch (e) {
-      onDone(`Failed to write file: ${e instanceof Error ? e.message : e}`);
+      onDone(
+        tf('Failed to write file: {error}', {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
     }
   }
 
@@ -205,7 +221,7 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
   return (
     <Pane>
       <Box flexDirection="column" gap={1} tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
-        <Text dimColor>Select content to copy:</Text>
+        <T dimColor>Select content to copy:</T>
         <Select<PickerSelection>
           options={options}
           hideIndexes={false}
@@ -216,7 +232,7 @@ function CopyPicker({ fullText, codeBlocks, messageAge, onDone }: PickerProps): 
             void handleSelect(selected);
           }}
           onCancel={() => {
-            onDone('Copy cancelled', { display: 'system' });
+            onDone(t('Copy cancelled'), { display: 'system' });
           }}
         />
         <Text dimColor>
@@ -235,7 +251,7 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const texts = collectRecentAssistantTexts(context.messages);
 
   if (texts.length === 0) {
-    onDone('No assistant message to copy');
+    onDone(t('No assistant message to copy'));
     return null;
   }
 
@@ -245,11 +261,16 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   if (arg) {
     const n = Number(arg);
     if (!Number.isInteger(n) || n < 1) {
-      onDone(`Usage: /copy [N] where N is 1 (latest), 2, 3, \u2026 Got: ${arg}`);
+      onDone(tf('Usage: /copy [N] where N is 1 (latest), 2, 3, \u2026 Got: {arg}', { arg: arg }));
       return null;
     }
     if (n > texts.length) {
-      onDone(`Only ${texts.length} assistant ${texts.length === 1 ? 'message' : 'messages'} available to copy`);
+      onDone(
+        tf('Only {count} assistant {label} available to copy', {
+          count: texts.length,
+          label: texts.length === 1 ? 'message' : 'messages',
+        }),
+      );
       return null;
     }
     age = n - 1;

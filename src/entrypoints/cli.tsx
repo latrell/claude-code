@@ -89,6 +89,14 @@ async function main(): Promise<void> {
   const { profileCheckpoint } = await import('../utils/startupProfiler.js');
   profileCheckpoint('cli_entry');
 
+  // Register the i18n translator for KeyboardShortcutHint so all
+  // shortcut action labels and default templates are localized.
+  {
+    const { setKeyboardShortcutTranslator } = await import('@anthropic/ink');
+    const { t } = await import('../i18n/t.js');
+    setKeyboardShortcutTranslator(t);
+  }
+
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.
   // Used by prompt sensitivity evals to extract the system prompt at a specific commit.
   // Ant-only: eliminated from external builds via feature flag.
@@ -165,8 +173,11 @@ async function main(): Promise<void> {
   // it calls them inside its run() fn.
   if (args[0] === '--daemon-worker' || args[0]?.startsWith('--daemon-worker=')) {
     if (!feature('DAEMON')) {
+      const { t } = await import('../i18n/t.js');
       console.error(
-        'Error: --daemon-worker requires DAEMON feature to be enabled. Set FEATURE_DAEMON=1 or add DAEMON to DEFAULT_BUILD_FEATURES.',
+        t(
+          'Error: --daemon-worker requires DAEMON feature to be enabled. Set FEATURE_DAEMON=1 or add DAEMON to DEFAULT_BUILD_FEATURES.',
+        ),
       );
       process.exitCode = 1;
       return;
@@ -282,7 +293,8 @@ async function main(): Promise<void> {
     (args[0] === 'ps' || args[0] === 'logs' || args[0] === 'attach' || args[0] === 'kill')
   ) {
     const mapped = args[0] === 'ps' ? 'status' : args[0];
-    console.error(`[deprecated] Use: claude daemon ${mapped}${args[1] ? ' ' + args[1] : ''}`);
+    const { tf } = await import('../i18n/t.js');
+    console.error(tf('[deprecated] Use: claude daemon {cmd}', { cmd: `${mapped}${args[1] ? ' ' + args[1] : ''}` }));
     profileCheckpoint('cli_daemon_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
@@ -308,7 +320,8 @@ async function main(): Promise<void> {
 
   // Backward-compat: new/list/reply → job <sub> (deprecated)
   if (feature('TEMPLATES') && (args[0] === 'new' || args[0] === 'list' || args[0] === 'reply')) {
-    console.error(`[deprecated] Use: claude job ${args[0]} ${args.slice(1).join(' ')}`.trim());
+    const { tf } = await import('../i18n/t.js');
+    console.error(tf('[deprecated] Use: claude job {cmd}', { cmd: `${args[0]} ${args.slice(1).join(' ')}`.trim() }));
     profileCheckpoint('cli_templates_path');
     const { templatesMain } = await import('../cli/handlers/templateJobs.js');
     await templatesMain(args);

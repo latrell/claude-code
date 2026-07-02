@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Dialog, wrappedRender as render, Text } from '@anthropic/ink';
+import { Box, Dialog, Text, wrappedRender as render } from '@anthropic/ink';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { ConfigParseError } from '../utils/errors.js';
@@ -7,6 +7,8 @@ import { getBaseRenderOptions } from '../utils/renderOptions.js';
 import { jsonStringify, writeFileSync_DEPRECATED } from '../utils/slowOperations.js';
 import type { ThemeName } from '../utils/theme.js';
 import { Select } from './CustomSelect/index.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 interface InvalidConfigHandlerProps {
   error: ConfigParseError;
@@ -38,19 +40,21 @@ function InvalidConfigDialog({
   };
 
   return (
-    <Dialog title="Configuration Error" color="error" onCancel={onExit}>
+    <Dialog title={t('Configuration Error')} color="error" onCancel={onExit}>
       <Box flexDirection="column" gap={1}>
         <Text>
-          The configuration file at <Text bold>{filePath}</Text> contains invalid JSON.
+          <T>The configuration file at </T>
+          <Text bold>{filePath}</Text>
+          <T> contains invalid JSON.</T>
         </Text>
         <Text>{errorDescription}</Text>
       </Box>
       <Box flexDirection="column">
-        <Text bold>Choose an option:</Text>
+        <T bold>Choose an option:</T>
         <Select
           options={[
-            { label: 'Exit and fix manually', value: 'exit' },
-            { label: 'Reset with default configuration', value: 'reset' },
+            { label: t('Exit and fix manually'), value: 'exit' },
+            { label: t('Reset with default configuration'), value: 'reset' },
           ]}
           onChange={handleSelect}
           onCancel={onExit}

@@ -24,6 +24,7 @@ startKeychainPrefetch();
 import { feature } from 'bun:bundle';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
+import { t } from './i18n/t.js';
 import { readFileSync } from 'fs';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
@@ -1149,7 +1150,7 @@ async function run(): Promise<CommanderCommand> {
 
   program
     .name('claude')
-    .description(`Claude Code - starts an interactive session by default, use -p/--print for non-interactive output`)
+    .description(t(`Claude Code - starts an interactive session by default, use -p/--print for non-interactive output`))
     .argument('[prompt]', 'Your prompt', String)
     // Subcommands inherit helpOption via commander's copyInheritedSettings —
     // setting it once here covers mcp, plugin, auth, and all other subcommands.
@@ -4613,13 +4614,13 @@ async function run(): Promise<CommanderCommand> {
 
   const mcp = program
     .command('mcp')
-    .description('Configure and manage MCP servers')
+    .description(t('Configure and manage MCP servers'))
     .configureHelp(createSortedHelpConfig())
     .enablePositionalOptions();
 
   mcp
     .command('serve')
-    .description(`Start the Claude Code MCP server`)
+    .description(t('Start the Claude Code MCP server'))
     .option('-d, --debug', 'Enable debug mode', () => true)
     .option('--verbose', 'Override verbose mode setting from config', () => true)
     .action(async ({ debug, verbose }: { debug?: boolean; verbose?: boolean }) => {
@@ -4636,7 +4637,7 @@ async function run(): Promise<CommanderCommand> {
 
   mcp
     .command('remove <name>')
-    .description('Remove an MCP server')
+    .description(t('Remove an MCP server'))
     .option(
       '-s, --scope <scope>',
       'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in',
@@ -4649,7 +4650,9 @@ async function run(): Promise<CommanderCommand> {
   mcp
     .command('list')
     .description(
-      'List configured MCP servers. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      t(
+        'List configured MCP servers. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      ),
     )
     .action(async () => {
       const { mcpListHandler } = await import('./cli/handlers/mcp.js');
@@ -4659,7 +4662,9 @@ async function run(): Promise<CommanderCommand> {
   mcp
     .command('get <name>')
     .description(
-      'Get details about an MCP server. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      t(
+        'Get details about an MCP server. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      ),
     )
     .action(async (name: string) => {
       const { mcpGetHandler } = await import('./cli/handlers/mcp.js');
@@ -4668,7 +4673,7 @@ async function run(): Promise<CommanderCommand> {
 
   mcp
     .command('add-json <name> <json>')
-    .description('Add an MCP server (stdio or SSE) with a JSON string')
+    .description(t('Add an MCP server (stdio or SSE) with a JSON string'))
     .option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local')
     .option('--client-secret', 'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)')
     .action(async (name: string, json: string, options: { scope?: string; clientSecret?: true }) => {
@@ -4678,7 +4683,7 @@ async function run(): Promise<CommanderCommand> {
 
   mcp
     .command('add-from-claude-desktop')
-    .description('Import MCP servers from Claude Desktop (Mac and WSL only)')
+    .description(t('Import MCP servers from Claude Desktop (Mac and WSL only)'))
     .option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local')
     .action(async (options: { scope?: string }) => {
       const { mcpAddFromDesktopHandler } = await import('./cli/handlers/mcp.js');
@@ -4687,7 +4692,7 @@ async function run(): Promise<CommanderCommand> {
 
   mcp
     .command('reset-project-choices')
-    .description('Reset all approved and rejected project-scoped (.mcp.json) servers within this project')
+    .description(t('Reset all approved and rejected project-scoped (.mcp.json) servers within this project'))
     .action(async () => {
       const { mcpResetChoicesHandler } = await import('./cli/handlers/mcp.js');
       await mcpResetChoicesHandler();
@@ -4697,7 +4702,7 @@ async function run(): Promise<CommanderCommand> {
   if (feature('DIRECT_CONNECT')) {
     program
       .command('server')
-      .description('Start a Claude Code session server')
+      .description(t('Start a Claude Code session server'))
       .option('--port <number>', 'HTTP port', '0')
       .option('--host <string>', 'Bind address', '0.0.0.0')
       .option('--auth-token <token>', 'Bearer token for auth')
@@ -4785,8 +4790,9 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('ssh <host> [dir]')
       .description(
-        'Run Claude Code on a remote host over SSH. Deploys the binary and ' +
-          'tunnels API auth back through your local machine — no remote setup needed.',
+        t(
+          'Run Claude Code on a remote host over SSH. Deploys the binary and tunnels API auth back through your local machine — no remote setup needed.',
+        ),
       )
       .option('--permission-mode <mode>', 'Permission mode for the remote session')
       .option('--dangerously-skip-permissions', 'Skip all permission prompts on the remote (dangerous)')
@@ -4820,7 +4826,7 @@ async function run(): Promise<CommanderCommand> {
   if (feature('DIRECT_CONNECT')) {
     program
       .command('open <cc-url>')
-      .description('Connect to a Claude Code server (internal — use cc:// URLs)')
+      .description(t('Connect to a Claude Code server (internal — use cc:// URLs)'))
       .option('-p, --print [prompt]', 'Print mode (headless)')
       .option('--output-format <format>', 'Output format: text, json, stream-json', 'text')
       .action(
@@ -4864,11 +4870,11 @@ async function run(): Promise<CommanderCommand> {
 
   // claude auth
 
-  const auth = program.command('auth').description('Manage authentication').configureHelp(createSortedHelpConfig());
+  const auth = program.command('auth').description(t('Manage authentication')).configureHelp(createSortedHelpConfig());
 
   auth
     .command('login')
-    .description('Sign in to your Anthropic account')
+    .description(t('Sign in to your Anthropic account'))
     .option('--email <email>', 'Pre-populate email address on the login page')
     .option('--sso', 'Force SSO login flow')
     .option('--console', 'Use Anthropic Console (API usage billing) instead of Claude subscription')
@@ -4892,7 +4898,7 @@ async function run(): Promise<CommanderCommand> {
 
   auth
     .command('status')
-    .description('Show authentication status')
+    .description(t('Show authentication status'))
     .option('--json', 'Output as JSON (default)')
     .option('--text', 'Output as human-readable text')
     .action(async (opts: { json?: boolean; text?: boolean }) => {
@@ -4902,7 +4908,7 @@ async function run(): Promise<CommanderCommand> {
 
   auth
     .command('logout')
-    .description('Log out from your Anthropic account')
+    .description(t('Log out from your Anthropic account'))
     .action(async () => {
       const { authLogout } = await import('./cli/handlers/auth.js');
       await authLogout();
@@ -4921,12 +4927,12 @@ async function run(): Promise<CommanderCommand> {
   const pluginCmd = program
     .command('plugin')
     .alias('plugins')
-    .description('Manage Claude Code plugins')
+    .description(t('Manage Claude Code plugins'))
     .configureHelp(createSortedHelpConfig());
 
   pluginCmd
     .command('validate <path>')
-    .description('Validate a plugin or marketplace manifest')
+    .description(t('Validate a plugin or marketplace manifest'))
     .addOption(coworkOption())
     .action(async (manifestPath: string, options: { cowork?: boolean }) => {
       const { pluginValidateHandler } = await import('./cli/handlers/plugins.js');
@@ -4936,7 +4942,7 @@ async function run(): Promise<CommanderCommand> {
   // Plugin list command
   pluginCmd
     .command('list')
-    .description('List installed plugins')
+    .description(t('List installed plugins'))
     .option('--json', 'Output as JSON')
     .option('--available', 'Include available plugins from marketplaces (requires --json)')
     .addOption(coworkOption())
@@ -4948,12 +4954,12 @@ async function run(): Promise<CommanderCommand> {
   // Marketplace subcommands
   const marketplaceCmd = pluginCmd
     .command('marketplace')
-    .description('Manage Claude Code marketplaces')
+    .description(t('Manage Claude Code marketplaces'))
     .configureHelp(createSortedHelpConfig());
 
   marketplaceCmd
     .command('add <source>')
-    .description('Add a marketplace from a URL, path, or GitHub repo')
+    .description(t('Add a marketplace from a URL, path, or GitHub repo'))
     .addOption(coworkOption())
     .option(
       '--sparse <paths...>',
@@ -4976,7 +4982,7 @@ async function run(): Promise<CommanderCommand> {
 
   marketplaceCmd
     .command('list')
-    .description('List all configured marketplaces')
+    .description(t('List all configured marketplaces'))
     .option('--json', 'Output as JSON')
     .addOption(coworkOption())
     .action(async (options: { json?: boolean; cowork?: boolean }) => {
@@ -4987,7 +4993,7 @@ async function run(): Promise<CommanderCommand> {
   marketplaceCmd
     .command('remove <name>')
     .alias('rm')
-    .description('Remove a configured marketplace')
+    .description(t('Remove a configured marketplace'))
     .addOption(coworkOption())
     .action(async (name: string, options: { cowork?: boolean }) => {
       const { marketplaceRemoveHandler } = await import('./cli/handlers/plugins.js');
@@ -4996,7 +5002,7 @@ async function run(): Promise<CommanderCommand> {
 
   marketplaceCmd
     .command('update [name]')
-    .description('Update marketplace(s) from their source - updates all if no name specified')
+    .description(t('Update marketplace(s) from their source - updates all if no name specified'))
     .addOption(coworkOption())
     .action(async (name: string | undefined, options: { cowork?: boolean }) => {
       const { marketplaceUpdateHandler } = await import('./cli/handlers/plugins.js');
@@ -5007,7 +5013,7 @@ async function run(): Promise<CommanderCommand> {
   pluginCmd
     .command('install <plugin>')
     .alias('i')
-    .description('Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)')
+    .description(t('Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)'))
     .option('-s, --scope <scope>', 'Installation scope: user, project, or local', 'user')
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
@@ -5020,7 +5026,7 @@ async function run(): Promise<CommanderCommand> {
     .command('uninstall <plugin>')
     .alias('remove')
     .alias('rm')
-    .description('Uninstall an installed plugin')
+    .description(t('Uninstall an installed plugin'))
     .option('-s, --scope <scope>', 'Uninstall from scope: user, project, or local', 'user')
     .option('--keep-data', "Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)")
     .addOption(coworkOption())
@@ -5041,7 +5047,7 @@ async function run(): Promise<CommanderCommand> {
   // Plugin enable command
   pluginCmd
     .command('enable <plugin>')
-    .description('Enable a disabled plugin')
+    .description(t('Enable a disabled plugin'))
     .option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`)
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
@@ -5052,7 +5058,7 @@ async function run(): Promise<CommanderCommand> {
   // Plugin disable command
   pluginCmd
     .command('disable [plugin]')
-    .description('Disable an enabled plugin')
+    .description(t('Disable an enabled plugin'))
     .option('-a, --all', 'Disable all enabled plugins')
     .option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`)
     .addOption(coworkOption())
@@ -5064,7 +5070,7 @@ async function run(): Promise<CommanderCommand> {
   // Plugin update command
   pluginCmd
     .command('update <plugin>')
-    .description('Update a plugin to the latest version (restart required to apply)')
+    .description(t('Update a plugin to the latest version (restart required to apply)'))
     .option('-s, --scope <scope>', `Installation scope: ${VALID_UPDATE_SCOPES.join(', ')} (default: user)`)
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
@@ -5076,7 +5082,7 @@ async function run(): Promise<CommanderCommand> {
   // Setup token command
   program
     .command('setup-token')
-    .description('Set up a long-lived authentication token (requires Claude subscription)')
+    .description(t('Set up a long-lived authentication token (requires Claude subscription)'))
     .action(async () => {
       const [{ setupTokenHandler }, { createRoot }] = await Promise.all([
         import('./cli/handlers/util.js'),
@@ -5089,7 +5095,7 @@ async function run(): Promise<CommanderCommand> {
   // Agents command - list configured agents
   program
     .command('agents')
-    .description('List configured agents')
+    .description(t('List configured agents'))
     .option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
     .action(async () => {
       const { agentsHandler } = await import('./cli/handlers/agents.js');
@@ -5101,11 +5107,11 @@ async function run(): Promise<CommanderCommand> {
     // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).
     // Reads from disk cache — GrowthBook isn't initialized at registration time.
     if (getAutoModeEnabledStateIfCached() !== 'disabled') {
-      const autoModeCmd = program.command('auto-mode').description('Inspect auto mode classifier configuration');
+      const autoModeCmd = program.command('auto-mode').description(t('Inspect auto mode classifier configuration'));
 
       autoModeCmd
         .command('defaults')
-        .description('Print the default auto mode environment, allow, and deny rules as JSON')
+        .description(t('Print the default auto mode environment, allow, and deny rules as JSON'))
         .action(async () => {
           const { autoModeDefaultsHandler } = await import('./cli/handlers/autoMode.js');
           autoModeDefaultsHandler();
@@ -5114,7 +5120,7 @@ async function run(): Promise<CommanderCommand> {
 
       autoModeCmd
         .command('config')
-        .description('Print the effective auto mode config as JSON: your settings where set, defaults otherwise')
+        .description(t('Print the effective auto mode config as JSON: your settings where set, defaults otherwise'))
         .action(async () => {
           const { autoModeConfigHandler } = await import('./cli/handlers/autoMode.js');
           autoModeConfigHandler();
@@ -5123,7 +5129,7 @@ async function run(): Promise<CommanderCommand> {
 
       autoModeCmd
         .command('critique')
-        .description('Get AI feedback on your custom auto mode rules')
+        .description(t('Get AI feedback on your custom auto mode rules'))
         .option('--model <model>', 'Override which model is used')
         .action(async options => {
           const { autoModeCritiqueHandler } = await import('./cli/handlers/autoMode.js');
@@ -5135,11 +5141,13 @@ async function run(): Promise<CommanderCommand> {
 
   // claude autonomy — CLI subcommands mirroring /autonomy slash command
   {
-    const autonomyCmd = program.command('autonomy').description('Inspect and manage automatic autonomy runs and flows');
+    const autonomyCmd = program
+      .command('autonomy')
+      .description(t('Inspect and manage automatic autonomy runs and flows'));
 
     autonomyCmd
       .command('status')
-      .description('Print autonomy run, flow, team, pipe, and remote-control status')
+      .description(t('Print autonomy run, flow, team, pipe, and remote-control status'))
       .option('--deep', 'Include teams, pipes, daemon, and remote-control sections')
       .action(async (options: { deep?: boolean }) => {
         const { autonomyStatusHandler } = await import('./cli/handlers/autonomy.js');
@@ -5149,7 +5157,7 @@ async function run(): Promise<CommanderCommand> {
 
     autonomyCmd
       .command('runs [limit]')
-      .description('List recent autonomy runs')
+      .description(t('List recent autonomy runs'))
       .action(async (limit?: string) => {
         const { autonomyRunsHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyRunsHandler(limit);
@@ -5158,7 +5166,7 @@ async function run(): Promise<CommanderCommand> {
 
     autonomyCmd
       .command('flows [limit]')
-      .description('List recent autonomy flows')
+      .description(t('List recent autonomy flows'))
       .action(async (limit?: string) => {
         const { autonomyFlowsHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyFlowsHandler(limit);
@@ -5167,7 +5175,7 @@ async function run(): Promise<CommanderCommand> {
 
     const flowCmd = autonomyCmd
       .command('flow <flowId>')
-      .description('Inspect a single autonomy flow')
+      .description(t('Inspect a single autonomy flow'))
       .action(async (flowId: string) => {
         const { autonomyFlowHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyFlowHandler(flowId);
@@ -5176,7 +5184,7 @@ async function run(): Promise<CommanderCommand> {
 
     flowCmd
       .command('cancel <flowId>')
-      .description('Cancel a queued, waiting, or running autonomy flow')
+      .description(t('Cancel a queued, waiting, or running autonomy flow'))
       .action(async (flowId: string) => {
         const { autonomyFlowCancelHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyFlowCancelHandler(flowId);
@@ -5185,7 +5193,7 @@ async function run(): Promise<CommanderCommand> {
 
     flowCmd
       .command('resume <flowId>')
-      .description('Resume a waiting autonomy flow')
+      .description(t('Resume a waiting autonomy flow'))
       .action(async (flowId: string) => {
         const { autonomyFlowResumeHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyFlowResumeHandler(flowId);
@@ -5205,7 +5213,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('remote-control', { hidden: true })
       .alias('rc')
-      .description('Connect your local environment for remote-control sessions via claude.ai/code')
+      .description(t('Connect your local environment for remote-control sessions via claude.ai/code'))
       .action(async () => {
         // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
         // If somehow reached, delegate to bridgeMain.
@@ -5218,7 +5226,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('assistant [sessionId]')
       .description(
-        'Attach the REPL as a client to a running bridge session. Discovers sessions via API if no sessionId given.',
+        t('Attach the REPL as a client to a running bridge session. Discovers sessions via API if no sessionId given.'),
       )
       .action(() => {
         // Argv rewriting above should have consumed `assistant [id]`
@@ -5238,7 +5246,9 @@ async function run(): Promise<CommanderCommand> {
   program
     .command('doctor')
     .description(
-      'Check the health of your Claude Code auto-updater. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      t(
+        'Check the health of your Claude Code auto-updater. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.',
+      ),
     )
     .action(async () => {
       const [{ doctorHandler }, { createRoot }] = await Promise.all([
@@ -5254,7 +5264,9 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('up')
       .description(
-        '[ANT-ONLY] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md',
+        t(
+          '[ANT-ONLY] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md',
+        ),
       )
       .action(async () => {
         const { up } = await import('src/cli/up.js');
@@ -5268,7 +5280,9 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('rollback [target]')
       .description(
-        '[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
+        t(
+          '[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
+        ),
       )
       .option('-l, --list', 'List recent published versions with ages')
       .option('--dry-run', 'Show what would be installed without installing')
@@ -5292,7 +5306,7 @@ async function run(): Promise<CommanderCommand> {
   program
     .command('install [target]')
     .description(
-      'Install Claude Code native build. Use [target] to specify version (stable, latest, or specific version)',
+      t('Install Claude Code native build. Use [target] to specify version (stable, latest, or specific version)'),
     )
     .option('--force', 'Force installation even if already installed')
     .action(async (target: string | undefined, options: { force?: boolean }) => {
@@ -5303,7 +5317,7 @@ async function run(): Promise<CommanderCommand> {
   // claude update — update ccb to the latest version via npm or bun
   program
     .command('update')
-    .description('Update claude-code-best (ccb) to the latest version')
+    .description(t('Update claude-code-best (ccb) to the latest version'))
     .action(async () => {
       const { updateCCB } = await import('./cli/updateCCB.js');
       await updateCCB();
@@ -5319,7 +5333,7 @@ async function run(): Promise<CommanderCommand> {
     // claude log
     program
       .command('log')
-      .description('[ANT-ONLY] Manage conversation logs.')
+      .description(t('[ANT-ONLY] Manage conversation logs.'))
       .argument(
         '[number|sessionId]',
         'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log',
@@ -5334,7 +5348,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('error')
       .description(
-        '[ANT-ONLY] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.',
+        t('[ANT-ONLY] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.'),
       )
       .argument('[number]', 'A number (0, 1, 2, etc.) to display a specific log', parseInt)
       .action(async (number: number | undefined) => {
@@ -5345,7 +5359,7 @@ async function run(): Promise<CommanderCommand> {
     // claude export
     program
       .command('export')
-      .description('[ANT-ONLY] Export a conversation to a text file.')
+      .description(t('[ANT-ONLY] Export a conversation to a text file.'))
       .usage('<source> <outputFile>')
       .argument('<source>', 'Session ID, log index (0, 1, 2...), or path to a .json/.jsonl log file')
       .argument('<outputFile>', 'Output file path for the exported text')
@@ -5364,11 +5378,11 @@ Examples:
       });
 
     if (process.env.USER_TYPE === 'ant') {
-      const taskCmd = program.command('task').description('[ANT-ONLY] Manage task list tasks');
+      const taskCmd = program.command('task').description(t('[ANT-ONLY] Manage task list tasks'));
 
       taskCmd
         .command('create <subject>')
-        .description('Create a new task')
+        .description(t('Create a new task'))
         .option('-d, --description <text>', 'Task description')
         .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
         .action(async (subject: string, opts: { description?: string; list?: string }) => {
@@ -5378,7 +5392,7 @@ Examples:
 
       taskCmd
         .command('list')
-        .description('List all tasks')
+        .description(t('List all tasks'))
         .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
         .option('--pending', 'Show only pending tasks')
         .option('--json', 'Output as JSON')
@@ -5389,7 +5403,7 @@ Examples:
 
       taskCmd
         .command('get <id>')
-        .description('Get details of a task')
+        .description(t('Get details of a task'))
         .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
         .action(async (id: string, opts: { list?: string }) => {
           const { taskGetHandler } = await import('./cli/handlers/ant.js');
@@ -5398,7 +5412,7 @@ Examples:
 
       taskCmd
         .command('update <id>')
-        .description('Update a task')
+        .description(t('Update a task'))
         .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
         .option('-s, --status <status>', `Set status (${TASK_STATUSES.join(', ')})`)
         .option('--subject <text>', 'Update subject')
@@ -5424,7 +5438,7 @@ Examples:
 
       taskCmd
         .command('dir')
-        .description('Show the tasks directory path')
+        .description(t('Show the tasks directory path'))
         .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
         .action(async (opts: { list?: string }) => {
           const { taskDirHandler } = await import('./cli/handlers/ant.js');
@@ -5435,7 +5449,7 @@ Examples:
     // claude completion <shell>
     program
       .command('completion <shell>', { hidden: true })
-      .description('Generate shell completion script (bash, zsh, or fish)')
+      .description(t('Generate shell completion script (bash, zsh, or fish)'))
       .option('--output <file>', 'Write completion script directly to a file instead of stdout')
       .action(async (shell: string, opts: { output?: string }) => {
         const { completionHandler } = await import('./cli/handlers/ant.js');

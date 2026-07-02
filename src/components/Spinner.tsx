@@ -36,6 +36,7 @@ import { getCurrentTurnTokenBudget, getTurnOutputTokens } from '../bootstrap/sta
 import { TeammateSpinnerTree } from './Spinner/TeammateSpinnerTree.js';
 import { useAnimationFrame } from '@anthropic/ink';
 import { getGlobalConfig } from '../utils/config.js';
+import { t, tf } from '../i18n/t.js';
 export type { SpinnerMode } from './Spinner/index.js';
 
 const DEFAULT_CHARACTERS = getDefaultCharacters();
@@ -187,11 +188,13 @@ function SpinnerWithVerbInner({
   // Leader's own verb (always the leader's, regardless of who is foregrounded)
   const leaderVerb = overrideMessage ?? currentTodo?.activeForm ?? currentTodo?.subject ?? randomVerb;
 
-  const effectiveVerb =
-    foregroundedTeammate && !foregroundedTeammate.isIdle
+  const effectiveVerb: string =
+    (foregroundedTeammate && !foregroundedTeammate.isIdle
       ? (foregroundedTeammate.spinnerVerb ?? randomVerb)
-      : leaderVerb;
-  const message = effectiveVerb + '…';
+      : leaderVerb) ??
+    randomVerb ??
+    'Working';
+  const message = t(effectiveVerb) + '…';
 
   // Track CLI activity when spinner is active
   useEffect(() => {
@@ -260,8 +263,8 @@ function SpinnerWithVerbInner({
       <Box flexDirection="column" width="100%" alignItems="flex-start">
         <Box flexDirection="row" flexWrap="wrap" marginTop={1} width="100%">
           <Text dimColor>
-            {TEARDROP_ASTERISK} Idle
-            {!allIdle && ' · teammates running'}
+            {TEARDROP_ASTERISK} {t('Idle')}
+            {!allIdle && t(' · teammates running')}
           </Text>
         </Box>
         {showSpinnerTree && (
@@ -280,8 +283,11 @@ function SpinnerWithVerbInner({
   // When viewing an idle teammate, show static idle display instead of animated spinner
   if (foregroundedTeammate?.isIdle) {
     const idleText = allIdle
-      ? `${TEARDROP_ASTERISK} Worked for ${formatDuration(Date.now() - foregroundedTeammate.startTime)}`
-      : `${TEARDROP_ASTERISK} Idle`;
+      ? tf('{asterisk} Worked for {duration}', {
+          asterisk: TEARDROP_ASTERISK,
+          duration: formatDuration(Date.now() - foregroundedTeammate.startTime),
+        })
+      : `${TEARDROP_ASTERISK} ${t('Idle')}`;
     return (
       <Box flexDirection="column" width="100%" alignItems="flex-start">
         <Box flexDirection="row" flexWrap="wrap" marginTop={1} width="100%">
@@ -312,9 +318,9 @@ function SpinnerWithVerbInner({
   const effectiveTip = contextTipsActive
     ? undefined
     : showClearTip && !nextTask
-      ? 'Use /clear to start fresh when switching topics and free up context'
+      ? t('Use /clear to start fresh when switching topics and free up context')
       : showBtwTip && !nextTask
-        ? "Use /btw to ask a quick side question without interrupting Claude's current work"
+        ? t("Use /btw to ask a quick side question without interrupting Claude's current work")
         : spinnerTip;
 
   // Budget text (ant-only) — shown above the tip line
@@ -386,7 +392,11 @@ function SpinnerWithVerbInner({
           )}
           {(nextTask || effectiveTip) && (
             <MessageResponse>
-              <Text dimColor>{nextTask ? `Next: ${nextTask.subject}` : `Tip: ${effectiveTip}`}</Text>
+              <Text dimColor>
+                {nextTask
+                  ? tf('Next: {subject}', { subject: nextTask.subject })
+                  : tf('Tip: {text}', { text: effectiveTip })}
+              </Text>
             </MessageResponse>
           )}
         </Box>
@@ -413,7 +423,7 @@ function BriefSpinner({ mode, overrideMessage }: BriefSpinnerProps): React.React
   const settings = useSettings();
   const reducedMotion = settings.prefersReducedMotion ?? false;
   const [randomVerb] = useState(() => sample(getSpinnerVerbs()) ?? 'Working');
-  const verb = overrideMessage ?? randomVerb;
+  const verb = t(overrideMessage ?? randomVerb);
   const connStatus = useAppState(s => s.remoteConnectionStatus);
 
   // Track CLI activity so OS/IDE "busy" indicators fire in brief mode too
@@ -438,7 +448,7 @@ function BriefSpinner({ mode, overrideMessage }: BriefSpinnerProps): React.React
   // Connection trouble overrides the verb — `claude assistant` is a pure viewer,
   // nothing useful is happening while the WS is down.
   const showConnWarning = connStatus === 'reconnecting' || connStatus === 'disconnected';
-  const connText = connStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected';
+  const connText = connStatus === 'reconnecting' ? t('Reconnecting') : t('Disconnected');
 
   // Dots padded to a fixed 3 columns so the right-aligned count doesn't
   // jitter as the cycle advances.
@@ -453,7 +463,7 @@ function BriefSpinner({ mode, overrideMessage }: BriefSpinnerProps): React.React
   const { before, shimmer, after } = computeShimmerSegments(verb, glimmerIndex);
 
   const { columns } = useTerminalSize();
-  const rightText = runningCount > 0 ? `${runningCount} in background` : '';
+  const rightText = runningCount > 0 ? tf('{count} in background', { count: String(runningCount) }) : '';
   // Manual right-align via space padding — flexGrow spacers inside
   // FullscreenLayout's `main` slot don't resolve a width and caused the
   // diff engine to miss dot-frame updates.
@@ -492,9 +502,9 @@ export function BriefIdleStatus(): React.ReactNode {
   const { columns } = useTerminalSize();
 
   const showConnWarning = connStatus === 'reconnecting' || connStatus === 'disconnected';
-  const connText = connStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected';
+  const connText = connStatus === 'reconnecting' ? t('Reconnecting…') : t('Disconnected');
   const leftText = showConnWarning ? connText : '';
-  const rightText = runningCount > 0 ? `${runningCount} in background` : '';
+  const rightText = runningCount > 0 ? tf('{count} in background', { count: String(runningCount) }) : '';
 
   if (!leftText && !rightText) return <Box height={2} />;
 

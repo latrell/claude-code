@@ -11,6 +11,8 @@ import { logEvent } from '../../services/analytics/index.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js';
 import { getCurrentSessionTag, getTranscriptPath, saveTag } from '../../utils/sessionStorage.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 function ConfirmRemoveTag({
   tagName,
@@ -22,14 +24,19 @@ function ConfirmRemoveTag({
   onCancel: () => void;
 }): React.ReactNode {
   return (
-    <Dialog title="Remove tag?" subtitle={`Current tag: #${tagName}`} onCancel={onCancel} color="warning">
+    <Dialog
+      title={t('Remove tag?')}
+      subtitle={tf('Current tag: #{tagName}', { tagName })}
+      onCancel={onCancel}
+      color="warning"
+    >
       <Box flexDirection="column" gap={1}>
-        <Text>This will remove the tag from the current session.</Text>
+        <T>This will remove the tag from the current session.</T>
         <Select<'yes' | 'no'>
           onChange={value => (value === 'yes' ? onConfirm() : onCancel())}
           options={[
-            { label: 'Yes, remove tag', value: 'yes' },
-            { label: 'No, keep tag', value: 'no' },
+            { label: t('Yes, remove tag'), value: 'yes' },
+            { label: t('No, keep tag'), value: 'no' },
           ]}
         />
       </Box>
@@ -53,12 +60,12 @@ function ToggleTagAndClose({
     const id = getSessionId() as UUID;
 
     if (!id) {
-      onDone('No active session to tag', { display: 'system' });
+      onDone(t('No active session to tag'), { display: 'system' });
       return;
     }
 
     if (!normalizedTag) {
-      onDone('Tag name cannot be empty', { display: 'system' });
+      onDone(t('Tag name cannot be empty'), { display: 'system' });
       return;
     }
 
@@ -76,7 +83,7 @@ function ToggleTagAndClose({
       void (async () => {
         const fullPath = getTranscriptPath();
         await saveTag(id, normalizedTag, fullPath);
-        onDone(`Tagged session with ${chalk.cyan(`#${normalizedTag}`)}`, {
+        onDone(tf('Tagged session with {tag}', { tag: chalk.cyan(`#${normalizedTag}`) }), {
           display: 'system',
         });
       })();
@@ -91,13 +98,13 @@ function ToggleTagAndClose({
           logEvent('tengu_tag_command_remove_confirmed', {});
           const fullPath = getTranscriptPath();
           await saveTag(sessionId, '', fullPath);
-          onDone(`Removed tag ${chalk.cyan(`#${normalizedTag}`)}`, {
+          onDone(tf('Removed tag {tag}', { tag: chalk.cyan(`#${normalizedTag}`) }), {
             display: 'system',
           });
         }}
         onCancel={() => {
           logEvent('tengu_tag_command_remove_cancelled', {});
-          onDone(`Kept tag ${chalk.cyan(`#${normalizedTag}`)}`, {
+          onDone(tf('Kept tag {tag}', { tag: chalk.cyan(`#${normalizedTag}`) }), {
             display: 'system',
           });
         }}
@@ -115,17 +122,11 @@ function ShowHelp({
 }): React.ReactNode {
   React.useEffect(() => {
     onDone(
-      `Usage: /tag <tag-name>
-
-Toggle a searchable tag on the current session.
-Run the same command again to remove the tag.
-Tags are displayed after the branch name in /resume and can be searched with /.
-
-Examples:
-  /tag bugfix        # Add tag
-  /tag bugfix        # Remove tag (toggle)
-  /tag feature-auth
-  /tag wip`,
+      t(
+        `Usage: /tag <tag-name>` +
+          '\n\n' +
+          `Toggle a searchable tag on the current session.\nRun the same command again to remove the tag.\nTags are displayed after the branch name in /resume and can be searched with /.\n\nExamples:\n  /tag bugfix        # Add tag\n  /tag bugfix        # Remove tag (toggle)\n  /tag feature-auth\n  /tag wip`,
+      ),
       { display: 'system' },
     );
   }, [onDone]);

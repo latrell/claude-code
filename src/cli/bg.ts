@@ -3,6 +3,7 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { isProcessRunning } from '../utils/genericProcessUtils.js'
+import { t, tf } from '../i18n/t.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
@@ -78,12 +79,15 @@ export async function psHandler(_args: string[]): Promise<void> {
   const sessions = await listLiveSessions()
 
   if (sessions.length === 0) {
-    console.log('No active sessions.')
+    console.log(t('No active sessions.'))
     return
   }
 
   console.log(
-    `${sessions.length} active session${sessions.length > 1 ? 's' : ''}:\n`,
+    tf('{count} active session{suffix}:', {
+      count: sessions.length,
+      suffix: sessions.length > 1 ? 's' : '',
+    }) + '\n',
   )
 
   for (const s of sessions) {
@@ -117,13 +121,13 @@ export async function logsHandler(target: string | undefined): Promise<void> {
 
   if (!target) {
     if (sessions.length === 0) {
-      console.log('No active sessions.')
+      console.log(t('No active sessions.'))
       return
     }
     if (sessions.length === 1) {
       target = sessions[0]!.sessionId
     } else {
-      console.log('Multiple sessions active. Specify one:')
+      console.log(t('Multiple sessions active. Specify one:'))
       for (const s of sessions) {
         const label = s.name ? `${s.name} (${s.sessionId})` : s.sessionId
         console.log(`  ${label}  PID=${s.pid}`)
@@ -134,13 +138,15 @@ export async function logsHandler(target: string | undefined): Promise<void> {
 
   const session = findSession(sessions, target)
   if (!session) {
-    console.error(`Session not found: ${target}`)
+    console.error(tf('Session not found: {target}', { target: target ?? '' }))
     process.exitCode = 1
     return
   }
 
   if (!session.logPath) {
-    console.log(`No log path recorded for session ${session.sessionId}`)
+    console.log(
+      tf('No log path recorded for session {id}', { id: session.sessionId }),
+    )
     return
   }
 
@@ -148,7 +154,9 @@ export async function logsHandler(target: string | undefined): Promise<void> {
     const content = await readFile(session.logPath, 'utf-8')
     process.stdout.write(content)
   } catch (e) {
-    console.error(`Failed to read log file: ${session.logPath}`)
+    console.error(
+      tf('Failed to read log file: {path}', { path: session.logPath }),
+    )
     console.error(e instanceof Error ? e.message : String(e))
     process.exitCode = 1
   }
@@ -169,14 +177,16 @@ export async function attachHandler(target: string | undefined): Promise<void> {
     )
     if (bgSessions.length === 0) {
       console.log(
-        'No background sessions to attach to. Start one with `claude daemon bg`.',
+        t(
+          'No background sessions to attach to. Start one with `claude daemon bg`.',
+        ),
       )
       return
     }
     if (bgSessions.length === 1) {
       target = bgSessions[0]!.sessionId
     } else {
-      console.log('Multiple background sessions. Specify one:')
+      console.log(t('Multiple background sessions. Specify one:'))
       for (const s of bgSessions) {
         const label = s.name ? `${s.name} (${s.sessionId})` : s.sessionId
         const engineType = resolveSessionEngine(s)
@@ -188,7 +198,7 @@ export async function attachHandler(target: string | undefined): Promise<void> {
 
   const session = findSession(sessions, target)
   if (!session) {
-    console.error(`Session not found: ${target}`)
+    console.error(tf('Session not found: {target}', { target: target ?? '' }))
     process.exitCode = 1
     return
   }
@@ -201,7 +211,7 @@ export async function attachHandler(target: string | undefined): Promise<void> {
       const tmux = new TmuxEngine()
       if (!(await tmux.available())) {
         console.error(
-          'tmux is no longer available. Cannot attach to tmux session.',
+          t('tmux is no longer available. Cannot attach to tmux session.'),
         )
         process.exitCode = 1
         return
@@ -226,10 +236,10 @@ export async function killHandler(target: string | undefined): Promise<void> {
 
   if (!target) {
     if (sessions.length === 0) {
-      console.log('No active sessions to kill.')
+      console.log(t('No active sessions to kill.'))
       return
     }
-    console.log('Specify a session to kill:')
+    console.log(t('Specify a session to kill:'))
     for (const s of sessions) {
       const label = s.name ? `${s.name} (${s.sessionId})` : s.sessionId
       console.log(`  ${label}  PID=${s.pid}`)
@@ -239,17 +249,22 @@ export async function killHandler(target: string | undefined): Promise<void> {
 
   const session = findSession(sessions, target)
   if (!session) {
-    console.error(`Session not found: ${target}`)
+    console.error(tf('Session not found: {target}', { target: target ?? '' }))
     process.exitCode = 1
     return
   }
 
-  console.log(`Killing session ${session.sessionId} (PID: ${session.pid})...`)
+  console.log(
+    tf('Killing session {id} (PID: {pid})...', {
+      id: session.sessionId,
+      pid: session.pid,
+    }),
+  )
 
   try {
     process.kill(session.pid, 'SIGTERM')
   } catch {
-    console.log('Session already exited.')
+    console.log(t('Session already exited.'))
     return
   }
 
@@ -258,12 +273,12 @@ export async function killHandler(target: string | undefined): Promise<void> {
   if (isProcessRunning(session.pid)) {
     try {
       process.kill(session.pid, 'SIGKILL')
-      console.log('Session force-killed.')
+      console.log(t('Session force-killed.'))
     } catch {
-      console.log('Session exited during grace period.')
+      console.log(t('Session exited during grace period.'))
     }
   } else {
-    console.log('Session stopped.')
+    console.log(t('Session stopped.'))
   }
 
   const pidFile = join(getSessionsDir(), `${session.pid}.json`)
@@ -289,11 +304,13 @@ export async function handleBgStart(args: string[]): Promise<void> {
     !filteredArgs.some(a => a === '-p' || a === '--print' || a === '--pipe')
   ) {
     console.error(
-      'Error: Background sessions with detached engine require -p/--print flag.\n' +
-        'The detached engine has no terminal for interactive input.\n\n' +
-        'Usage:\n' +
-        '  claude daemon bg -p "your prompt here"\n' +
-        '  echo "prompt" | claude daemon bg --pipe',
+      t(
+        'Error: Background sessions with detached engine require -p/--print flag.\n' +
+          'The detached engine has no terminal for interactive input.\n\n' +
+          'Usage:\n' +
+          '  claude daemon bg -p "your prompt here"\n' +
+          '  echo "prompt" | claude daemon bg --pipe',
+      ),
     )
     if (process.platform !== 'win32') {
       console.error(
@@ -322,15 +339,23 @@ export async function handleBgStart(args: string[]): Promise<void> {
       cwd: process.cwd(),
     })
 
-    console.log(`Background session started: ${result.sessionName}`)
-    console.log(`  Engine: ${result.engineUsed}`)
-    console.log(`  Log: ${result.logPath}`)
+    console.log(
+      tf('Background session started: {name}', { name: result.sessionName }),
+    )
+    console.log(tf('  Engine: {engine}', { engine: result.engineUsed }))
+    console.log(tf('  Log: {path}', { path: result.logPath }))
     console.log()
     console.log(
-      `Use \`claude daemon attach ${result.sessionName}\` to reconnect.`,
+      tf('Use `claude daemon attach {name}` to reconnect.', {
+        name: result.sessionName,
+      }),
     )
-    console.log(`Use \`claude daemon status\` to check status.`)
-    console.log(`Use \`claude daemon kill ${result.sessionName}\` to stop.`)
+    console.log(t('Use `claude daemon status` to check status.'))
+    console.log(
+      tf('Use `claude daemon kill {name}` to stop.', {
+        name: result.sessionName,
+      }),
+    )
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e))
     process.exitCode = 1

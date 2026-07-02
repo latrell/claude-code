@@ -15,6 +15,7 @@ import type {
   LocalJSXCommandOnDone,
 } from '../types/command.js'
 import { lazySchema } from '../utils/lazySchema.js'
+import { t } from '../i18n/t.js'
 
 // Zod guards against fat-fingered GB pushes (same pattern as pollConfig.ts /
 // cronScheduler.ts). A malformed config falls back to DEFAULT_BRIEF_CONFIG
@@ -47,7 +48,9 @@ function getBriefConfig(): BriefConfig {
 const brief = {
   type: 'local-jsx',
   name: 'brief',
-  description: 'Toggle brief-only mode',
+  get description() {
+    return t('Toggle brief-only mode')
+  },
   isEnabled: () => {
     if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
       return getBriefConfig().enable_slash_command
@@ -73,7 +76,7 @@ const brief = {
             source:
               'slash_command' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
-          onDone('Brief tool is not enabled for your account', {
+          onDone(t('Brief tool is not enabled for your account'), {
             display: 'system',
           })
           return null
@@ -119,7 +122,9 @@ const brief = {
             ]
 
         onDone(
-          newState ? 'Brief-only mode enabled' : 'Brief-only mode disabled',
+          newState
+            ? t('Brief-only mode enabled')
+            : t('Brief-only mode disabled'),
           { display: 'system', metaMessages },
         )
         return null

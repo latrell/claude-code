@@ -6,6 +6,7 @@ import type { CommandResultDisplay } from '../../../commands.js';
 import { Select } from '../../../components/CustomSelect/select.js';
 import { Box, Text, useTabHeaderFocus } from '@anthropic/ink';
 import type { ToolPermissionContext } from '../../../Tool.js';
+import { t } from '../../../i18n/t.js';
 
 type Props = {
   onExit: (result?: string, options?: { display?: CommandResultDisplay }) => void;
@@ -56,7 +57,7 @@ export function WorkspaceTab({
     [additionalDirectories, onRequestAddDirectory, onRequestRemoveDirectory],
   );
 
-  const handleCancel = useCallback(() => onExit('Workspace dialog dismissed', { display: 'system' }), [onExit]);
+  const handleCancel = useCallback(() => onExit(t('Workspace dialog dismissed'), { display: 'system' }), [onExit]);
 
   // Main list view options
   const options = React.useMemo(() => {

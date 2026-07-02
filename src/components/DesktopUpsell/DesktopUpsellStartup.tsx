@@ -4,6 +4,8 @@ import { Box, Text } from '@anthropic/ink';
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { logEvent } from '../../services/analytics/index.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { Select } from '../CustomSelect/select.js';
 import { DesktopHandoff } from '../DesktopHandoff.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
@@ -77,16 +79,16 @@ export function DesktopUpsellStartup({ onDone }: Props): React.ReactNode {
   }
 
   const options = [
-    { label: 'Open in Claude Code Desktop', value: 'try' as const },
-    { label: 'Not now', value: 'not-now' as const },
-    { label: "Don't ask again", value: 'never' as const },
+    { label: t('Open in Claude Code Desktop'), value: 'try' as const },
+    { label: t('Not now'), value: 'not-now' as const },
+    { label: t("Don't ask again"), value: 'never' as const },
   ];
 
   return (
-    <PermissionDialog title="Try Claude Code Desktop">
+    <PermissionDialog title={t('Try Claude Code Desktop')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box marginBottom={1}>
-          <Text>Same Claude Code with visual diffs, live app preview, parallel sessions, and more.</Text>
+          <T>Same Claude Code with visual diffs, live app preview, parallel sessions, and more.</T>
         </Box>
         <Select options={options} onChange={handleSelect} onCancel={() => handleSelect('not-now')} />
       </Box>

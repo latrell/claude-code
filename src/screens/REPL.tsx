@@ -32,6 +32,7 @@ import {
   useTerminalTitle,
   useTabStatus,
 } from '@anthropic/ink';
+import { tf } from '../i18n/t.js';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';
 import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
 import * as React from 'react';
@@ -4461,7 +4462,7 @@ export function REPL({
             logForDebugging(`resumeAgentBackground failed: ${errorMessage(err)}`);
             addNotification({
               key: `resume-agent-failed-${task.id}`,
-              jsx: <Text color="error">Failed to resume agent: {errorMessage(err)}</Text>,
+              jsx: <Text color="error">{tf('Failed to resume agent: {error}', { error: errorMessage(err) })}</Text>,
               priority: 'low',
             });
           });

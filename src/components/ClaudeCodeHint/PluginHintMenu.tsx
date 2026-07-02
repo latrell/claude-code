@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { Select } from '../CustomSelect/select.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
 
@@ -45,35 +47,37 @@ export function PluginHintMenu({
     {
       label: (
         <Text>
-          Yes, install <Text bold>{pluginName}</Text>
+          {t('Yes, install')} <Text bold>{pluginName}</Text>
         </Text>
       ),
       value: 'yes',
     },
     {
-      label: 'No',
+      label: t('No'),
       value: 'no',
     },
     {
-      label: "No, and don't show plugin installation hints again",
+      label: t("No, and don't show plugin installation hints again"),
       value: 'disable',
     },
   ];
 
   return (
-    <PermissionDialog title="Plugin Recommendation">
+    <PermissionDialog title={t('Plugin Recommendation')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box marginBottom={1}>
           <Text dimColor>
-            The <Text bold>{sourceCommand}</Text> command suggests installing a plugin.
+            <T>The </T>
+            <Text bold>{sourceCommand}</Text>
+            <T> command suggests installing a plugin.</T>
           </Text>
         </Box>
         <Box>
-          <Text dimColor>Plugin:</Text>
+          <T dimColor>Plugin:</T>
           <Text> {pluginName}</Text>
         </Box>
         <Box>
-          <Text dimColor>Marketplace:</Text>
+          <T dimColor>Marketplace:</T>
           <Text> {marketplaceName}</Text>
         </Box>
         {pluginDescription && (
@@ -82,7 +86,7 @@ export function PluginHintMenu({
           </Box>
         )}
         <Box marginTop={1}>
-          <Text>Would you like to install it?</Text>
+          <T>Would you like to install it?</T>
         </Box>
         <Box>
           <Select options={options} onChange={onSelect} onCancel={() => onResponse('no')} />

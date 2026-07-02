@@ -14,6 +14,8 @@ import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { getColorModuleUnavailableReason, getSyntaxTheme } from './StructuredDiff/colorDiff.js';
 import { StructuredDiff } from './StructuredDiff.js';
+import { T } from '../i18n/TText.js';
+import { t, tf } from '../i18n/t.js';
 
 export type ThemePickerProps = {
   onThemeSelect: (setting: ThemeSetting) => void;
@@ -70,23 +72,23 @@ export function ThemePicker({
   const exitState = useExitOnCtrlCDWithKeybindings(skipExitHandling ? () => {} : undefined);
 
   const themeOptions: { label: string; value: ThemeSetting }[] = [
-    ...(feature('AUTO_THEME') ? [{ label: 'Auto (match terminal)', value: 'auto' as const }] : []),
-    { label: 'Dark mode', value: 'dark' },
-    { label: 'Light mode', value: 'light' },
+    ...(feature('AUTO_THEME') ? [{ label: t('Auto (match terminal)'), value: 'auto' as const }] : []),
+    { label: t('Dark mode'), value: 'dark' },
+    { label: t('Light mode'), value: 'light' },
     {
-      label: 'Dark mode (colorblind-friendly)',
+      label: t('Dark mode (colorblind-friendly)'),
       value: 'dark-daltonized',
     },
     {
-      label: 'Light mode (colorblind-friendly)',
+      label: t('Light mode (colorblind-friendly)'),
       value: 'light-daltonized',
     },
     {
-      label: 'Dark mode (ANSI colors only)',
+      label: t('Dark mode (ANSI colors only)'),
       value: 'dark-ansi',
     },
     {
-      label: 'Light mode (ANSI colors only)',
+      label: t('Light mode (ANSI colors only)'),
       value: 'light-ansi',
     },
   ];
@@ -95,14 +97,14 @@ export function ThemePicker({
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column" gap={1}>
         {showIntroText ? (
-          <Text>Let&apos;s get started.</Text>
+          <T>Let&apos;s get started.</T>
         ) : (
-          <Text bold color="permission">
+          <T bold color="permission">
             Theme
-          </Text>
+          </T>
         )}
         <Box flexDirection="column">
-          <Text bold>Choose the text style that looks best with your terminal</Text>
+          <T bold>Choose the text style that looks best with your terminal</T>
           {helpText && !showHelpTextBelow && <Text dimColor>{helpText}</Text>}
         </Box>
         <Select
@@ -162,12 +164,18 @@ export function ThemePicker({
         <Text dimColor>
           {' '}
           {colorModuleUnavailableReason === 'env'
-            ? `Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT=${process.env.CLAUDE_CODE_SYNTAX_HIGHLIGHT})`
+            ? tf('Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT={value})', {
+                value: process.env.CLAUDE_CODE_SYNTAX_HIGHLIGHT ?? '',
+              })
             : syntaxHighlightingDisabled
-              ? `Syntax highlighting disabled (${syntaxToggleShortcut} to enable)`
+              ? tf('Syntax highlighting disabled ({shortcut} to enable)', { shortcut: syntaxToggleShortcut })
               : syntaxTheme
-                ? `Syntax theme: ${syntaxTheme.theme}${syntaxTheme.source ? ` (from ${syntaxTheme.source})` : ''} (${syntaxToggleShortcut} to disable)`
-                : `Syntax highlighting enabled (${syntaxToggleShortcut} to disable)`}
+                ? tf('Syntax theme: {theme}{source} ({shortcut} to disable)', {
+                    theme: syntaxTheme.theme,
+                    source: syntaxTheme.source ? tf(' (from {source})', { source: syntaxTheme.source }) : '',
+                    shortcut: syntaxToggleShortcut,
+                  })
+                : tf('Syntax highlighting enabled ({shortcut} to disable)', { shortcut: syntaxToggleShortcut })}
         </Text>
       </Box>
     </Box>

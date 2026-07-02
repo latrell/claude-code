@@ -6,6 +6,8 @@ import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { useAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { logForDebugging } from '../../utils/debug.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   onDone: () => void;
@@ -40,8 +42,8 @@ function SessionInfo({ onDone }: Props): React.ReactNode {
   if (!remoteSessionUrl) {
     return (
       <Pane>
-        <Text color="warning">Not in remote mode. Start with `claude --remote` to use this command.</Text>
-        <Text dimColor>(press esc to close)</Text>
+        <Text color="warning">{t('Not in remote mode. Start with `claude --remote` to use this command.')}</Text>
+        <Text dimColor>{t('(press esc to close)')}</Text>
       </Pane>
     );
   }
@@ -52,20 +54,20 @@ function SessionInfo({ onDone }: Props): React.ReactNode {
   return (
     <Pane>
       <Box marginBottom={1}>
-        <Text bold>Remote session</Text>
+        <T bold>Remote session</T>
       </Box>
 
       {/* QR Code - silently fails if generation errors, URL is still shown */}
-      {isLoading ? <Text dimColor>Generating QR code…</Text> : lines.map((line, i) => <Text key={i}>{line}</Text>)}
+      {isLoading ? <T dimColor>Generating QR code…</T> : lines.map((line, i) => <Text key={i}>{line}</Text>)}
 
       {/* URL */}
       <Box marginTop={1}>
-        <Text dimColor>Open in browser: </Text>
+        <T dimColor>Open in browser: </T>
         <Text color="ide">{remoteSessionUrl}</Text>
       </Box>
 
       <Box marginTop={1}>
-        <Text dimColor>(press esc to close)</Text>
+        <T dimColor>(press esc to close)</T>
       </Box>
     </Pane>
   );

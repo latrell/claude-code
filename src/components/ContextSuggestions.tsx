@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Box, Text, StatusIcon } from '@anthropic/ink';
 import type { ContextSuggestion } from '../utils/contextSuggestions.js';
 import { formatTokens } from '../utils/format.js';
+import { t, tf } from '../i18n/t.js';
 
 type Props = {
   suggestions: ContextSuggestion[];
@@ -13,7 +14,7 @@ export function ContextSuggestions({ suggestions }: Props): React.ReactNode {
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text bold>Suggestions</Text>
+      <Text bold>{t('Suggestions')}</Text>
       {suggestions.map((suggestion, i) => (
         <Box key={i} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
           <Box>
@@ -22,7 +23,10 @@ export function ContextSuggestions({ suggestions }: Props): React.ReactNode {
             {suggestion.savingsTokens ? (
               <Text dimColor>
                 {' '}
-                {figures.arrowRight} save ~{formatTokens(suggestion.savingsTokens)}
+                {figures.arrowRight}{' '}
+                {tf(' save ~{tokens}', {
+                  tokens: formatTokens(suggestion.savingsTokens),
+                })}
               </Text>
             ) : null}
           </Box>

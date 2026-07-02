@@ -1,4 +1,5 @@
 import type { Command } from '../../types/command.js'
+import { t } from '../../i18n/t.js'
 
 const teleport: Command = {
   type: 'local-jsx',
@@ -6,7 +7,9 @@ const teleport: Command = {
   // Official v2.1.123 advertises alias `tp` (reverse-engineered from
   // claude.exe: `name:"teleport",aliases:["tp"]`). Keeping it for parity.
   aliases: ['tp'],
-  description: 'Resume a Claude Code session from claude.ai',
+  get description() {
+    return t('Resume a Claude Code session from claude.ai')
+  },
   // REPL markdown renderer strips `<...>` as HTML tags — use uppercase.
   argumentHint: 'SESSION_ID',
   isHidden: false,

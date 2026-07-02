@@ -3,6 +3,7 @@
  */
 
 import figures from 'figures';
+import { t } from '../../i18n/t.js';
 import type { TaskStatus } from 'src/Task.js';
 import type { InProcessTeammateTaskState } from 'src/tasks/InProcessTeammateTask/types.js';
 import { isPanelAgentTask } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
@@ -74,14 +75,14 @@ export function getTaskStatusColor(
  * accounting for shutdown/approval/idle states and falling back through
  * recent-activity summary → last activity description → 'working'.
  */
-export function describeTeammateActivity(t: DeepImmutable<InProcessTeammateTaskState>): string {
-  if (t.shutdownRequested) return 'stopping';
-  if (t.awaitingPlanApproval) return 'awaiting approval';
-  if (t.isIdle) return 'idle';
+export function describeTeammateActivity(task: DeepImmutable<InProcessTeammateTaskState>): string {
+  if (task.shutdownRequested) return t('stopping');
+  if (task.awaitingPlanApproval) return t('awaiting approval');
+  if (task.isIdle) return t('idle');
   return (
-    (t.progress?.recentActivities && summarizeRecentActivities(t.progress.recentActivities)) ??
-    t.progress?.lastActivity?.activityDescription ??
-    'working'
+    (task.progress?.recentActivities && summarizeRecentActivities(task.progress.recentActivities)) ??
+    task.progress?.lastActivity?.activityDescription ??
+    t('working')
   );
 }
 

@@ -16,6 +16,11 @@ type Props = {
   parens?: boolean;
   /** Whether to show in bold */
   bold?: boolean;
+  /**
+   * Optional template string with {shortcut} and {action} placeholders.
+   * Passed through to KeyboardShortcutHint for i18n.
+   */
+  template?: string;
 };
 
 /**
@@ -37,7 +42,10 @@ export function ConfigurableShortcutHint({
   description,
   parens,
   bold,
+  template,
 }: Props): React.ReactNode {
   const shortcut = useShortcutDisplay(action, context, fallback);
-  return <KeyboardShortcutHint shortcut={shortcut} action={description} parens={parens} bold={bold} />;
+  return (
+    <KeyboardShortcutHint shortcut={shortcut} action={description} parens={parens} bold={bold} template={template} />
+  );
 }

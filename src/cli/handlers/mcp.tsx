@@ -36,20 +36,21 @@ import { isFsInaccessible } from '../../utils/errors.js';
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
 import { safeParseJSON } from '../../utils/json.js';
 import { getPlatform } from '../../utils/platform.js';
+import { t, tf } from '../../i18n/t.js';
 import { cliError, cliOk } from '../exit.js';
 
 async function checkMcpServerHealth(name: string, server: ScopedMcpServerConfig): Promise<string> {
   try {
     const result = await connectToServer(name, server);
     if (result.type === 'connected') {
-      return '✓ Connected';
+      return '✓ ' + t('Connected');
     } else if (result.type === 'needs-auth') {
-      return '! Needs authentication';
+      return '! ' + t('Needs authentication');
     } else {
-      return '✗ Failed to connect';
+      return '✗ ' + t('Failed to connect');
     }
   } catch (_error) {
-    return '✗ Connection error';
+    return '✗ ' + t('Connection error');
   }
 }
 
@@ -62,7 +63,7 @@ export async function mcpServeHandler({ debug, verbose }: { debug?: boolean; ver
     await stat(providedCwd);
   } catch (error) {
     if (isFsInaccessible(error)) {
-      cliError(`Error: Directory ${providedCwd} does not exist`);
+      cliError(tf('Error: Directory {path} does not exist', { path: providedCwd }));
     }
     throw error;
   }
@@ -99,8 +100,8 @@ export async function mcpRemoveHandler(name: string, options: { scope?: string }
 
       await removeMcpConfig(name, scope);
       cleanupSecureStorage();
-      process.stdout.write(`Removed MCP server ${name} from ${scope} config\n`);
-      cliOk(`File modified: ${describeMcpConfigFilePath(scope)}`);
+      process.stdout.write(tf('Removed MCP server {name} from {scope} config', { name, scope }) + '\n');
+      cliOk(tf('File modified: {path}', { path: describeMcpConfigFilePath(scope) }));
     }
 
     // If no scope specified, check where the server exists
@@ -118,7 +119,7 @@ export async function mcpRemoveHandler(name: string, options: { scope?: string }
     if (globalConfig.mcpServers?.[name]) scopes.push('user');
 
     if (scopes.length === 0) {
-      cliError(`No MCP server found with name: "${name}"`);
+      cliError(tf('No MCP server found with name: "{name}"', { name }));
     } else if (scopes.length === 1) {
       // Server exists in only one scope, remove it
       const scope = scopes[0]!;
@@ -129,11 +130,11 @@ export async function mcpRemoveHandler(name: string, options: { scope?: string }
 
       await removeMcpConfig(name, scope);
       cleanupSecureStorage();
-      process.stdout.write(`Removed MCP server "${name}" from ${scope} config\n`);
-      cliOk(`File modified: ${describeMcpConfigFilePath(scope)}`);
+      process.stdout.write(tf('Removed MCP server "{name}" from {scope} config', { name, scope }) + '\n');
+      cliOk(tf('File modified: {path}', { path: describeMcpConfigFilePath(scope) }));
     } else {
       // Server exists in multiple scopes
-      process.stderr.write(`MCP server "${name}" exists in multiple scopes:\n`);
+      process.stderr.write(tf('MCP server "{name}" exists in multiple scopes:', { name }) + '\n');
       scopes.forEach(scope => {
         process.stderr.write(`  - ${getScopeLabel(scope)} (${describeMcpConfigFilePath(scope)})\n`);
       });
@@ -153,9 +154,9 @@ export async function mcpListHandler(): Promise<void> {
   logEvent('tengu_mcp_list', {});
   const { servers: configs } = await getAllMcpConfigs();
   if (Object.keys(configs).length === 0) {
-    console.log('No MCP servers configured. Use `claude mcp add` to add a server.');
+    console.log(t('No MCP servers configured. Use `claude mcp add` to add a server.'));
   } else {
-    console.log('Checking MCP server health...\n');
+    console.log(t('Checking MCP server health...') + '\n');
 
     // Check servers concurrently
     const entries = Object.entries(configs);
@@ -196,7 +197,7 @@ export async function mcpGetHandler(name: string): Promise<void> {
   });
   const server = getMcpConfigByName(name);
   if (!server) {
-    cliError(`No MCP server found with name: ${name}`);
+    cliError(tf('No MCP server found with name: "{name}"', { name }));
   }
 
   console.log(`${name}:`);
@@ -313,7 +314,7 @@ export async function mcpAddJsonHandler(
       type: transportType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
 
-    cliOk(`Added ${transportType} MCP server ${name} to ${scope} config`);
+    cliOk(tf('Added {type} MCP server {name} to {scope} config', { type: transportType, name, scope }));
   } catch (error) {
     cliError((error as Error).message);
   }
@@ -335,7 +336,7 @@ export async function mcpAddFromDesktopHandler(options: { scope?: string }): Pro
     const servers = await readClaudeDesktopMcpServers();
 
     if (Object.keys(servers).length === 0) {
-      cliOk('No MCP servers found in Claude Desktop configuration or configuration file does not exist.');
+      cliOk(t('No MCP servers found in Claude Desktop configuration or configuration file does not exist.'));
     }
 
     const { unmount } = await render(
@@ -367,7 +368,9 @@ export async function mcpResetChoicesHandler(): Promise<void> {
     enableAllProjectMcpServers: false,
   }));
   cliOk(
-    'All project-scoped (.mcp.json) server approvals and rejections have been reset.\n' +
-      'You will be prompted for approval next time you start Claude Code.',
+    t(
+      'All project-scoped (.mcp.json) server approvals and rejections have been reset.\n' +
+        'You will be prompted for approval next time you start Claude Code.',
+    ),
   );
 }

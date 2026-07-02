@@ -6,6 +6,7 @@ import type { OutputStyle } from '../utils/config.js';
 import { getCwd } from '../utils/cwd.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
+import { t } from '../i18n/t.js';
 
 const DEFAULT_OUTPUT_STYLE_LABEL = 'Default';
 const DEFAULT_OUTPUT_STYLE_DESCRIPTION = 'Claude completes coding tasks efficiently and provides concise responses';
@@ -60,17 +61,17 @@ export function OutputStylePicker({
 
   return (
     <Dialog
-      title="Preferred output style"
+      title={t('Preferred output style')}
       onCancel={onCancel}
       hideInputGuide={!isStandaloneCommand}
       hideBorder={!isStandaloneCommand}
     >
       <Box flexDirection="column" gap={1}>
         <Box marginTop={1}>
-          <Text dimColor>This changes how Claude Code communicates with you</Text>
+          <Text dimColor>{t('This changes how Claude Code communicates with you')}</Text>
         </Box>
         {isLoading ? (
-          <Text dimColor>Loading output styles…</Text>
+          <Text dimColor>{t('Loading output styles\u2026')}</Text>
         ) : (
           <Select
             options={styleOptions}

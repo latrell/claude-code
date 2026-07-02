@@ -16,11 +16,14 @@ import type {
   LocalJSXCommandOnDone,
 } from '../types/command.js'
 import type { ToolUseContext } from '../Tool.js'
+import { t, tf } from '../i18n/t.js'
 
 const monitor = {
   type: 'local-jsx',
   name: 'monitor',
-  description: 'Start a background shell monitor (Shift+Down to view)',
+  get description() {
+    return t('Start a background shell monitor (Shift+Down to view)')
+  },
   isEnabled: () => {
     if (feature('MONITOR_TOOL')) {
       return true
@@ -40,8 +43,12 @@ const monitor = {
         if (!command) {
           onDone(
             process.platform === 'win32'
-              ? 'Usage: /monitor <command>\nExample: /monitor powershell -c "while(1){git status; Start-Sleep 5}"'
-              : 'Usage: /monitor <command>\nExample: /monitor watch -n 5 git status',
+              ? t(
+                  'Usage: /monitor <command>\nExample: /monitor powershell -c "while(1){git status; Start-Sleep 5}"',
+                )
+              : t(
+                  'Usage: /monitor <command>\nExample: /monitor watch -n 5 git status',
+                ),
             { display: 'system' },
           )
           return null
@@ -90,12 +97,17 @@ const monitor = {
 
           const outputFile = getTaskOutputPath(handle.taskId)
           onDone(
-            `Monitor started (${handle.taskId}). Press Shift+Down to view.\nOutput: ${outputFile}`,
+            tf(
+              'Monitor started ({taskId}). Press Shift+Down to view.\nOutput: {output}',
+              { taskId: handle.taskId, output: outputFile },
+            ),
             { display: 'system' },
           )
         } catch (err) {
           onDone(
-            `Monitor failed: ${err instanceof Error ? err.message : String(err)}`,
+            tf('Monitor failed: {error}', {
+              error: err instanceof Error ? err.message : String(err),
+            }),
             { display: 'system' },
           )
         }

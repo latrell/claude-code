@@ -1,9 +1,12 @@
 import type { Command } from '../../commands.js'
+import { t } from '../../i18n/t.js'
 
 const ide = {
   type: 'local-jsx',
   name: 'ide',
-  description: 'Manage IDE integrations and show status',
+  get description() {
+    return t('Manage IDE integrations and show status')
+  },
   argumentHint: '[open]',
   load: () => import('./ide.js'),
 } satisfies Command

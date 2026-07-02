@@ -4,6 +4,7 @@ import { Pane } from '@anthropic/ink';
 import { ThemePicker } from '../../components/ThemePicker.js';
 import { useTheme } from '@anthropic/ink';
 import type { LocalJSXCommandCall } from '../../types/command.js';
+import { tf, t } from '../../i18n/t.js';
 
 type Props = {
   onDone: (result?: string, options?: { display?: CommandResultDisplay }) => void;
@@ -17,10 +18,10 @@ function ThemePickerCommand({ onDone }: Props): React.ReactNode {
       <ThemePicker
         onThemeSelect={setting => {
           setTheme(setting);
-          onDone(`Theme set to ${setting}`);
+          onDone(tf('Theme set to {setting}', { setting }));
         }}
         onCancel={() => {
-          onDone('Theme picker dismissed', { display: 'system' });
+          onDone(t('Theme picker dismissed'), { display: 'system' });
         }}
         skipExitHandling={true}
       />

@@ -8,6 +8,7 @@ import { openBrowser } from '../utils/browser.js';
 import { errorMessage } from '../utils/errors.js';
 import { gracefulShutdown } from '../utils/gracefulShutdown.js';
 import { flushSessionStorage } from '../utils/sessionStorage.js';
+import { t, tf } from '../i18n/t.js';
 
 const DESKTOP_DOCS_URL = 'https://clau.de/desktop';
 
@@ -34,18 +35,22 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
   // Handle keyboard input for error and prompt-download states
   useInput(input => {
     if (state === 'error') {
-      onDone(error ?? 'Unknown error', { display: 'system' });
+      onDone(error ?? t('Unknown error'), { display: 'system' });
       return;
     }
     if (state === 'prompt-download') {
       if (input === 'y' || input === 'Y') {
         openBrowser(getDownloadUrl()).catch(() => {});
         onDone(
-          `Starting download. Re-run /desktop once you\u2019ve installed the app.\nLearn more at ${DESKTOP_DOCS_URL}`,
+          tf("Starting download. Re-run /desktop once you've installed the app.\nLearn more at {url}", {
+            url: DESKTOP_DOCS_URL,
+          }),
           { display: 'system' },
         );
       } else if (input === 'n' || input === 'N') {
-        onDone(`The desktop app is required for /desktop. Learn more at ${DESKTOP_DOCS_URL}`, { display: 'system' });
+        onDone(tf('The desktop app is required for /desktop. Learn more at {url}', { url: DESKTOP_DOCS_URL }), {
+          display: 'system',
+        });
       }
     }
   });
@@ -57,13 +62,17 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       const installStatus = await getDesktopInstallStatus();
 
       if (installStatus.status === 'not-installed') {
-        setDownloadMessage('Claude Desktop is not installed.');
+        setDownloadMessage(t('Claude Desktop is not installed.'));
         setState('prompt-download');
         return;
       }
 
       if (installStatus.status === 'version-too-old') {
-        setDownloadMessage(`Claude Desktop needs to be updated (found v${installStatus.version}, need v1.1.2396+).`);
+        setDownloadMessage(
+          tf('Claude Desktop needs to be updated (found v{version}, need v1.1.2396+).', {
+            version: installStatus.version,
+          }),
+        );
         setState('prompt-download');
         return;
       }
@@ -77,7 +86,7 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       const result = await openCurrentSessionInDesktop();
 
       if (!result.success) {
-        setError(result.error ?? 'Failed to open Claude Desktop');
+        setError(result.error ?? t('Failed to open Claude Desktop'));
         setState('error');
         return;
       }
@@ -88,7 +97,7 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       // Give the user a moment to see the success message
       setTimeout(
         async (onDone: Props['onDone']) => {
-          onDone('Session transferred to Claude Desktop', { display: 'system' });
+          onDone(t('Session transferred to Claude Desktop'), { display: 'system' });
           await gracefulShutdown(0, 'other');
         },
         500,
@@ -105,8 +114,11 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
   if (state === 'error') {
     return (
       <Box flexDirection="column" paddingX={2}>
-        <Text color="error">Error: {error}</Text>
-        <Text dimColor>Press any key to continue…</Text>
+        <Text color="error">
+          {t('Error: ')}
+          {error}
+        </Text>
+        <Text dimColor>{t('Press any key to continue…')}</Text>
       </Box>
     );
   }
@@ -115,16 +127,16 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
     return (
       <Box flexDirection="column" paddingX={2}>
         <Text>{downloadMessage}</Text>
-        <Text>Download now? (y/n)</Text>
+        <Text>{t('Download now? (y/n)')}</Text>
       </Box>
     );
   }
 
   const messages: Record<Exclude<DesktopHandoffState, 'error' | 'prompt-download'>, string> = {
-    checking: 'Checking for Claude Desktop…',
-    flushing: 'Saving session…',
-    opening: 'Opening Claude Desktop…',
-    success: 'Opening in Claude Desktop…',
+    checking: t('Checking for Claude Desktop…'),
+    flushing: t('Saving session…'),
+    opening: t('Opening Claude Desktop…'),
+    success: t('Opening in Claude Desktop…'),
   };
 
   return <LoadingState message={messages[state]} />;

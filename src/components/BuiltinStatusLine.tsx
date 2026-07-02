@@ -3,6 +3,7 @@ import { formatCost } from '../cost-tracker.js';
 import { Box, Text } from '@anthropic/ink';
 import { formatTokens } from '../utils/format.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
+import { t } from '../i18n/t.js';
 
 type RateLimitBucket = {
   utilization: number;
@@ -86,7 +87,7 @@ function BuiltinStatusLineInner({
 
       {/* Context usage with token counts */}
       <Separator />
-      <Text dimColor>Context </Text>
+      <Text dimColor>{t('Context ')}</Text>
       <Text>{contextUsedPct}%</Text>
       {!narrow && <Text dimColor> ({tokenDisplay})</Text>}
 
@@ -94,7 +95,7 @@ function BuiltinStatusLineInner({
       {hasFiveHour && (
         <>
           <Separator />
-          <Text dimColor>Session </Text>
+          <Text dimColor>{t('Session ')}</Text>
           <Text>{fiveHourPct}%</Text>
           {!narrow && rateLimits.five_hour!.resets_at > 0 && (
             <Text dimColor> {formatCountdown(rateLimits.five_hour!.resets_at)}</Text>
@@ -106,7 +107,7 @@ function BuiltinStatusLineInner({
       {hasSevenDay && (
         <>
           <Separator />
-          <Text dimColor>Weekly </Text>
+          <Text dimColor>{t('Weekly ')}</Text>
           <Text>{sevenDayPct}%</Text>
           {!narrow && rateLimits.seven_day!.resets_at > 0 && (
             <Text dimColor> {formatCountdown(rateLimits.seven_day!.resets_at)}</Text>

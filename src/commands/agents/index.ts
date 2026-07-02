@@ -1,9 +1,12 @@
 import type { Command } from '../../commands.js'
+import { t } from '../../i18n/t.js'
 
 const agents = {
   type: 'local-jsx',
   name: 'agents',
-  description: 'Manage agent configurations',
+  get description() {
+    return t('Manage agent configurations')
+  },
   load: () => import('./agents.js'),
 } satisfies Command
 

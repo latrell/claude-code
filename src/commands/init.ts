@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import type { Command } from '../commands.js'
+import { t } from '../i18n/t.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { AUTONOMY_AGENTS_PATH_POSIX } from '../utils/autonomyAuthority.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
@@ -231,8 +232,10 @@ const command = {
     return feature('NEW_INIT') &&
       (process.env.USER_TYPE === 'ant' ||
         isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT))
-      ? 'Initialize new CLAUDE.md file(s) and optional skills/hooks with codebase documentation'
-      : 'Initialize a new CLAUDE.md file with codebase documentation'
+      ? t(
+          'Initialize new CLAUDE.md file(s) and optional skills/hooks with codebase documentation',
+        )
+      : t('Initialize a new CLAUDE.md file with codebase documentation')
   },
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your codebase',

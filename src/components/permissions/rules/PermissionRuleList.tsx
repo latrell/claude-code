@@ -12,6 +12,7 @@ import { useSearchInput } from '../../../hooks/useSearchInput.js';
 import { type KeyboardEvent, Box, Text, useTerminalFocus } from '@anthropic/ink';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/autoModeDenials.js';
+import { t } from '../../../i18n/t.js';
 import type {
   PermissionBehavior,
   PermissionRule,
@@ -488,7 +489,7 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
         approvedDenials.length > 0 ? [`Approved ${approvedDenials.map(d => chalk.bold(d.display)).join(', ')}`] : [];
       onExit([...approvedMsg, ...changes].join('\n'));
     } else {
-      onExit('Permissions dialog dismissed', {
+      onExit(t('Permissions dialog dismissed'), {
         display: 'system',
       });
     }

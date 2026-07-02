@@ -1,3 +1,5 @@
+import { t, tf } from '../i18n/t.js'
+
 /**
  * `claude rollback [target]` — roll back to a previous Claude Code version.
  *
@@ -20,7 +22,9 @@ export async function rollback(
   }
 
   if (options?.safe) {
-    console.log('Safe rollback: would install the server-pinned safe version.')
+    console.log(
+      t('Safe rollback: would install the server-pinned safe version.'),
+    )
     if (options.dryRun) {
       console.log('  (dry run — no changes made)')
       return
@@ -46,7 +50,7 @@ export async function rollback(
     return
   }
 
-  console.log(`Rolling back to version ${target}...`)
+  console.log(tf('Rolling back to version {version}...', { version: target }))
 
   if (options?.dryRun) {
     console.log(`  (dry run — would install ${target})`)
@@ -62,9 +66,13 @@ export async function rollback(
   )
 
   if (result.status !== 0) {
-    console.error(`Rollback failed with exit code ${result.status}`)
+    console.error(
+      tf('Rollback failed with exit code {code}', { code: result.status ?? 1 }),
+    )
     process.exitCode = result.status ?? 1
   } else {
-    console.log(`Rolled back to ${target} successfully.`)
+    console.log(
+      tf('Rolled back to {version} successfully.', { version: target }),
+    )
   }
 }

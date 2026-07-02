@@ -9,6 +9,7 @@ import {
 } from '../../commands.js';
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 import { estimateSkillFrontmatterTokens } from '../../skills/loadSkillsDir.js';
 import { formatTokens } from '../../utils/format.js';
 import { getSettingSourceName, type SettingSource } from '../../utils/settings/constants.js';
@@ -96,7 +97,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
   }, [filteredSkills]);
 
   const handleCancel = (): void => {
-    onExit('Skills dialog dismissed', { display: 'system' });
+    onExit(t('Skills dialog dismissed'), { display: 'system' });
   };
 
   if (skills.length === 0) {

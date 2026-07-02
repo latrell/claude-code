@@ -31,6 +31,7 @@ import {
   buildEffectiveSystemPrompt,
   type SystemPrompt,
 } from '../../utils/systemPrompt.js'
+import { t, tf } from '../../i18n/t.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')
@@ -47,7 +48,7 @@ export const call: LocalCommandCall = async (args, context) => {
   messages = getMessagesAfterCompactBoundary(messages)
 
   if (messages.length === 0) {
-    throw new Error('No messages to compact')
+    throw new Error(t('No messages to compact'))
   }
 
   const customInstructions = args.trim()
@@ -125,14 +126,16 @@ export const call: LocalCommandCall = async (args, context) => {
     }
   } catch (error) {
     if (abortController.signal.aborted) {
-      throw new Error('Compaction canceled.')
+      throw new Error(t('Compaction canceled.'))
     } else if (hasExactErrorMessage(error, ERROR_MESSAGE_NOT_ENOUGH_MESSAGES)) {
       throw new Error(ERROR_MESSAGE_NOT_ENOUGH_MESSAGES)
     } else if (hasExactErrorMessage(error, ERROR_MESSAGE_INCOMPLETE_RESPONSE)) {
       throw new Error(ERROR_MESSAGE_INCOMPLETE_RESPONSE)
     } else {
       logError(error)
-      throw new Error(`Error during compaction: ${error}`)
+      throw new Error(
+        tf('Error during compaction: {error}', { error: String(error) }),
+      )
     }
   }
 }
@@ -241,11 +244,11 @@ function buildDisplayText(
   const dimmed = [
     ...(context.options.verbose
       ? []
-      : [`(${expandShortcut} to see full summary)`]),
+      : [tf('({shortcut} to see full summary)', { shortcut: expandShortcut })]),
     ...(userDisplayMessage ? [userDisplayMessage] : []),
     ...(upgradeMessage ? [upgradeMessage] : []),
   ]
-  return chalk.dim('Compacted ' + dimmed.join('\n'))
+  return chalk.dim(t('Compacted ') + dimmed.join('\n'))
 }
 
 async function getCacheSharingParams(

@@ -4,6 +4,7 @@ import { AgentTool } from '@claude-code-best/builtin-tools/tools/AgentTool/Agent
 import { isInForkChild } from '@claude-code-best/builtin-tools/tools/AgentTool/forkSubagent.js';
 import { logForDebugging } from '../../utils/debug.js';
 import type { LocalJSXCommandOnDone, LocalJSXCommandContext } from '../../types/command.js';
+import { t, tf } from '../../i18n/t.js';
 
 export async function call(
   onDone: LocalJSXCommandOnDone,
@@ -12,13 +13,13 @@ export async function call(
 ): Promise<React.ReactNode> {
   // Check feature flag
   if (!feature('FORK_SUBAGENT')) {
-    onDone('Fork subagent feature is not enabled. Set FEATURE_FORK_SUBAGENT=1 to enable.', { display: 'system' });
+    onDone(t('Fork subagent feature is not enabled. Set FEATURE_FORK_SUBAGENT=1 to enable.'), { display: 'system' });
     return null;
   }
 
   // Recursive fork guard
   if (isInForkChild(context.messages)) {
-    onDone('Fork is not available inside a forked worker. Complete your task directly using your tools.', {
+    onDone(t('Fork is not available inside a forked worker. Complete your task directly using your tools.'), {
       display: 'system',
     });
     return null;
@@ -26,7 +27,7 @@ export async function call(
 
   const directive = args.trim();
   if (!directive) {
-    onDone('Usage: /fork <directive>\nExample: /fork Fix the null check in validate.ts', { display: 'system' });
+    onDone(t('Usage: /fork <directive>\nExample: /fork Fix the null check in validate.ts'), { display: 'system' });
     return null;
   }
 
@@ -34,7 +35,7 @@ export async function call(
   const lastAssistantMessage = [...context.messages].reverse().find(m => m.type === 'assistant') as any; // Type assertion to avoid complex type import
 
   if (!lastAssistantMessage) {
-    onDone('Cannot fork: no assistant response in conversation history.', { display: 'system' });
+    onDone(t('Cannot fork: no assistant response in conversation history.'), { display: 'system' });
     return null;
   }
 
@@ -61,12 +62,17 @@ export async function call(
     });
 
     // Notify user that fork has been started
-    onDone(`Forked subagent started with directive: "${directive}"`, { display: 'system' });
+    onDone(tf('Forked subagent started with directive: "{directive}"', { directive }), { display: 'system' });
     return null;
   } catch (error) {
     // Catches synchronous setup errors only
     logForDebugging(`Fork command setup error: ${error}`, { level: 'error' });
-    onDone(`Fork failed: ${error instanceof Error ? error.message : String(error)}`, { display: 'system' });
+    onDone(
+      tf('Fork failed: {error}', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+      { display: 'system' },
+    );
     return null;
   }
 }

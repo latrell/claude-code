@@ -3,6 +3,8 @@ import { isBridgeEnabled } from '../bridge/bridgeEnabled.js';
 import { Box, Text } from '@anthropic/ink';
 import { getClaudeAIOAuthTokens } from '../utils/auth.js';
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
 import { PermissionDialog } from './permissions/PermissionDialog.js';
@@ -35,27 +37,27 @@ export function RemoteCallout({ onDone }: Props): React.ReactNode {
 
   const options: OptionWithDescription<RemoteCalloutSelection>[] = [
     {
-      label: 'Enable Remote Control for this session',
-      description: 'Opens a secure connection to claude.ai.',
+      label: t('Enable Remote Control for this session'),
+      description: t('Opens a secure connection to claude.ai.'),
       value: 'enable',
     },
     {
-      label: 'Never mind',
-      description: 'You can always enable it later with /remote-control.',
+      label: t('Never mind'),
+      description: t('You can always enable it later with /remote-control.'),
       value: 'dismiss',
     },
   ];
 
   return (
-    <PermissionDialog title="Remote Control">
+    <PermissionDialog title={t('Remote Control')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box marginBottom={1} flexDirection="column">
-          <Text>
+          <T>
             Remote Control lets you access this CLI session from the web (claude.ai/code) or the Claude app, so you can
             pick up where you left off on any device.
-          </Text>
+          </T>
           <Text> </Text>
-          <Text>You can disconnect remote access anytime by running /remote-control again.</Text>
+          <T>You can disconnect remote access anytime by running /remote-control again.</T>
         </Box>
         <Box>
           <Select options={options} onChange={handleSelect} onCancel={handleCancel} />

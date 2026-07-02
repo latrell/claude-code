@@ -6,6 +6,7 @@
  */
 import type { Command, LocalCommandCall } from '../../types/command.js'
 import type { Message } from '../../types/message.js'
+import { t } from '../../i18n/t.js'
 
 /** Only user/assistant/system messages are valid for API calls. */
 const API_SAFE_TYPES = new Set(['user', 'assistant', 'system'])
@@ -69,7 +70,9 @@ const call: LocalCommandCall = async (_args, context) => {
 const summary = {
   type: 'local',
   name: 'summary',
-  description: 'Generate and display a session summary',
+  get description() {
+    return t('Generate and display a session summary')
+  },
   supportsNonInteractive: true,
   isHidden: false,
   load: () => Promise.resolve({ call }),

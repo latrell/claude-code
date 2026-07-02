@@ -12,6 +12,7 @@ import {
 } from '../utils/model/model.js'
 import { validateModel } from '../utils/model/validateModel.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
+import { t, tf } from '../i18n/t.js'
 
 const call: LocalCommandCall = async (args, context) => {
   const arg = args.trim().toLowerCase()
@@ -24,19 +25,29 @@ const call: LocalCommandCall = async (args, context) => {
     if (!current) {
       return {
         type: 'text',
-        value:
+        value: t(
           'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
+        ),
       }
     }
     if (!modelSupportsAdvisor(baseModel)) {
       return {
         type: 'text',
-        value: `Advisor: ${current} (inactive)\nThe current model (${baseModel}) does not support advisors.`,
+        value: tf(
+          'Advisor: {model} (inactive)\nThe current model ({base}) does not support advisors.',
+          {
+            model: current,
+            base: baseModel,
+          },
+        ),
       }
     }
     return {
       type: 'text',
-      value: `Advisor: ${current}\nUse "/advisor unset" to disable or "/advisor <model>" to change.`,
+      value: tf(
+        'Advisor: {model}\nUse "/advisor unset" to disable or "/advisor <model>" to change.',
+        { model: current },
+      ),
     }
   }
 
@@ -50,8 +61,8 @@ const call: LocalCommandCall = async (args, context) => {
     return {
       type: 'text',
       value: prev
-        ? `Advisor disabled (was ${prev}).`
-        : 'Advisor already unset.',
+        ? tf('Advisor disabled (was {model}).', { model: prev })
+        : t('Advisor already unset.'),
     }
   }
 
@@ -62,15 +73,21 @@ const call: LocalCommandCall = async (args, context) => {
     return {
       type: 'text',
       value: error
-        ? `Invalid advisor model: ${error}`
-        : `Unknown model: ${arg} (${resolvedModel})`,
+        ? tf('Invalid advisor model: {error}', { error })
+        : tf('Unknown model: {arg} ({resolved})', {
+            arg,
+            resolved: resolvedModel,
+          }),
     }
   }
 
   if (!isValidAdvisorModel(resolvedModel)) {
     return {
       type: 'text',
-      value: `The model ${arg} (${resolvedModel}) cannot be used as an advisor`,
+      value: tf('The model {arg} ({resolved}) cannot be used as an advisor', {
+        arg,
+        resolved: resolvedModel,
+      }),
     }
   }
 
@@ -83,20 +100,25 @@ const call: LocalCommandCall = async (args, context) => {
   if (!modelSupportsAdvisor(baseModel)) {
     return {
       type: 'text',
-      value: `Advisor set to ${normalizedModel}.\nNote: Your current model (${baseModel}) does not support advisors. Switch to a supported model to use the advisor.`,
+      value: tf(
+        'Advisor set to {model}.\nNote: Your current model ({base}) does not support advisors. Switch to a supported model to use the advisor.',
+        { model: normalizedModel, base: baseModel },
+      ),
     }
   }
 
   return {
     type: 'text',
-    value: `Advisor set to ${normalizedModel}.`,
+    value: tf('Advisor set to {model}.', { model: normalizedModel }),
   }
 }
 
 const advisor = {
   type: 'local',
   name: 'advisor',
-  description: 'Configure the advisor model',
+  get description() {
+    return t('Configure the advisor model')
+  },
   argumentHint: '[<model>|off]',
   isEnabled: () => canUserConfigureAdvisor(),
   get isHidden() {

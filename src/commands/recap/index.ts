@@ -24,6 +24,7 @@ import type {
   LocalCommandCall,
   LocalCommandResult,
 } from '../../types/command.js'
+import { t } from '../../i18n/t.js'
 
 // ── Call implementation ───────────────────────────────────────────────────────
 
@@ -64,7 +65,9 @@ const call: LocalCommandCall = async (_args, context) => {
 const recap = {
   type: 'local',
   name: 'recap',
-  description: 'Generate a one-line session recap now',
+  get description() {
+    return t('Generate a one-line session recap now')
+  },
   aliases: ['away', 'catchup'],
   /**
    * Enabled when:

@@ -8,6 +8,7 @@ import { LocalVaultView } from './LocalVaultView.js';
 import { parseLocalVaultArgs } from './parseArgs.js';
 import { launchCommand } from '../_shared/launchCommand.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
+import { t } from '../../i18n/t.js';
 
 const USAGE = 'Usage: /local-vault list | set KEY VALUE | get KEY [--reveal] | delete KEY';
 
@@ -246,7 +247,7 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
       <Dialog
         title="Local Vault"
         subtitle={`${VAULT_MENU.length} actions`}
-        onCancel={() => closeWith('Local vault panel dismissed')}
+        onCancel={() => closeWith(t('Local vault panel dismissed'))}
         color="background"
         hideInputGuide
       >

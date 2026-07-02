@@ -3,6 +3,8 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Dialog, Link, Text } from '@anthropic/ink';
 import type { ExternalClaudeMdInclude } from '../utils/claudemd.js';
 import { saveCurrentProjectConfig } from '../utils/config.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { Select } from './CustomSelect/index.js';
 
 type Props = {
@@ -51,20 +53,20 @@ export function ClaudeMdExternalIncludesDialog({
 
   return (
     <Dialog
-      title="Allow external CLAUDE.md file imports?"
+      title={t('Allow external CLAUDE.md file imports?')}
       color="warning"
       onCancel={handleEscape}
       hideBorder={!isStandaloneDialog}
       hideInputGuide={!isStandaloneDialog}
     >
-      <Text>
+      <T>
         This project&apos;s CLAUDE.md imports files outside the current working directory. Never allow this for
         third-party repositories.
-      </Text>
+      </T>
 
       {externalIncludes && externalIncludes.length > 0 && (
         <Box flexDirection="column">
-          <Text dimColor>External imports:</Text>
+          <T dimColor>External imports:</T>
           {externalIncludes.map((include, i) => (
             <Text key={i} dimColor>
               {'  '}
@@ -75,14 +77,14 @@ export function ClaudeMdExternalIncludesDialog({
       )}
 
       <Text dimColor>
-        Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks{' '}
+        <T>Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks </T>
         <Link url="https://code.claude.com/docs/en/security" />{' '}
       </Text>
 
       <Select
         options={[
-          { label: 'Yes, allow external imports', value: 'yes' },
-          { label: 'No, disable external imports', value: 'no' },
+          { label: t('Yes, allow external imports'), value: 'yes' },
+          { label: t('No, disable external imports'), value: 'no' },
         ]}
         onChange={value => handleSelection(value as 'yes' | 'no')}
       />

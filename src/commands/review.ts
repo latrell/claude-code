@@ -1,6 +1,7 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.js'
 import type { Command } from '../commands.js'
 import { isUltrareviewEnabled } from './review/ultrareviewEnabled.js'
+import { t } from '../i18n/t.js'
 
 // Legal wants the explicit surface name plus a docs link visible before the
 // user triggers, so the description carries "Claude Code on the web" + URL.
@@ -33,7 +34,9 @@ const LOCAL_REVIEW_PROMPT = (args: string) => `
 const review: Command = {
   type: 'prompt',
   name: 'review',
-  description: 'Review a pull request',
+  get description() {
+    return t('Review a pull request')
+  },
   progressMessage: 'reviewing pull request',
   contentLength: 0,
   source: 'builtin',

@@ -12,6 +12,7 @@ import { plural } from '../../utils/stringUtils.js';
 import { Byline, Dialog } from '@anthropic/ink';
 import { DiffDetailView } from './DiffDetailView.js';
 import { DiffFileList } from './DiffFileList.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   messages: Message[];
@@ -210,7 +211,7 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
     if (viewMode === 'detail') {
       setViewMode('list');
     } else {
-      onDone('Diff dialog dismissed', { display: 'system' });
+      onDone(t('Diff dialog dismissed'), { display: 'system' });
     }
   }
 

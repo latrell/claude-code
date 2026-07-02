@@ -6,6 +6,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../../utils/settings/settings.js';
 import type { LocalJSXCommandCall, LocalJSXCommandContext } from '../../types/command.js';
+import { t } from '../../i18n/t.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -552,7 +553,7 @@ function WebToolsPanel({
           onConfigure={handleConfigure}
           onSwitchTab={setCurrentTab}
           onSelectAdapter={handleSelectAdapter}
-          onClose={() => onClose('Web tools panel dismissed')}
+          onClose={() => onClose(t('Web tools panel dismissed'))}
           contentHeight={contentHeight}
         />
       </Tab>
@@ -565,7 +566,7 @@ function WebToolsPanel({
           onConfigure={handleConfigure}
           onSwitchTab={setCurrentTab}
           onSelectAdapter={handleSelectAdapter}
-          onClose={() => onClose('Web tools panel dismissed')}
+          onClose={() => onClose(t('Web tools panel dismissed'))}
           contentHeight={contentHeight}
         />
       </Tab>

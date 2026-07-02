@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
 import { isSkillSearchCompiledIn } from '../../services/skillSearch/featureCheck.js'
+import { t } from '../../i18n/t.js'
 
 const skillSearch = {
   type: 'local-jsx',
   name: 'skill-search',
-  description: 'Control automatic skill matching during conversations',
+  get description() {
+    return t('Control automatic skill matching during conversations')
+  },
   argumentHint: '[start|stop|about|status]',
   // Visible whenever the subsystem is compiled in (build flag); runtime
   // activation is separate and operator-controlled via /skill-search start.

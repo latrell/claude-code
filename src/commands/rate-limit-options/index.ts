@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
 import { isClaudeAISubscriber } from '../../utils/auth.js'
+import { t } from '../../i18n/t.js'
 
 const rateLimitOptions = {
   type: 'local-jsx',
   name: 'rate-limit-options',
-  description: 'Show options when rate limit is reached',
+  get description() {
+    return t('Show options when rate limit is reached')
+  },
   isEnabled: () => {
     if (!isClaudeAISubscriber()) {
       return false

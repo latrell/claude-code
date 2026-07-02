@@ -10,11 +10,12 @@ import { Status, buildDiagnostics } from './Status.js';
 import { Config } from './Config.js';
 import { Usage } from './Usage.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   onClose: (result?: string, options?: { display?: CommandResultDisplay }) => void;
   context: LocalJSXCommandContext;
-  defaultTab: 'Status' | 'Config' | 'Usage';
+  defaultTab: 'status' | 'config' | 'usage';
 };
 
 export function Settings({ onClose, context, defaultTab }: Props): React.ReactNode {
@@ -50,7 +51,7 @@ export function Settings({ onClose, context, defaultTab }: Props): React.ReactNo
       return;
     }
     // TODO: Update to "Settings" dialog once we define '/settings'.
-    onClose('Status dialog dismissed', { display: 'system' });
+    onClose(t('Config dialog dismissed'), { display: 'system' });
   };
 
   // Disable when submenu is open so the submenu's Dialog can handle ESC,
@@ -58,14 +59,14 @@ export function Settings({ onClose, context, defaultTab }: Props): React.ReactNo
   // (clear query → exit search) processes Escape first.
   useKeybinding('confirm:no', handleEscape, {
     context: 'Settings',
-    isActive: !tabsHidden && !(selectedTab === 'Config' && configOwnsEsc),
+    isActive: !tabsHidden && !(selectedTab === 'config' && configOwnsEsc),
   });
 
   const tabs = [
-    <Tab key="status" title="Status">
+    <Tab key="status" id="status" title={t('Status')}>
       <Status context={context} diagnosticsPromise={diagnosticsPromise} />
     </Tab>,
-    <Tab key="config" title="Config">
+    <Tab key="config" id="config" title={t('Config')}>
       <Suspense fallback={null}>
         <Config
           context={context}
@@ -76,7 +77,7 @@ export function Settings({ onClose, context, defaultTab }: Props): React.ReactNo
         />
       </Suspense>
     </Tab>,
-    <Tab key="usage" title="Usage">
+    <Tab key="usage" id="usage" title={t('Usage')}>
       <Usage />
     </Tab>,
   ];
@@ -90,7 +91,7 @@ export function Settings({ onClose, context, defaultTab }: Props): React.ReactNo
         hidden={tabsHidden}
         // Config has interactive content — start with header unfocused so
         // left/right/tab cycle option values instead of switching tabs.
-        initialHeaderFocused={defaultTab !== 'Config'}
+        initialHeaderFocused={defaultTab !== 'config'}
         // Inside a Modal, skip the Tabs-level cap so tall tabs (Status's
         // MCP list) flow to their natural height for the Modal's ScrollBox
         // to scroll. Config still gets contentHeight above — it

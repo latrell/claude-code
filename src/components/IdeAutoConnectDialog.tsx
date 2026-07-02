@@ -2,6 +2,8 @@ import React, { useCallback } from 'react';
 import { Text, Dialog } from '@anthropic/ink';
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
 import { isSupportedTerminal } from '../utils/ide.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { Select } from './CustomSelect/index.js';
 
 type IdeAutoConnectDialogProps = {
@@ -26,14 +28,14 @@ export function IdeAutoConnectDialog({ onComplete }: IdeAutoConnectDialogProps):
   );
 
   const options = [
-    { label: 'Yes', value: 'yes' },
-    { label: 'No', value: 'no' },
+    { label: t('Yes'), value: 'yes' },
+    { label: t('No'), value: 'no' },
   ];
 
   return (
-    <Dialog title="Do you wish to enable auto-connect to IDE?" color="ide" onCancel={onComplete}>
+    <Dialog title={t('Do you wish to enable auto-connect to IDE?')} color="ide" onCancel={onComplete}>
       <Select options={options} onChange={handleSelect} defaultValue={'yes'} />
-      <Text dimColor>You can also configure this in /config or with the --ide flag</Text>
+      <T dimColor>You can also configure this in /config or with the --ide flag</T>
     </Dialog>
   );
 }
@@ -69,14 +71,14 @@ export function IdeDisableAutoConnectDialog({ onComplete }: IdeDisableAutoConnec
   }, [onComplete]);
 
   const options = [
-    { label: 'No', value: 'no' },
-    { label: 'Yes', value: 'yes' },
+    { label: t('No'), value: 'no' },
+    { label: t('Yes'), value: 'yes' },
   ];
 
   return (
     <Dialog
-      title="Do you wish to disable auto-connect to IDE?"
-      subtitle="You can also configure this in /config"
+      title={t('Do you wish to disable auto-connect to IDE?')}
+      subtitle={t('You can also configure this in /config')}
       onCancel={handleCancel}
       color="ide"
     >

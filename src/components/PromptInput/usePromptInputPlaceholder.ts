@@ -5,6 +5,7 @@ import { useAppState } from 'src/state/AppState.js'
 import { getGlobalConfig } from 'src/utils/config.js'
 import { getExampleCommandFromCache } from 'src/utils/exampleCommands.js'
 import { isQueuedCommandEditable } from 'src/utils/messageQueueManager.js'
+import { t, tf } from 'src/i18n/t.js'
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -40,7 +41,7 @@ export function usePromptInputPlaceholder({
         viewingAgentName.length > MAX_TEAMMATE_NAME_LENGTH
           ? viewingAgentName.slice(0, MAX_TEAMMATE_NAME_LENGTH - 3) + '...'
           : viewingAgentName
-      return `Message @${displayName}…`
+      return tf('Message @{name}', { name: displayName })
     }
 
     // Show queue hint if user has not seen it yet.
@@ -51,7 +52,7 @@ export function usePromptInputPlaceholder({
       (getGlobalConfig().queuedCommandUpHintCount || 0) <
         NUM_TIMES_QUEUE_HINT_SHOWN
     ) {
-      return 'Press up to edit queued messages'
+      return t('Press up to edit queued messages')
     }
 
     // Show example command if user has not submitted yet and suggestions are enabled.

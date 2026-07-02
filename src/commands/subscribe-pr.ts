@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import type { Command, LocalCommandCall } from '../types/command.js'
 import { detectCurrentRepositoryWithHost } from '../utils/detectRepository.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { t } from '../i18n/t.js'
 
 /**
  * File-backed store for PR webhook subscriptions.
@@ -164,7 +165,9 @@ const subscribePr = {
   type: 'local',
   name: 'subscribe-pr',
   aliases: ['watch-pr'],
-  description: 'Subscribe to GitHub PR activity (comments, CI, reviews)',
+  get description() {
+    return t('Subscribe to GitHub PR activity (comments, CI, reviews)')
+  },
   argumentHint: '<pr-url-or-number>',
   supportsNonInteractive: false,
   isHidden: true,

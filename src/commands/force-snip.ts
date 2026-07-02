@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { Command, LocalCommandCall } from '../types/command.js'
 import type { Message } from '../types/message.js'
+import { t } from '../i18n/t.js'
 
 /**
  * Insert a snip boundary into the message array.
@@ -50,7 +51,9 @@ const call: LocalCommandCall = async (_args, context) => {
 const forceSnip = {
   type: 'local',
   name: 'force-snip',
-  description: 'Force snip conversation history at current point',
+  get description() {
+    return t('Force snip conversation history at current point')
+  },
   supportsNonInteractive: true,
   isHidden: false,
   load: () => Promise.resolve({ call }),

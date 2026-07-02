@@ -40,6 +40,7 @@ import { Spinner } from './Spinner.js';
 import { TagTabs } from './TagTabs.js';
 import TextInput from './TextInput.js';
 import { type TreeNode, TreeSelect } from './ui/TreeSelect.js';
+import { t, tf } from '../i18n/t.js';
 
 type AgenticSearchState =
   | { status: 'idle' }
@@ -124,9 +125,11 @@ function buildLogLabel(
   const prefixWidth = isGroupHeader && forkCount > 0 ? PARENT_PREFIX_WIDTH : isChild ? CHILD_PREFIX_WIDTH : 0;
 
   const sessionCountSuffix =
-    isGroupHeader && forkCount > 0 ? ` (+${forkCount} other ${forkCount === 1 ? 'session' : 'sessions'})` : '';
+    isGroupHeader && forkCount > 0
+      ? ` (+${forkCount} ${t(forkCount === 1 ? 'other {count} session' : 'other {count} sessions').replace('{count}', String(forkCount))})`
+      : '';
 
-  const sidechainSuffix = log.isSidechain ? ' (sidechain)' : '';
+  const sidechainSuffix = log.isSidechain ? t(' (sidechain)') : '';
 
   const maxSummaryWidth = maxLabelWidth - prefixWidth - sidechainSuffix.length - sessionCountSuffix.length;
   const truncatedSummary = normalizeAndTruncateToWidth(getLogDisplayTitle(log), maxSummaryWidth);
@@ -510,7 +513,7 @@ export function LogSelector({
 
     return displayedLogs.map((log, index) => {
       const rawSummary = getLogDisplayTitle(log);
-      const summaryWithSidechain = rawSummary + (log.isSidechain ? ' (sidechain)' : '');
+      const summaryWithSidechain = rawSummary + (log.isSidechain ? t(' (sidechain)') : '');
       const summary = normalizeAndTruncateToWidth(summaryWithSidechain, maxLabelWidth);
 
       const baseDescription = formatLogMetadata(log);
@@ -857,7 +860,7 @@ export function LogSelector({
     filterIndicators.push(currentBranch);
   }
   if (hasMultipleWorktrees && !showAllWorktrees) {
-    filterIndicators.push('current worktree');
+    filterIndicators.push(t('current worktree'));
   }
 
   const showAdditionalFilterLine = filterIndicators.length > 0 && viewMode !== 'search';
@@ -915,7 +918,7 @@ export function LogSelector({
       ) : (
         <Box flexShrink={0}>
           <Text bold color="suggestion">
-            Resume Session
+            {t('Resume Session')}
             {viewMode === 'list' && displayedLogs.length > visibleCount && (
               <Text dimColor>
                 {' '}
@@ -946,7 +949,7 @@ export function LogSelector({
       {agenticSearchState.status === 'searching' && (
         <Box paddingLeft={1} flexShrink={0}>
           <Spinner />
-          <Text> Searching…</Text>
+          <Text> {t('Searching…')}</Text>
         </Box>
       )}
 
@@ -954,7 +957,7 @@ export function LogSelector({
       {agenticSearchState.status === 'results' && agenticSearchState.results.length > 0 && (
         <Box paddingLeft={1} marginBottom={1} flexShrink={0}>
           <Text dimColor italic>
-            Claude found these results:
+            {t('Claude found these results:')}
           </Text>
         </Box>
       )}
@@ -965,7 +968,7 @@ export function LogSelector({
         filteredLogs.length === 0 && (
           <Box paddingLeft={1} marginBottom={1} flexShrink={0}>
             <Text dimColor italic>
-              No matching sessions found.
+              {t('No matching sessions found.')}
             </Text>
           </Box>
         )}
@@ -974,7 +977,7 @@ export function LogSelector({
       {agenticSearchState.status === 'error' && filteredLogs.length === 0 && (
         <Box paddingLeft={1} marginBottom={1} flexShrink={0}>
           <Text dimColor italic>
-            No matching sessions found.
+            {t('No matching sessions found.')}
           </Text>
         </Box>
       )}
@@ -992,7 +995,7 @@ export function LogSelector({
                 {isAgenticSearchOptionFocused ? figures.pointer : ' '}
               </Text>
               <Text color={isAgenticSearchOptionFocused ? 'suggestion' : undefined} bold={isAgenticSearchOptionFocused}>
-                Search deeply using Claude →
+                {t('Search deeply using Claude')} →
               </Text>
             </Box>
             <Box height={1} />
@@ -1002,13 +1005,13 @@ export function LogSelector({
       {/* Hide session list when agentic search is in progress */}
       {agenticSearchState.status === 'searching' ? null : viewMode === 'rename' && focusedLog ? (
         <Box paddingLeft={2} flexDirection="column">
-          <Text bold>Rename session:</Text>
+          <Text bold>{t('Rename session:')}</Text>
           <Box paddingTop={1}>
             <TextInput
               value={renameValue}
               onChange={setRenameValue}
               onSubmit={handleRenameSubmit}
-              placeholder={getLogDisplayTitle(focusedLog!, 'Enter new session name')}
+              placeholder={getLogDisplayTitle(focusedLog!, t('Enter new session name'))}
               columns={columns}
               cursorOffset={renameCursorOffset}
               onChangeCursorOffset={setRenameCursorOffset}
@@ -1079,50 +1082,55 @@ export function LogSelector({
       )}
       <Box paddingLeft={2}>
         {exitState.pending ? (
-          <Text dimColor>Press {exitState.keyName} again to exit</Text>
+          <Text dimColor>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : viewMode === 'rename' ? (
           <Text dimColor>
             <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="save" />
+              <KeyboardShortcutHint shortcut="Enter" action={t('save')} />
               <ConfigurableShortcutHint
                 action="confirm:no"
                 context="Confirmation"
                 fallback="Esc"
-                description="cancel"
+                description={t('cancel')}
               />
             </Byline>
           </Text>
         ) : agenticSearchState.status === 'searching' ? (
           <Text dimColor>
             <Byline>
-              <Text>Searching with Claude…</Text>
+              <Text>{t('Searching with Claude…')}</Text>
               <ConfigurableShortcutHint
                 action="confirm:no"
                 context="Confirmation"
                 fallback="Esc"
-                description="cancel"
+                description={t('cancel')}
               />
             </Byline>
           </Text>
         ) : isAgenticSearchOptionFocused ? (
           <Text dimColor>
             <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="search" />
-              <KeyboardShortcutHint shortcut="↓" action="skip" />
+              <KeyboardShortcutHint shortcut="Enter" action={t('search')} />
+              <KeyboardShortcutHint shortcut="↓" action={t('skip')} />
               <ConfigurableShortcutHint
                 action="confirm:no"
                 context="Confirmation"
                 fallback="Esc"
-                description="cancel"
+                description={t('cancel')}
               />
             </Byline>
           </Text>
         ) : viewMode === 'search' ? (
           <Text dimColor>
             <Byline>
-              <Text>{isSearching && isDeepSearchEnabled ? 'Searching…' : 'Type to Search'}</Text>
-              <KeyboardShortcutHint shortcut="Enter" action="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="clear" />
+              <Text>{isSearching && isDeepSearchEnabled ? t('Searching…') : t('Type to Search')}</Text>
+              <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+              <ConfigurableShortcutHint
+                action="confirm:no"
+                context="Confirmation"
+                fallback="Esc"
+                description={t('clear')}
+              />
             </Byline>
           </Text>
         ) : (
@@ -1131,24 +1139,24 @@ export function LogSelector({
               {onToggleAllProjects && (
                 <KeyboardShortcutHint
                   shortcut="Ctrl+A"
-                  action={`show ${showAllProjects ? 'current dir' : 'all projects'}`}
+                  action={showAllProjects ? t('show current dir') : t('show all projects')}
                 />
               )}
-              {currentBranch && <KeyboardShortcutHint shortcut="Ctrl+B" action="toggle branch" />}
+              {currentBranch && <KeyboardShortcutHint shortcut="Ctrl+B" action={t('toggle branch')} />}
               {hasMultipleWorktrees && (
                 <KeyboardShortcutHint
                   shortcut="Ctrl+W"
-                  action={`show ${showAllWorktrees ? 'current worktree' : 'all worktrees'}`}
+                  action={showAllWorktrees ? t('show current worktree') : t('show all worktrees')}
                 />
               )}
-              <KeyboardShortcutHint shortcut="Ctrl+V" action="preview" />
-              <KeyboardShortcutHint shortcut="Ctrl+R" action="rename" />
-              <Text>Type to search</Text>
+              <KeyboardShortcutHint shortcut="Ctrl+V" action={t('preview')} />
+              <KeyboardShortcutHint shortcut="Ctrl+R" action={t('rename')} />
+              <Text>{t('Type to search')}</Text>
               <ConfigurableShortcutHint
                 action="confirm:no"
                 context="Confirmation"
                 fallback="Esc"
-                description="cancel"
+                description={t('cancel')}
               />
               {getExpandCollapseHint() && <Text>{getExpandCollapseHint()}</Text>}
             </Byline>

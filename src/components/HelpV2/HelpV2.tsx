@@ -12,6 +12,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Link, Text, Tab, Tabs, Pane } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { Commands } from './Commands.js';
+import { t } from '../../i18n/t.js';
 import { General } from './General.js';
 
 type Props = {
@@ -27,7 +28,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
   // footer since Tabs won't shrink to fit. Let the modal slot handle sizing.
   const insideModal = useIsInsideModal();
 
-  const close = () => onClose('Help dialog dismissed', { display: 'system' });
+  const close = () => onClose(t('Help dialog dismissed'), { display: 'system' });
   useKeybinding('help:dismiss', close, { context: 'Help' });
   const exitState = useExitOnCtrlCDWithKeybindings(close);
   const dismissShortcut = useShortcutDisplay('help:dismiss', 'Help', 'esc');

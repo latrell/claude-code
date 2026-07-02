@@ -7,6 +7,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { useMergedTools } from '../../hooks/useMergedTools.js';
 import { Box, Text } from '@anthropic/ink';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
+import { t } from '../../i18n/t.js';
 import type { Tools } from '../../Tool.js';
 import {
   type ResolvedAgent,
@@ -124,7 +125,7 @@ export function AgentsMenu({ tools, onExit }: Props): React.ReactNode {
             agents={resolvedAgents}
             onBack={() => {
               const exitMessage = changes.length > 0 ? `Agent changes:\n${changes.join('\n')}` : undefined;
-              onExit(exitMessage ?? 'Agents dialog dismissed', {
+              onExit(exitMessage ?? t('Agents dialog dismissed'), {
                 display: changes.length === 0 ? 'system' : undefined,
               });
             }}

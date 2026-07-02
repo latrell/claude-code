@@ -5,6 +5,7 @@ import { getShortcutDisplay } from '../keybindings/shortcutFormat.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { InVirtualListContext } from './messageActions.js';
+import { t } from '../i18n/t.js';
 
 // Context to track if we're inside a sub agent
 // Similar to MessageResponseContext, this helps us avoid showing
@@ -31,5 +32,8 @@ export function CtrlOToExpand(): React.ReactNode {
 
 export function ctrlOToExpand(): string {
   const shortcut = getShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
-  return chalk.dim(`(${shortcut} to expand)`);
+  const template = t('{shortcut} to {action}');
+  const action = t('expand');
+  const text = template.replace('{shortcut}', shortcut).replace('{action}', action);
+  return chalk.dim(`(${text})`);
 }

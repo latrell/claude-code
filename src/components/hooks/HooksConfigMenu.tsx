@@ -13,6 +13,7 @@
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
+import { t } from '../../i18n/t.js';
 import { useAppState, useAppStateStore } from 'src/state/AppState.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useSettingsChange } from '../../hooks/useSettingsChange.js';
@@ -100,7 +101,7 @@ export function HooksConfigMenu({ toolNames, onExit }: Props): React.ReactNode {
 
   // Handler for exiting the dialog
   const handleExit = useCallback(() => {
-    onExit('Hooks dialog dismissed', { display: 'system' });
+    onExit(t('Hooks dialog dismissed'), { display: 'system' });
   }, [onExit]);
 
   // Escape handling for select-event mode - exit the menu

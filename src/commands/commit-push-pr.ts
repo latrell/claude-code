@@ -6,6 +6,7 @@ import {
 import { getDefaultBranch } from '../utils/git.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
+import { t } from '../i18n/t.js'
 
 const ALLOWED_TOOLS = [
   'Bash(git checkout --branch:*)',
@@ -108,7 +109,9 @@ Return the PR URL when you're done, so the user can see it.`
 const command = {
   type: 'prompt',
   name: 'commit-push-pr',
-  description: 'Commit, push, and open a PR',
+  get description() {
+    return t('Commit, push, and open a PR')
+  },
   allowedTools: ALLOWED_TOOLS,
   get contentLength() {
     // Use 'main' as estimate for content length calculation

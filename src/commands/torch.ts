@@ -1,5 +1,6 @@
 import type { Command, LocalJSXCommandOnDone } from '../types/command.js'
 import type { ReactNode } from 'react'
+import { t } from '../i18n/t.js'
 
 const call = async (onDone: LocalJSXCommandOnDone): Promise<ReactNode> => {
   onDone(
@@ -12,7 +13,9 @@ const call = async (onDone: LocalJSXCommandOnDone): Promise<ReactNode> => {
 export default {
   type: 'local-jsx',
   name: 'torch',
-  description: '[INTERNAL] Development debug command (reserved)',
+  get description() {
+    return t('[INTERNAL] Development debug command (reserved)')
+  },
   isEnabled: () => true,
   isHidden: true,
   load: () => Promise.resolve({ call }),

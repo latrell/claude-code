@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { useDebouncedDigitInput } from './useDebouncedDigitInput.js';
 import type { FeedbackSurveyResponse } from './utils.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   onSelect: (option: FeedbackSurveyResponse) => void;
@@ -42,28 +43,28 @@ export function FeedbackSurveyView({
     <Box flexDirection="column" marginTop={1}>
       <Box>
         <Text color="ansi:cyan">● </Text>
-        <Text bold>{message}</Text>
+        <Text bold>{t(message)}</Text>
       </Box>
 
       <Box marginLeft={2}>
         <Box width={10}>
           <Text>
-            <Text color="ansi:cyan">1</Text>: Bad
+            <Text color="ansi:cyan">1</Text>: {t('Bad')}
           </Text>
         </Box>
         <Box width={10}>
           <Text>
-            <Text color="ansi:cyan">2</Text>: Fine
+            <Text color="ansi:cyan">2</Text>: {t('Fine')}
           </Text>
         </Box>
         <Box width={10}>
           <Text>
-            <Text color="ansi:cyan">3</Text>: Good
+            <Text color="ansi:cyan">3</Text>: {t('Good')}
           </Text>
         </Box>
         <Box>
           <Text>
-            <Text color="ansi:cyan">0</Text>: Dismiss
+            <Text color="ansi:cyan">0</Text>: {t('Dismiss')}
           </Text>
         </Box>
       </Box>

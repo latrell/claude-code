@@ -4,6 +4,7 @@ import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { useAppState } from '../../state/AppState.js';
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { formatTokens } from '../../utils/format.js';
+import { t, tf } from '../../i18n/t.js';
 
 function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }) {
   const elapsed = useElapsedTime(task.startTime, task.status === 'running');
@@ -27,9 +28,11 @@ function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boo
 }
 
 function getHint(pillFocused: boolean, viewedTask: LocalAgentTaskState | null): string {
-  if (pillFocused) return '↑/↓ to select · Enter to view';
-  if (!viewedTask) return 'shift+↓ to manage background agents';
-  return viewedTask.status === 'running' ? 'shift+↓ to manage · x to stop' : 'shift+↓ to manage · x to clear';
+  if (pillFocused) return t('up/down to select · Enter to view');
+  if (!viewedTask) return t('shift+downarrow to manage background agents');
+  return viewedTask.status === 'running'
+    ? t('shift+downarrow to manage · x to stop')
+    : t('shift+downarrow to manage · x to clear');
 }
 
 export function BackgroundAgentSelector(): React.ReactNode {

@@ -10,6 +10,7 @@ import { Box, Text, Link } from '@anthropic/ink';
 import * as React from 'react';
 import figures from 'figures';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { t, tf } from '../../i18n/t.js';
 import type { VimMode, PromptInputMode } from '../../types/textInputTypes.js';
 import type { ToolPermissionContext } from '../../Tool.js';
 import { isVimModeEnabled } from './utils.js';
@@ -205,7 +206,7 @@ export function PromptInputFooterLeftSide({
   if (isPasting) {
     return (
       <Text dimColor key="pasting-message">
-        Pasting text…
+        {t('Pasting text…')}
       </Text>
     );
   }
@@ -219,7 +220,7 @@ export function PromptInputFooterLeftSide({
       )}
       {showVim ? (
         <Text dimColor key="vim-insert">
-          -- INSERT --
+          {t('-- INSERT --')}
         </Text>
       ) : null}
       <ModeIndicator
@@ -341,7 +342,7 @@ function ModeIndicator({
     count(Object.values(teamContext.teammates), t => t.name !== 'team-lead') > 0;
 
   if (mode === 'bash') {
-    return <Text color="bashBorder">! for bash mode</Text>;
+    return <Text color="bashBorder">{t('! for bash mode')}</Text>;
   }
 
   const currentMode = toolPermissionContext?.mode;
@@ -382,11 +383,16 @@ function ModeIndicator({
   const modePart =
     currentMode && hasActiveMode && !getIsRemoteMode() ? (
       <Text color={getModeColor(currentMode)} key="mode">
-        {permissionModeSymbol(currentMode)} {permissionModeTitle(currentMode).toLowerCase()} on
+        {permissionModeSymbol(currentMode)} {tf('{mode} on', { mode: permissionModeTitle(currentMode).toLowerCase() })}
         {shouldShowModeHint && (
           <Text dimColor>
             {' '}
-            <KeyboardShortcutHint shortcut={modeCycleShortcut} action="cycle" parens />
+            <KeyboardShortcutHint
+              shortcut={modeCycleShortcut}
+              action={t('cycle')}
+              parens
+              template={t('({shortcut} to {action})')}
+            />
           </Text>
         )}
       </Text>
@@ -457,7 +463,11 @@ function ModeIndicator({
   if (isViewingCompletedTeammate) {
     parts.push(
       <Text dimColor key="esc-return">
-        <KeyboardShortcutHint shortcut={escShortcut} action="return to team lead" />
+        <KeyboardShortcutHint
+          shortcut={escShortcut}
+          action={t('return to team lead')}
+          template={t('{shortcut} to {action}')}
+        />
       </Text>,
     );
   } else if ((feature('PROACTIVE') || feature('KAIROS')) && hasNextTick) {
@@ -512,7 +522,7 @@ function ModeIndicator({
   if (parts.length === 0 && !tasksPart && !modePart && showHint) {
     parts.push(
       <Text dimColor key="shortcuts-hint">
-        ? for shortcuts
+        {t('? for shortcuts')}
       </Text>,
     );
   }
@@ -544,12 +554,18 @@ function ModeIndicator({
     parts.push(
       <Text dimColor key="selection-copy">
         <Byline>
-          {!copyOnSelect && <KeyboardShortcutHint shortcut="ctrl+c" action="copy" />}
+          {!copyOnSelect && (
+            <KeyboardShortcutHint shortcut="ctrl+c" action={t('copy')} template={t('{shortcut} to {action}')} />
+          )}
           {isXtermJs() &&
             (altClickFailed ? (
               <Text>set macOptionClickForcesSelection in VS Code settings</Text>
             ) : (
-              <KeyboardShortcutHint shortcut={isMac ? 'option+click' : 'shift+click'} action="native select" />
+              <KeyboardShortcutHint
+                shortcut={isMac ? 'option+click' : 'shift+click'}
+                action={t('native select')}
+                template={t('{shortcut} to {action}')}
+              />
             ))}
         </Byline>
       </Text>,
@@ -565,7 +581,7 @@ function ModeIndicator({
   ) {
     parts.push(
       <Text dimColor key="voice-hint">
-        hold {voiceKeyShortcut} to speak
+        {tf('hold {key} to speak', { key: voiceKeyShortcut })}
       </Text>,
     );
   }
@@ -574,9 +590,9 @@ function ModeIndicator({
     parts.push(
       <Text dimColor key="manage-tasks">
         {tasksSelected ? (
-          <KeyboardShortcutHint shortcut="Enter" action="view tasks" />
+          <KeyboardShortcutHint shortcut="Enter" action={t('view tasks')} template={t('{shortcut} to {action}')} />
         ) : (
-          <KeyboardShortcutHint shortcut="↓" action="manage" />
+          <KeyboardShortcutHint shortcut="↓" action={t('manage')} template={t('{shortcut} to {action}')} />
         )}
       </Text>,
     );
@@ -652,25 +668,26 @@ function getSpinnerHintParts(
   // teammates to cycle to
   const showToggleHint = hasTaskItems || hasTeammates;
 
+  const hTemplate = t('{shortcut} to {action}');
   return [
     ...(isLoading
       ? [
           <Text dimColor key="esc">
-            <KeyboardShortcutHint shortcut={escShortcut} action="interrupt" />
+            <KeyboardShortcutHint shortcut={escShortcut} action={t('interrupt')} template={hTemplate} />
           </Text>,
         ]
       : []),
     ...(!isLoading && hasRunningAgentTasks && !isKillAgentsConfirmShowing
       ? [
           <Text dimColor key="kill-agents">
-            <KeyboardShortcutHint shortcut={killAgentsShortcut} action="stop agents" />
+            <KeyboardShortcutHint shortcut={killAgentsShortcut} action={t('stop agents')} template={hTemplate} />
           </Text>,
         ]
       : []),
     ...(showToggleHint
       ? [
           <Text dimColor key="toggle-tasks">
-            <KeyboardShortcutHint shortcut={todosShortcut} action={toggleAction} />
+            <KeyboardShortcutHint shortcut={todosShortcut} action={t(toggleAction)} template={hTemplate} />
           </Text>,
         ]
       : []),

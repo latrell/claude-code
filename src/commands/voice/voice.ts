@@ -9,6 +9,7 @@ import {
   updateSettingsForSource,
 } from '../../utils/settings/settings.js'
 import { isVoiceAvailable } from '../../voice/voiceModeEnabled.js'
+import { t, tf } from '../../i18n/t.js'
 
 const LANG_HINT_MAX_SHOWS = 2
 
@@ -17,7 +18,7 @@ export const call: LocalCommandCall = async args => {
   if (!isVoiceAvailable()) {
     return {
       type: 'text' as const,
-      value: 'Voice mode is not available.',
+      value: t('Voice mode is not available.'),
     }
   }
 
@@ -33,15 +34,18 @@ export const call: LocalCommandCall = async args => {
     if (result.error) {
       return {
         type: 'text' as const,
-        value:
+        value: t(
           'Failed to update settings. Check your settings file for syntax errors.',
+        ),
       }
     }
     settingsChangeDetector.notifyChange('userSettings')
     const key = getShortcutDisplay('voice:pushToTalk', 'Chat', 'Space')
     return {
       type: 'text' as const,
-      value: `Voice mode switched to Doubao ASR. Hold ${key} to record.`,
+      value: tf('Voice mode switched to Doubao ASR. Hold {key} to record.', {
+        key,
+      }),
     }
   }
 
@@ -53,15 +57,18 @@ export const call: LocalCommandCall = async args => {
     if (result.error) {
       return {
         type: 'text' as const,
-        value:
+        value: t(
           'Failed to update settings. Check your settings file for syntax errors.',
+        ),
       }
     }
     settingsChangeDetector.notifyChange('userSettings')
     const key = getShortcutDisplay('voice:pushToTalk', 'Chat', 'Space')
     return {
       type: 'text' as const,
-      value: `Voice mode switched to Anthropic STT. Hold ${key} to record.`,
+      value: tf('Voice mode switched to Anthropic STT. Hold {key} to record.', {
+        key,
+      }),
     }
   }
 
@@ -73,15 +80,16 @@ export const call: LocalCommandCall = async args => {
     if (result.error) {
       return {
         type: 'text' as const,
-        value:
+        value: t(
           'Failed to update settings. Check your settings file for syntax errors.',
+        ),
       }
     }
     settingsChangeDetector.notifyChange('userSettings')
     logEvent('tengu_voice_toggled', { enabled: false })
     return {
       type: 'text' as const,
-      value: 'Voice mode disabled.',
+      value: t('Voice mode disabled.'),
     }
   }
 
@@ -100,7 +108,8 @@ export const call: LocalCommandCall = async args => {
     return {
       type: 'text' as const,
       value:
-        recording.reason ?? 'Voice mode is not available in this environment.',
+        recording.reason ??
+        t('Voice mode is not available in this environment.'),
     }
   }
 
@@ -108,8 +117,9 @@ export const call: LocalCommandCall = async args => {
   if (provider !== 'doubao' && !isVoiceStreamAvailable()) {
     return {
       type: 'text' as const,
-      value:
+      value: t(
         'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+      ),
     }
   }
 
@@ -120,11 +130,13 @@ export const call: LocalCommandCall = async args => {
   const deps = await checkVoiceDependencies()
   if (!deps.available) {
     const hint = deps.installCommand
-      ? `\nInstall audio recording tools? Run: ${deps.installCommand}`
-      : '\nInstall SoX manually for audio recording.'
+      ? tf('\nInstall audio recording tools? Run: {cmd}', {
+          cmd: deps.installCommand,
+        })
+      : `\n${t('Install SoX manually for audio recording.')}`
     return {
       type: 'text' as const,
-      value: `No audio recording tool found.${hint}`,
+      value: t('No audio recording tool found.') + hint,
     }
   }
 
@@ -141,7 +153,10 @@ export const call: LocalCommandCall = async args => {
     }
     return {
       type: 'text' as const,
-      value: `Microphone access is denied. To enable it, go to ${guidance}, then run /voice again.`,
+      value: tf(
+        'Microphone access is denied. To enable it, go to {guidance}, then run /voice again.',
+        { guidance },
+      ),
     }
   }
 
@@ -153,8 +168,9 @@ export const call: LocalCommandCall = async args => {
   if (result.error) {
     return {
       type: 'text' as const,
-      value:
+      value: t(
         'Failed to update settings. Check your settings file for syntax errors.',
+      ),
     }
   }
   settingsChangeDetector.notifyChange('userSettings')
@@ -170,9 +186,9 @@ export const call: LocalCommandCall = async args => {
     const priorCount = langChanged ? 0 : (cfg.voiceLangHintShownCount ?? 0)
     const showHint = !stt.fellBackFrom && priorCount < LANG_HINT_MAX_SHOWS
     if (stt.fellBackFrom) {
-      langNote = ` Note: "${stt.fellBackFrom}" is not a supported dictation language; using English. Change it via /config.`
+      langNote = ` ${tf('Note: "{from}" is not a supported dictation language; using English. Change it via /config.', { from: stt.fellBackFrom })}`
     } else if (showHint) {
-      langNote = ` Dictation language: ${stt.code} (/config to change).`
+      langNote = ` ${tf('Dictation language: {lang} (/config to change).', { lang: stt.code })}`
     }
     if (langChanged || showHint) {
       saveGlobalConfig(prev => ({
@@ -184,6 +200,10 @@ export const call: LocalCommandCall = async args => {
   }
   return {
     type: 'text' as const,
-    value: `Voice mode enabled (${providerLabel}). Hold ${key} to record.${langNote}`,
+    value:
+      tf('Voice mode enabled ({provider}). Hold {key} to record.', {
+        provider: providerLabel,
+        key,
+      }) + langNote,
   }
 }

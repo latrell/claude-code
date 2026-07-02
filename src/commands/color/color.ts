@@ -14,6 +14,7 @@ import {
   saveAgentColor,
 } from '../../utils/sessionStorage.js'
 import { isTeammate } from '../../utils/teammate.js'
+import { t, tf } from '../../i18n/t.js'
 
 const RESET_ALIASES = ['default', 'reset', 'none', 'gray', 'grey'] as const
 
@@ -25,7 +26,9 @@ export async function call(
   // Teammates cannot set their own color
   if (isTeammate()) {
     onDone(
-      'Cannot set color: This session is a swarm teammate. Teammate colors are assigned by the team leader.',
+      t(
+        'Cannot set color: This session is a swarm teammate. Teammate colors are assigned by the team leader.',
+      ),
       { display: 'system' },
     )
     return null
@@ -33,9 +36,14 @@ export async function call(
 
   if (!args || args.trim() === '') {
     const colorList = AGENT_COLORS.join(', ')
-    onDone(`Please provide a color. Available colors: ${colorList}, default`, {
-      display: 'system',
-    })
+    onDone(
+      tf('Please provide a color. Available colors: {colors}, default', {
+        colors: colorList,
+      }),
+      {
+        display: 'system',
+      },
+    )
     return null
   }
 
@@ -59,14 +67,17 @@ export async function call(
       },
     }))
 
-    onDone('Session color reset to default', { display: 'system' })
+    onDone(t('Session color reset to default'), { display: 'system' })
     return null
   }
 
   if (!AGENT_COLORS.includes(colorArg as AgentColorName)) {
     const colorList = AGENT_COLORS.join(', ')
     onDone(
-      `Invalid color "${colorArg}". Available colors: ${colorList}, default`,
+      tf('Invalid color "{color}". Available colors: {colors}, default', {
+        color: colorArg,
+        colors: colorList,
+      }),
       { display: 'system' },
     )
     return null
@@ -88,6 +99,8 @@ export async function call(
     },
   }))
 
-  onDone(`Session color set to: ${colorArg}`, { display: 'system' })
+  onDone(tf('Session color set to: {color}', { color: colorArg }), {
+    display: 'system',
+  })
   return null
 }

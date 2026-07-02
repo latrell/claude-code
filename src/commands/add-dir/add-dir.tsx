@@ -10,6 +10,7 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { applyPermissionUpdate, persistPermissionUpdate } from '../../utils/permissions/PermissionUpdate.js';
 import type { PermissionUpdateDestination } from '../../utils/permissions/PermissionUpdateSchema.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
+import { t, tf } from '../../i18n/t.js';
 import { addDirHelpMessage, validateDirectoryForWorkspace } from './validation.js';
 
 function AddDirError({
@@ -82,15 +83,18 @@ export async function call(
     if (remember) {
       try {
         persistPermissionUpdate(permissionUpdate);
-        message = `Added ${chalk.bold(path)} as a working directory and saved to local settings`;
+        message = tf('Added {path} as a working directory and saved to local settings', { path: chalk.bold(path) });
       } catch (error) {
-        message = `Added ${chalk.bold(path)} as a working directory. Failed to save to local settings: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        message = tf('Added {path} as a working directory. Failed to save to local settings: {error}', {
+          path: chalk.bold(path),
+          error: error instanceof Error ? error.message : t('Unknown error'),
+        });
       }
     } else {
-      message = `Added ${chalk.bold(path)} as a working directory for this session`;
+      message = tf('Added {path} as a working directory for this session', { path: chalk.bold(path) });
     }
 
-    const messageWithHint = `${message} ${chalk.dim('· /permissions to manage')}`;
+    const messageWithHint = `${message} ${chalk.dim(t('· /permissions to manage'))}`;
     onDone(messageWithHint);
   };
 
@@ -102,7 +106,7 @@ export async function call(
         permissionContext={appState.toolPermissionContext}
         onAddDirectory={handleAddDirectory}
         onCancel={() => {
-          onDone('Did not add a working directory.');
+          onDone(t('Did not add a working directory.'));
         }}
       />
     );
@@ -122,7 +126,7 @@ export async function call(
       permissionContext={appState.toolPermissionContext}
       onAddDirectory={handleAddDirectory}
       onCancel={() => {
-        onDone(`Did not add ${chalk.bold(result.absolutePath)} as a working directory.`);
+        onDone(tf('Did not add {path} as a working directory.', { path: chalk.bold(result.absolutePath) }));
       }}
     />
   );

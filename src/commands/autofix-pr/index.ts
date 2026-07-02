@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import type { Command } from '../../types/command.js'
+import { t } from '../../i18n/t.js'
 
 // `feature()` from bun:bundle can only appear directly inside an if statement
 // or ternary condition (Bun macro restriction). A named function with a
@@ -12,7 +13,9 @@ function isAutofixPrEnabled(): boolean {
 const autofixPr: Command = {
   type: 'local-jsx',
   name: 'autofix-pr',
-  description: 'Auto-fix CI failures on a pull request',
+  get description() {
+    return t('Auto-fix CI failures on a pull request')
+  },
   // Avoid `<x>` in hints — REPL markdown renderer eats angle-bracketed
   // tokens as HTML tags. Uppercase placeholders survive intact.
   argumentHint: 'PR_NUMBER | stop | OWNER/REPO#N',

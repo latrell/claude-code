@@ -5,6 +5,7 @@ import { useRegisterOverlay } from '../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../types/command.js';
 import { getAutonomyCommandText, getAutonomyDeepSectionText, getAutonomyStatusText } from '../cli/handlers/autonomy.js';
 import { listAutonomyFlows, type AutonomyFlowRecord } from '../utils/autonomyFlows.js';
+import { t } from '../i18n/t.js';
 
 type AutonomyAction = {
   label: string;
@@ -174,7 +175,7 @@ function AutonomyPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.Rea
     <Dialog
       title="Autonomy"
       subtitle={`${actions.length} actions`}
-      onCancel={() => onDone('Autonomy panel dismissed', { display: 'system' })}
+      onCancel={() => onDone(t('Autonomy panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide
     >

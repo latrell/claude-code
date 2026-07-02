@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 import { formatNumber } from '../utils/format.js';
 import type { Theme } from '../utils/theme.js';
 
@@ -44,12 +45,12 @@ export function AgentProgressLine({
   // Determine the status text
   const getStatusText = (): string => {
     if (!isResolved) {
-      return lastToolInfo || 'Initializing…';
+      return lastToolInfo || t('Initializing…');
     }
     if (isBackgrounded) {
-      return taskDescription ?? 'Running in the background';
+      return taskDescription ?? t('Running in the background');
     }
-    return 'Done';
+    return t('Done');
   };
 
   return (
@@ -81,8 +82,13 @@ export function AgentProgressLine({
           {!isBackgrounded && (
             <>
               {' · '}
-              {toolUseCount} tool {toolUseCount === 1 ? 'use' : 'uses'}
-              {tokens !== null && <> · {formatNumber(tokens)} tokens</>}
+              {toolUseCount} {toolUseCount === 1 ? t('use') : t('uses')}
+              {tokens !== null && (
+                <>
+                  {' '}
+                  · {formatNumber(tokens)} {t('tokens')}
+                </>
+              )}
             </>
           )}
         </Text>

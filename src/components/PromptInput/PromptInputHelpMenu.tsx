@@ -7,6 +7,7 @@ import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { isFastModeAvailable, isFastModeEnabled } from '../../utils/fastMode.js';
 import { getNewlineInstructions } from './utils.js';
+import { T } from '../../i18n/TText.js';
 
 /** Format a shortcut for display in the help menu (e.g., "ctrl+o" → "ctrl + o") */
 function formatShortcut(shortcut: string): string {
@@ -39,7 +40,9 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
   const terminalShortcutElement = feature('TERMINAL_PANEL') ? (
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_terminal_panel', false) ? (
       <Box>
-        <Text dimColor={dimColor}>{terminalShortcut} for terminal</Text>
+        <T dimColor={dimColor} vars={{ shortcut: terminalShortcut }}>
+          {'{shortcut} for terminal'}
+        </T>
       </Box>
     ) : null
   ) : null;
@@ -48,35 +51,39 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
     <Box paddingX={paddingX} flexDirection="row" gap={gap}>
       <Box flexDirection="column" width={fixedWidth ? 24 : undefined}>
         <Box>
-          <Text dimColor={dimColor}>! for bash mode</Text>
+          <T dimColor={dimColor}>! for bash mode</T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>/ for commands</Text>
+          <T dimColor={dimColor}>/ for commands</T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>@ for file paths</Text>
+          <T dimColor={dimColor}>@ for file paths</T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>& for background</Text>
+          <T dimColor={dimColor}>& for background</T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>/btw for side question</Text>
+          <T dimColor={dimColor}>/btw for side question</T>
         </Box>
       </Box>
       <Box flexDirection="column" width={fixedWidth ? 35 : undefined}>
         <Box>
-          <Text dimColor={dimColor}>double tap esc to clear input</Text>
+          <T dimColor={dimColor}>double tap esc to clear input</T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>
-            {cycleModeShortcut} {process.env.USER_TYPE === 'ant' ? 'to cycle modes' : 'to auto-accept edits'}
-          </Text>
+          <T dimColor={dimColor} vars={{ shortcut: cycleModeShortcut }}>
+            {process.env.USER_TYPE === 'ant' ? '{shortcut} to cycle modes' : '{shortcut} to auto-accept edits'}
+          </T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>{transcriptShortcut} for verbose output</Text>
+          <T dimColor={dimColor} vars={{ shortcut: transcriptShortcut }}>
+            {'{shortcut} for verbose output'}
+          </T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>{todosShortcut} to toggle tasks</Text>
+          <T dimColor={dimColor} vars={{ shortcut: todosShortcut }}>
+            {'{shortcut} to toggle tasks'}
+          </T>
         </Box>
         {terminalShortcutElement}
         <Box>
@@ -85,33 +92,45 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
       </Box>
       <Box flexDirection="column">
         <Box>
-          <Text dimColor={dimColor}>{undoShortcut} to undo</Text>
+          <T dimColor={dimColor} vars={{ shortcut: undoShortcut }}>
+            {'{shortcut} to undo'}
+          </T>
         </Box>
         {getPlatform() !== 'windows' && (
           <Box>
-            <Text dimColor={dimColor}>ctrl + z to suspend</Text>
+            <T dimColor={dimColor}>ctrl + z to suspend</T>
           </Box>
         )}
         <Box>
-          <Text dimColor={dimColor}>{imagePasteShortcut} to paste images</Text>
+          <T dimColor={dimColor} vars={{ shortcut: imagePasteShortcut }}>
+            {'{shortcut} to paste images'}
+          </T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>{modelPickerShortcut} to switch model</Text>
+          <T dimColor={dimColor} vars={{ shortcut: modelPickerShortcut }}>
+            {'{shortcut} to switch model'}
+          </T>
         </Box>
         {isFastModeEnabled() && isFastModeAvailable() && (
           <Box>
-            <Text dimColor={dimColor}>{fastModeShortcut} to toggle fast mode</Text>
+            <T dimColor={dimColor} vars={{ shortcut: fastModeShortcut }}>
+              {'{shortcut} to toggle fast mode'}
+            </T>
           </Box>
         )}
         <Box>
-          <Text dimColor={dimColor}>{stashShortcut} to stash prompt</Text>
+          <T dimColor={dimColor} vars={{ shortcut: stashShortcut }}>
+            {'{shortcut} to stash prompt'}
+          </T>
         </Box>
         <Box>
-          <Text dimColor={dimColor}>{externalEditorShortcut} to edit in $EDITOR</Text>
+          <T dimColor={dimColor} vars={{ shortcut: externalEditorShortcut }}>
+            {'{shortcut} to edit in $EDITOR'}
+          </T>
         </Box>
         {isKeybindingCustomizationEnabled() && (
           <Box>
-            <Text dimColor={dimColor}>/keybindings to customize</Text>
+            <T dimColor={dimColor}>/keybindings to customize</T>
           </Box>
         )}
       </Box>

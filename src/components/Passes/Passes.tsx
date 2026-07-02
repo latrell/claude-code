@@ -13,6 +13,7 @@ import {
   formatCreditAmount,
   getCachedOrFetchPassesEligibility,
 } from '../../services/api/referral.js';
+import { t } from '../../i18n/t.js';
 import type { ReferralRedemptionsResponse, ReferrerRewardInfo } from '../../services/oauth/types.js';
 import { count } from '../../utils/array.js';
 import { logError } from '../../utils/log.js';
@@ -35,11 +36,11 @@ export function Passes({ onDone }: Props): React.ReactNode {
   const [referrerReward, setReferrerReward] = useState<ReferrerRewardInfo | null | undefined>(undefined);
 
   const exitState = useExitOnCtrlCDWithKeybindings(() =>
-    onDone('Guest passes dialog dismissed', { display: 'system' }),
+    onDone(t('Guest passes dialog dismissed'), { display: 'system' }),
   );
 
   const handleCancel = useCallback(() => {
-    onDone('Guest passes dialog dismissed', { display: 'system' });
+    onDone(t('Guest passes dialog dismissed'), { display: 'system' });
   }, [onDone]);
 
   useKeybinding('confirm:no', handleCancel, { context: 'Confirmation' });

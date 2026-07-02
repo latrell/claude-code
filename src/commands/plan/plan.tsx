@@ -10,6 +10,8 @@ import { prepareContextForPlanMode } from '../../utils/permissions/permissionSet
 import { getPlan, getPlanFilePath } from '../../utils/plans.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
 import { renderToString } from '../../utils/staticRender.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 function PlanDisplay({
   planContent,
@@ -22,15 +24,15 @@ function PlanDisplay({
 }): React.ReactNode {
   return (
     <Box flexDirection="column">
-      <Text bold>Current Plan</Text>
+      <T bold>Current Plan</T>
       <Text dimColor>{planPath}</Text>
       <Box marginTop={1}>
         <Text>{planContent}</Text>
       </Box>
       {editorName && (
         <Box marginTop={1}>
-          <Text dimColor>&quot;/plan open&quot;</Text>
-          <Text dimColor> to edit this plan in </Text>
+          <T dimColor>&quot;/plan open&quot;</T>
+          <T dimColor> to edit this plan in </T>
           <Text bold dimColor>
             {editorName}
           </Text>
@@ -62,9 +64,9 @@ export async function call(
     }));
     const description = args.trim();
     if (description && description !== 'open') {
-      onDone('Enabled plan mode', { shouldQuery: true });
+      onDone(t('Enabled plan mode'), { shouldQuery: true });
     } else {
-      onDone('Enabled plan mode');
+      onDone(t('Enabled plan mode'));
     }
     return null;
   }
@@ -74,7 +76,7 @@ export async function call(
   const planPath = getPlanFilePath();
 
   if (!planContent) {
-    onDone('Already in plan mode. No plan written yet.');
+    onDone(t('Already in plan mode. No plan written yet.'));
     return null;
   }
 
@@ -83,9 +85,9 @@ export async function call(
   if (argList[0] === 'open') {
     const result = await editFileInEditor(planPath);
     if (result.error) {
-      onDone(`Failed to open plan in editor: ${result.error}`);
+      onDone(tf('Failed to open plan in editor: {error}', { error: result.error }));
     } else {
-      onDone(`Opened plan in editor: ${planPath}`);
+      onDone(tf('Opened plan in editor: {path}', { path: planPath }));
     }
     return null;
   }

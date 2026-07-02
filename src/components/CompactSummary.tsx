@@ -6,6 +6,7 @@ import type { NormalizedUserMessage } from '../types/message.js';
 import { getUserMessageText } from '../utils/messages.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { MessageResponse } from './MessageResponse.js';
+import { t, tf } from '../i18n/t.js';
 
 type Props = {
   message: NormalizedUserMessage;
@@ -32,19 +33,21 @@ export function CompactSummary({ message, screen }: Props): React.ReactNode {
             <Text color="text">{BLACK_CIRCLE}</Text>
           </Box>
           <Box flexDirection="column">
-            <Text bold>Summarized conversation</Text>
+            <Text bold>{t('Summarized conversation')}</Text>
             {!isTranscriptMode && (
               <MessageResponse>
                 <Box flexDirection="column">
                   <Text dimColor>
-                    Summarized {metadata.messagesSummarized} messages{' '}
-                    {metadata.direction === 'up_to' ? 'up to this point' : 'from this point'}
+                    {tf('Summarized {count} messages {direction}', {
+                      count: metadata.messagesSummarized,
+                      direction: metadata.direction === 'up_to' ? t('up to this point') : t('from this point'),
+                    })}
                   </Text>
                   {metadata.userContext && (
                     <Text dimColor>
-                      Context: {'\u201c'}
-                      {metadata.userContext}
-                      {'\u201d'}
+                      {tf('Context: \u201c{context}\u201d', {
+                        context: metadata.userContext,
+                      })}
                     </Text>
                   )}
                   <Text dimColor>
@@ -79,7 +82,7 @@ export function CompactSummary({ message, screen }: Props): React.ReactNode {
         </Box>
         <Box flexDirection="column">
           <Text bold>
-            Conversation summarized to free up context
+            {t('Conversation summarized to free up context')}
             {!isTranscriptMode && (
               <Text dimColor>
                 {' '}

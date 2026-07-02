@@ -11,12 +11,15 @@ import type {
   LocalJSXCommandContext,
   LocalJSXCommandOnDone,
 } from '../types/command.js'
+import { t } from '../i18n/t.js'
 
 const proactive = {
   bridgeSafe: true,
   type: 'local-jsx',
   name: 'proactive',
-  description: 'Toggle proactive (autonomous) mode',
+  get description() {
+    return t('Toggle proactive (autonomous) mode')
+  },
   isEnabled: () => {
     if (feature('PROACTIVE') || feature('KAIROS')) {
       return true
@@ -36,11 +39,13 @@ const proactive = {
 
         if (mod.isProactiveActive()) {
           mod.deactivateProactive()
-          onDone('Proactive mode disabled', { display: 'system' })
+          onDone(t('Proactive mode disabled'), { display: 'system' })
         } else {
           mod.activateProactive('slash_command')
           onDone(
-            'Proactive mode enabled — model will work autonomously between ticks',
+            t(
+              'Proactive mode enabled — model will work autonomously between ticks',
+            ),
             {
               display: 'system',
               metaMessages: [

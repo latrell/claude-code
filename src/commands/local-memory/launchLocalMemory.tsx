@@ -13,6 +13,7 @@ import {
 import { isValidKey } from '../../utils/localValidate.js';
 import TextInput from '../../components/TextInput.js';
 import { LocalMemoryView } from './LocalMemoryView.js';
+import { t } from '../../i18n/t.js';
 import { parseLocalMemoryArgs } from './parseArgs.js';
 import { launchCommand } from '../_shared/launchCommand.js';
 
@@ -297,7 +298,7 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
       <Dialog
         title="Local Memory"
         subtitle={`${MENU.length} actions`}
-        onCancel={() => closeWith('Local memory panel dismissed')}
+        onCancel={() => closeWith(t('Local memory panel dismissed'))}
         color="background"
         hideInputGuide
       >

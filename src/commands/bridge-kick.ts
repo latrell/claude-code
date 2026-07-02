@@ -1,6 +1,7 @@
 import { getBridgeDebugHandle } from '../bridge/bridgeDebug.js'
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
+import { t } from '../i18n/t.js'
 
 /**
  * Ant-only: inject bridge failure states to manually test recovery paths.
@@ -191,7 +192,9 @@ const call: LocalCommandCall = async args => {
 const bridgeKick = {
   type: 'local',
   name: 'bridge-kick',
-  description: 'Inject bridge failure states for manual recovery testing',
+  get description() {
+    return t('Inject bridge failure states for manual recovery testing')
+  },
   isEnabled: () => process.env.USER_TYPE === 'ant',
   supportsNonInteractive: false,
   load: () => Promise.resolve({ call }),

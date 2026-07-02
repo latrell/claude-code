@@ -3,6 +3,8 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import type { SettingsJson } from '../../utils/settings/types.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { Select } from '../CustomSelect/index.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
 import { extractDangerousSettings, formatDangerousSettingsList } from './utils.js';
@@ -30,15 +32,15 @@ export function ManagedSettingsSecurityDialog({ settings, onAccept, onReject }: 
   }
 
   return (
-    <PermissionDialog color="warning" titleColor="warning" title="Managed settings require approval">
+    <PermissionDialog color="warning" titleColor="warning" title={t('Managed settings require approval')}>
       <Box flexDirection="column" gap={1} paddingTop={1}>
-        <Text>
+        <T>
           Your organization has configured managed settings that could allow execution of arbitrary code or interception
           of your prompts and responses.
-        </Text>
+        </T>
 
         <Box flexDirection="column">
-          <Text dimColor>Settings requiring approval:</Text>
+          <T dimColor>Settings requiring approval:</T>
           {settingsList.map((item, index) => (
             <Box key={index} paddingLeft={2}>
               <Text>
@@ -49,22 +51,26 @@ export function ManagedSettingsSecurityDialog({ settings, onAccept, onReject }: 
           ))}
         </Box>
 
-        <Text>
+        <T>
           Only accept if you trust your organization&apos;s IT administration and expect these settings to be
           configured.
-        </Text>
+        </T>
 
         <Select
           options={[
-            { label: 'Yes, I trust these settings', value: 'accept' },
-            { label: 'No, exit Claude Code', value: 'exit' },
+            { label: t('Yes, I trust these settings'), value: 'accept' },
+            { label: t('No, exit Claude Code'), value: 'exit' },
           ]}
           onChange={value => onChange(value as 'accept' | 'exit')}
           onCancel={() => onChange('exit')}
         />
 
         <Text dimColor>
-          {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to exit</>}
+          {exitState.pending ? (
+            <T vars={{ keyName: exitState.keyName }}>{'Press {keyName} again to exit'}</T>
+          ) : (
+            <T>Enter to confirm · Esc to exit</T>
+          )}
         </Text>
       </Box>
     </PermissionDialog>

@@ -1,6 +1,7 @@
 import { getDirectConnectServerUrl, getSessionId } from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
 import type { LogOption } from '../types/logs.js'
+import { t, tf } from '../i18n/t.js'
 import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
 import { getCwd } from './cwd.js'
 import { getDisplayPath } from './file.js'
@@ -158,8 +159,8 @@ export function getBillingDisplayName(
       return 'Anthropic API'
     }
     case 'openai': {
-      const authMode = env?.OPENAI_AUTH_MODE ?? process.env.OPENAI_AUTH_MODE
-      const baseUrl = env?.OPENAI_BASE_URL ?? process.env.OPENAI_BASE_URL
+      const authMode = env ? env.OPENAI_AUTH_MODE : process.env.OPENAI_AUTH_MODE
+      const baseUrl = env ? env.OPENAI_BASE_URL : process.env.OPENAI_BASE_URL
       if (authMode === 'chatgpt') return 'ChatGPT Subscription'
       if (isDeepSeekBaseUrl(baseUrl)) return 'DeepSeek API'
       if (baseUrl) return 'OpenAI-compatible API'
@@ -277,11 +278,11 @@ export function formatSubagentDisplayLine(
   )
   const modelPart =
     resolvedModel === parentModel
-      ? 'Inherit from parent'
+      ? t('Inherit from parent')
       : getAgentModelDisplay(resolvedModel)
 
   const billingSuffix = billingType ? ` · ${billingType}` : ''
-  return `Subagent: ${providerName} · ${modelPart}${billingSuffix}`
+  return `${t('Subagent:')} ${providerName} · ${modelPart}${billingSuffix}`
 }
 
 /**
@@ -311,9 +312,9 @@ export function calculateOptimalLeftWidth(
  */
 export function formatWelcomeMessage(username: string | null): string {
   if (!username || username.length > MAX_USERNAME_LENGTH) {
-    return 'Welcome back!'
+    return t('Welcome back!')
   }
-  return `Welcome back ${username}!`
+  return tf('Welcome back, {username}!', { username })
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 import {
   type AutoUpdaterResult,
   getLatestVersion,
@@ -212,7 +213,7 @@ export function AutoUpdater({
         <>
           <Box>
             <Text color="text" dimColor wrap="truncate">
-              Auto-updating…
+              {t('Auto-updating…')}
             </Text>
           </Box>
         </>
@@ -221,13 +222,15 @@ export function AutoUpdater({
         showSuccessMessage &&
         updateSemver && (
           <Text color="success" wrap="truncate">
-            ✓ Update installed · Restart to apply
+            {t('✓ Update installed · Restart to apply')}
           </Text>
         )
       )}
       {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && (
         <Text color="error" wrap="truncate">
-          ✗ Auto-update failed &middot; Try <Text bold>claude doctor</Text> or{' '}
+          {t('✗ Auto-update failed · Try ')}
+          <Text bold>claude doctor</Text>
+          {t(' or ')}
           <Text bold>
             {hasLocalInstall
               ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}`

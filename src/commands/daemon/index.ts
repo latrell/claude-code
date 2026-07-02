@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
 import { feature } from 'bun:bundle'
+import { t } from '../../i18n/t.js'
 
 const daemon = {
   type: 'local-jsx',
   name: 'daemon',
-  description: 'Manage background sessions and daemon',
+  get description() {
+    return t('Manage background sessions and daemon')
+  },
   argumentHint: '[status|start|stop|bg|attach|logs|kill]',
   isEnabled: () => {
     if (feature('DAEMON')) return true

@@ -13,6 +13,7 @@ import { Message as MessageComponent } from 'src/components/Message.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { ToolUseLoader } from 'src/components/ToolUseLoader.js';
 import { Box, Text } from '@anthropic/ink';
+import { t, tf } from 'src/i18n/t.js';
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';
 import { findToolByName, type Tools } from 'src/Tool.js';
 import type { Message, ProgressMessage } from 'src/types/message.js';
@@ -307,7 +308,7 @@ export function renderToolResultMessage(
       <Box flexDirection="column">
         <MessageResponse height={1}>
           <Text>
-            Remote agent launched{' '}
+            {t('Remote agent launched')}{' '}
             <Text dimColor>
               · {internal.taskId} · {internal.sessionUrl}
             </Text>
@@ -322,7 +323,7 @@ export function renderToolResultMessage(
       <Box flexDirection="column">
         <MessageResponse height={1}>
           <Text>
-            Backgrounded agent
+            {t('Backgrounded agent')}
             {!isTranscriptMode && (
               <Text dimColor>
                 {' ('}
@@ -356,13 +357,12 @@ export function renderToolResultMessage(
   }
 
   const { agentId, totalDurationMs, totalToolUseCount, totalTokens, usage, content, prompt } = data;
-  const result = [
-    totalToolUseCount === 1 ? '1 tool use' : `${totalToolUseCount} tool uses`,
-    formatNumber(totalTokens) + ' tokens',
-    formatDuration(totalDurationMs),
-  ];
+  const toolUsesText =
+    totalToolUseCount === 1 ? t('1 tool use') : tf('{count} tool uses', { count: totalToolUseCount });
+  const tokensText = tf('{count} tokens', { count: formatNumber(totalTokens) });
+  const result = [toolUsesText, tokensText, formatDuration(totalDurationMs)];
 
-  const completionMessage = `Done (${result.join(' · ')})`;
+  const completionMessage = tf('Done ({result})', { result: result.join(' · ') });
 
   const finalAssistantMessage = createAssistantMessage({
     content: completionMessage,
@@ -524,8 +524,8 @@ export function renderToolUseProgressMessage(
     return (
       <MessageResponse height={1}>
         <Text dimColor>
-          In progress… · <Text bold>{toolUseCount}</Text> tool {toolUseCount === 1 ? 'use' : 'uses'}
-          {tokens && ` · ${formatNumber(tokens)} tokens`} ·{' '}
+          {t('In progress')}… · <Text bold>{toolUseCount}</Text> {t('tool')} {toolUseCount === 1 ? t('use') : t('uses')}
+          {tokens && ` · ${formatNumber(tokens)} ${t('tokens')}`} ·{' '}
           <ConfigurableShortcutHint
             action="app:toggleTranscript"
             context="Global"
@@ -636,7 +636,11 @@ export function renderToolUseProgressMessage(
         </SubAgentProvider>
         {hiddenToolUseCount > 0 && (
           <Text dimColor>
-            +{hiddenToolUseCount} more tool {hiddenToolUseCount === 1 ? 'use' : 'uses'} <CtrlOToExpand />
+            {tf('+{n} more tool {unit}', {
+              n: hiddenToolUseCount,
+              unit: hiddenToolUseCount === 1 ? t('use') : t('uses'),
+            })}{' '}
+            <CtrlOToExpand />
           </Text>
         )}
       </Box>
@@ -836,19 +840,22 @@ export function renderGroupedAgentToolUse(
           {allComplete ? (
             allAsync ? (
               <>
-                <Text bold>{toolUses.length}</Text> background agents launched{' '}
+                <Text bold>{toolUses.length}</Text> {t('background agents launched')}{' '}
                 <Text dimColor>
                   <KeyboardShortcutHint shortcut="↓" action="manage" parens />
                 </Text>
               </>
             ) : (
               <>
-                <Text bold>{toolUses.length}</Text> {commonType ? `${commonType} agents` : 'agents'} finished
+                <Text bold>{toolUses.length}</Text>{' '}
+                {commonType ? tf('{type} agents', { type: commonType }) : t('agents')} {t('finished')}
               </>
             )
           ) : (
             <>
-              Running <Text bold>{toolUses.length}</Text> {commonType ? `${commonType} agents` : 'agents'}…
+              <Text dimColor>{t('Running')} </Text>
+              <Text bold>{toolUses.length}</Text> {commonType ? tf('{type} agents', { type: commonType }) : t('agents')}
+              …
             </>
           )}{' '}
         </Text>

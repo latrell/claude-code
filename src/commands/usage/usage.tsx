@@ -12,5 +12,5 @@ import type { LocalJSXCommandCall } from '../../types/command.js';
  * existing muscle-memory still works.
  */
 export const call: LocalJSXCommandCall = async (onDone, context) => {
-  return <Settings onClose={onDone} context={context} defaultTab="Usage" />;
+  return <Settings onClose={onDone} context={context} defaultTab="usage" />;
 };

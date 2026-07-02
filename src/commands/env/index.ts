@@ -1,5 +1,6 @@
 import type { Command, LocalCommandResult } from '../../types/command.js'
 import { getSessionId } from '../../bootstrap/state.js'
+import { t } from '../../i18n/t.js'
 
 /**
  * /env — show the user a snapshot of the current environment, claude config,
@@ -79,7 +80,9 @@ function formatRuntime(): string {
 const env: Command = {
   type: 'local',
   name: 'env',
-  description: 'Show current environment, runtime, and feature flags',
+  get description() {
+    return t('Show current environment, runtime, and feature flags')
+  },
   isHidden: false,
   isEnabled: () => true,
   supportsNonInteractive: true,

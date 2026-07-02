@@ -19,6 +19,7 @@ import { jsonStringify } from '../../utils/slowOperations.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, ProgressBar } from '@anthropic/ink';
 import { isEligibleForOverageCreditGrant, OverageCreditUpsell } from '../LogoV2/OverageCreditUpsell.js';
+import { t, tf } from '../../i18n/t.js';
 
 type LimitBarProps = {
   title: string;
@@ -35,11 +36,11 @@ function LimitBar({ title, limit, maxWidth, showTimeInReset = true, extraSubtext
   }
 
   // Calculate usage percentage
-  const usedText = `${Math.floor(utilization)}% used`;
+  const usedText = tf('{pct}% used', { pct: Math.floor(utilization) });
 
   let subtext: string | undefined;
   if (resets_at) {
-    subtext = `Resets ${formatResetText(resets_at, true, showTimeInReset)}`;
+    subtext = tf('Resets {time}', { time: formatResetText(resets_at, true, showTimeInReset) });
   }
 
   if (extraSubtext) {
@@ -137,7 +138,7 @@ function CodexUsageSection({
   return (
     <Box flexDirection="column" gap={1} width="100%">
       <Text bold>
-        ChatGPT Usage
+        {t('ChatGPT Usage')}
         {account?.subscriptionPlan ? ` (${account.subscriptionPlan})` : ''}
       </Text>
 
@@ -156,28 +157,35 @@ function CodexUsageSection({
                   emptyColor="rate_limit_empty"
                 />
                 <Text>
-                  {Math.round(bucket.used)}% used
-                  {limit.resets_at ? <> (resets {formatResetText(limit.resets_at, true, true)})</> : ''}
+                  {tf('{pct}% used', { pct: Math.round(bucket.used) })}
+                  {limit.resets_at ? (
+                    <> ({tf('Resets {time}', { time: formatResetText(limit.resets_at, true, true) })})</>
+                  ) : (
+                    ''
+                  )}
                 </Text>
               </Box>
             </Box>
           );
         })
       ) : (
-        <Text dimColor>No rate limit data available.</Text>
+        <Text dimColor>{t('No rate limit data available.')}</Text>
       )}
 
       {tokenUsage && (
         <Box flexDirection="column">
-          <Text bold>Daily tokens</Text>
+          <Text bold>{t('Daily tokens')}</Text>
           <Text>
-            {tokenUsage.tokensUsed.toLocaleString()} tokens used on {tokenUsage.date}
+            {tf('{tokens} tokens used on {date}', {
+              tokens: tokenUsage.tokensUsed.toLocaleString(),
+              date: tokenUsage.date,
+            })}
           </Text>
         </Box>
       )}
 
       <Text dimColor>
-        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
       </Text>
     </Box>
   );
@@ -226,11 +234,16 @@ export function Usage(): React.ReactNode {
   if (error) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="error">Error: {error}</Text>
+        <Text color="error">{tf('Error: {error}', { error })}</Text>
         <Text dimColor>
           <Byline>
-            <ConfigurableShortcutHint action="settings:retry" context="Settings" fallback="r" description="retry" />
-            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint
+              action="settings:retry"
+              context="Settings"
+              fallback="r"
+              description={t('retry')}
+            />
+            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
           </Byline>
         </Text>
       </Box>
@@ -240,9 +253,9 @@ export function Usage(): React.ReactNode {
   if (!utilization) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text dimColor>Loading usage data…</Text>
+        <Text dimColor>{t('Loading usage data\u2026')}</Text>
         <Text dimColor>
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
         </Text>
       </Box>
     );
@@ -257,17 +270,17 @@ export function Usage(): React.ReactNode {
 
   const limits = [
     {
-      title: 'Current session',
+      title: t('Current session'),
       limit: utilization.five_hour,
     },
     {
-      title: 'Current week (all models)',
+      title: t('Current week (all models)'),
       limit: utilization.seven_day,
     },
     ...(showSonnetBar
       ? [
           {
-            title: 'Current week (Sonnet only)',
+            title: t('Current week (Sonnet only)'),
             limit: utilization.seven_day_sonnet,
           },
         ]
@@ -287,9 +300,9 @@ export function Usage(): React.ReactNode {
 
     return (
       <Box flexDirection="column" gap={1} width="100%">
-        <Text dimColor>/usage is only available for subscription plans.</Text>
+        <Text dimColor>{t('/usage is only available for subscription plans.')}</Text>
         <Text dimColor>
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
         </Text>
       </Box>
     );
@@ -306,7 +319,7 @@ export function Usage(): React.ReactNode {
       {isEligibleForOverageCreditGrant() && <OverageCreditUpsell maxWidth={maxWidth} />}
 
       <Text dimColor>
-        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
       </Text>
     </Box>
   );
@@ -317,8 +330,6 @@ type ExtraUsageSectionProps = {
   maxWidth: number;
 };
 
-const EXTRA_USAGE_SECTION_TITLE = 'Extra usage';
-
 function ExtraUsageSection({ extraUsage, maxWidth }: ExtraUsageSectionProps): React.ReactNode {
   const subscriptionType = getSubscriptionType();
   const isProOrMax = subscriptionType === 'pro' || subscriptionType === 'max';
@@ -327,12 +338,14 @@ function ExtraUsageSection({ extraUsage, maxWidth }: ExtraUsageSectionProps): Re
     return false;
   }
 
+  const extraUsageTitle = t('Extra usage');
+
   if (!extraUsage.is_enabled) {
     if (extraUsageCommand.isEnabled()) {
       return (
         <Box flexDirection="column">
-          <Text bold>{EXTRA_USAGE_SECTION_TITLE}</Text>
-          <Text dimColor>Extra usage not enabled · /extra-usage to enable</Text>
+          <Text bold>{extraUsageTitle}</Text>
+          <Text dimColor>{t('Extra usage not enabled \u00b7 /extra-usage to enable')}</Text>
         </Box>
       );
     }
@@ -343,8 +356,8 @@ function ExtraUsageSection({ extraUsage, maxWidth }: ExtraUsageSectionProps): Re
   if (extraUsage.monthly_limit === null) {
     return (
       <Box flexDirection="column">
-        <Text bold>{EXTRA_USAGE_SECTION_TITLE}</Text>
-        <Text dimColor>Unlimited</Text>
+        <Text bold>{extraUsageTitle}</Text>
+        <Text dimColor>{t('Unlimited')}</Text>
       </Box>
     );
   }
@@ -360,14 +373,17 @@ function ExtraUsageSection({ extraUsage, maxWidth }: ExtraUsageSectionProps): Re
 
   return (
     <LimitBar
-      title={EXTRA_USAGE_SECTION_TITLE}
+      title={extraUsageTitle}
       limit={{
         utilization: extraUsage.utilization,
         // Not applicable for enterprises, but for now we don't render this for them
         resets_at: oneMonthReset.toISOString(),
       }}
       showTimeInReset={false}
-      extraSubtext={`${formattedUsedCredits} / ${formattedMonthlyLimit} spent`}
+      extraSubtext={tf('{used} / {limit} spent', {
+        used: formattedUsedCredits,
+        limit: formattedMonthlyLimit,
+      })}
       maxWidth={maxWidth}
     />
   );

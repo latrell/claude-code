@@ -1,4 +1,5 @@
 import type { Command } from '../../types/command.js'
+import { t } from '../../i18n/t.js'
 
 // Subcommands supported by `/onboarding`.
 // - (no args) | full       — re-run the complete first-run flow
@@ -14,7 +15,9 @@ import type { Command } from '../../types/command.js'
 const onboarding: Command = {
   type: 'local-jsx',
   name: 'onboarding',
-  description: 'Re-run the first-run setup (theme, trust, model, MCP)',
+  get description() {
+    return t('Re-run the first-run setup (theme, trust, model, MCP)')
+  },
   argumentHint: '[full|theme|trust|model|mcp|status]',
   isEnabled: () => true,
   isHidden: false,

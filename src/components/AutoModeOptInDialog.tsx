@@ -3,6 +3,8 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Dialog, Link, Text } from '@anthropic/ink';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/index.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 // NOTE: This copy is legally reviewed — do not modify without Legal team approval.
 export const AUTO_MODE_DESCRIPTION =
@@ -48,9 +50,9 @@ export function AutoModeOptInDialog({ onAccept, onDecline, declineExits }: Props
   }
 
   return (
-    <Dialog title="Enable auto mode?" color="warning" onCancel={onDecline}>
+    <Dialog title={t('Enable auto mode?')} color="warning" onCancel={onDecline}>
       <Box flexDirection="column" gap={1}>
-        <Text>{AUTO_MODE_DESCRIPTION}</Text>
+        <T>{AUTO_MODE_DESCRIPTION}</T>
 
         <Link url="https://code.claude.com/docs/en/security" />
       </Box>
@@ -60,14 +62,14 @@ export function AutoModeOptInDialog({ onAccept, onDecline, declineExits }: Props
           ...((process.env.USER_TYPE as string) !== 'ant'
             ? [
                 {
-                  label: 'Yes, and make it my default mode',
+                  label: t('Yes, and make it my default mode'),
                   value: 'accept-default' as const,
                 },
               ]
             : []),
-          { label: 'Yes, enable auto mode', value: 'accept' as const },
+          { label: t('Yes, enable auto mode'), value: 'accept' as const },
           {
-            label: declineExits ? 'No, exit' : 'No, go back',
+            label: declineExits ? t('No, exit') : t('No, go back'),
             value: 'decline' as const,
           },
         ]}

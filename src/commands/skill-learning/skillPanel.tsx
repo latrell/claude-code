@@ -4,6 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isSkillLearningEnabled } from '../../services/skillLearning/featureCheck.js';
+import { t } from '../../i18n/t.js';
 
 type SkillAction = {
   label: string;
@@ -145,7 +146,7 @@ function SkillPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactN
     <Dialog
       title="Skill Learning"
       subtitle={`${actions.length} actions`}
-      onCancel={() => onDone('Skill panel dismissed', { display: 'system' })}
+      onCancel={() => onDone(t('Skill panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide
     >

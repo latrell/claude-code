@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { formatTokens } from '../utils/format.js';
+import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';
 
@@ -18,25 +20,28 @@ export function IdleReturnDialog({ idleMinutes, totalInputTokens, onDone }: Prop
 
   return (
     <Dialog
-      title={`You've been away ${formattedIdle} and this conversation is ${formattedTokens} tokens.`}
+      title={tf("You've been away {idle} and this conversation is {tokens} tokens.", {
+        idle: formattedIdle,
+        tokens: formattedTokens,
+      })}
       onCancel={() => onDone('dismiss')}
     >
       <Box flexDirection="column">
-        <Text>If this is a new task, clearing context will save usage and be faster.</Text>
+        <T>If this is a new task, clearing context will save usage and be faster.</T>
       </Box>
       <Select
         options={[
           {
             value: 'continue' as const,
-            label: 'Continue this conversation',
+            label: t('Continue this conversation'),
           },
           {
             value: 'clear' as const,
-            label: 'Send message as a new conversation',
+            label: t('Send message as a new conversation'),
           },
           {
             value: 'never' as const,
-            label: "Don't ask me again",
+            label: t("Don't ask me again"),
           },
         ]}
         onChange={(value: IdleReturnAction) => onDone(value)}

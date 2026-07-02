@@ -33,6 +33,7 @@ import {
 import { persistCurrentGoal, persistGoalClear } from 'src/services/goal/goalStorage.js';
 import type { LocalJSXCommandOnDone } from 'src/types/command.js';
 import { removeByFilter } from 'src/utils/messageQueueManager.js';
+import { t, tf } from 'src/i18n/t.js';
 import { GoalReplaceConfirmDialog } from './GoalReplaceConfirmDialog.js';
 
 const MAX_OBJECTIVE_CHARS = 4000;
@@ -51,20 +52,22 @@ function drainGoalContinuationQueue(): void {
 function formatGoalStatus(): string {
   const goal = getGoal();
   if (!goal) {
-    return 'No active goal. Set one with `/goal <objective>`.';
+    return t('No active goal. Set one with `/goal <objective>`.');
   }
   const tokens = goal.tokenBudget !== null ? `${goal.tokensUsed} / ${goal.tokenBudget}` : `${goal.tokensUsed}`;
   const lines = [
-    `Goal: ${goal.objective}`,
-    `Status: ${formatGoalStatusLabel(goal.status)}`,
-    `Time: ${formatGoalElapsed(goal)}`,
-    `Tokens: ${tokens}`,
-    `Continuation turns: ${goal.turnsExecuted}`,
+    tf('Goal: {objective}', { objective: goal.objective }),
+    tf('Status: {status}', { status: formatGoalStatusLabel(goal.status) }),
+    tf('Time: {elapsed}', { elapsed: formatGoalElapsed(goal) }),
+    tf('Tokens: {tokens}', { tokens }),
+    tf('Continuation turns: {turns}', { turns: goal.turnsExecuted }),
   ];
 
   if (goal.status === 'max_turns') {
     lines.push(
-      `Hint: Max continuation turns reached (${MAX_GOAL_TURNS}). Run \`/goal continue\` to reset and continue.`,
+      tf('Hint: Max continuation turns reached ({maxTurns}). Run `/goal continue` to reset and continue.', {
+        maxTurns: MAX_GOAL_TURNS,
+      }),
     );
   }
 
@@ -75,7 +78,7 @@ function applySetGoal(objective: string): string {
   setGoal(objective);
   incrementGoalTurns();
   persistCurrentGoal();
-  return 'Goal set.';
+  return t('Goal set.');
 }
 
 export async function call(
@@ -98,7 +101,7 @@ export async function call(
       persistGoalClear();
       drainGoalContinuationQueue();
     }
-    onDone(cleared ? 'Goal cleared.' : 'No active goal to clear.', {
+    onDone(cleared ? t('Goal cleared.') : t('No active goal to clear.'), {
       display: 'system',
     });
     return null;
@@ -110,7 +113,7 @@ export async function call(
       persistCurrentGoal();
       drainGoalContinuationQueue();
     }
-    onDone(g ? 'Goal paused.' : 'No active goal to pause.', {
+    onDone(g ? t('Goal paused.') : t('No active goal to pause.'), {
       display: 'system',
     });
     return null;
@@ -120,14 +123,17 @@ export async function call(
     const current = getGoal();
     if (current?.status === 'max_turns') {
       onDone(
-        `Goal reached max continuation turns (${MAX_GOAL_TURNS}). Run \`/goal continue\` to reset turn counter and continue.`,
+        tf(
+          'Goal reached max continuation turns ({maxTurns}). Run `/goal continue` to reset turn counter and continue.',
+          { maxTurns: MAX_GOAL_TURNS },
+        ),
         { display: 'system' },
       );
       return null;
     }
     const g = resumeGoal();
     if (g) persistCurrentGoal();
-    onDone(g ? 'Goal resumed.' : 'No paused goal to resume.', {
+    onDone(g ? t('Goal resumed.') : t('No paused goal to resume.'), {
       display: 'system',
       shouldQuery: Boolean(g),
     });
@@ -139,8 +145,8 @@ export async function call(
     if (g) persistCurrentGoal();
     onDone(
       g
-        ? `Goal continuation counter reset (0/${MAX_GOAL_TURNS}). Continuing...`
-        : 'Current goal is not in max-turns state.',
+        ? tf('Goal continuation counter reset (0/{maxTurns}). Continuing...', { maxTurns: MAX_GOAL_TURNS })
+        : t('Current goal is not in max-turns state.'),
       {
         display: 'system',
         shouldQuery: Boolean(g),
@@ -155,7 +161,7 @@ export async function call(
       persistCurrentGoal();
       drainGoalContinuationQueue();
     }
-    onDone(g ? 'Goal marked complete.' : 'No active goal to complete.', {
+    onDone(g ? t('Goal marked complete.') : t('No active goal to complete.'), {
       display: 'system',
     });
     return null;
@@ -163,7 +169,10 @@ export async function call(
 
   if (trimmed.length > MAX_OBJECTIVE_CHARS) {
     onDone(
-      `Goal objective is too long (${trimmed.length} chars; limit ${MAX_OBJECTIVE_CHARS}). Save the detailed instructions to a file and reference it from a shorter objective.`,
+      tf(
+        'Goal objective is too long ({length} chars; limit {max}). Save the detailed instructions to a file and reference it from a shorter objective.',
+        { length: trimmed.length, max: MAX_OBJECTIVE_CHARS },
+      ),
       { display: 'system' },
     );
     return null;
@@ -198,7 +207,7 @@ export async function call(
         });
       }}
       onCancel={() => {
-        onDone('Kept the current goal. New objective discarded.', {
+        onDone(t('Kept the current goal. New objective discarded.'), {
           display: 'system',
         });
       }}

@@ -9,6 +9,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { getSSLErrorHint } from '@ant/model-provider'
+import { t, tf } from '../../i18n/t.js'
 import { fetchAndStoreClaudeCodeFirstTokenDate } from '../../services/api/firstTokenDate.js'
 import {
   createAndStoreApiKey,
@@ -101,7 +102,9 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
     const apiKey = await createAndStoreApiKey(tokens.accessToken)
     if (!apiKey) {
       throw new Error(
-        'Unable to create API key. The server accepted the request but did not return a key.',
+        t(
+          'Unable to create API key. The server accepted the request but did not return a key.',
+        ),
       )
     }
   }
@@ -122,7 +125,7 @@ export async function authLogin({
 }): Promise<void> {
   if (useConsole && claudeai) {
     process.stderr.write(
-      'Error: --console and --claudeai cannot be used together.\n',
+      t('Error: --console and --claudeai cannot be used together.') + '\n',
     )
     process.exit(1)
   }
@@ -175,13 +178,15 @@ export async function authLogin({
       logEvent('tengu_oauth_success', {
         loginWithClaudeAi: shouldUseClaudeAIAuth(tokens.scopes),
       })
-      process.stdout.write('Login successful.\n')
+      process.stdout.write(t('Login successful.') + '\n')
       process.exit(0)
     } catch (err) {
       logError(err)
       const sslHint = getSSLErrorHint(err)
       process.stderr.write(
-        `Login failed: ${errorMessage(err)}\n${sslHint ? sslHint + '\n' : ''}`,
+        tf('Login failed: {error}', { error: errorMessage(err) }) +
+          '\n' +
+          (sslHint ? sslHint + '\n' : ''),
       )
       process.exit(1)
     }
@@ -196,8 +201,10 @@ export async function authLogin({
 
     const result = await oauthService.startOAuthFlow(
       async url => {
-        process.stdout.write('Opening browser to sign in…\n')
-        process.stdout.write(`If the browser didn't open, visit: ${url}\n`)
+        process.stdout.write(t('Opening browser to sign in…') + '\n')
+        process.stdout.write(
+          tf("If the browser didn't open, visit: {url}", { url }) + '\n',
+        )
       },
       {
         loginWithClaudeAi,
@@ -219,13 +226,15 @@ export async function authLogin({
 
     logEvent('tengu_oauth_success', { loginWithClaudeAi })
 
-    process.stdout.write('Login successful.\n')
+    process.stdout.write(t('Login successful.') + '\n')
     process.exit(0)
   } catch (err) {
     logError(err)
     const sslHint = getSSLErrorHint(err)
     process.stderr.write(
-      `Login failed: ${errorMessage(err)}\n${sslHint ? sslHint + '\n' : ''}`,
+      tf('Login failed: {error}', { error: errorMessage(err) }) +
+        '\n' +
+        (sslHint ? sslHint + '\n' : ''),
     )
     process.exit(1)
   } finally {
@@ -291,7 +300,7 @@ export async function authStatus(opts: {
     }
     if (!loggedIn) {
       process.stdout.write(
-        'Not logged in. Run claude auth login to authenticate.\n',
+        t('Not logged in. Run claude auth login to authenticate.') + '\n',
       )
     }
   } else {
@@ -326,9 +335,11 @@ export async function authLogout(): Promise<void> {
   try {
     await performLogout({ clearOnboarding: false })
   } catch {
-    process.stderr.write('Failed to log out.\n')
+    process.stderr.write(t('Failed to log out.') + '\n')
     process.exit(1)
   }
-  process.stdout.write('Successfully logged out from your Anthropic account.\n')
+  process.stdout.write(
+    t('Successfully logged out from your Anthropic account.') + '\n',
+  )
   process.exit(0)
 }

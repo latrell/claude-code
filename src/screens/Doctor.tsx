@@ -17,6 +17,8 @@ import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeyb
 import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState } from '../state/AppState.js';
+import { T } from '../i18n/TText.js';
+import { t, tf } from '../i18n/t.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
 import { getGcsDistTags, getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
@@ -60,12 +62,12 @@ type VersionLockInfo = {
 function DistTagsDisplay({ promise }: { promise: Promise<NpmDistTags> }): React.ReactNode {
   const distTags = use(promise);
   if (!distTags.latest) {
-    return <Text dimColor>└ Failed to fetch versions</Text>;
+    return <Text dimColor>{tf('└ Failed to fetch versions', {})}</Text>;
   }
   return (
     <>
-      {distTags.stable && <Text>└ Stable version: {distTags.stable}</Text>}
-      <Text>└ Latest version: {distTags.latest}</Text>
+      {distTags.stable && <Text>{tf('└ Stable version: {version}', { version: String(distTags.stable) })}</Text>}
+      <Text>{tf('└ Latest version: {version}', { version: String(distTags.latest) })}</Text>
     </>
   );
 }
@@ -188,7 +190,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   }, [toolPermissionContext, tools, agentDefinitions]);
 
   const handleDismiss = useCallback(() => {
-    onDone('Claude Code diagnostics dismissed', { display: 'system' });
+    onDone(t('Claude Code diagnostics dismissed'), { display: 'system' });
   }, [onDone]);
 
   // Handle dismiss via keybindings (Enter, Escape, or Ctrl+C)
@@ -204,39 +206,60 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   if (!diagnostic) {
     return (
       <Pane>
-        <Text dimColor>Checking installation status…</Text>
+        <T dimColor>Checking installation status…</T>
       </Pane>
     );
   }
+
+  // Compute search mode label
+  const ripgrepMode =
+    diagnostic.ripgrepStatus.mode === 'embedded'
+      ? 'bundled'
+      : diagnostic.ripgrepStatus.mode === 'builtin'
+        ? 'vendor'
+        : diagnostic.ripgrepStatus.systemPath || 'system';
+
+  // Compute auto-updates status
+  const autoUpdatesStatus = diagnostic.packageManager ? t('Managed by package manager') : diagnostic.autoUpdates;
 
   // Format the diagnostic output according to spec
   return (
     <Pane>
       <Box flexDirection="column">
-        <Text bold>Diagnostics</Text>
+        <T bold>Diagnostics</T>
         <Text>
-          └ Currently running: {diagnostic.installationType} ({diagnostic.version})
+          {tf('└ Currently running: {type} ({version})', {
+            type: diagnostic.installationType,
+            version: diagnostic.version,
+          })}
         </Text>
-        {diagnostic.packageManager && <Text>└ Package manager: {diagnostic.packageManager}</Text>}
-        <Text>└ Path: {diagnostic.installationPath}</Text>
-        <Text>└ Invoked: {diagnostic.invokedBinary}</Text>
-        <Text>└ Config install method: {diagnostic.configInstallMethod}</Text>
+        {diagnostic.packageManager && <Text>{tf('└ Package manager: {pm}', { pm: diagnostic.packageManager })}</Text>}
+        <Text>{tf('└ Path: {path}', { path: diagnostic.installationPath })}</Text>
+        <Text>{tf('└ Invoked: {binary}', { binary: diagnostic.invokedBinary })}</Text>
         <Text>
-          └ Search: {diagnostic.ripgrepStatus.working ? 'OK' : 'Not working'} (
-          {diagnostic.ripgrepStatus.mode === 'embedded'
-            ? 'bundled'
-            : diagnostic.ripgrepStatus.mode === 'builtin'
-              ? 'vendor'
-              : diagnostic.ripgrepStatus.systemPath || 'system'}
-          )
+          {tf('└ Config install method: {method}', {
+            method: diagnostic.configInstallMethod,
+          })}
         </Text>
-        {diagnostic.ripgrepStatus.note && <Text color="warning">└ Note: {diagnostic.ripgrepStatus.note}</Text>}
+        <Text>
+          {tf('└ Search: {status} ({mode})', {
+            status: diagnostic.ripgrepStatus.working ? 'OK' : 'Not working',
+            mode: ripgrepMode,
+          })}
+        </Text>
+        {diagnostic.ripgrepStatus.note && (
+          <Text color="warning">{tf('└ Note: {note}', { note: diagnostic.ripgrepStatus.note })}</Text>
+        )}
 
         {/* Show recommendation if auto-updates are disabled */}
         {diagnostic.recommendation && (
           <>
             <Text></Text>
-            <Text color="warning">Recommendation: {diagnostic.recommendation.split('\n')[0]}</Text>
+            <Text color="warning">
+              {tf('Recommendation: {text}', {
+                text: diagnostic.recommendation.split('\n')[0]!,
+              })}
+            </Text>
             <Text dimColor>{diagnostic.recommendation.split('\n')[1]}</Text>
           </>
         )}
@@ -245,7 +268,9 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         {diagnostic.multipleInstallations.length > 1 && (
           <>
             <Text></Text>
-            <Text color="warning">Warning: Multiple installations found</Text>
+            <Text color="warning">
+              <T>Warning: Multiple installations found</T>
+            </Text>
             {diagnostic.multipleInstallations.map((install, i) => (
               <Text key={i}>
                 └ {install.type} at {install.path}
@@ -260,8 +285,8 @@ export function Doctor({ onDone }: Props): React.ReactNode {
             <Text></Text>
             {diagnostic.warnings.map((warning, i) => (
               <Box key={i} flexDirection="column">
-                <Text color="warning">Warning: {warning.issue}</Text>
-                <Text>Fix: {warning.fix}</Text>
+                <Text color="warning">{tf('Warning: {issue}', { issue: warning.issue })}</Text>
+                <Text>{tf('Fix: {fix}', { fix: warning.fix })}</Text>
               </Box>
             ))}
           </>
@@ -270,7 +295,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         {/* Show invalid settings errors */}
         {errorsExcludingMcp.length > 0 && (
           <Box flexDirection="column" marginTop={1} marginBottom={1}>
-            <Text bold>Invalid Settings</Text>
+            <T bold>Invalid Settings</T>
             <ValidationErrorsList errors={errorsExcludingMcp} />
           </Box>
         )}
@@ -278,12 +303,20 @@ export function Doctor({ onDone }: Props): React.ReactNode {
 
       {/* Updates section */}
       <Box flexDirection="column">
-        <Text bold>Updates</Text>
-        <Text>└ Auto-updates: {diagnostic.packageManager ? 'Managed by package manager' : diagnostic.autoUpdates}</Text>
+        <T bold>Updates</T>
+        <Text>{tf('└ Auto-updates: {status}', { status: autoUpdatesStatus })}</Text>
         {diagnostic.hasUpdatePermissions !== null && (
-          <Text>└ Update permissions: {diagnostic.hasUpdatePermissions ? 'Yes' : 'No (requires sudo)'}</Text>
+          <Text>
+            {tf('└ Update permissions: {status}', {
+              status: diagnostic.hasUpdatePermissions ? 'Yes' : 'No (requires sudo)',
+            })}
+          </Text>
         )}
-        <Text>└ Auto-update channel: {autoUpdatesChannel}</Text>
+        <Text>
+          {tf('└ Auto-update channel: {channel}', {
+            channel: autoUpdatesChannel,
+          })}
+        </Text>
         <Suspense fallback={null}>
           <DistTagsDisplay promise={distTagsPromise} />
         </Suspense>
@@ -298,7 +331,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       {/* Environment Variables */}
       {envValidationErrors.length > 0 && (
         <Box flexDirection="column">
-          <Text bold>Environment Variables</Text>
+          <T bold>Environment Variables</T>
           {envValidationErrors.map((validation, i) => (
             <Text key={i}>
               └ {validation.name}:{' '}
@@ -311,17 +344,31 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       {/* Version Locks (PID-based locking) */}
       {versionLockInfo?.enabled && (
         <Box flexDirection="column">
-          <Text bold>Version Locks</Text>
+          <T bold>Version Locks</T>
           {versionLockInfo.staleLocksCleaned > 0 && (
-            <Text dimColor>└ Cleaned {versionLockInfo.staleLocksCleaned} stale lock(s)</Text>
+            <Text dimColor>
+              {tf('└ Cleaned {count} stale lock(s)', {
+                count: versionLockInfo.staleLocksCleaned,
+              })}
+            </Text>
           )}
           {versionLockInfo.locks.length === 0 ? (
-            <Text dimColor>└ No active version locks</Text>
+            <T dimColor>└ No active version locks</T>
           ) : (
             versionLockInfo.locks.map((lock, i) => (
               <Text key={i}>
-                └ {lock.version}: PID {lock.pid}{' '}
-                {lock.isProcessRunning ? <Text>(running)</Text> : <Text color="warning">(stale)</Text>}
+                └{' '}
+                {tf('{version}: PID {pid}', {
+                  version: lock.version,
+                  pid: lock.pid,
+                })}{' '}
+                {lock.isProcessRunning ? (
+                  <T>(running)</T>
+                ) : (
+                  <Text color="warning">
+                    <T>(stale)</T>
+                  </Text>
+                )}
               </Text>
             ))
           )}
@@ -330,10 +377,14 @@ export function Doctor({ onDone }: Props): React.ReactNode {
 
       {agentInfo?.failedFiles && agentInfo.failedFiles.length > 0 && (
         <Box flexDirection="column">
-          <Text bold color="error">
+          <T bold color="error">
             Agent Parse Errors
+          </T>
+          <Text color="error">
+            {tf('└ Failed to parse {count} agent file(s):', {
+              count: agentInfo.failedFiles.length,
+            })}
           </Text>
-          <Text color="error">└ Failed to parse {agentInfo.failedFiles.length} agent file(s):</Text>
           {agentInfo.failedFiles.map((file, i) => (
             <Text key={i} dimColor>
               {'  '}└ {file.path}: {file.error}
@@ -345,10 +396,14 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       {/* Plugin Errors */}
       {pluginsErrors.length > 0 && (
         <Box flexDirection="column">
-          <Text bold color="error">
+          <T bold color="error">
             Plugin Errors
+          </T>
+          <Text color="error">
+            {tf('└ {count} plugin error(s) detected:', {
+              count: pluginsErrors.length,
+            })}
           </Text>
-          <Text color="error">└ {pluginsErrors.length} plugin error(s) detected:</Text>
           {pluginsErrors.map((error, i) => (
             <Text key={i} dimColor>
               {'  '}└ {error.source || 'unknown'}
@@ -361,9 +416,9 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       {/* Unreachable Permission Rules Warning */}
       {contextWarnings?.unreachableRulesWarning && (
         <Box flexDirection="column">
-          <Text bold color="warning">
+          <T bold color="warning">
             Unreachable Permission Rules
-          </Text>
+          </T>
           <Text>
             └{' '}
             <Text color="warning">
@@ -382,7 +437,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       {contextWarnings &&
         (contextWarnings.claudeMdWarning || contextWarnings.agentWarning || contextWarnings.mcpWarning) && (
           <Box flexDirection="column">
-            <Text bold>Context Usage Warnings</Text>
+            <T bold>Context Usage Warnings</T>
 
             {contextWarnings.claudeMdWarning && (
               <>
@@ -392,7 +447,9 @@ export function Doctor({ onDone }: Props): React.ReactNode {
                     {figures.warning} {contextWarnings.claudeMdWarning.message}
                   </Text>
                 </Text>
-                <Text>{'  '}└ Files:</Text>
+                <Text>
+                  {'  '}└ <T>Files:</T>
+                </Text>
                 {contextWarnings.claudeMdWarning.details.map((detail, i) => (
                   <Text key={i} dimColor>
                     {'    '}└ {detail}
@@ -409,7 +466,9 @@ export function Doctor({ onDone }: Props): React.ReactNode {
                     {figures.warning} {contextWarnings.agentWarning.message}
                   </Text>
                 </Text>
-                <Text>{'  '}└ Top contributors:</Text>
+                <Text>
+                  {'  '}└ <T>Top contributors:</T>
+                </Text>
                 {contextWarnings.agentWarning.details.map((detail, i) => (
                   <Text key={i} dimColor>
                     {'    '}└ {detail}
@@ -426,7 +485,9 @@ export function Doctor({ onDone }: Props): React.ReactNode {
                     {figures.warning} {contextWarnings.mcpWarning.message}
                   </Text>
                 </Text>
-                <Text>{'  '}└ MCP servers:</Text>
+                <Text>
+                  {'  '}└ <T>MCP servers:</T>
+                </Text>
                 {contextWarnings.mcpWarning.details.map((detail, i) => (
                   <Text key={i} dimColor>
                     {'    '}└ {detail}

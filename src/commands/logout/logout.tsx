@@ -4,6 +4,7 @@ import { Text } from '@anthropic/ink';
 import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
 import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
+import { t } from '../../i18n/t.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
@@ -90,7 +91,7 @@ export async function clearAuthRelatedCaches(): Promise<void> {
 export async function call(): Promise<React.ReactNode> {
   await performLogout({ clearOnboarding: true });
 
-  const message = <Text>Successfully logged out.</Text>;
+  const message = <Text>{t('Successfully logged out.')}</Text>;
 
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');

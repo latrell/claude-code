@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
+import { t } from '../../i18n/t.js'
 
 const peers = {
   type: 'local',
   name: 'peers',
   aliases: ['who'],
-  description: 'List connected Claude Code peers',
+  get description() {
+    return t('List connected Claude Code peers')
+  },
   supportsNonInteractive: true,
   load: () => import('./peers.js'),
 } satisfies Command

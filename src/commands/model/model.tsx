@@ -26,6 +26,7 @@ import {
 } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { t, tf } from '../../i18n/t.js';
 
 function ModelPickerWrapper({
   onDone,
@@ -42,7 +43,7 @@ function ModelPickerWrapper({
       action: 'cancel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
     const displayModel = renderModelLabel(mainLoopModel);
-    onDone(`Kept model as ${chalk.bold(displayModel)}`, {
+    onDone(tf('Kept model as {model}', { model: chalk.bold(displayModel) }), {
       display: 'system',
     });
   }
@@ -59,9 +60,14 @@ function ModelPickerWrapper({
       mainLoopModelForSession: null,
     }));
 
-    let message = `Set model to ${chalk.bold(renderModelLabel(model))}`;
+    let message = tf('Set model to {model}', {
+      model: chalk.bold(renderModelLabel(model)),
+    });
     if (effort !== undefined) {
-      message += ` with ${chalk.bold(effort)} effort`;
+      message = tf('Set model to {model} with {effort} effort', {
+        model: chalk.bold(renderModelLabel(model)),
+        effort: chalk.bold(String(effort)),
+      });
     }
 
     // Turn off fast mode if switching to unsupported model
@@ -76,18 +82,18 @@ function ModelPickerWrapper({
         wasFastModeToggledOn = false;
         // Do not update fast mode in settings since this is an automatic downgrade
       } else if (isFastModeSupportedByModel(model) && isFastModeAvailable() && isFastMode) {
-        message += ` · Fast mode ON`;
+        message += ` ${t('· Fast mode ON')}`;
         wasFastModeToggledOn = true;
       }
     }
 
     if (isBilledAsExtraUsage(model, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
-      message += ` · Billed as extra usage`;
+      message += ` ${t('· Billed as extra usage')}`;
     }
 
     if (wasFastModeToggledOn === false) {
       // Fast mode was toggled off, show suffix after extra usage billing
-      message += ` · Fast mode OFF`;
+      message += ` ${t('· Fast mode OFF')}`;
     }
 
     onDone(message);
@@ -121,16 +127,21 @@ function SetModelAndClose({
   React.useEffect(() => {
     async function handleModelChange(): Promise<void> {
       if (model && !isModelAllowed(model)) {
-        onDone(`Model '${model}' is not available. Your organization restricts model selection.`, {
-          display: 'system',
-        });
+        onDone(
+          tf("Model '{model}' is not available. Your organization restricts model selection.", {
+            model,
+          }),
+          { display: 'system' },
+        );
         return;
       }
 
       // @[MODEL LAUNCH]: Update check for 1M access.
       if (model && isOpus1mUnavailable(model)) {
         onDone(
-          `Opus 4.7 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
+          t(
+            'Opus 4.7 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m',
+          ),
           { display: 'system' },
         );
         return;
@@ -138,7 +149,9 @@ function SetModelAndClose({
 
       if (model && isSonnet1mUnavailable(model)) {
         onDone(
-          `Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
+          t(
+            'Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m',
+          ),
           { display: 'system' },
         );
         return;
@@ -165,12 +178,12 @@ function SetModelAndClose({
         if (valid) {
           setModel(model);
         } else {
-          onDone(error || `Model '${model}' not found`, {
+          onDone(error || tf("Model '{model}' not found", { model: model || '' }), {
             display: 'system',
           });
         }
       } catch (error) {
-        onDone(`Failed to validate model: ${(error as Error).message}`, {
+        onDone(tf('Failed to validate model: {error}', { error: (error as Error).message }), {
           display: 'system',
         });
       }
@@ -182,7 +195,9 @@ function SetModelAndClose({
         mainLoopModel: modelValue,
         mainLoopModelForSession: null,
       }));
-      let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
+      let message = tf('Set model to {model}', {
+        model: chalk.bold(renderModelLabel(modelValue)),
+      });
 
       let wasFastModeToggledOn;
       if (isFastModeEnabled()) {
@@ -195,18 +210,18 @@ function SetModelAndClose({
           wasFastModeToggledOn = false;
           // Do not update fast mode in settings since this is an automatic downgrade
         } else if (isFastModeSupportedByModel(modelValue) && isFastMode) {
-          message += ` · Fast mode ON`;
+          message += ` ${t('· Fast mode ON')}`;
           wasFastModeToggledOn = true;
         }
       }
 
       if (isBilledAsExtraUsage(modelValue, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
-        message += ` · Billed as extra usage`;
+        message += ` ${t('· Billed as extra usage')}`;
       }
 
       if (wasFastModeToggledOn === false) {
         // Fast mode was toggled off, show suffix after extra usage billing
-        message += ` · Fast mode OFF`;
+        message += ` ${t('· Fast mode OFF')}`;
       }
 
       onDone(message);
@@ -243,10 +258,19 @@ function ShowModelAndClose({ onDone }: { onDone: (result?: string) => void }): R
 
   if (mainLoopModelForSession) {
     onDone(
-      `Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`,
+      tf('Current model: {model} (session override from plan mode)\nBase model: {base}{effort}', {
+        model: chalk.bold(renderModelLabel(mainLoopModelForSession)),
+        base: displayModel,
+        effort: effortInfo,
+      }),
     );
   } else {
-    onDone(`Current model: ${displayModel}${effortInfo}`);
+    onDone(
+      tf('Current model: {model}{effort}', {
+        model: displayModel,
+        effort: effortInfo,
+      }),
+    );
   }
 
   return null;
@@ -261,7 +285,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     return <ShowModelAndClose onDone={onDone} />;
   }
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Run /model to open the model selection menu, or /model [modelName] to set the model.', {
+    onDone(t('Run /model to open the model selection menu, or /model [modelName] to set the model.'), {
       display: 'system',
     });
     return;
@@ -279,5 +303,5 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
 function renderModelLabel(model: string | null): string {
   const rendered = renderDefaultModelSetting(model ?? getDefaultMainLoopModelSetting());
-  return model === null ? `${rendered} (default)` : rendered;
+  return model === null ? `${rendered} ${t('(default)')}` : rendered;
 }

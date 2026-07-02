@@ -21,6 +21,8 @@ import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
+import { T } from '../i18n/TText.js';
+import { t, tf } from '../i18n/t.js';
 
 type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
 
@@ -72,7 +74,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
       <ThemePicker
         onThemeSelect={handleThemeSelection}
         showIntroText={true}
-        helpText="To change this later, run /theme"
+        helpText={t('To change this later, run /theme')}
         hideEscToCancel={true}
         skipExitHandling={true} // Skip exit handling as Onboarding already handles it
       />
@@ -81,7 +83,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
 
   const securityStep = (
     <Box flexDirection="column" gap={1} paddingLeft={1}>
-      <Text bold>Before you start, keep in mind:</Text>
+      <T bold>Before you start, keep in mind:</T>
       <Box flexDirection="column" width={70}>
         {/**
          * OrderedList misnumbers items when rendering conditionally,
@@ -89,18 +91,20 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
          */}
         <OrderedList>
           <OrderedList.Item>
-            <Text>Always review changes before accepting</Text>
-            <Text dimColor wrap="wrap">
+            <T>Always review changes before accepting</T>
+            <T dimColor wrap="wrap">
               Claude can make mistakes — especially when running commands
-              <Newline />
+            </T>
+            <Newline />
+            <T dimColor wrap="wrap">
               or editing files. You stay in control of every action.
-              <Newline />
-            </Text>
+            </T>
+            <Newline />
           </OrderedList.Item>
           <OrderedList.Item>
-            <Text>Only use Claude Code on projects you trust</Text>
+            <T>Only use Claude Code on projects you trust</T>
             <Text dimColor wrap="wrap">
-              Untrusted code could contain prompt injection attacks.
+              <T dimColor>Untrusted code could contain prompt injection attacks.</T>
               <Newline />
               <Link url="https://code.claude.com/docs/en/security" />
             </Text>
@@ -161,24 +165,24 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
       id: 'terminal-setup',
       component: (
         <Box flexDirection="column" gap={1} paddingLeft={1}>
-          <Text bold>Use Claude Code&apos;s terminal setup?</Text>
+          <T bold>Use Claude Code&apos;s terminal setup?</T>
           <Box flexDirection="column" width={70} gap={1}>
             <Text>
-              For the optimal coding experience, enable the recommended settings
+              {t('For the optimal coding experience, enable the recommended settings')}
               <Newline />
-              for your terminal:{' '}
+              {t('for your terminal: ')}
               {env.terminal === 'Apple_Terminal'
-                ? 'Option+Enter for newlines and visual bell'
-                : 'Shift+Enter for newlines'}
+                ? t('Option+Enter for newlines and visual bell')
+                : t('Shift+Enter for newlines')}
             </Text>
             <Select
               options={[
                 {
-                  label: 'Yes, use recommended settings',
+                  label: t('Yes, use recommended settings'),
                   value: 'install',
                 },
                 {
-                  label: 'No, maybe later with /terminal-setup',
+                  label: t('No, maybe later with /terminal-setup'),
                   value: 'no',
                 },
               ]}
@@ -195,7 +199,9 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
               onCancel={() => goToNextStep()}
             />
             <Text dimColor>
-              {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to skip</>}
+              {exitState.pending
+                ? tf('Press {key} again to exit', { key: exitState.keyName })
+                : t('Enter to confirm · Esc to skip')}
             </Text>
           </Box>
         </Box>
@@ -246,7 +252,9 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
         {currentStep?.component}
         {exitState.pending && (
           <Box padding={1}>
-            <Text dimColor>Press {exitState.keyName} again to exit</Text>
+            <T dimColor vars={{ key: exitState.keyName }}>
+              {'Press {key} again to exit'}
+            </T>
           </Box>
         )}
       </Box>

@@ -16,6 +16,7 @@ import {
   saveCustomTitle,
 } from '../../utils/sessionStorage.js'
 import { isTeammate } from '../../utils/teammate.js'
+import { t, tf } from '../../i18n/t.js'
 import { generateSessionName } from './generateSessionName.js'
 
 export async function call(
@@ -26,7 +27,9 @@ export async function call(
   // Prevent teammates from renaming - their names are set by team leader
   if (isTeammate()) {
     onDone(
-      'Cannot rename: This session is a swarm teammate. Teammate names are set by the team leader.',
+      t(
+        'Cannot rename: This session is a swarm teammate. Teammate names are set by the team leader.',
+      ),
       { display: 'system' },
     )
     return null
@@ -40,7 +43,9 @@ export async function call(
     )
     if (!generated) {
       onDone(
-        'Could not generate a name: no conversation context yet. Usage: /rename <name>',
+        t(
+          'Could not generate a name: no conversation context yet. Usage: /rename <name>',
+        ),
         { display: 'system' },
       )
       return null
@@ -82,6 +87,8 @@ export async function call(
     },
   }))
 
-  onDone(`Session renamed to: ${newName}`, { display: 'system' })
+  onDone(tf('Session renamed to: {name}', { name: newName }), {
+    display: 'system',
+  })
   return null
 }

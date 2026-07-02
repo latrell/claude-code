@@ -11,6 +11,8 @@ import { getClaudeConfigHomeDir } from '../../utils/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
 import { logError } from '../../utils/log.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 function MemoryCommand({
   onDone,
@@ -47,25 +49,32 @@ function MemoryCommand({
         editorValue = process.env.EDITOR;
       }
 
-      const editorInfo = editorSource !== 'default' ? `Using ${editorSource}="${editorValue}".` : '';
+      const editorInfo =
+        editorSource !== 'default' ? tf('Using {source}="{value}".', { source: editorSource, value: editorValue }) : '';
 
       const editorHint = editorInfo
-        ? `> ${editorInfo} To change editor, set $EDITOR or $VISUAL environment variable.`
-        : `> To use a different editor, set the $EDITOR or $VISUAL environment variable.`;
+        ? `> ${editorInfo} ${t('To change editor, set $EDITOR or $VISUAL environment variable.')}`
+        : `> ${t('To use a different editor, set the $EDITOR or $VISUAL environment variable.')}`;
 
-      onDone(`Opened memory file at ${getRelativeMemoryPath(memoryPath)}\n\n${editorHint}`, { display: 'system' });
+      onDone(
+        tf('Opened memory file at {path}\n\n{editorHint}', {
+          path: getRelativeMemoryPath(memoryPath),
+          editorHint,
+        }),
+        { display: 'system' },
+      );
     } catch (error) {
       logError(error);
-      onDone(`Error opening memory file: ${error}`);
+      onDone(tf('Error opening memory file: {error}', { error: String(error) }));
     }
   };
 
   const handleCancel = () => {
-    onDone('Cancelled memory editing', { display: 'system' });
+    onDone(t('Cancelled memory editing'), { display: 'system' });
   };
 
   return (
-    <Dialog title="Memory" onCancel={handleCancel} color="remember">
+    <Dialog title={t('Memory')} onCancel={handleCancel} color="remember">
       <Box flexDirection="column">
         <React.Suspense fallback={null}>
           <MemoryFileSelector onSelect={handleSelectMemoryFile} onCancel={handleCancel} />
@@ -73,7 +82,7 @@ function MemoryCommand({
 
         <Box marginTop={1}>
           <Text dimColor>
-            Learn more: <Link url="https://code.claude.com/docs/en/memory" />
+            {t('Learn more:')} <Link url="https://code.claude.com/docs/en/memory" />
           </Text>
         </Box>
       </Box>

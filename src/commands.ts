@@ -207,6 +207,7 @@ import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
 import provider from './commands/provider.js'
+import { t } from './i18n/t.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
 import { logForDebugging } from './utils/debug.js'
@@ -827,28 +828,28 @@ export function getCommand(commandName: string, commands: Command[]): Command {
  */
 export function formatDescriptionWithSource(cmd: Command): string {
   if (cmd.type !== 'prompt') {
-    return cmd.description
+    return t(cmd.description)
   }
 
   if (cmd.kind === 'workflow') {
-    return `${cmd.description} (workflow)`
+    return `${t(cmd.description)} (workflow)`
   }
 
   if (cmd.source === 'plugin') {
     const pluginName = cmd.pluginInfo?.pluginManifest.name
     if (pluginName) {
-      return `(${pluginName}) ${cmd.description}`
+      return `(${pluginName}) ${t(cmd.description)}`
     }
-    return `${cmd.description} (plugin)`
+    return `${t(cmd.description)} (plugin)`
   }
 
   if (cmd.source === 'builtin' || cmd.source === 'mcp') {
-    return cmd.description
+    return t(cmd.description)
   }
 
   if (cmd.source === 'bundled') {
-    return `${cmd.description} (bundled)`
+    return `${t(cmd.description)} (bundled)`
   }
 
-  return `${cmd.description} (${getSettingSourceName(cmd.source)})`
+  return `${t(cmd.description)} (${getSettingSourceName(cmd.source)})`
 }

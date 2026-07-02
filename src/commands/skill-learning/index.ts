@@ -1,10 +1,13 @@
 import type { Command } from '../../commands.js'
 import { isSkillLearningCompiledIn } from '../../services/skillLearning/featureCheck.js'
+import { t } from '../../i18n/t.js'
 
 const skillLearning = {
   type: 'local-jsx',
   name: 'skill-learning',
-  description: 'Manage skill learning (observe, analyze, evolve)',
+  get description() {
+    return t('Manage skill learning (observe, analyze, evolve)')
+  },
   argumentHint:
     '[start|stop|about|status|ingest|evolve|export|import|prune|promote|projects]',
   // The slash command is visible whenever the subsystem is compiled in.

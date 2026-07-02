@@ -9,6 +9,7 @@ import { writeFileSync_DEPRECATED } from '../utils/slowOperations.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
 import TextInput from './TextInput.js';
+import { t, tf } from '../i18n/t.js';
 
 type ExportDialogProps = {
   content: string;
@@ -36,7 +37,7 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
       // Copy to clipboard immediately
       const raw = await setClipboard(content);
       if (raw) process.stdout.write(raw);
-      onDone({ success: true, message: 'Conversation copied to clipboard' });
+      onDone({ success: true, message: t('Conversation copied to clipboard') });
     } else if (value === 'file') {
       setSelectedOption('file');
       setShowFilenameInput(true);
@@ -54,12 +55,12 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
       });
       onDone({
         success: true,
-        message: `Conversation exported to: ${filepath}`,
+        message: tf('Conversation exported to: {path}', { path: filepath }),
       });
     } catch (error) {
       onDone({
         success: false,
-        message: `Failed to export conversation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to export conversation: ${error instanceof Error ? error.message : t('Unknown error')}`,
       });
     }
   };
@@ -76,12 +77,12 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
 
   const options = [
     {
-      label: 'Copy to clipboard',
+      label: t('Copy to clipboard'),
       value: 'clipboard',
       description: 'Copy the conversation to your system clipboard',
     },
     {
-      label: 'Save to file',
+      label: t('Save to file'),
       value: 'file',
       description: 'Save the conversation to a file in the current directory',
     },

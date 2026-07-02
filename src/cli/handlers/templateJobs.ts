@@ -6,6 +6,7 @@ import {
   appendJobReply,
   getJobDir,
 } from '../../jobs/state.js'
+import { t, tf } from '../../i18n/t.js'
 
 /**
  * Entry point for template job commands: `new`, `list`, `reply`.
@@ -28,7 +29,7 @@ export async function templatesMain(args: string[]): Promise<void> {
       handleStatus(args.slice(1))
       break
     default:
-      console.error(`Unknown template command: ${subcommand}`)
+      console.error(tf('Unknown template command: {cmd}', { cmd: subcommand }))
       printUsage()
       process.exitCode = 1
   }
@@ -36,7 +37,7 @@ export async function templatesMain(args: string[]): Promise<void> {
 
 function printUsage(): void {
   console.log(`
-Template Job Commands:
+${t('Template Job Commands:')}
 
   claude job list                    List available templates
   claude job new <template> [args]   Create a new job from a template
@@ -48,14 +49,14 @@ Template Job Commands:
 function handleStatus(args: string[]): void {
   const jobId = args[0]
   if (!jobId) {
-    console.error('Usage: claude job status <job-id>')
+    console.error(t('Usage: claude job status <job-id>'))
     process.exitCode = 1
     return
   }
 
   const state = readJobState(jobId)
   if (!state) {
-    console.error(`Job not found: ${jobId}`)
+    console.error(tf('Job not found: {id}', { id: jobId }))
     process.exitCode = 1
     return
   }
@@ -72,13 +73,18 @@ function handleList(): void {
   const templates = listTemplates()
 
   if (templates.length === 0) {
-    console.log('No templates found.')
-    console.log('Place .md files in .claude/templates/ or ~/.claude/templates/')
+    console.log(t('No templates found.'))
+    console.log(
+      t('Place .md files in .claude/templates/ or ~/.claude/templates/'),
+    )
     return
   }
 
   console.log(
-    `${templates.length} template${templates.length > 1 ? 's' : ''} found:\n`,
+    tf('{count} template{suffix} found:', {
+      count: templates.length,
+      suffix: templates.length > 1 ? 's' : '',
+    }) + '\n',
   )
 
   for (const t of templates) {
@@ -92,15 +98,15 @@ function handleList(): void {
 function handleNew(args: string[]): void {
   const templateName = args[0]
   if (!templateName) {
-    console.error('Usage: claude job new <template> [args...]')
+    console.error(t('Usage: claude job new <template> [args...]'))
     process.exitCode = 1
     return
   }
 
   const template = loadTemplate(templateName)
   if (!template) {
-    console.error(`Template not found: ${templateName}`)
-    console.log('\nAvailable templates:')
+    console.error(tf('Template not found: {name}', { name: templateName }))
+    console.log('\n' + t('Available templates:'))
     for (const t of listTemplates()) {
       console.log(`  ${t.name}`)
     }
@@ -122,11 +128,11 @@ function handleNew(args: string[]): void {
     args.slice(1),
   )
 
-  console.log(`Job created: ${jobId}`)
-  console.log(`  Template: ${templateName}`)
-  console.log(`  Directory: ${dir}`)
+  console.log(tf('Job created: {id}', { id: jobId }))
+  console.log(tf('  Template: {name}', { name: templateName }))
+  console.log(tf('  Directory: {dir}', { dir }))
   if (inputText) {
-    console.log(`  Input: ${inputText}`)
+    console.log(tf('  Input: {text}', { text: inputText }))
   }
 }
 
@@ -135,24 +141,24 @@ function handleReply(args: string[]): void {
   const text = args.slice(1).join(' ')
 
   if (!jobId || !text) {
-    console.error('Usage: claude job reply <job-id> <text>')
+    console.error(t('Usage: claude job reply <job-id> <text>'))
     process.exitCode = 1
     return
   }
 
   const state = readJobState(jobId)
   if (!state) {
-    console.error(`Job not found: ${jobId}`)
+    console.error(tf('Job not found: {id}', { id: jobId }))
     process.exitCode = 1
     return
   }
 
   const ok = appendJobReply(jobId, text)
   if (ok) {
-    console.log(`Reply added to job ${jobId}`)
-    console.log(`  Directory: ${getJobDir(jobId)}`)
+    console.log(tf('Reply added to job {id}', { id: jobId }))
+    console.log(tf('  Directory: {dir}', { dir: getJobDir(jobId) }))
   } else {
-    console.error(`Failed to append reply to job ${jobId}`)
+    console.error(tf('Failed to append reply to job {id}', { id: jobId }))
     process.exitCode = 1
   }
 }

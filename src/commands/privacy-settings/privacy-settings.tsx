@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { type GroveDecision, GroveDialog, PrivacySettingsDialog } from '../../components/grove/Grove.js';
+import { t } from '../../i18n/t.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -27,7 +28,7 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
 
   async function onDoneWithDecision(decision: GroveDecision) {
     if (decision === 'escape' || decision === 'defer') {
-      onDone('Privacy settings dialog dismissed', {
+      onDone(t('Privacy settings dialog dismissed'), {
         display: 'system',
       });
       return;

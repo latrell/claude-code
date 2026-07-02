@@ -250,4 +250,7 @@ export { Ratchet } from './theme/Ratchet.js'
 export { StatusIcon } from './theme/StatusIcon.js'
 export { Tabs, Tab, useTabsWidth, useTabHeaderFocus } from './theme/Tabs.js'
 export { Byline } from './theme/Byline.js'
-export { KeyboardShortcutHint } from './theme/KeyboardShortcutHint.js'
+export {
+  KeyboardShortcutHint,
+  setKeyboardShortcutTranslator,
+} from './theme/KeyboardShortcutHint.js'

@@ -4,5 +4,5 @@ import { Settings } from '../../components/Settings/Settings.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
-  return <Settings onClose={onDone} context={context} defaultTab="Status" />;
+  return <Settings onClose={onDone} context={context} defaultTab="status" />;
 }

@@ -8,6 +8,7 @@ import type { LocalJSXCommandCall } from '../../types/command.js';
 import { ThemePicker } from '../../components/ThemePicker.js';
 import { getGlobalConfig, saveCurrentProjectConfig, saveGlobalConfig } from '../../utils/config.js';
 import type { ThemeSetting } from '../../utils/theme.js';
+import { t } from '../../i18n/t.js';
 
 /**
  * /onboarding [subcommand]
@@ -63,7 +64,7 @@ function ThemeSubcommand({ onDone }: { onDone: (msg: string) => void }): React.R
           logEvent('tengu_onboarding_step', { stepId: meta('theme') });
           onDone(`Theme set to ${setting}.`);
         }}
-        onCancel={() => onDone('Theme picker dismissed.')}
+        onCancel={() => onDone(t('Theme picker dismissed'))}
         skipExitHandling={true}
       />
     </Pane>

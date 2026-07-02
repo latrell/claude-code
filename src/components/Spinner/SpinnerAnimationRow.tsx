@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useMemo, useRef } from 'react';
 import { Box, Text, useAnimationFrame, stringWidth, Byline } from '@anthropic/ink';
 import { toInkColor } from '../../utils/ink.js';
+import { tf } from '../../i18n/t.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
 
@@ -267,9 +268,9 @@ export function SpinnerAnimationRow({
   const status =
     foregroundedTeammate && !foregroundedTeammate.isIdle ? (
       <>
-        <Text dimColor>(esc to interrupt </Text>
+        <Text dimColor>{tf('(esc to interrupt {name})', { name: '\0' }).split('\0')[0]}</Text>
         <Text color={toInkColor(foregroundedTeammate.identity.color)}>{foregroundedTeammate.identity.agentName}</Text>
-        <Text dimColor>)</Text>
+        <Text dimColor>{tf('(esc to interrupt {name})', { name: '\0' }).split('\0')[1]}</Text>
       </>
     ) : !foregroundedTeammate && parts.length > 0 ? (
       thinkingOnly ? (

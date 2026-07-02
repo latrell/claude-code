@@ -4,6 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isSkillSearchEnabled } from '../../services/skillSearch/featureCheck.js';
+import { t } from '../../i18n/t.js';
 
 type SkillSearchAction = {
   label: string;
@@ -126,7 +127,7 @@ function SkillSearchPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
     <Dialog
       title="Skill Search"
       subtitle={`${actions.length} actions`}
-      onCancel={() => onDone('Skill search panel dismissed', { display: 'system' })}
+      onCancel={() => onDone(t('Skill search panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide
     >

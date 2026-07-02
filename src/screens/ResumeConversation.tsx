@@ -49,6 +49,7 @@ import {
 } from '../utils/sessionStorage.js';
 import type { ThinkingConfig } from '../utils/thinking.js';
 import type { ContentReplacementRecord } from '../utils/toolResultStorage.js';
+import { T } from '../i18n/TText.js';
 import { REPL } from './REPL.js';
 
 function parsePrIdentifier(value: string): number | null {
@@ -372,7 +373,7 @@ export function ResumeConversation({
     return (
       <Box>
         <Spinner />
-        <Text> Loading conversations…</Text>
+        <T> Loading conversations…</T>
       </Box>
     );
   }
@@ -381,7 +382,7 @@ export function ResumeConversation({
     return (
       <Box>
         <Spinner />
-        <Text> Resuming conversation…</Text>
+        <T> Resuming conversation…</T>
       </Box>
     );
   }
@@ -418,8 +419,8 @@ function NoConversationsMessage(): React.ReactNode {
 
   return (
     <Box flexDirection="column">
-      <Text>No conversations found to resume.</Text>
-      <Text dimColor>Press Ctrl+C to exit and start a new conversation.</Text>
+      <T>No conversations found to resume.</T>
+      <T dimColor>Press Ctrl+C to exit and start a new conversation.</T>
     </Box>
   );
 }
@@ -435,12 +436,12 @@ function CrossProjectMessage({ command }: { command: string }): React.ReactNode 
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Text>This conversation is from a different directory.</Text>
+      <T>This conversation is from a different directory.</T>
       <Box flexDirection="column">
-        <Text>To resume, run:</Text>
+        <T>To resume, run:</T>
         <Text> {command}</Text>
       </Box>
-      <Text dimColor>(Command copied to clipboard)</Text>
+      <T dimColor>(Command copied to clipboard)</T>
     </Box>
   );
 }

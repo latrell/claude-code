@@ -22,6 +22,8 @@ import { AuthPlaneSummary } from './AuthPlaneSummary.js';
 import { getAuthStatus } from './getAuthStatus.js';
 import { WorkspaceKeyInputContainer } from './WorkspaceKeyInput.js';
 import { removeWorkspaceKey } from '../../services/auth/saveWorkspaceKey.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
   // Snapshot auth state once at call time (pure, no network)
@@ -63,7 +65,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
             authVersion: prev.authVersion + 1,
           }));
         }
-        onDone(success ? 'Login successful' : 'Login interrupted');
+        onDone(success ? t('Login successful') : t('Login interrupted'));
       }}
     />
   );
@@ -142,7 +144,7 @@ export function Login(props: {
 
   return (
     <Dialog
-      title="Login"
+      title={t('Login')}
       onCancel={() => props.onDone(false, mainLoopModel)}
       color="permission"
       inputGuide={exitState =>

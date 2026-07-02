@@ -44,6 +44,7 @@ import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';
 import { GateOverridesWarning } from './GateOverridesWarning.js';
 import { ExperimentEnrollmentNotice } from './ExperimentEnrollmentNotice.js';
 import { feature } from 'bun:bundle';
+import { t, tf } from '../../i18n/t.js';
 
 // Conditional require so ChannelsNotice.tsx tree-shakes when both flags are
 // false. A module-scope helper component inside a feature() ternary does NOT
@@ -153,8 +154,8 @@ export function LogoV2(): React.ReactNode {
         {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
         {isDebugMode() && (
           <Box paddingLeft={2} flexDirection="column">
-            <Text color="warning">Debug mode enabled</Text>
-            <Text dimColor>Logging to: {isDebugToStdErr() ? 'stderr' : getDebugLogPath()}</Text>
+            <Text color="warning">{t('Debug mode enabled')}</Text>
+            <Text dimColor>{tf('Logging to: {path}', { path: isDebugToStdErr() ? 'stderr' : getDebugLogPath() })}</Text>
           </Box>
         )}
         <EmergencyTip />
@@ -355,8 +356,8 @@ export function LogoV2(): React.ReactNode {
       {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
       {isDebugMode() && (
         <Box paddingLeft={2} flexDirection="column">
-          <Text color="warning">Debug mode enabled</Text>
-          <Text dimColor>Logging to: {isDebugToStdErr() ? 'stderr' : getDebugLogPath()}</Text>
+          <Text color="warning">{t('Debug mode enabled')}</Text>
+          <Text dimColor>{tf('Logging to: {path}', { path: isDebugToStdErr() ? 'stderr' : getDebugLogPath() })}</Text>
         </Box>
       )}
       <EmergencyTip />

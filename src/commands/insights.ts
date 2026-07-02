@@ -36,6 +36,7 @@ import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import { countCharInString } from '../utils/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
+import { t } from '../i18n/t.js'
 
 // Model for facet extraction and summarization (Opus - best quality)
 function getAnalysisModel(): string {
@@ -2953,7 +2954,9 @@ function safeKeys(obj: Record<string, unknown> | undefined | null): string[] {
 const usageReport: Command = {
   type: 'prompt',
   name: 'insights',
-  description: 'Generate a report analyzing your Claude Code sessions',
+  get description() {
+    return t('Generate a report analyzing your Claude Code sessions')
+  },
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your sessions',
   source: 'builtin',

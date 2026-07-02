@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Box, Dialog, Text, useInput } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { callTui } from './index.js';
+import { t } from '../../i18n/t.js';
 
 type TuiAction = {
   label: string;
@@ -71,7 +72,7 @@ function TuiPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactNod
     <Dialog
       title="TUI Mode"
       subtitle={`${actions.length} actions`}
-      onCancel={() => onDone('TUI mode panel dismissed', { display: 'system' })}
+      onCancel={() => onDone(t('TUI mode panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide
     >

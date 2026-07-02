@@ -12,6 +12,8 @@ import { checkHasTrustDialogAccepted, saveCurrentProjectConfig } from '../../uti
 import { getCwd } from '../../utils/cwd.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
 import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { Select } from '../CustomSelect/index.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
 import {
@@ -195,30 +197,32 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
   }
 
   return (
-    <PermissionDialog color="warning" titleColor="warning" title="Accessing workspace:">
+    <PermissionDialog color="warning" titleColor="warning" title={t('Accessing workspace:')}>
       <Box flexDirection="column" gap={1} paddingTop={1}>
         <Text bold>{getFsImplementation().cwd()}</Text>
 
-        <Text>
-          Is this a project you trust? (Your own code, a well-known open source project, or work from your team).
-        </Text>
-        <Text>Once trusted, Claude Code can read, edit, and run commands in this folder.</Text>
+        <T>Is this a project you trust? (Your own code, a well-known open source project, or work from your team).</T>
+        <T>Once trusted, Claude Code can read, edit, and run commands in this folder.</T>
 
         <Text dimColor>
-          <Link url="https://code.claude.com/docs/en/security">Security guide</Link>
+          <Link url="https://code.claude.com/docs/en/security">{t('Security guide')}</Link>
         </Text>
 
         <Select
           options={[
-            { label: 'Yes, I trust this folder', value: 'enable_all' },
-            { label: 'No, exit', value: 'exit' },
+            { label: t('Yes, I trust this folder'), value: 'enable_all' },
+            { label: t('No, exit'), value: 'exit' },
           ]}
           onChange={value => onChange(value as 'enable_all' | 'exit')}
           onCancel={() => onChange('exit')}
         />
 
         <Text dimColor>
-          {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to cancel</>}
+          {exitState.pending ? (
+            <T vars={{ keyName: exitState.keyName }}>{'Press {keyName} again to exit'}</T>
+          ) : (
+            <T>Enter to confirm · Esc to cancel</T>
+          )}
         </Text>
       </Box>
     </PermissionDialog>

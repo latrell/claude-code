@@ -6,6 +6,7 @@ import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InP
 import { formatNumber } from '../../utils/format.js';
 import { TeammateSpinnerLine } from './TeammateSpinnerLine.js';
 import { TEAMMATE_SELECT_HINT } from './teammateSelectHint.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   selectedIndex?: number;
@@ -71,8 +72,8 @@ export function TeammateSpinnerTree({
             <Text dimColor={!isLeaderHighlighted}> · {formatNumber(leaderTokenCount)} tokens</Text>
           )}
           {/* Hints - select hint when highlighted, view hint when selected but not foregrounded */}
-          {isLeaderHighlighted && <Text dimColor> · {TEAMMATE_SELECT_HINT}</Text>}
-          {isLeaderSelected && !isLeaderForegrounded && <Text dimColor> · enter to view</Text>}
+          {isLeaderHighlighted && <Text dimColor> · {t(TEAMMATE_SELECT_HINT)}</Text>}
+          {isLeaderSelected && !isLeaderForegrounded && <Text dimColor> · {t('enter to view')}</Text>}
         </Box>
       }
       {teammateTasks.map((teammate, index) => (
@@ -102,9 +103,9 @@ function HideRow({ isSelected }: { isSelected: boolean }): React.ReactNode {
         {isSelected ? '╘═' : '└─'}{' '}
       </Text>
       <Text dimColor={!isSelected} bold={isSelected}>
-        hide
+        {t('hide')}
       </Text>
-      {isSelected && <Text dimColor> · enter to collapse</Text>}
+      {isSelected && <Text dimColor> · {t('enter to collapse')}</Text>}
     </Box>
   );
 }

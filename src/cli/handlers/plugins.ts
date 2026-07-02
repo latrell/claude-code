@@ -55,6 +55,7 @@ import {
   validateManifest,
   validatePluginContents,
 } from '../../utils/plugins/validatePlugin.js'
+import { t, tf } from '../../i18n/t.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { plural } from '../../utils/stringUtils.js'
 import { cliError, cliOk } from '../exit.js'
@@ -342,13 +343,15 @@ export async function pluginListHandler(options: {
     // through to the session section so the failure is visible.
     if (inlineLoadErrors.length === 0) {
       cliOk(
-        'No plugins installed. Use `claude plugin install` to install a plugin.',
+        t(
+          'No plugins installed. Use `claude plugin install` to install a plugin.',
+        ),
       )
     }
   }
 
   if (pluginIds.length > 0) {
-    console.log('Installed plugins:\n')
+    console.log(t('Installed plugins:') + '\n')
   }
 
   for (const pluginId of pluginIds.sort()) {
