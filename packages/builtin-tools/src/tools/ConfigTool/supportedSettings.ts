@@ -82,6 +82,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Show OSC 9;4 progress indicator in supported terminals',
   },
+  statusLineEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Show the built-in status line (model, context, rate limits, cost, cache pill)',
+  },
   todoFeatureEnabled: {
     source: 'global',
     type: 'boolean',

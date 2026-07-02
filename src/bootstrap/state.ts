@@ -68,6 +68,10 @@ type State = {
   mainLoopModelOverride: ModelSetting | undefined
   initialMainLoopModel: ModelSetting
   modelStrings: ModelStrings | null
+  // Cached ChatGPT subscription plan (from /wham/usage plan_type).
+  // Populated by fetchCodexUsage so that getContextWindowForModel can
+  // auto-adapt the context window for ChatGPT Codex auth-mode sessions.
+  chatGPTSubscriptionPlan: string | null
   isInteractive: boolean
   kairosActive: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
@@ -292,6 +296,7 @@ function getInitialState(): State {
     mainLoopModelOverride: undefined,
     initialMainLoopModel: null,
     modelStrings: null,
+    chatGPTSubscriptionPlan: null,
     isInteractive: false,
     kairosActive: false,
     strictToolResultPairing: false,
@@ -925,6 +930,16 @@ export function setModelStrings(modelStrings: ModelStrings): void {
 // Separate from setModelStrings because we only want to accept 'null' in tests.
 export function resetModelStringsForTestingOnly() {
   STATE.modelStrings = null
+}
+
+export function getChatGPTSubscriptionPlan(): string | null {
+  return STATE.chatGPTSubscriptionPlan
+}
+
+export function setChatGPTSubscriptionPlan(
+  plan: string | null | undefined,
+): void {
+  STATE.chatGPTSubscriptionPlan = plan ?? null
 }
 
 export function setMeter(

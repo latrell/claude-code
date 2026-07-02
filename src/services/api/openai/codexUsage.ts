@@ -1,3 +1,4 @@
+import { setChatGPTSubscriptionPlan } from 'src/bootstrap/state.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { getValidChatGPTAuth, isChatGPTAuthEnabled } from './chatgptAuth.js'
 
@@ -328,6 +329,10 @@ export async function fetchCodexUsage(
 
   const { account, rateLimits } = usageJSON ? parseUsageResponse(usageJSON) : {}
   const { tokenUsage } = profileJSON ? parseProfileResponse(profileJSON) : {}
+
+  // Cache the subscription plan so getContextWindowForModel can auto-adapt
+  // the context window for ChatGPT Codex auth-mode sessions.
+  setChatGPTSubscriptionPlan(account?.subscriptionPlan)
 
   if (!account && !rateLimits && !tokenUsage) {
     logForDebugging('[codexUsage] no usable data from online API')

@@ -281,6 +281,8 @@ import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js'
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
+import { fetchCodexUsage } from 'src/services/api/openai/codexUsage.js';
+import { isChatGPTAuthEnabled } from 'src/services/api/openai/chatgptAuth.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
 import { setCwd } from 'src/utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
@@ -567,6 +569,13 @@ export function startDeferredPrefetches(): void {
   void initializeAnalyticsGates();
 
   void refreshModelCapabilities();
+
+  // Pre-fetch ChatGPT Codex plan at startup so the context window is
+  // correct from the first turn (not just after a manual /usage call).
+  // Fire-and-forget — errors are swallowed/logged and do not delay startup.
+  if (isChatGPTAuthEnabled()) {
+    void fetchCodexUsage().catch(() => undefined);
+  }
 
   // File change detectors deferred from init() to unblock first render
   void settingsChangeDetector.initialize();

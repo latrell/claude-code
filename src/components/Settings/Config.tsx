@@ -374,6 +374,24 @@ export function Config({
       },
     },
     {
+      id: 'statusLineEnabled',
+      label: t('Show built-in status line'),
+      value: settingsData?.statusLineEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(statusLineEnabled: boolean) {
+        updateSettingsForSource('localSettings', {
+          statusLineEnabled,
+        });
+        setSettingsData(prev => ({
+          ...prev,
+          statusLineEnabled,
+        }));
+        logEvent('tengu_status_line_enabled_changed', {
+          enabled: statusLineEnabled,
+        });
+      },
+    },
+    {
       id: 'thinkingEnabled',
       label: t('Thinking mode'),
       value: thinkingEnabled ?? true,

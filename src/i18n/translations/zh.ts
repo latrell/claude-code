@@ -269,6 +269,7 @@ const zh: Record<string, string> = {
   'Verbose output': '详细输出',
   'Terminal progress bar': '终端进度条',
   'Show status in terminal tab': '在终端标签页显示状态',
+  'Show built-in status line': '显示内置状态栏',
   'Show turn duration': '显示轮次耗时',
   'Respect .gitignore in file picker': '在文件选择器中遵循 .gitignore',
   'Search settings...': '搜索设置...',
