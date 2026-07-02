@@ -1426,6 +1426,69 @@ const zh: Record<string, string> = {
     '管理远程记忆存储（跨设备记忆持久化）。需要 Claude Pro/Max/Team 订阅。',
   'Browse and install remote skills from the Anthropic skill marketplace. Requires Claude Pro/Max/Team subscription.':
     '浏览并安装来自 Anthropic 技能市场的远程技能。需要 Claude Pro/Max/Team 订阅。',
+
+  // ── Remaining command descriptions (systematic scan) ─────────
+  'Inspect automatic autonomy runs recorded for proactive ticks and scheduled tasks':
+    '查看为主动 tick 和定时任务记录的自动自主运行',
+  'Manage prompt-cache breaking. Open actions or run: once, status, always, off':
+    '管理提示缓存中断。打开操作面板或直接运行：once、status、always、off',
+  'Ask a quick side question without interrupting the main conversation':
+    '在不中断主对话的情况下快速旁路提问',
+  'Claim main role for this machine (overrides current main machine)':
+    '声明此机器的主角色（覆盖当前主机）',
+  'Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]':
+    '清除对话历史但在上下文中保留摘要。可选：/compact [摘要说明]',
+  'Show the last N tool call pairs (use/result) from the session log':
+    '显示会话日志中最近 N 对工具调用（使用/结果）',
+  'Set or view a persistent goal that drives auto-continuation across turns':
+    '设置或查看推动跨轮次自动继续的持久目标',
+  'Create a GitHub issue via gh CLI. Flags: --label <label>, --assignee <user>':
+    '通过 gh CLI 创建 GitHub issue。参数：--label <标签>、--assignee <用户>',
+  'Sign in with your Anthropic account': '使用您的 Anthropic 账户登录',
+  'Switch Anthropic accounts': '切换 Anthropic 账户',
+  'Switch interaction mode (default, gentle, sharp, workhorse, token-saver, super-ai)':
+    '切换交互模式（default、gentle、sharp、workhorse、token-saver、super-ai）',
+  'Capture a performance + token-usage snapshot. Flags: --format=json|csv|md (default md)':
+    '捕获性能和词元用量快照。参数：--format=json|csv|md（默认 md）',
+  'Toggle poor mode \u2014 disable extract_memories and prompt_suggestion to save tokens':
+    '切换穷鬼模式 \u2014 禁用 extract_memories 和 prompt_suggestion 以节省词元',
+  'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)':
+    '切换 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry）',
+  'Manage scheduled remote agent triggers (cloud cron). Requires Claude Pro/Max/Team subscription.':
+    '管理定时远程代理触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
+  'Show Claude Code status including version, model, account, API connectivity, and tool statuses':
+    '显示 Claude Code 状态，包括版本、模型、账户、API 连接和工具状态',
+  'Manage flicker-free TUI mode. Open actions or run: status, on, off, toggle':
+    '管理无闪烁 TUI 模式。打开操作面板或直接运行：status、on、off、toggle',
+  'Toggle flicker-free TUI mode (alternate screen buffer). Subcommands: on, off, status':
+    '切换无闪烁 TUI 模式（交替屏幕缓冲）。子命令：on、off、status',
+  'Upload the current session log to GitHub Gist. Flags: --public, --private (default), --mask-secrets, --summary-only, --allow-public-fallback':
+    '将当前会话日志上传到 GitHub Gist。参数：--public、--private（默认）、--mask-secrets、--summary-only、--allow-public-fallback',
+  'Complete a security review of the pending changes on the current branch':
+    '对当前分支的待处理更改完成安全审查',
+  'Setup Claude Code on the web (requires connecting your GitHub account)':
+    '在网页上设置 Claude Code（需要连接您的 GitHub 账户）',
+  'Create verifier skill(s) for automated verification of code changes':
+    '创建用于自动验证代码更改的验证器技能',
+  'Start a persistent Remote Control server (daemon) that accepts multiple sessions':
+    '启动持久远程控制服务器（守护进程），接受多个会话',
+  'Force the next (or all) API call(s) to miss prompt cache. Scopes: once, status, always, off':
+    '强制下一次（或所有）API 调用跳过提示缓存。范围：once、status、always、off',
+
+  // ── Dynamic descriptions (get description() accessor) ─────────
+  'Toggle fast mode (Opus 4.7 only)': '切换快速模式（仅 Opus 4.7）',
+  'Enable Option+Enter key binding for newlines and visual bell':
+    '启用 Option+Enter 换行和视觉提示音快捷键',
+  'Install Shift+Enter key binding for newlines': '安装 Shift+Enter 换行快捷键',
+
+  // ── Remaining bundled skill descriptions ──────────────────────
+  'Find flaky tests and propose fixes': '查找不稳定的测试并提出修复方案',
+  'Review changed files across dimensions, verify each finding':
+    '跨维度审查更改的文件，验证每个发现',
+
+  // ── Built-in plugin skill descriptions ───────────────────────
+  'Set up Claude GitHub Actions for a repository':
+    '为仓库设置 Claude GitHub Actions',
 }
 
 export default zh
