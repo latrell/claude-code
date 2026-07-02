@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useMemo, useRef } from 'react';
 import { Box, Text, useAnimationFrame, stringWidth, Byline } from '@anthropic/ink';
 import { toInkColor } from '../../utils/ink.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
 
@@ -16,7 +16,7 @@ import { useStalledAnimation } from './useStalledAnimation.js';
 import { interpolateColor, toRGBColor } from './utils.js';
 
 const SEP_WIDTH = stringWidth(' · ');
-const THINKING_BARE_WIDTH = stringWidth('thinking');
+const THINKING_BARE_WIDTH = stringWidth(t('thinking'));
 const SHOW_TOKENS_AFTER_MS = 30_000;
 
 // Thinking shimmer constants. Previously lived in a separate ThinkingShimmerText
@@ -177,15 +177,17 @@ export function SpinnerAnimationRow({
       ? (foregroundedTeammate.progress?.tokenCount ?? 0)
       : leaderTokens + teammateTokens;
   const tokenCount = formatNumber(totalTokens);
-  const tokensText = hasRunningTeammates ? `${tokenCount} tokens` : `${figures.arrowDown} ${tokenCount} tokens`;
+  const tokensText = hasRunningTeammates
+    ? tf('{count} tokens', { count: tokenCount })
+    : `${figures.arrowDown} ${tf('{count} tokens', { count: tokenCount })}`;
   const tokensWidth = stringWidth(tokensText);
 
   // === Thinking text (may shrink to fit) ===
   let thinkingText =
     thinkingStatus === 'thinking'
-      ? `thinking${effortSuffix}`
+      ? tf('thinking{effort}', { effort: effortSuffix })
       : typeof thinkingStatus === 'number'
-        ? `thought for ${Math.max(1, Math.round(thinkingStatus / 1000))}s`
+        ? tf('thought for {n}s', { n: Math.max(1, Math.round(thinkingStatus / 1000)) })
         : null;
   let thinkingWidthValue = thinkingText ? stringWidth(thinkingText) : 0;
 
@@ -201,7 +203,7 @@ export function SpinnerAnimationRow({
   let showThinking = wantsThinking && availableSpace > thinkingWidthValue;
   if (!showThinking && wantsThinking && thinkingStatus === 'thinking' && effortSuffix) {
     if (availableSpace > THINKING_BARE_WIDTH) {
-      thinkingText = 'thinking';
+      thinkingText = t('thinking');
       thinkingWidthValue = THINKING_BARE_WIDTH;
       showThinking = true;
     }

@@ -6,7 +6,7 @@ import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InP
 import { formatNumber } from '../../utils/format.js';
 import { TeammateSpinnerLine } from './TeammateSpinnerLine.js';
 import { TEAMMATE_SELECT_HINT } from './teammateSelectHint.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   selectedIndex?: number;
@@ -69,7 +69,10 @@ export function TeammateSpinnerTree({
           {!isLeaderForegrounded && !leaderVerb && leaderIdleText && <Text dimColor>: {leaderIdleText}</Text>}
           {/* Stats (tokens) - same dimColor logic as teammates */}
           {leaderTokenCount !== undefined && leaderTokenCount > 0 && (
-            <Text dimColor={!isLeaderHighlighted}> · {formatNumber(leaderTokenCount)} tokens</Text>
+            <Text dimColor={!isLeaderHighlighted}>
+              {' '}
+              · {tf('{count} tokens', { count: formatNumber(leaderTokenCount) })}
+            </Text>
           )}
           {/* Hints - select hint when highlighted, view hint when selected but not foregrounded */}
           {isLeaderHighlighted && <Text dimColor> · {t(TEAMMATE_SELECT_HINT)}</Text>}

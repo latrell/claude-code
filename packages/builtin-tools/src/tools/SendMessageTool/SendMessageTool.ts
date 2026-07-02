@@ -38,7 +38,7 @@ import {
   createShutdownRequestMessage,
   writeToMailbox,
 } from 'src/utils/teammateMailbox.js'
-import { tf } from 'src/i18n/t.js'
+import { t, tf } from 'src/i18n/t.js'
 import { resumeAgentBackground } from '../AgentTool/resumeAgent.js'
 import { SEND_MESSAGE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
@@ -950,7 +950,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
                     'Agent "{to}" was stopped ({status}); resumed it in the background with your message. You\'ll be notified when it finishes. Output: {output}',
                     {
                       to: input.to,
-                      status: task.status,
+                      status: t(task.status),
                       output: result.outputFile,
                     },
                   ),
@@ -964,7 +964,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
                     'Agent "{to}" is stopped ({status}) and could not be resumed: {error}',
                     {
                       to: input.to,
-                      status: task.status,
+                      status: t(task.status),
                       error: errorMessage(e),
                     },
                   ),

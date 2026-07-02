@@ -673,6 +673,11 @@ const zh: Record<string, string> = {
   'Reconnecting…': '重新连接中…',
   Disconnected: '已断开连接',
 
+  // ── Spinner thinking state fragments ───────────────────────────
+  thinking: '思考中',
+  'thinking{effort}': '思考中{effort}',
+  'thought for {n}s': '思考了 {n} 秒',
+
   // ── TagTabs ────────────────────────────────────────────────────
   Resume: '恢复会话',
   'Resume (All Projects)': '恢复会话（所有项目）',
@@ -1237,6 +1242,10 @@ const zh: Record<string, string> = {
   done: '完成',
   error: '错误',
   stopped: '已停止',
+  completed: '已完成',
+  failed: '失败',
+  killed: '已停止',
+  pending: '等待中',
   ', unread': '，未读',
   'setting up': '设置中',
   stopping: '正在停止',
