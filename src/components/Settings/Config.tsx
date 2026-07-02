@@ -379,7 +379,7 @@ export function Config({
       value: settingsData?.statusLineEnabled ?? false,
       type: 'boolean' as const,
       onChange(statusLineEnabled: boolean) {
-        updateSettingsForSource('localSettings', {
+        updateSettingsForSource('userSettings', {
           statusLineEnabled,
         });
         setSettingsData(prev => ({
