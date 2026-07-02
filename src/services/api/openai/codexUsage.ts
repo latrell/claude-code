@@ -11,6 +11,14 @@ import { getValidChatGPTAuth, isChatGPTAuthEnabled } from './chatgptAuth.js'
 
 export interface CodexRateLimitBucket {
   label: string
+  /**
+   * Un-concatenated base label (e.g. 'Primary rate limit'), used by the UI
+   * layer as an i18n lookup key. `label` keeps the pre-formatted English
+   * string for backward compatibility.
+   */
+  labelKey?: string
+  /** Rate limit window length in minutes, when reported by the API. */
+  windowMinutes?: number
   used: number
   limit: number
   remaining: number
@@ -286,6 +294,8 @@ function windowToBucket(
 
   return {
     label: effectiveMins ? `${label} (${effectiveMins}min)` : label,
+    labelKey: label,
+    ...(effectiveMins ? { windowMinutes: effectiveMins } : {}),
     used: usedPercent,
     limit: 100,
     remaining: Math.max(0, 100 - usedPercent),

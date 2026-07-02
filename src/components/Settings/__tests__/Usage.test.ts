@@ -145,4 +145,63 @@ describe('codexBucketToLimitBar', () => {
     const result = codexBucketToLimitBar(bucket)
     expect(result.limit.utilization).toBe(0)
   })
+
+  // Title assertions below accept both English and Chinese output because the
+  // resolved language depends on the host locale/config (see t.ts).
+
+  test('builds title from labelKey and windowMinutes when present', () => {
+    const bucket: CodexRateLimitBucket = {
+      label: 'Primary rate limit (300min)',
+      labelKey: 'Primary rate limit',
+      windowMinutes: 300,
+      used: 10,
+      limit: 100,
+      remaining: 90,
+      resetsAtSeconds: 0,
+    }
+    const result = codexBucketToLimitBar(bucket)
+    expect([
+      'Primary rate limit (300min)',
+      '主要速率限制（300 分钟）',
+    ]).toContain(result.title)
+  })
+
+  test('builds title from labelKey alone when windowMinutes is absent', () => {
+    const bucket: CodexRateLimitBucket = {
+      label: 'Secondary rate limit',
+      labelKey: 'Secondary rate limit',
+      used: 10,
+      limit: 100,
+      remaining: 90,
+      resetsAtSeconds: 0,
+    }
+    const result = codexBucketToLimitBar(bucket)
+    expect(['Secondary rate limit', '次要速率限制']).toContain(result.title)
+  })
+
+  test('passes server-provided labelKey through untranslated', () => {
+    const bucket: CodexRateLimitBucket = {
+      label: 'gpt-4.1 (60min)',
+      labelKey: 'gpt-4.1',
+      windowMinutes: 60,
+      used: 10,
+      limit: 100,
+      remaining: 90,
+      resetsAtSeconds: 0,
+    }
+    const result = codexBucketToLimitBar(bucket)
+    expect(['gpt-4.1 (60min)', 'gpt-4.1（60 分钟）']).toContain(result.title)
+  })
+
+  test('falls back to pre-formatted label when labelKey is absent', () => {
+    const bucket: CodexRateLimitBucket = {
+      label: 'Primary rate limit (300min)',
+      used: 10,
+      limit: 100,
+      remaining: 90,
+      resetsAtSeconds: 0,
+    }
+    const result = codexBucketToLimitBar(bucket)
+    expect(result.title).toBe('Primary rate limit (300min)')
+  })
 })

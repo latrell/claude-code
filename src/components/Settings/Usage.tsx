@@ -117,8 +117,15 @@ export function bucketToLimitBar(bucket: ProviderUsageBucket): { limit: RateLimi
 }
 
 export function codexBucketToLimitBar(bucket: CodexRateLimitBucket): { title: string; limit: RateLimit } {
+  // Prefer the un-concatenated labelKey so the base label can be translated;
+  // server-provided labels (additional_rate_limits) pass through t() unchanged.
+  const title = bucket.labelKey
+    ? bucket.windowMinutes
+      ? tf('{label} ({mins}min)', { label: t(bucket.labelKey), mins: bucket.windowMinutes })
+      : t(bucket.labelKey)
+    : bucket.label;
   return {
-    title: bucket.label,
+    title,
     limit: {
       utilization: bucket.limit > 0 ? Math.round((bucket.used / bucket.limit) * 100) : null,
       resets_at: bucket.resetsAtSeconds > 0 ? new Date(bucket.resetsAtSeconds * 1000).toISOString() : null,

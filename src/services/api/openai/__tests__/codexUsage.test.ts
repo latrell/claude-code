@@ -145,6 +145,8 @@ describe('fetchCodexUsage', () => {
 
     // Primary
     expect(result!.rateLimits![0].label).toBe('Primary rate limit (180min)')
+    expect(result!.rateLimits![0].labelKey).toBe('Primary rate limit')
+    expect(result!.rateLimits![0].windowMinutes).toBe(180)
     expect(result!.rateLimits![0].used).toBe(42)
     expect(result!.rateLimits![0].limit).toBe(100)
     expect(result!.rateLimits![0].remaining).toBe(58)
@@ -152,11 +154,15 @@ describe('fetchCodexUsage', () => {
 
     // Secondary
     expect(result!.rateLimits![1].label).toBe('Secondary rate limit (1440min)')
+    expect(result!.rateLimits![1].labelKey).toBe('Secondary rate limit')
+    expect(result!.rateLimits![1].windowMinutes).toBe(1440)
     expect(result!.rateLimits![1].used).toBe(15)
     expect(result!.rateLimits![1].remaining).toBe(85)
 
     // Additional
     expect(result!.rateLimits![2].label).toBe('o1 (1440min)')
+    expect(result!.rateLimits![2].labelKey).toBe('o1')
+    expect(result!.rateLimits![2].windowMinutes).toBe(1440)
 
     // Token usage (latest bucket)
     expect(result!.tokenUsage?.tokensUsed).toBe(2345)
@@ -318,6 +324,8 @@ describe('fetchCodexUsage', () => {
     expect(result).not.toBeNull()
     expect(result!.account?.subscriptionPlan).toBe('team')
     expect(result!.rateLimits![0].label).toBe('Primary rate limit')
+    expect(result!.rateLimits![0].labelKey).toBe('Primary rate limit')
+    expect(result!.rateLimits![0].windowMinutes).toBeUndefined()
     expect(result!.rateLimits![0].resetsAtSeconds).toBe(1720000000)
     expect(result!.rateLimits![1].label).toBe('gpt-4.1 (60min)')
     expect(result!.rateLimits![1].used).toBe(45)
