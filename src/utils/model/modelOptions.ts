@@ -38,6 +38,7 @@ import {
   CHATGPT_CODEX_MODEL_OPTIONS,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
+import { t, tf } from '../../i18n/t.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -55,9 +56,13 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
     )
     return {
       value: null,
-      label: 'Default (recommended)',
-      description: `Use the default model for Ants (currently ${currentModel})`,
-      descriptionForModel: `Default model (currently ${currentModel})`,
+      label: t('Default (recommended)'),
+      description: tf('Use the default model for Ants (currently {model})', {
+        model: currentModel,
+      }),
+      descriptionForModel: tf('Default model (currently {model})', {
+        model: currentModel,
+      }),
     }
   }
 
@@ -65,101 +70,128 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   if (isClaudeAISubscriber()) {
     return {
       value: null,
-      label: 'Default (recommended)',
+      label: t('Default (recommended)'),
       description: getClaudeAiUserDefaultModelDescription(fastMode),
     }
   }
 
   // PAYG
   const is3P = getAPIProvider() !== 'firstParty'
+  const currentModel = renderDefaultModelSetting(
+    getDefaultMainLoopModelSetting(),
+  )
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`
   return {
     value: null,
-    label: 'Default (recommended)',
-    description: `Use the default model (currently ${renderDefaultModelSetting(getDefaultMainLoopModelSetting())})${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
+    label: t('Default (recommended)'),
+    description: tf('Use the default model (currently {model}){pricing}', {
+      model: currentModel,
+      pricing,
+    }),
   }
 }
 
 function getFable5Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`
   return {
     value: is3P ? getModelStrings().fable50 : 'fable',
     label: 'Fable 5',
-    description: `Fable 5 · Best for everyday tasks${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
-    descriptionForModel:
+    description: tf('Fable 5 · Best for everyday tasks{pricing}', { pricing }),
+    descriptionForModel: t(
       'Fable 5 - best for everyday tasks. The recommended default model for most coding tasks',
+    ),
   }
 }
 
 export function getFable5_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const billing = isClaudeAISubscriber()
+    ? ` · ${t('Billed as extra usage')}`
+    : ''
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`
   return {
     value: is3P ? getModelStrings().fable50 + '[1m]' : 'fable[1m]',
     label: 'Fable 5 (1M context)',
-    description: `Fable 5 with 1M context${billingInfo}${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
-    descriptionForModel:
+    description: tf('Fable 5 with 1M context{billing}{pricing}', {
+      billing,
+      pricing,
+    }),
+    descriptionForModel: t(
       'Fable 5 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 function getSonnet5Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`
   return {
     value: is3P ? getModelStrings().sonnet50 : 'sonnet',
     label: 'Sonnet 5',
-    description: `Sonnet 5 · Fast and capable${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
-    descriptionForModel:
+    description: tf('Sonnet 5 · Fast and capable{pricing}', { pricing }),
+    descriptionForModel: t(
       'Sonnet 5 - fast and capable. Great for most coding tasks',
+    ),
   }
 }
 
 export function getSonnet5_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const billing = isClaudeAISubscriber()
+    ? ` · ${t('Billed as extra usage')}`
+    : ''
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`
   return {
     value: is3P ? getModelStrings().sonnet50 + '[1m]' : 'sonnet[1m]',
     label: 'Sonnet 5 (1M context)',
-    description: `Sonnet 5 with 1M context${billingInfo}${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
-    descriptionForModel:
+    description: tf('Sonnet 5 with 1M context{billing}{pricing}', {
+      billing,
+      pricing,
+    }),
+    descriptionForModel: t(
       'Sonnet 5 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 function getOpus48Option(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: is3P ? getModelStrings().opus48 : 'opus',
     label: 'Opus 4.8',
-    description: `Opus 4.8 · Most capable for complex work${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel: 'Opus 4.8 - most capable for complex work',
+    description: tf('Opus 4.8 · Most capable for complex work{pricing}', {
+      pricing,
+    }),
+    descriptionForModel: t('Opus 4.8 - most capable for complex work'),
   }
 }
 
 export function getOpus48_1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: is3P ? getModelStrings().opus48 + '[1m]' : 'opus[1m]',
     label: 'Opus 4.8 (1M context)',
-    description: `Opus 4.8 with 1M context${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel:
+    description: tf('Opus 4.8 with 1M context{pricing}', { pricing }),
+    descriptionForModel: t(
       'Opus 4.8 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 function getCustomSonnetOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_SONNET_MODEL
   const customSonnetModel =
     provider === 'openai'
       ? process.env.OPENAI_DEFAULT_SONNET_MODEL
       : provider === 'gemini'
         ? process.env.GEMINI_DEFAULT_SONNET_MODEL
         : process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
-  // When a 3P user has a custom sonnet model string, show it directly
   if (is3P && customSonnetModel) {
     const is1m = has1mContext(customSonnetModel)
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
     const nameEnv =
       provider === 'openai'
         ? process.env.OPENAI_DEFAULT_SONNET_MODEL_NAME
@@ -176,8 +208,13 @@ function getCustomSonnetOption(): ModelOption | undefined {
       value: 'sonnet',
       label: nameEnv ?? customSonnetModel,
       description:
-        descEnv ?? `Custom Sonnet model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${descEnv ?? `Custom Sonnet model${is1m ? ' with 1M context' : ''}`} (${customSonnetModel})`,
+        descEnv ??
+        (is1m
+          ? t('Custom Sonnet model (1M context)')
+          : t('Custom Sonnet model')),
+      descriptionForModel: is1m
+        ? `${descEnv ?? t('Custom Sonnet model with 1M context')} (${customSonnetModel})`
+        : `${descEnv ?? t('Custom Sonnet model')} (${customSonnetModel})`,
     }
   }
 }
@@ -185,28 +222,28 @@ function getCustomSonnetOption(): ModelOption | undefined {
 // @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
 function getSonnet46Option(): ModelOption {
+  const pricing = formatModelPricing(COST_TIER_3_15)
   return {
     value: getModelStrings().sonnet46,
     label: 'Sonnet 4.6',
-    description: `Sonnet 4.6 · Previous generation Sonnet · ${formatModelPricing(COST_TIER_3_15)}`,
-    descriptionForModel: 'Sonnet 4.6 - previous generation Sonnet model',
+    description: tf('Sonnet 4.6 · Previous generation Sonnet · {pricing}', {
+      pricing,
+    }),
+    descriptionForModel: t('Sonnet 4.6 - previous generation Sonnet model'),
   }
 }
 
 function getCustomOpusOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_OPUS_MODEL
   const customOpusModel =
     provider === 'openai'
       ? process.env.OPENAI_DEFAULT_OPUS_MODEL
       : provider === 'gemini'
         ? process.env.GEMINI_DEFAULT_OPUS_MODEL
         : process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
-  // When a 3P user has a custom opus model string, show it directly
   if (is3P && customOpusModel) {
     const is1m = has1mContext(customOpusModel)
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
     const nameEnv =
       provider === 'openai'
         ? process.env.OPENAI_DEFAULT_OPUS_MODEL_NAME
@@ -222,79 +259,87 @@ function getCustomOpusOption(): ModelOption | undefined {
     return {
       value: 'opus',
       label: nameEnv ?? customOpusModel,
-      description: descEnv ?? `Custom Opus model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${descEnv ?? `Custom Opus model${is1m ? ' with 1M context' : ''}`} (${customOpusModel})`,
+      description:
+        descEnv ??
+        (is1m ? t('Custom Opus model (1M context)') : t('Custom Opus model')),
+      descriptionForModel: is1m
+        ? `${descEnv ?? t('Custom Opus model with 1M context')} (${customOpusModel})`
+        : `${descEnv ?? t('Custom Opus model')} (${customOpusModel})`,
     }
   }
 }
 
 function getOpus47Option(fastMode = false): ModelOption {
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: getModelStrings().opus47,
     label: 'Opus 4.7',
-    description: `Opus 4.7 · Previous generation Opus${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel: 'Opus 4.7 - previous generation Opus model',
+    description: tf('Opus 4.7 · Previous generation Opus{pricing}', {
+      pricing,
+    }),
+    descriptionForModel: t('Opus 4.7 - previous generation Opus model'),
   }
 }
 
 export function getOpus46Option(fastMode = false): ModelOption {
-  // Always use the canonical 4.6 model string (not the 'opus' alias, which
-  // resolves via getDefaultOpusModel() to opus48 on firstParty). Users
-  // selecting "Opus 4.6" must get 4.6 actually dispatched, not alias-routed
-  // to 4.8. The same string is correct for 3P (getModelStrings maps per
-  // provider).
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: getModelStrings().opus46,
     label: 'Opus 4.6',
-    description: `Opus 4.6 · Previous generation Opus${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel: 'Opus 4.6 - previous generation Opus model',
+    description: tf('Opus 4.6 · Previous generation Opus{pricing}', {
+      pricing,
+    }),
+    descriptionForModel: t('Opus 4.6 - previous generation Opus model'),
   }
 }
 
 export function getSonnet46_1MOption(): ModelOption {
+  const pricing = formatModelPricing(COST_TIER_3_15)
   return {
     value: getModelStrings().sonnet46 + '[1m]',
     label: 'Sonnet 4.6 (1M context)',
-    description: `Sonnet 4.6 for long sessions · ${formatModelPricing(COST_TIER_3_15)}`,
-    descriptionForModel:
+    description: tf('Sonnet 4.6 for long sessions · {pricing}', { pricing }),
+    descriptionForModel: t(
       'Sonnet 4.6 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 export function getOpus47_1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: is3P ? getModelStrings().opus47 + '[1m]' : 'opus[1m]',
     label: 'Opus 4.7 (1M context)',
-    description: `Opus 4.7 with 1M context${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel:
+    description: tf('Opus 4.7 with 1M context{pricing}', { pricing }),
+    descriptionForModel: t(
       'Opus 4.7 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 export function getOpus46_1MOption(fastMode = false): ModelOption {
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: getModelStrings().opus46 + '[1m]',
     label: 'Opus 4.6 (1M context)',
-    description: `Opus 4.6 with 1M context${getOpusPricingSuffix(fastMode)}`,
-    descriptionForModel:
+    description: tf('Opus 4.6 with 1M context{pricing}', { pricing }),
+    descriptionForModel: t(
       'Opus 4.6 with 1M context window - for long sessions with large codebases',
+    ),
   }
 }
 
 function getCustomHaikuOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_HAIKU_MODEL
   const customHaikuModel =
     provider === 'openai'
       ? process.env.OPENAI_DEFAULT_HAIKU_MODEL
       : provider === 'gemini'
         ? process.env.GEMINI_DEFAULT_HAIKU_MODEL
         : process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
-  // When a 3P user has a custom haiku model string, show it directly
   if (is3P && customHaikuModel) {
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
     const nameEnv =
       provider === 'openai'
         ? process.env.OPENAI_DEFAULT_HAIKU_MODEL_NAME
@@ -310,36 +355,41 @@ function getCustomHaikuOption(): ModelOption | undefined {
     return {
       value: 'haiku',
       label: nameEnv ?? customHaikuModel,
-      description: descEnv ?? 'Custom Haiku model',
-      descriptionForModel: `${descEnv ?? 'Custom Haiku model'} (${customHaikuModel})`,
+      description: descEnv ?? t('Custom Haiku model'),
+      descriptionForModel: `${descEnv ?? t('Custom Haiku model')} (${customHaikuModel})`,
     }
   }
 }
 
 function getHaiku45Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_45)}`
   return {
     value: 'haiku',
     label: 'Haiku',
-    description: `Haiku 4.5 · Fastest for quick answers${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_45)}`}`,
-    descriptionForModel:
+    description: tf('Haiku 4.5 · Fastest for quick answers{pricing}', {
+      pricing,
+    }),
+    descriptionForModel: t(
       'Haiku 4.5 - fastest for quick answers. Lower cost but less capable than Fable 5.',
+    ),
   }
 }
 
 function getHaiku35Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_35)}`
   return {
     value: 'haiku',
     label: 'Haiku',
-    description: `Haiku 3.5 for simple tasks${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_35)}`}`,
-    descriptionForModel:
+    description: tf('Haiku 3.5 for simple tasks{pricing}', { pricing }),
+    descriptionForModel: t(
       'Haiku 3.5 - faster and lower cost, but less capable than Sonnet. Use for simple tasks.',
+    ),
   }
 }
 
 function getHaikuOption(): ModelOption {
-  // Return correct Haiku option based on provider
   const haikuModel = getDefaultHaikuModel()
   return haikuModel === getModelStrings().haiku45
     ? getHaiku45Option()
@@ -347,59 +397,83 @@ function getHaikuOption(): ModelOption {
 }
 
 function getMaxOpusOption(fastMode = false): ModelOption {
+  const pricing = fastMode ? getOpusPricingSuffix(true) : ''
   return {
     value: 'opus',
     label: 'Opus 4.8',
-    description: `Opus 4.8 · Most capable for complex work${fastMode ? getOpusPricingSuffix(true) : ''}`,
+    description: tf('Opus 4.8 · Most capable for complex work{pricing}', {
+      pricing,
+    }),
   }
 }
 
 export function getMaxSonnet46_1MOption(): ModelOption {
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const billing = isClaudeAISubscriber()
+    ? ` · ${t('Billed as extra usage')}`
+    : ''
+  const pricing = formatModelPricing(COST_TIER_3_15)
   return {
     value: getModelStrings().sonnet46 + '[1m]',
     label: 'Sonnet 4.6 (1M context)',
-    description: `Sonnet 4.6 with 1M context${billingInfo} · ${formatModelPricing(COST_TIER_3_15)}`,
+    description: tf('Sonnet 4.6 with 1M context{billing} · {pricing}', {
+      billing,
+      pricing,
+    }),
   }
 }
 
 export function getMaxOpus47_1MOption(fastMode = false): ModelOption {
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const billing = isClaudeAISubscriber()
+    ? ` · ${t('Billed as extra usage')}`
+    : ''
+  const pricing = getOpusPricingSuffix(fastMode)
   return {
     value: 'opus[1m]',
     label: 'Opus 4.8 (1M context)',
-    description: `Opus 4.8 with 1M context${billingInfo}${getOpusPricingSuffix(fastMode)}`,
+    description: tf('Opus 4.8 with 1M context{billing}{pricing}', {
+      billing,
+      pricing,
+    }),
   }
 }
 
 function getMergedOpus1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
+  const pricing = !is3P && fastMode ? getOpusPricingSuffix(fastMode) : ''
   return {
     value: is3P ? getModelStrings().opus48 + '[1m]' : 'opus[1m]',
     label: 'Opus 4.8 (1M context)',
-    description: `Opus 4.8 with 1M context · Most capable for complex work${!is3P && fastMode ? getOpusPricingSuffix(fastMode) : ''}`,
-    descriptionForModel:
+    description: tf(
+      'Opus 4.8 with 1M context · Most capable for complex work{pricing}',
+      { pricing },
+    ),
+    descriptionForModel: t(
       'Opus 4.8 with 1M context - most capable for complex work',
+    ),
   }
 }
 
-const MaxSonnet46Option: ModelOption = {
-  value: getModelStrings().sonnet46,
-  label: 'Sonnet 4.6',
-  description: 'Sonnet 4.6 · Previous generation Sonnet',
+function getMaxSonnet46Option(): ModelOption {
+  return {
+    value: getModelStrings().sonnet46,
+    label: 'Sonnet 4.6',
+    description: t('Sonnet 4.6 · Previous generation Sonnet'),
+  }
 }
 
-const MaxHaiku45Option: ModelOption = {
-  value: 'haiku',
-  label: 'Haiku',
-  description: 'Haiku 4.5 · Fastest for quick answers',
+function getMaxHaiku45Option(): ModelOption {
+  return {
+    value: 'haiku',
+    label: 'Haiku',
+    description: t('Haiku 4.5 · Fastest for quick answers'),
+  }
 }
 
 function getOpusPlanOption(): ModelOption {
   return {
     value: 'opusplan',
-    label: 'Opus Plan Mode',
-    description: 'Use Opus 4.8 in plan mode, Fable 5 otherwise',
+    label: t('Opus Plan Mode'),
+    description: t('Use Opus 4.8 in plan mode, Fable 5 otherwise'),
   }
 }
 
@@ -407,15 +481,21 @@ function getChatGPTCodexModelOptions(): ModelOption[] {
   return [
     {
       value: null,
-      label: 'Default (recommended)',
-      description: `Use the default ChatGPT Codex model (currently ${CHATGPT_CODEX_DEFAULT_MODEL})`,
-      descriptionForModel: `Default ChatGPT Codex model (currently ${CHATGPT_CODEX_DEFAULT_MODEL})`,
+      label: t('Default (recommended)'),
+      description: tf(
+        'Use the default ChatGPT Codex model (currently {model})',
+        { model: CHATGPT_CODEX_DEFAULT_MODEL },
+      ),
+      descriptionForModel: tf(
+        'Default ChatGPT Codex model (currently {model})',
+        { model: CHATGPT_CODEX_DEFAULT_MODEL },
+      ),
     },
     ...CHATGPT_CODEX_MODEL_OPTIONS.map(model => ({
       value: model.value,
       label: model.label,
-      description: model.description,
-      descriptionForModel: `${model.description} (${model.value})`,
+      description: t(model.description),
+      descriptionForModel: `${t(model.description)} (${model.value})`,
     })),
   ]
 }
@@ -462,12 +542,12 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
       }
 
       premiumOptions.push(getOpus46_1MOption(fastMode))
-      premiumOptions.push(MaxSonnet46Option)
+      premiumOptions.push(getMaxSonnet46Option())
       if (checkSonnet1mAccess()) {
         premiumOptions.push(getMaxSonnet46_1MOption())
       }
 
-      premiumOptions.push(MaxHaiku45Option)
+      premiumOptions.push(getMaxHaiku45Option())
       return premiumOptions
     }
 
@@ -489,7 +569,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
       standardOptions.push(getMaxSonnet46_1MOption())
     }
 
-    standardOptions.push(MaxHaiku45Option)
+    standardOptions.push(getMaxHaiku45Option())
     return standardOptions
   }
 
@@ -628,7 +708,13 @@ function getKnownModelOption(model: string): ModelOption | null {
     return {
       value: model,
       label: marketingName,
-      description: `Newer version available · select ${familyInfo.alias} for ${familyInfo.currentVersionName}`,
+      description: tf(
+        'Newer version available · select {alias} for {currentVersionName}',
+        {
+          alias: familyInfo.alias,
+          currentVersionName: familyInfo.currentVersionName,
+        },
+      ),
     }
   }
 
@@ -654,7 +740,7 @@ export function getModelOptions(fastMode = false): ModelOption[] {
       label: process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME ?? envCustomModel,
       description:
         process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION ??
-        `Custom model (${envCustomModel})`,
+        tf('Custom model ({model})', { model: envCustomModel }),
     })
   }
 
@@ -699,7 +785,7 @@ export function getModelOptions(fastMode = false): ModelOption[] {
       options.push({
         value: customModel,
         label: customModel,
-        description: 'Custom model',
+        description: t('Custom model'),
       })
     }
     return filterModelOptionsByAllowlist(options)

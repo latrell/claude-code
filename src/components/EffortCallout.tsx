@@ -15,6 +15,7 @@ import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
 import { effortLevelToSymbol } from './EffortIndicator.js';
 import { PermissionDialog } from './permissions/PermissionDialog.js';
+import { t } from '../i18n/t.js';
 
 type EffortCalloutSelection = EffortLevel | undefined | 'dismiss';
 
@@ -64,11 +65,11 @@ export function EffortCallout({ model, onDone }: Props): React.ReactNode {
 
   const options: OptionWithDescription<EffortLevel>[] = [
     {
-      label: <EffortOptionLabel level="medium" text="Medium (recommended)" />,
+      label: <EffortOptionLabel level="medium" text={t('Medium (recommended)')} />,
       value: 'medium',
     },
-    { label: <EffortOptionLabel level="high" text="High" />, value: 'high' },
-    { label: <EffortOptionLabel level="low" text="Low" />, value: 'low' },
+    { label: <EffortOptionLabel level="high" text={t('High')} />, value: 'high' },
+    { label: <EffortOptionLabel level="low" text={t('Low')} />, value: 'low' },
   ];
 
   return (

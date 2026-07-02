@@ -32,6 +32,7 @@ import {
   CHATGPT_CODEX_FAST_MODEL,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
+import { t, tf } from '../../i18n/t.js'
 
 export type ModelShortName = string
 export type ModelName = string
@@ -394,7 +395,8 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 export function getClaudeAiUserDefaultModelDescription(
   fastMode = false,
 ): string {
-  return `Fable 5 · Best for everyday tasks${fastMode ? getOpusPricingSuffix(true) : ''}`
+  const pricing = fastMode ? getOpusPricingSuffix(true) : ''
+  return tf('Fable 5 · Best for everyday tasks{pricing}', { pricing })
 }
 
 export function renderDefaultModelSetting(
@@ -678,11 +680,11 @@ export function isLegacyModelRemapEnabled(): boolean {
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
     if (process.env.USER_TYPE === 'ant') {
-      return `Default for Ants (${renderDefaultModelSetting(getDefaultMainLoopModelSetting())})`
+      return `${t('Default')} (${renderDefaultModelSetting(getDefaultMainLoopModelSetting())})`
     } else if (isClaudeAISubscriber()) {
-      return `Default (${getClaudeAiUserDefaultModelDescription()})`
+      return `${t('Default')} (${getClaudeAiUserDefaultModelDescription()})`
     }
-    return `Default (${getDefaultMainLoopModel()})`
+    return `${t('Default')} (${getDefaultMainLoopModel()})`
   }
   const resolvedModel = parseUserSpecifiedModel(model)
   return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`

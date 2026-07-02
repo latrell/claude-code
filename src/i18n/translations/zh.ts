@@ -229,6 +229,137 @@ const zh: Record<string, string> = {
 
   // ── ModelPicker ────────────────────────────────────────────────
   'Select model': '选择模型',
+  'Choose a model for this and future sessions. Use \u2190 \u2192 to adjust effort, Space to toggle 1M context.':
+    '为此会话及后续会话选择模型。使用 ← → 调整努力级别，空格键切换 1M 上下文。',
+  'Currently using {model} for this session (set by plan mode). Selecting a model will undo this.':
+    '当前会话正在使用 {model}（由计划模式设置）。选择模型将覆盖此设置。',
+  'and {count} more\u2026': '还有 {count} 个…',
+  '{level} effort': '{level} 级别',
+  ' (default)': '（默认）',
+  ' \u2190 \u2192 to adjust': ' ← → 调节',
+  'Effort not supported': '不支持努力级别',
+  ' for {model}': '（模型：{model}）',
+  '1M context on': '1M 上下文 已开启',
+  '1M context off': '1M 上下文 已关闭',
+  ' \u00b7 Space to toggle': ' · 空格键切换',
+  'Fast mode is ON and available with {model} only (/fast). Switching to other models turn off fast mode.':
+    '快速模式已开启，仅适用于 {model}（/fast）。切换到其他模型将关闭快速模式。',
+  'Use /fast to turn on Fast mode ({model} only).':
+    '使用 /fast 开启快速模式（仅 {model}）。',
+  'Current model': '当前模型',
+  // ── EffortCallout ───────────────────────────────────────────────
+  'Medium (recommended)': '中等（推荐）',
+  High: '高',
+  Low: '低',
+  // ── ChatGPT Codex model descriptions ───────────────────────────
+  'Frontier model for complex coding, research, and real-world work':
+    '用于复杂编码、研究和实际工作的前沿模型',
+  'Smarter, more precise responses for the most demanding reasoning tasks':
+    '为最复杂的推理任务提供更智能、更精确的回答',
+  'Strong model for everyday coding': '适合日常编码的强力模型',
+  'Small, fast, and cost-efficient model for simpler coding tasks':
+    '适合简单编码任务的小型、快速、高性价比模型',
+  'Ultra-low-latency, lowest-cost model for classification, extraction, and high-volume subagents':
+    '用于分类、提取和大规模子智能体的超低延迟、最低成本模型',
+  'Coding-optimized model': '编码优化模型',
+  'Ultra-fast coding model': '超快速编码模型',
+  'Optimized for professional work and long-running agents':
+    '为专业工作和长时间运行的智能体优化',
+  // ── Claude model descriptions ──────────────────────────────────
+  // Template versions with {pricing} / {billing} / {model} placeholders
+  'Fable 5 · Best for everyday tasks{pricing}':
+    'Fable 5 · 日常任务最佳选择{pricing}',
+  'Fable 5 with 1M context{billing}{pricing}':
+    'Fable 5（1M 上下文）{billing}{pricing}',
+  'Sonnet 5 · Fast and capable{pricing}': 'Sonnet 5 · 快速且强大{pricing}',
+  'Sonnet 5 with 1M context{billing}{pricing}':
+    'Sonnet 5（1M 上下文）{billing}{pricing}',
+  'Opus 4.8 · Most capable for complex work{pricing}':
+    'Opus 4.8 · 处理复杂任务能力最强{pricing}',
+  'Opus 4.8 with 1M context{pricing}': 'Opus 4.8（1M 上下文）{pricing}',
+  'Opus 4.8 with 1M context{billing}{pricing}':
+    'Opus 4.8（1M 上下文）{billing}{pricing}',
+  'Opus 4.8 with 1M context · Most capable for complex work{pricing}':
+    'Opus 4.8（1M 上下文）· 处理复杂任务能力最强{pricing}',
+  'Opus 4.7 · Previous generation Opus{pricing}':
+    'Opus 4.7 · 上一代 Opus{pricing}',
+  'Opus 4.7 with 1M context{pricing}': 'Opus 4.7（1M 上下文）{pricing}',
+  'Opus 4.6 · Previous generation Opus{pricing}':
+    'Opus 4.6 · 上一代 Opus{pricing}',
+  'Opus 4.6 with 1M context{pricing}': 'Opus 4.6（1M 上下文）{pricing}',
+  'Sonnet 4.6 · Previous generation Sonnet · {pricing}':
+    'Sonnet 4.6 · 上一代 Sonnet · {pricing}',
+  'Sonnet 4.6 for long sessions · {pricing}':
+    'Sonnet 4.6 适用于长时间会话 · {pricing}',
+  'Sonnet 4.6 with 1M context{billing} · {pricing}':
+    'Sonnet 4.6（1M 上下文）{billing} · {pricing}',
+  'Haiku 4.5 · Fastest for quick answers{pricing}':
+    'Haiku 4.5 · 最快速回答{pricing}',
+  'Haiku 3.5 for simple tasks{pricing}': 'Haiku 3.5 适用于简单任务{pricing}',
+  'Use the default model (currently {model}){pricing}':
+    '使用默认模型（当前 {model}）{pricing}',
+  // Non-template model descriptions
+  'Fable 5 · Best for everyday tasks': 'Fable 5 · 日常任务最佳选择',
+  'Fable 5 - best for everyday tasks. The recommended default model for most coding tasks':
+    'Fable 5 - 日常任务最佳选择。推荐作为大多数编码任务的默认模型',
+  'Fable 5 with 1M context': 'Fable 5（1M 上下文）',
+  'Fable 5 with 1M context window - for long sessions with large codebases':
+    'Fable 5（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Sonnet 5 · Fast and capable': 'Sonnet 5 · 快速且强大',
+  'Sonnet 5 - fast and capable. Great for most coding tasks':
+    'Sonnet 5 - 快速且强大。适合大多数编码任务',
+  'Sonnet 5 with 1M context': 'Sonnet 5（1M 上下文）',
+  'Sonnet 5 with 1M context window - for long sessions with large codebases':
+    'Sonnet 5（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Opus 4.8 · Most capable for complex work': 'Opus 4.8 · 处理复杂任务能力最强',
+  'Opus 4.8 - most capable for complex work': 'Opus 4.8 - 处理复杂任务能力最强',
+  'Opus 4.8 with 1M context': 'Opus 4.8（1M 上下文）',
+  'Opus 4.8 with 1M context - most capable for complex work':
+    'Opus 4.8（1M 上下文）- 处理复杂任务能力最强',
+  'Opus 4.8 with 1M context window - for long sessions with large codebases':
+    'Opus 4.8（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Sonnet 4.6 · Previous generation Sonnet': 'Sonnet 4.6 · 上一代 Sonnet',
+  'Sonnet 4.6 - previous generation Sonnet model':
+    'Sonnet 4.6 - 上一代 Sonnet 模型',
+  'Sonnet 4.6 with 1M context window - for long sessions with large codebases':
+    'Sonnet 4.6（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Opus 4.7 · Previous generation Opus': 'Opus 4.7 · 上一代 Opus',
+  'Opus 4.7 - previous generation Opus model': 'Opus 4.7 - 上一代 Opus 模型',
+  'Opus 4.7 with 1M context': 'Opus 4.7（1M 上下文）',
+  'Opus 4.7 with 1M context window - for long sessions with large codebases':
+    'Opus 4.7（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Opus 4.6 · Previous generation Opus': 'Opus 4.6 · 上一代 Opus',
+  'Opus 4.6 - previous generation Opus model': 'Opus 4.6 - 上一代 Opus 模型',
+  'Opus 4.6 with 1M context': 'Opus 4.6（1M 上下文）',
+  'Opus 4.6 with 1M context window - for long sessions with large codebases':
+    'Opus 4.6（1M 上下文窗口）- 适用于大型代码库的长时间会话',
+  'Haiku 4.5 · Fastest for quick answers': 'Haiku 4.5 · 最快速回答',
+  'Haiku 4.5 - fastest for quick answers. Lower cost but less capable than Fable 5.':
+    'Haiku 4.5 - 最快速回答。成本较低但能力不如 Fable 5。',
+  'Haiku 3.5 for simple tasks': 'Haiku 3.5 适用于简单任务',
+  'Haiku 3.5 - faster and lower cost, but less capable than Sonnet. Use for simple tasks.':
+    'Haiku 3.5 - 更快且成本更低，但能力不如 Sonnet。适用于简单任务。',
+  'Custom Sonnet model': '自定义 Sonnet 模型',
+  'Custom Sonnet model (1M context)': '自定义 Sonnet 模型（1M 上下文）',
+  'Custom Sonnet model with 1M context': '自定义 Sonnet 模型（1M 上下文）',
+  'Custom Opus model': '自定义 Opus 模型',
+  'Custom Opus model (1M context)': '自定义 Opus 模型（1M 上下文）',
+  'Custom Opus model with 1M context': '自定义 Opus 模型（1M 上下文）',
+  'Custom Haiku model': '自定义 Haiku 模型',
+  'Custom model': '自定义模型',
+  'Custom model ({model})': '自定义模型（{model}）',
+  'Opus Plan Mode': 'Opus 计划模式',
+  'Use Opus 4.8 in plan mode, Fable 5 otherwise':
+    '计划模式使用 Opus 4.8，其他情况使用 Fable 5',
+  'Default ChatGPT Codex model (currently {model})':
+    '默认 ChatGPT Codex 模型（当前 {model}）',
+  'Use the default ChatGPT Codex model (currently {model})':
+    '使用默认 ChatGPT Codex 模型（当前 {model}）',
+  'Default model (currently {model})': '默认模型（当前 {model}）',
+  'Newer version available · select {alias} for {currentVersionName}':
+    '有更新版本可用 · 选择 {alias} 以使用 {currentVersionName}',
+  'Use the default model for Ants (currently {model})':
+    '使用 Ant 默认模型（当前 {model}）',
 
   // ── HelpV2 / General ───────────────────────────────────────────
   'Getting started': '入门指南',
