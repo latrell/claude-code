@@ -24,7 +24,7 @@ import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js';
 import { stopUltraplan } from '../../commands/ultraplan.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -576,7 +576,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
 
   function renderInputGuide(exitState: ExitState): React.ReactNode {
     if (exitState.pending) {
-      return <Text>Press {exitState.keyName} again to exit</Text>;
+      return <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>;
     }
     return <Byline>{actions}</Byline>;
   }

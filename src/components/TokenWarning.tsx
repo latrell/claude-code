@@ -10,6 +10,7 @@ import {
 } from '../services/compact/autoCompact.js';
 import { useCompactWarningSuppression } from '../services/compact/compactWarningHook.js';
 import { getUpgradeMessage } from '../utils/model/contextWindowUpgradeCheck.js';
+import { tf } from '../i18n/t.js';
 
 type Props = {
   tokenUsage: number;
@@ -120,8 +121,8 @@ export function TokenWarning({ tokenUsage, model }: Props): React.ReactNode {
   }
 
   const autocompactLabel = reactiveOnlyMode
-    ? `${100 - displayPercentLeft}% context used`
-    : `${displayPercentLeft}% until auto-compact`;
+    ? tf('{pct}% context used', { pct: 100 - displayPercentLeft })
+    : tf('{pct}% until auto-compact', { pct: displayPercentLeft });
 
   return (
     <Box flexDirection="row">
@@ -132,8 +133,8 @@ export function TokenWarning({ tokenUsage, model }: Props): React.ReactNode {
       ) : (
         <Text color={isAboveErrorThreshold ? 'error' : 'warning'} wrap="truncate">
           {upgradeMessage
-            ? `Context low (${percentLeft}% remaining) \u00b7 ${upgradeMessage}`
-            : `Context low (${percentLeft}% remaining) \u00b7 Run /compact to compact & continue`}
+            ? `${tf('Context low ({pct}% remaining)', { pct: percentLeft })} \u00b7 ${upgradeMessage}`
+            : tf('Context low ({pct}% remaining) \u00b7 Run /compact to compact & continue', { pct: percentLeft })}
         </Text>
       )}
     </Box>

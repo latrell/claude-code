@@ -4,6 +4,7 @@ import { getOriginalCwd } from '../../bootstrap/state.js';
 import { Text } from '@anthropic/ink';
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js';
 import { permissionRuleExtractPrefix } from '../../utils/permissions/shellRuleMatching.js';
+import { t, tf } from '../../i18n/t.js';
 
 function commandListDisplay(commands: string[]): ReactNode {
   switch (commands.length) {
@@ -30,7 +31,7 @@ function commandListDisplayTruncated(commands: string[]): ReactNode {
   // Check if the plain text representation would be too long
   const plainText = commands.join(', ');
   if (plainText.length > 50) {
-    return 'similar';
+    return t('similar');
   }
   return commandListDisplay(commands);
 }
@@ -110,6 +111,13 @@ export function generateShellSuggestionsLabel(
   const hasCommands = shellCommands.length > 0;
 
   // Handle single type cases
+  // Split translated templates around the placeholder so dynamic segments keep their styling.
+  // Translations must keep placeholders in the same order as the English templates.
+  const [readingPre, readingPost] = tf('Yes, allow reading from {path} from this project', { path: '\0' }).split('\0');
+  const [accessPre, accessPost] = tf('Yes, and always allow access to {path} from this project', { path: '\0' }).split(
+    '\0',
+  );
+
   if (hasReadPaths && !hasDirectories && !hasCommands) {
     // Only Read rules - use "reading from" language
     if (readPaths.length === 1) {
@@ -117,14 +125,22 @@ export function generateShellSuggestionsLabel(
       const dirName = basename(firstPath) || firstPath;
       return (
         <Text>
-          Yes, allow reading from <Text bold>{dirName}</Text>
-          {sep} from this project
+          {readingPre}
+          <Text bold>{dirName}</Text>
+          {sep}
+          {readingPost}
         </Text>
       );
     }
 
     // Multiple read paths
-    return <Text>Yes, allow reading from {formatPathList(readPaths)} from this project</Text>;
+    return (
+      <Text>
+        {readingPre}
+        {formatPathList(readPaths)}
+        {readingPost}
+      </Text>
+    );
   }
 
   if (hasDirectories && !hasReadPaths && !hasCommands) {
@@ -134,22 +150,37 @@ export function generateShellSuggestionsLabel(
       const dirName = basename(firstDir) || firstDir;
       return (
         <Text>
-          Yes, and always allow access to <Text bold>{dirName}</Text>
-          {sep} from this project
+          {accessPre}
+          <Text bold>{dirName}</Text>
+          {sep}
+          {accessPost}
         </Text>
       );
     }
 
     // Multiple directories
-    return <Text>Yes, and always allow access to {formatPathList(directories)} from this project</Text>;
+    return (
+      <Text>
+        {accessPre}
+        {formatPathList(directories)}
+        {accessPost}
+      </Text>
+    );
   }
 
   if (hasCommands && !hasDirectories && !hasReadPaths) {
     // Only shell command permissions
+    const [cmdPre, cmdMid, cmdPost] = tf("Yes, and don't ask again for {commands} commands in {cwd}", {
+      commands: '\0',
+      cwd: '\0',
+    }).split('\0');
     return (
       <Text>
-        {"Yes, and don't ask again for "}
-        {commandListDisplayTruncated(shellCommands)} commands in <Text bold>{getOriginalCwd()}</Text>
+        {cmdPre}
+        {commandListDisplayTruncated(shellCommands)}
+        {cmdMid}
+        <Text bold>{getOriginalCwd()}</Text>
+        {cmdPost}
       </Text>
     );
   }
@@ -160,7 +191,13 @@ export function generateShellSuggestionsLabel(
     const allPaths = [...directories, ...readPaths];
     if (hasDirectories && hasReadPaths) {
       // Mixed - use generic "access to"
-      return <Text>Yes, and always allow access to {formatPathList(allPaths)} from this project</Text>;
+      return (
+        <Text>
+          {accessPre}
+          {formatPathList(allPaths)}
+          {accessPost}
+        </Text>
+      );
     }
   }
 
@@ -170,16 +207,32 @@ export function generateShellSuggestionsLabel(
 
     // Keep it concise but informative
     if (allPaths.length === 1 && shellCommands.length === 1) {
+      const [bothPre, bothMid, bothPost] = tf('Yes, and allow access to {paths} and {commands} commands', {
+        paths: '\0',
+        commands: '\0',
+      }).split('\0');
       return (
         <Text>
-          Yes, and allow access to {formatPathList(allPaths)} and {commandListDisplayTruncated(shellCommands)} commands
+          {bothPre}
+          {formatPathList(allPaths)}
+          {bothMid}
+          {commandListDisplayTruncated(shellCommands)}
+          {bothPost}
         </Text>
       );
     }
 
+    const [mixPre, mixMid, mixPost] = tf('Yes, and allow {paths} access and {commands} commands', {
+      paths: '\0',
+      commands: '\0',
+    }).split('\0');
     return (
       <Text>
-        Yes, and allow {formatPathList(allPaths)} access and {commandListDisplayTruncated(shellCommands)} commands
+        {mixPre}
+        {formatPathList(allPaths)}
+        {mixMid}
+        {commandListDisplayTruncated(shellCommands)}
+        {mixPost}
       </Text>
     );
   }

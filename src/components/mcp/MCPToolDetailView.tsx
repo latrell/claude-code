@@ -5,6 +5,7 @@ import type { Tool } from '../../Tool.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Dialog } from '@anthropic/ink';
 import type { ServerInfo } from './types.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   tool: Tool;
@@ -65,7 +66,7 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
       onCancel={onBack}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
         )

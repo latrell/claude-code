@@ -10,6 +10,7 @@ import { plural } from '../../../utils/stringUtils.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { Select } from '../../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
+import { t } from '../../../i18n/t.js';
 
 type ComputerUseApprovalProps = {
   request: CuPermissionRequest;
@@ -145,7 +146,7 @@ function ComputerUseAppListPanel({ request, onDone }: ComputerUseApprovalProps):
       {
         label: (
           <Text>
-            Deny, and tell Claude what to do differently <Text bold>(esc)</Text>
+            {t('Deny, and tell Claude what to do differently')} <Text bold>(esc)</Text>
           </Text>
         ),
         value: 'deny',

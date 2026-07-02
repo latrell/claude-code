@@ -4,6 +4,7 @@ import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Text, Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { SelectMulti } from './CustomSelect/SelectMulti.js';
+import { tf } from '../i18n/t.js';
 
 type WorkflowOption = {
   value: Workflow;
@@ -28,7 +29,7 @@ const WORKFLOWS: WorkflowOption[] = [
 
 function renderInputGuide(exitState: ExitState): React.ReactNode {
   if (exitState.pending) {
-    return <Text>Press {exitState.keyName} again to exit</Text>;
+    return <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>;
   }
   return (
     <Byline>

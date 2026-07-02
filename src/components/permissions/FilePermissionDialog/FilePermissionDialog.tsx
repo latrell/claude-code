@@ -17,6 +17,7 @@ import type { WorkerBadgeProps } from '../WorkerBadge.js';
 import type { IDEDiffSupport } from './ideDiffConfig.js';
 import type { FileOperationType, PermissionOption } from './permissionOptions.js';
 import { type ToolInput, useFilePermissionDialog } from './useFilePermissionDialog.js';
+import { t } from '../../../i18n/t.js';
 
 export type FilePermissionDialogProps<T extends ToolInput = ToolInput> = {
   // Required props from PermissionRequestProps
@@ -54,7 +55,7 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
   onReject,
   title,
   subtitle,
-  question = 'Do you want to proceed?',
+  question = t('Do you want to proceed?'),
   content,
   completionType = 'tool_use_single',
   path,

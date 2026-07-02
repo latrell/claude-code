@@ -33,6 +33,7 @@ import { isMarketplaceAutoUpdate } from '../../utils/plugins/schemas.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { plural } from '../../utils/stringUtils.js';
 import type { ViewState } from './types.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   setViewState: (state: ViewState) => void;
@@ -573,7 +574,7 @@ export function ManageMarketplaces({
         <Box marginLeft={3}>
           <Text dimColor italic>
             {exitState.pending ? (
-              <>Press {exitState.keyName} again to go back</>
+              <>{tf('Press {key} again to go back', { key: exitState.keyName })}</>
             ) : (
               <Byline>
                 <ConfigurableShortcutHint
@@ -853,7 +854,7 @@ function ManageMarketplacesKeyHints({
     return (
       <Box marginTop={1}>
         <Text dimColor italic>
-          Press {exitState.keyName} again to go back
+          {tf('Press {key} again to go back', { key: exitState.keyName })}
         </Text>
       </Box>
     );

@@ -32,7 +32,7 @@ import {
   useTerminalTitle,
   useTabStatus,
 } from '@anthropic/ink';
-import { tf } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';
 import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
 import * as React from 'react';
@@ -3012,7 +3012,7 @@ export function REPL({
               );
               break;
             case 'compact_start':
-              setSpinnerMessage('Compacting conversation');
+              setSpinnerMessage(t('Compacting conversation…'));
               break;
             case 'compact_end':
               setSpinnerMessage(null);

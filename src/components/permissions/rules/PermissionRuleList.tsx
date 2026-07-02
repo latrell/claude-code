@@ -12,7 +12,7 @@ import { useSearchInput } from '../../../hooks/useSearchInput.js';
 import { type KeyboardEvent, Box, Text, useTerminalFocus } from '@anthropic/ink';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/autoModeDenials.js';
-import { t } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 import type {
   PermissionBehavior,
   PermissionRule,
@@ -85,7 +85,7 @@ function RuleDetails({
   const footer = (
     <Box marginLeft={3}>
       {exitState.pending ? (
-        <Text dimColor>Press {exitState.keyName} again to exit</Text>
+        <Text dimColor>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
       ) : (
         <Text dimColor>Esc to cancel</Text>
       )}
@@ -685,7 +685,7 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
         <Box marginTop={1} paddingLeft={1}>
           <Text dimColor>
             {exitState.pending ? (
-              <>Press {exitState.keyName} again to exit</>
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : headerFocused ? (
               <>←/→ tab switch · ↓ return · Esc cancel</>
             ) : isSearchMode ? (

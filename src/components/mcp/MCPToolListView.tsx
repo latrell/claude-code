@@ -9,6 +9,7 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import type { ServerInfo } from './types.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   server: ServerInfo;
@@ -54,7 +55,7 @@ export function MCPToolListView({ server, onSelectTool, onBack }: Props): React.
       onCancel={onBack}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

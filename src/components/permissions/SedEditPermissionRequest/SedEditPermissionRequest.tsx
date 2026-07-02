@@ -13,6 +13,7 @@ import {
 } from '@claude-code-best/builtin-tools/tools/BashTool/sedEditParser.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
+import { tf } from '../../../i18n/t.js';
 
 type SedEditPermissionRequestProps = PermissionRequestProps & {
   sedInfo: SedEditInfo;
@@ -112,7 +113,9 @@ function SedEditPermissionRequestInner({
       subtitle={relative(getCwd(), filePath)}
       question={
         <Text>
-          Do you want to make this edit to <Text bold>{basename(filePath)}</Text>?
+          {tf('Do you want to make this edit to {file}?', { file: '\0' }).split('\0')[0]}
+          <Text bold>{basename(filePath)}</Text>
+          {tf('Do you want to make this edit to {file}?', { file: '\0' }).split('\0')[1]}
         </Text>
       }
       content={

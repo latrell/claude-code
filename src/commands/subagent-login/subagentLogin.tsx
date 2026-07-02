@@ -4,6 +4,7 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
 import { ConsoleOAuthFlow } from '../../components/ConsoleOAuthFlow.js';
 import { SUBAGENT_CREDENTIAL_SCOPE } from '../../utils/model/subagentProvider.js';
+import { tf } from '../../i18n/t.js';
 
 export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
   return <SubagentLogin onDone={onDone} />;
@@ -17,7 +18,7 @@ function SubagentLogin(props: { onDone: LocalJSXCommandOnDone }): React.ReactNod
       color="permission"
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
         )

@@ -15,6 +15,7 @@ import {
   setPreferTmuxOverIterm2,
   verifyIt2Setup,
 } from './backends/it2Setup.js';
+import { tf } from '../../i18n/t.js';
 
 type SetupStep =
   | 'initial'
@@ -351,7 +352,11 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
         {renderContent()}
         {step !== 'installing' && step !== 'verifying' && step !== 'success' && (
           <Text dimColor italic>
-            {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Esc to cancel</>}
+            {exitState.pending ? (
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
+            ) : (
+              <>Esc to cancel</>
+            )}
           </Text>
         )}
       </Box>

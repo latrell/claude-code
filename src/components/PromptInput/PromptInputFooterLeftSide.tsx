@@ -199,7 +199,7 @@ export function PromptInputFooterLeftSide({
   if (exitMessage.show) {
     return (
       <Text dimColor key="exit-message">
-        Press {exitMessage.key} again to exit
+        {tf('Press {key} again to exit', { key: exitMessage.key })}
       </Text>
     );
   }

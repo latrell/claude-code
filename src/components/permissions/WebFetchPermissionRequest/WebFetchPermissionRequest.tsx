@@ -8,6 +8,7 @@ import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { logUnaryPermissionEvent } from '../utils.js';
+import { t, tf } from '../../../i18n/t.js';
 
 function inputToPermissionRuleContent(input: { [k: string]: unknown }): string {
   try {
@@ -46,16 +47,20 @@ export function WebFetchPermissionRequest({
   const options = useMemo((): OptionWithDescription<string>[] => {
     const result: OptionWithDescription<string>[] = [
       {
-        label: 'Yes',
+        label: t('Yes'),
         value: 'yes',
       },
     ];
 
     if (showAlwaysAllowOptions) {
+      // Split the translated template around the placeholder so the hostname keeps its bold styling
+      const [dontAskPre, dontAskPost] = tf("Yes, and don't ask again for {hostname}", { hostname: '\0' }).split('\0');
       result.push({
         label: (
           <Text>
-            Yes, and don&apos;t ask again for <Text bold>{hostname}</Text>
+            {dontAskPre}
+            <Text bold>{hostname}</Text>
+            {dontAskPost}
           </Text>
         ),
         value: 'yes-dont-ask-again-domain',
@@ -65,7 +70,7 @@ export function WebFetchPermissionRequest({
     result.push({
       label: (
         <Text>
-          No, and tell Claude what to do differently <Text bold>(esc)</Text>
+          {t('No, and tell Claude what to do differently')} <Text bold>(esc)</Text>
         </Text>
       ),
       value: 'no',
@@ -124,7 +129,7 @@ export function WebFetchPermissionRequest({
 
       <Box flexDirection="column">
         <PermissionRuleExplanation permissionResult={toolUseConfirm.permissionResult} toolType="tool" />
-        <Text>Do you want to allow Claude to fetch this content?</Text>
+        <Text>{t('Do you want to allow Claude to fetch this content?')}</Text>
         <Select options={options} onChange={onChange} onCancel={() => onChange('no')} />
       </Box>
     </PermissionDialog>

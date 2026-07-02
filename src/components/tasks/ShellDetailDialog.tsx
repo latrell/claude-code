@@ -9,7 +9,7 @@ import { formatDuration, formatFileSize, truncateToWidth } from '../../utils/for
 import { tailFile } from '../../utils/fsOperations.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   shell: DeepImmutable<LocalShellTaskState>;
@@ -99,7 +99,7 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
         color="background"
         inputGuide={exitState =>
           exitState.pending ? (
-            <Text>Press {exitState.keyName} again to exit</Text>
+            <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}

@@ -29,6 +29,7 @@ import { plural } from '../../utils/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from '../TextInput.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   event: ElicitationRequestEvent;
@@ -1050,7 +1051,7 @@ function ElicitationFormDialog({
       isCancelActive={(!currentField || !!focusedButton) && !expandedAccordion}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
@@ -1221,7 +1222,7 @@ function ElicitationURLDialog({
         isCancelActive
         inputGuide={exitState =>
           exitState.pending ? (
-            <Text>Press {exitState.keyName} again to exit</Text>
+            <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
               <ConfigurableShortcutHint
@@ -1293,7 +1294,7 @@ function ElicitationURLDialog({
       isCancelActive
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />

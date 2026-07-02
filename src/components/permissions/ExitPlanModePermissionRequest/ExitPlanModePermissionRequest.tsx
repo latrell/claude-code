@@ -72,6 +72,7 @@ import type { PastedContent } from '../../../utils/config.js';
 import type { ImageDimensions } from '../../../utils/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/imageStore.js';
+import { t } from '../../../i18n/t.js';
 
 type ResponseValue =
   | 'yes-bypass-permissions'
@@ -615,7 +616,7 @@ export function ExitPlanModePermissionRequest({
         borderBottom={false}
         paddingX={1}
       >
-        <Text dimColor>Would you like to proceed?</Text>
+        <Text dimColor>{t('Would you like to proceed?')}</Text>
         <Box marginTop={1}>
           <Select
             options={options}
@@ -752,7 +753,9 @@ export function ExitPlanModePermissionRequest({
             )}
             {!useStickyFooter && (
               <>
-                <Text dimColor>Claude has written up a plan and is ready to execute. Would you like to proceed?</Text>
+                <Text dimColor>
+                  {t('Claude has written up a plan and is ready to execute. Would you like to proceed?')}
+                </Text>
                 <Box marginTop={1}>
                   <Select
                     options={options}

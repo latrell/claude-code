@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '@anthropic/ink';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   instructions?: string;
@@ -13,7 +14,9 @@ export function AgentNavigationFooter({
 
   return (
     <Box marginLeft={2}>
-      <Text dimColor>{exitState.pending ? `Press ${exitState.keyName} again to exit` : instructions}</Text>
+      <Text dimColor>
+        {exitState.pending ? tf('Press {key} again to exit', { key: exitState.keyName }) : instructions}
+      </Text>
     </Box>
   );
 }

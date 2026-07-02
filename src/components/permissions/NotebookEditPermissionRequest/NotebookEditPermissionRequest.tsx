@@ -6,6 +6,7 @@ import { NotebookEditTool } from '@claude-code-best/builtin-tools/tools/Notebook
 import { logError } from '../../../utils/log.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
+import { tf } from '../../../i18n/t.js';
 import { NotebookEditToolDiff } from './NotebookEditToolDiff.js';
 
 type NotebookEditInput = z.infer<typeof NotebookEditTool.inputSchema>;
@@ -30,12 +31,14 @@ export function NotebookEditPermissionRequest(props: PermissionRequestProps): Re
 
   const language = cell_type === 'markdown' ? 'markdown' : 'python';
 
-  const editTypeText =
+  // Split the translated template around the placeholder so the filename keeps its bold styling
+  const [questionPre, questionPost] = (
     edit_mode === 'insert'
-      ? 'insert this cell into'
+      ? tf('Do you want to insert this cell into {file}?', { file: '\0' })
       : edit_mode === 'delete'
-        ? 'delete this cell from'
-        : 'make this edit to';
+        ? tf('Do you want to delete this cell from {file}?', { file: '\0' })
+        : tf('Do you want to make this edit to {file}?', { file: '\0' })
+  ).split('\0');
 
   return (
     <FilePermissionDialog
@@ -47,7 +50,9 @@ export function NotebookEditPermissionRequest(props: PermissionRequestProps): Re
       title="Edit notebook"
       question={
         <Text>
-          Do you want to {editTypeText} <Text bold>{basename(notebook_path)}</Text>?
+          {questionPre}
+          <Text bold>{basename(notebook_path)}</Text>
+          {questionPost}
         </Text>
       }
       content={

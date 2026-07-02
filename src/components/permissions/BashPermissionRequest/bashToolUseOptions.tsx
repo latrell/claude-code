@@ -6,6 +6,7 @@ import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpda
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { generateShellSuggestionsLabel } from '../shellPermissionHelpers.js';
+import { t } from '../../../i18n/t.js';
 
 export type BashToolUseOption =
   | 'yes'
@@ -67,15 +68,15 @@ export function bashToolUseOptions({
   if (yesInputMode) {
     options.push({
       type: 'input',
-      label: 'Yes',
+      label: t('Yes'),
       value: 'yes',
-      placeholder: 'and tell Claude what to do next',
+      placeholder: t('and tell Claude what to do next'),
       onChange: onAcceptFeedbackChange,
       allowEmptySubmitToCancel: true,
     });
   } else {
     options.push({
-      label: 'Yes',
+      label: t('Yes'),
       value: 'yes',
     });
   }
@@ -92,9 +93,9 @@ export function bashToolUseOptions({
     if (editablePrefix !== undefined && onEditablePrefixChange && !hasNonBashSuggestions && suggestions.length > 0) {
       options.push({
         type: 'input',
-        label: 'Yes, and don\u2019t ask again for',
+        label: t('Yes, and don\u2019t ask again for'),
         value: 'yes-prefix-edited',
-        placeholder: 'command prefix (e.g., npm run:*)',
+        placeholder: t('command prefix (e.g., npm run:*)'),
         initialValue: editablePrefix,
         onChange: onEditablePrefixChange,
         allowEmptySubmitToCancel: true,
@@ -131,7 +132,7 @@ export function bashToolUseOptions({
     ) {
       options.push({
         type: 'input',
-        label: 'Yes, and don\u2019t ask again for',
+        label: t('Yes, and don\u2019t ask again for'),
         value: 'yes-classifier-reviewed',
         placeholder: 'describe what to allow...',
         initialValue: classifierDescription ?? '',
@@ -147,15 +148,15 @@ export function bashToolUseOptions({
   if (noInputMode) {
     options.push({
       type: 'input',
-      label: 'No',
+      label: t('No'),
       value: 'no',
-      placeholder: 'and tell Claude what to do differently',
+      placeholder: t('and tell Claude what to do differently'),
       onChange: onRejectFeedbackChange,
       allowEmptySubmitToCancel: true,
     });
   } else {
     options.push({
-      label: 'No',
+      label: t('No'),
       value: 'no',
     });
   }

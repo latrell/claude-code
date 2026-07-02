@@ -36,6 +36,7 @@ import TextInput from '../TextInput.js';
 import { CapabilitiesSection } from './CapabilitiesSection.js';
 import type { ClaudeAIServerInfo, HTTPServerInfo, SSEServerInfo } from './types.js';
 import { handleReconnectError, handleReconnectResult } from './utils/reconnectHelpers.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   server: SSEServerInfo | HTTPServerInfo | ClaudeAIServerInfo;
@@ -761,7 +762,7 @@ export function MCPRemoteServerMenu({
       <Box marginTop={1}>
         <Text dimColor italic>
           {exitState.pending ? (
-            <>Press {exitState.keyName} again to exit</>
+            <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
           ) : (
             <Byline>
               <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

@@ -41,6 +41,7 @@ import { SedEditPermissionRequest } from '../SedEditPermissionRequest/SedEditPer
 import { useShellPermissionFeedback } from '../useShellPermissionFeedback.js';
 import { logUnaryPermissionEvent } from '../utils.js';
 import { bashToolUseOptions } from './bashToolUseOptions.js';
+import { t } from '../../../i18n/t.js';
 
 const CHECKING_TEXT = 'Attempting to auto-approve\u2026';
 
@@ -494,7 +495,7 @@ function BashPermissionRequestInner({
               </Box>
             )}
             <Text dimColor={feature('BASH_CLASSIFIER') ? toolUseConfirm.classifierAutoApproved : false}>
-              Do you want to proceed?
+              {t('Do you want to proceed?')}
             </Text>
             <Select
               options={

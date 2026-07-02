@@ -6,6 +6,7 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink';
+import { tf } from '../i18n/t.js';
 
 export type Props = {
   currentValue: boolean;
@@ -97,7 +98,7 @@ export function ThinkingToggle({ currentValue, onSelect, onCancel, isMidConversa
       </Box>
       <Text dimColor italic>
         {exitState.pending ? (
-          <>Press {exitState.keyName} again to exit</>
+          <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
         ) : confirmationPending !== null ? (
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />

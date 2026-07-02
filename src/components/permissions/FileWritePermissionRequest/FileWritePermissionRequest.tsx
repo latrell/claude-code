@@ -13,6 +13,7 @@ import {
   type IDEDiffSupport,
 } from '../FilePermissionDialog/ideDiffConfig.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
+import { tf } from '../../../i18n/t.js';
 import { FileWriteToolDiff } from './FileWriteToolDiff.js';
 
 type FileWriteToolInput = z.infer<typeof FileWriteTool.inputSchema>;
@@ -66,7 +67,12 @@ export function FileWritePermissionRequest(props: PermissionRequestProps): React
     }
   }, [file_path]);
 
-  const actionText = fileExists ? 'overwrite' : 'create';
+  // Split the translated template around the placeholder so the filename keeps its bold styling
+  const [questionPre, questionPost] = (
+    fileExists
+      ? tf('Do you want to overwrite {file}?', { file: '\0' })
+      : tf('Do you want to create {file}?', { file: '\0' })
+  ).split('\0');
 
   return (
     <FilePermissionDialog
@@ -79,7 +85,9 @@ export function FileWritePermissionRequest(props: PermissionRequestProps): React
       subtitle={relative(getCwd(), file_path)}
       question={
         <Text>
-          Do you want to {actionText} <Text bold>{basename(file_path)}</Text>?
+          {questionPre}
+          <Text bold>{basename(file_path)}</Text>
+          {questionPost}
         </Text>
       }
       content={

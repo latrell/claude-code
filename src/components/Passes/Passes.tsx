@@ -13,7 +13,7 @@ import {
   formatCreditAmount,
   getCachedOrFetchPassesEligibility,
 } from '../../services/api/referral.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { ReferralRedemptionsResponse, ReferrerRewardInfo } from '../../services/oauth/types.js';
 import { count } from '../../utils/array.js';
 import { logError } from '../../utils/log.js';
@@ -123,7 +123,11 @@ export function Passes({ onDone }: Props): React.ReactNode {
         <Box flexDirection="column" gap={1}>
           <Text dimColor>Loading guest pass information…</Text>
           <Text dimColor italic>
-            {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Esc to cancel</>}
+            {exitState.pending ? (
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
+            ) : (
+              <>Esc to cancel</>
+            )}
           </Text>
         </Box>
       </Pane>
@@ -136,7 +140,11 @@ export function Passes({ onDone }: Props): React.ReactNode {
         <Box flexDirection="column" gap={1}>
           <Text>Guest passes are not currently available.</Text>
           <Text dimColor italic>
-            {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Esc to cancel</>}
+            {exitState.pending ? (
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
+            ) : (
+              <>Esc to cancel</>
+            )}
           </Text>
         </Box>
       </Pane>
@@ -210,7 +218,11 @@ export function Passes({ onDone }: Props): React.ReactNode {
 
         <Box>
           <Text dimColor italic>
-            {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to copy link · Esc to cancel</>}
+            {exitState.pending ? (
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
+            ) : (
+              <>Enter to copy link · Esc to cancel</>
+            )}
           </Text>
         </Box>
       </Box>

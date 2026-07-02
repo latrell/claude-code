@@ -13,7 +13,7 @@ import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from '@claude-code-best/built
 import { ASK_USER_QUESTION_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/AskUserQuestionTool/prompt.js';
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/constants.js';
 import { openBrowser } from '../../utils/browser.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { errorMessage } from '../../utils/errors.js';
 import { formatDuration, truncateToWidth } from '../../utils/format.js';
 import { toInternalMessages } from '../../utils/messages/mappers.js';
@@ -359,7 +359,7 @@ function ReviewSessionDetail({ session, onDone, onBack, onKill }: Omit<Props, 't
       color="background"
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="select" />
@@ -462,7 +462,7 @@ export function RemoteSessionDetailDialog({ session, toolUseContext, onDone, onB
         color="background"
         inputGuide={exitState =>
           exitState.pending ? (
-            <Text>Press {exitState.keyName} again to exit</Text>
+            <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}

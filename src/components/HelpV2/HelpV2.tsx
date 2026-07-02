@@ -12,7 +12,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Link, Text, Tab, Tabs, Pane } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { Commands } from './Commands.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { General } from './General.js';
 
 type Props = {
@@ -109,7 +109,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
         <Box marginTop={1}>
           <Text dimColor>
             {exitState.pending ? (
-              <>Press {exitState.keyName} again to exit</>
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : (
               <Text italic>{dismissShortcut} to cancel</Text>
             )}

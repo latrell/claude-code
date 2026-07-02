@@ -836,6 +836,7 @@ const zh: Record<string, string> = {
   // ── Common UI labels (currently wired) ─────────────────────────
   'Unknown error': '未知错误',
   'Press {key} again to exit': '按 {key} 再次退出',
+  'Press {key} again to go back': '按 {key} 再次返回',
 
   // ── version command ─────────────────────────────────────────────
   'Print the version this session is running (not what autoupdate downloaded)':
@@ -1818,6 +1819,77 @@ const zh: Record<string, string> = {
   'Compacting conversation…': '正在压缩对话…',
   'Remote session initialized (model: {model})':
     '远程会话已初始化（模型：{model}）',
+
+  // ── Permission dialogs ──────────────────────────────────────
+  'Do you want to proceed?': '是否继续？',
+  'Would you like to proceed?': '是否继续执行？',
+  'Claude has written up a plan and is ready to execute. Would you like to proceed?':
+    'Claude 已写好计划，准备执行。是否继续执行？',
+  'Do you want to make this edit to {file}?': '是否对 {file} 进行此编辑？',
+  'Do you want to overwrite {file}?': '是否覆盖 {file}？',
+  'Do you want to create {file}?': '是否创建 {file}？',
+  'Do you want to insert this cell into {file}?': '是否将此单元格插入 {file}？',
+  'Do you want to delete this cell from {file}?':
+    '是否从 {file} 删除此单元格？',
+  'Do you want to allow Claude to fetch this content?':
+    '是否允许 Claude 抓取此内容？',
+  'Do you want to allow this connection?': '是否允许此连接？',
+  Yes: '是',
+  No: '否',
+  // Suffix labels for the editable feedback inputs ("Yes/No, and …")
+  'and tell Claude what to do next': '并告诉 Claude 接下来做什么',
+  'and tell Claude what to do differently': '并告诉 Claude 换个做法',
+  'tell Claude what to do next': '告诉 Claude 接下来做什么',
+  'tell Claude what to do differently': '告诉 Claude 换个做法',
+  'No, and tell Claude what to do differently': '否，并告诉 Claude 换个做法',
+  'Deny, and tell Claude what to do differently':
+    '拒绝，并告诉 Claude 换个做法',
+  "Yes, and don't ask again for {hostname}": '是，且不再询问 {hostname}',
+  // Editable prefix input label (code uses \u2019 — a right single quote)
+  'Yes, and don’t ask again for': '是，且不再询问',
+  'command prefix (e.g., npm run:*)': '命令前缀（如 npm run:*）',
+  'command prefix (e.g., Get-Process:*)': '命令前缀（如 Get-Process:*）',
+  'Yes, allow edits to .claude/ config for this session':
+    '是，本次会话允许编辑 .claude/ 配置',
+  'Yes, during this session': '是，本次会话内允许',
+  'Yes, allow all edits during this session': '是，本次会话允许所有编辑',
+  'Yes, allow reading from {dir} during this session':
+    '是，本次会话允许读取 {dir}',
+  'Yes, allow all edits in {dir} during this session':
+    '是，本次会话允许编辑 {dir} 中的所有内容',
+  'this directory': '此目录',
+  // NOTE: translations must keep placeholders in the same order as English —
+  // the call sites split on the placeholder markers positionally.
+  'Yes, allow reading from {path} from this project':
+    '是，允许本项目读取 {path}',
+  'Yes, and always allow access to {path} from this project':
+    '是，并始终允许本项目访问 {path}',
+  "Yes, and don't ask again for {commands} commands in {cwd}":
+    '是，且不再询问 {commands} 命令（位于 {cwd}）',
+  'Yes, and allow access to {paths} and {commands} commands':
+    '是，并允许访问 {paths} 及 {commands} 命令',
+  'Yes, and allow {paths} access and {commands} commands':
+    '是，并允许 {paths} 访问及 {commands} 命令',
+  similar: '类似',
+  'Esc to cancel': 'Esc 取消',
+  'Esc to cancel · Tab to amend': 'Esc 取消 · Tab 补充说明',
+
+  // ── Context window status (TokenWarning) ────────────────────
+  '{pct}% context used': '已用 {pct}% 上下文',
+  '{pct}% until auto-compact': '距自动压缩还剩 {pct}%',
+  'Context low ({pct}% remaining)': '上下文不足（剩余 {pct}%）',
+  'Context low ({pct}% remaining) · Run /compact to compact & continue':
+    '上下文不足（剩余 {pct}%）· 运行 /compact 压缩后继续',
+  'Tip: You have access to {name} with {multiplier}x more context':
+    '提示：您可使用 {name}，上下文容量提升 {multiplier} 倍',
+
+  // ── Exit path ────────────────────────────────────────────────
+  'Resume this session with:\nclaude --resume {arg}':
+    '使用以下命令恢复此会话：\nclaude --resume {arg}',
+  'Goodbye!': '再见！',
+  'See ya!': '回头见！',
+  'Bye!': '拜拜！',
+  'Catch you later!': '下次见！',
 }
 
 export default zh

@@ -10,6 +10,7 @@ import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { Spinner } from '../Spinner.js';
 import type { AgentMcpServerInfo } from './types.js';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   agentServer: AgentMcpServerInfo;
@@ -128,7 +129,7 @@ export function MCPAgentServerMenu({ agentServer, onCancel, onComplete }: Props)
       onCancel={onCancel}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

@@ -22,6 +22,7 @@ import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { useShellPermissionFeedback } from '../useShellPermissionFeedback.js';
 import { logUnaryPermissionEvent } from '../utils.js';
 import { powershellToolUseOptions } from './powershellToolUseOptions.js';
+import { t } from '../../../i18n/t.js';
 
 export function PowerShellPermissionRequest(props: PermissionRequestProps): React.ReactNode {
   const { toolUseConfirm, toolUseContext, onDone, onReject, workerBadge } = props;
@@ -241,7 +242,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
                 <Text color="warning">{destructiveWarning}</Text>
               </Box>
             )}
-            <Text>Do you want to proceed?</Text>
+            <Text>{t('Do you want to proceed?')}</Text>
             <Select
               options={options}
               inlineDescriptions

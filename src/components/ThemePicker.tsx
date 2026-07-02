@@ -196,7 +196,7 @@ export function ThemePicker({
             <Box>
               <Text dimColor italic>
                 {exitState.pending ? (
-                  <>Press {exitState.keyName} again to exit</>
+                  <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
                 ) : (
                   <Byline>
                     <KeyboardShortcutHint shortcut="Enter" action="select" />

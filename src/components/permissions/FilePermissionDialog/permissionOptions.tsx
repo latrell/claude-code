@@ -8,6 +8,7 @@ import type { ToolPermissionContext } from '../../../Tool.js';
 import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
 import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
+import { t, tf } from '../../../i18n/t.js';
 /**
  * Check if a path is within the project's .claude/ folder.
  * This is used to determine whether to show the special ".claude folder" permission option.
@@ -81,16 +82,16 @@ export function getFilePermissionOptions({
   if (yesInputMode && onAcceptFeedbackChange) {
     options.push({
       type: 'input',
-      label: 'Yes',
+      label: t('Yes'),
       value: 'yes',
-      placeholder: 'and tell Claude what to do next',
+      placeholder: t('and tell Claude what to do next'),
       onChange: onAcceptFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: { type: 'accept-once' },
     });
   } else {
     options.push({
-      label: 'Yes',
+      label: t('Yes'),
       value: 'yes',
       option: { type: 'accept-once' },
     });
@@ -108,7 +109,7 @@ export function getFilePermissionOptions({
   // persisted permission rules.
   if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
     options.push({
-      label: 'Yes, allow edits to .claude/ config for this session',
+      label: t('Yes, allow edits to .claude/ config for this session'),
       value: 'yes-claude-folder',
       option: {
         type: 'accept-session',
@@ -122,30 +123,36 @@ export function getFilePermissionOptions({
     if (inAllowedPath) {
       // Inside working directory
       if (operationType === 'read') {
-        sessionLabel = 'Yes, during this session';
+        sessionLabel = t('Yes, during this session');
       } else {
         sessionLabel = (
           <Text>
-            Yes, allow all edits during this session <Text bold>({modeCycleShortcut})</Text>
+            {t('Yes, allow all edits during this session')} <Text bold>({modeCycleShortcut})</Text>
           </Text>
         );
       }
     } else {
       // Outside working directory - include directory name
       const dirPath = getDirectoryForPath(filePath);
-      const dirName = basename(dirPath) || 'this directory';
+      const dirName = basename(dirPath) || t('this directory');
 
       if (operationType === 'read') {
+        // Split the translated template around the placeholder so the directory keeps its bold styling
+        const [readPre, readPost] = tf('Yes, allow reading from {dir} during this session', { dir: '\0' }).split('\0');
         sessionLabel = (
           <Text>
-            Yes, allow reading from <Text bold>{dirName}/</Text> during this session
+            {readPre}
+            <Text bold>{dirName}/</Text>
+            {readPost}
           </Text>
         );
       } else {
+        const [editPre, editPost] = tf('Yes, allow all edits in {dir} during this session', { dir: '\0' }).split('\0');
         sessionLabel = (
           <Text>
-            Yes, allow all edits in <Text bold>{dirName}/</Text> during this session{' '}
-            <Text bold>({modeCycleShortcut})</Text>
+            {editPre}
+            <Text bold>{dirName}/</Text>
+            {editPost} <Text bold>({modeCycleShortcut})</Text>
           </Text>
         );
       }
@@ -162,9 +169,9 @@ export function getFilePermissionOptions({
   if (noInputMode && onRejectFeedbackChange) {
     options.push({
       type: 'input',
-      label: 'No',
+      label: t('No'),
       value: 'no',
-      placeholder: 'and tell Claude what to do differently',
+      placeholder: t('and tell Claude what to do differently'),
       onChange: onRejectFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: { type: 'reject' },
@@ -172,7 +179,7 @@ export function getFilePermissionOptions({
   } else {
     // Not in input mode - simple option
     options.push({
-      label: 'No',
+      label: t('No'),
       value: 'no',
       option: { type: 'reject' },
     });

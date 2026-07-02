@@ -12,6 +12,7 @@ import { ConfigurableShortcutHint } from '../../ConfigurableShortcutHint.js';
 import { Select } from '../../CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { PromptInputFooterSuggestions, type SuggestionItem } from '../../PromptInput/PromptInputFooterSuggestions.js';
+import { tf } from '../../../i18n/t.js';
 
 type Props = {
   onAddDirectory: (path: string, remember?: boolean) => void;
@@ -224,7 +225,7 @@ export function AddWorkspaceDirectory({
             ? undefined
             : exitState =>
                 exitState.pending ? (
-                  <Text>Press {exitState.keyName} again to exit</Text>
+                  <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
                 ) : (
                   <Byline>
                     <KeyboardShortcutHint shortcut="Tab" action="complete" />

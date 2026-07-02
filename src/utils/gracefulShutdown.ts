@@ -37,6 +37,7 @@ import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCurrentSessionTitle, sessionIdExists } from './sessionStorage.js'
+import { tf } from '../i18n/t.js'
 import { sleep } from './sleep.js'
 import { closeSentry } from './sentry.js'
 import { profileReport } from './startupProfiler.js'
@@ -184,7 +185,7 @@ function printResumeHint(): void {
       writeSync(
         1,
         chalk.dim(
-          `\nResume this session with:\nclaude --resume ${resumeArg}\n`,
+          `\n${tf('Resume this session with:\nclaude --resume {arg}', { arg: resumeArg })}\n`,
         ),
       )
       resumeHintPrinted = true

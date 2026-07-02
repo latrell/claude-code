@@ -51,6 +51,7 @@ import {
 import { count } from '../utils/array.js';
 import { formatRelativeTimeAgo, truncate } from '../utils/format.js';
 import type { Theme } from '../utils/theme.js';
+import { tf } from '../i18n/t.js';
 type RestoreOption = 'both' | 'conversation' | 'code' | 'summarize' | 'summarize_up_to' | 'nevermind';
 
 function isSummarizeOption(option: RestoreOption | null): option is 'summarize' | 'summarize_up_to' {
@@ -526,7 +527,7 @@ export function MessageSelector({
         {!messageToRestore && (
           <Text dimColor italic>
             {exitState.pending ? (
-              <>Press {exitState.keyName} again to exit</>
+              <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : (
               <>{!error && hasMessagesToSelect && 'Enter to continue · '}Esc to exit</>
             )}

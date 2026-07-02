@@ -12,6 +12,7 @@ import {
   type IDEDiffSupport,
 } from '../FilePermissionDialog/ideDiffConfig.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
+import { tf } from '../../../i18n/t.js';
 
 type FileEditInput = z.infer<typeof FileEditTool.inputSchema>;
 
@@ -40,6 +41,9 @@ export function FileEditPermissionRequest(props: PermissionRequestProps): React.
   const parsed = parseInput(props.toolUseConfirm.input);
   const { file_path, old_string, new_string, replace_all } = parsed;
 
+  // Split the translated template around the placeholder so the filename keeps its bold styling
+  const [questionPre, questionPost] = tf('Do you want to make this edit to {file}?', { file: '\0' }).split('\0');
+
   return (
     <FilePermissionDialog
       toolUseConfirm={props.toolUseConfirm}
@@ -51,7 +55,9 @@ export function FileEditPermissionRequest(props: PermissionRequestProps): React.
       subtitle={relative(getCwd(), file_path)}
       question={
         <Text>
-          Do you want to make this edit to <Text bold>{basename(file_path)}</Text>?
+          {questionPre}
+          <Text bold>{basename(file_path)}</Text>
+          {questionPost}
         </Text>
       }
       content={

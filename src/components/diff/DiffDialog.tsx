@@ -12,7 +12,7 @@ import { plural } from '../../utils/stringUtils.js';
 import { Byline, Dialog } from '@anthropic/ink';
 import { DiffDetailView } from './DiffDetailView.js';
 import { DiffFileList } from './DiffFileList.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   messages: Message[];
@@ -222,7 +222,7 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
       color="background"
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : viewMode === 'list' ? (
           <Byline>
             {sources.length > 1 && <Text>←/→ source</Text>}

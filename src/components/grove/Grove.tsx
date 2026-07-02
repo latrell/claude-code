@@ -15,6 +15,7 @@ import {
 } from '../../services/api/grove.js';
 import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
+import { tf } from '../../i18n/t.js';
 
 export type GroveDecision = 'accept_opt_in' | 'accept_opt_out' | 'defer' | 'escape' | 'skip_rendering';
 
@@ -222,7 +223,7 @@ export function GroveDialog({ showIfAlreadyViewed, location, onDone }: Props): R
       onCancel={handleCancel}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />
@@ -300,7 +301,7 @@ export function PrivacySettingsDialog({
       onCancel={onDone}
       inputGuide={exitState =>
         exitState.pending ? (
-          <Text>Press {exitState.keyName} again to exit</Text>
+          <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : domainExcluded ? (
           <KeyboardShortcutHint shortcut="Esc" action="cancel" />
         ) : (

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { DeepImmutable } from 'src/types/utils.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { type KeyboardEvent, Box, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -114,7 +114,7 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
         color="background"
         inputGuide={exitState =>
           exitState.pending ? (
-            <Text>Press {exitState.keyName} again to exit</Text>
+            <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}

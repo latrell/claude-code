@@ -6,6 +6,7 @@ import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { DreamTaskState } from '../../tasks/DreamTask/DreamTask.js';
 import { plural } from '../../utils/stringUtils.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
+import { tf } from '../../i18n/t.js';
 
 type Props = {
   task: DeepImmutable<DreamTaskState>;
@@ -61,7 +62,7 @@ export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): Reac
         color="background"
         inputGuide={exitState =>
           exitState.pending ? (
-            <Text>Press {exitState.keyName} again to exit</Text>
+            <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
