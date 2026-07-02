@@ -1,10 +1,19 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
-import proactiveCommand from '../proactive'
-import {
-  activateProactive,
-  deactivateProactive,
-  isProactiveActive,
-} from '../../proactive/index'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
+
+// The /proactive command renders its user-facing strings through t(), which
+// resolves the display language from global config / system locale. Force
+// English so these baseline assertions don't depend on the machine's
+// language settings (same mock shape as i18n/__tests__/t.test.ts).
+mock.module('src/utils/config.js', () => ({
+  getGlobalConfig: () => ({ preferredLanguage: 'en' }),
+}))
+mock.module('src/utils/intl.js', () => ({
+  getSystemLocaleLanguage: () => 'en',
+}))
+
+const { default: proactiveCommand } = await import('../proactive')
+const { activateProactive, deactivateProactive, isProactiveActive } =
+  await import('../../proactive/index')
 
 beforeEach(() => {
   deactivateProactive()
