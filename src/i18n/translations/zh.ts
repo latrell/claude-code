@@ -1406,6 +1406,21 @@ const zh: Record<string, string> = {
     '管理本地记忆存储（用于笔记和上下文）。存储在 ~/.claude/local-memory/ \u2014 无需 API 密钥。',
   'Security review of the current project': '对当前项目进行安全审查',
   'Toggle sandboxing behavior for this session': '切换本会话的沙箱行为',
+
+  // ── Sandbox dynamic status fragments ───────────────────────────
+  'sandbox disabled': '沙箱已禁用',
+  'sandbox enabled': '沙箱已启用',
+  'sandbox enabled (auto-allow)': '沙箱已启用（自动允许）',
+  ', fallback allowed': '，允许降级',
+  ' (managed)': '（受管控）',
+  '(⏎ to configure)': '（⏎ 配置）',
+
+  // ── Remote (CCR) command descriptions ──────────────────────────
+  '~10–30 min · Claude Code on the web drafts an advanced plan you can edit and approve. See https://code.claude.com/docs/en/claude-code-on-the-web':
+    '约 10–30 分钟 · Claude Code 网页版起草高级计划，您可以编辑和批准。详见 https://code.claude.com/docs/en/claude-code-on-the-web',
+  '~10–20 min · Finds and verifies bugs in your branch. Runs in Claude Code on the web. See https://code.claude.com/docs/en/claude-code-on-the-web':
+    '约 10–20 分钟 · 查找并验证分支中的错误。在 Claude Code 网页版中运行。详见 https://code.claude.com/docs/en/claude-code-on-the-web',
+
   'Manage memory stores': '管理记忆存储',
   'Manage Claude Code plugins and marketplaces': '管理 Claude Code 插件和市场',
   'Manage skill store': '管理技能商店',

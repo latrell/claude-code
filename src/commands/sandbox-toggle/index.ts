@@ -1,5 +1,6 @@
 import figures from 'figures'
 import type { Command } from '../../commands.js'
+import { t } from '../../i18n/t.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 
 const command = {
@@ -19,21 +20,23 @@ const command = {
       icon = currentlyEnabled ? figures.tick : figures.circle
     }
 
-    let statusText = 'sandbox disabled'
+    let statusText = t('sandbox disabled')
     if (currentlyEnabled) {
       statusText = autoAllow
-        ? 'sandbox enabled (auto-allow)'
-        : 'sandbox enabled'
+        ? t('sandbox enabled (auto-allow)')
+        : t('sandbox enabled')
 
       // Add unsandboxed fallback status
-      statusText += allowUnsandboxed ? ', fallback allowed' : ''
+      if (allowUnsandboxed) {
+        statusText += t(', fallback allowed')
+      }
     }
 
     if (isLocked) {
-      statusText += ' (managed)'
+      statusText += t(' (managed)')
     }
 
-    return `${icon} ${statusText} (⏎ to configure)`
+    return `${icon} ${statusText} ${t('(⏎ to configure)')}`
   },
   argumentHint: 'exclude "command pattern"',
   get isHidden() {
