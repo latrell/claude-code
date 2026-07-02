@@ -1402,7 +1402,8 @@ const zh: Record<string, string> = {
     '列出本会话中上传到 cloud-artifacts 的 HTML 工件',
   'Manage credential vault': '管理凭据保险库',
   'Manage local credential vault': '管理本地凭据保险库',
-  'Manage local memory stores': '管理本地记忆存储',
+  'Manage local memory stores for notes and context. Stored in ~/.claude/local-memory/ \u2014 no API key required.':
+    '管理本地记忆存储（用于笔记和上下文）。存储在 ~/.claude/local-memory/ \u2014 无需 API 密钥。',
   'Security review of the current project': '对当前项目进行安全审查',
   'Toggle sandboxing behavior for this session': '切换本会话的沙箱行为',
   'Manage memory stores': '管理记忆存储',
