@@ -1,6 +1,6 @@
-import * as React from 'react';
+import type * as React from 'react';
 import { clearTrustedDeviceTokenCache } from '../../bridge/trustedDevice.js';
-import { Text } from '@anthropic/ink';
+import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
 import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
@@ -88,14 +88,17 @@ export async function clearAuthRelatedCaches(): Promise<void> {
   await clearPolicyLimitsCache();
 }
 
-export async function call(): Promise<React.ReactNode> {
+export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
   await performLogout({ clearOnboarding: true });
 
-  const message = <Text>{t('Successfully logged out.')}</Text>;
+  // Complete via onDone BEFORE scheduling shutdown: onDone resolves the
+  // processSlashCommand Promise synchronously, so the transcript message
+  // renders within the 200ms window before the process exits.
+  onDone(t('Successfully logged out.'), { display: 'system' });
 
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');
   }, 200);
 
-  return message;
+  return null;
 }
