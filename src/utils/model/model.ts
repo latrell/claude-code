@@ -30,6 +30,7 @@ import { capitalize } from '../stringUtils.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_FAST_MODEL,
+  getChatGPTCodexModelDisplayName,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
 import { t, tf } from '../../i18n/t.js'
@@ -452,6 +453,14 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
+  // ChatGPT Codex models: resolve display names from CHATGPT_CODEX_MODEL_OPTIONS.
+  // This path only activates when both the provider is OpenAI and the auth mode
+  // is set to chatgpt, so it does not affect Anthropic model display.
+  if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
+    const display = getChatGPTCodexModelDisplayName(model)
+    if (display) return display
+  }
+
   switch (model) {
     case getModelStrings().fable50:
       return 'Fable 5'

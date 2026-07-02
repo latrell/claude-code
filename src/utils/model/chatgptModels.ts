@@ -99,6 +99,19 @@ export function isChatGPTAuthMode(): boolean {
   return process.env.OPENAI_AUTH_MODE === 'chatgpt'
 }
 
+/**
+ * Returns a human-readable display label for a ChatGPT Codex model ID, or null
+ * if the model is not recognized. Strips optional `[1m]` suffix before lookup
+ * and appends `(1M context)` to the label when the suffix is present.
+ */
+export function getChatGPTCodexModelDisplayName(model: string): string | null {
+  const base = model.replace(/\[1m\]$/i, '')
+  const option = CHATGPT_CODEX_MODEL_OPTIONS.find(o => o.value === base)
+  if (!option) return null
+  const has1m = /\[1m\]$/i.test(model)
+  return has1m ? `${option.label} (1M context)` : option.label
+}
+
 export function isChatGPTCodexReasoningModel(model: string): boolean {
   const normalized = model.toLowerCase().replace(/\[1m\]$/, '')
   return CHATGPT_CODEX_MODEL_OPTIONS.some(

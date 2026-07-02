@@ -4,6 +4,7 @@ import {
   CHATGPT_CODEX_FAST_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
   getChatGPTCodexContextWindow,
+  getChatGPTCodexModelDisplayName,
   isChatGPTCodexReasoningModel,
 } from '../chatgptModels.js'
 
@@ -188,5 +189,64 @@ describe('getChatGPTCodexContextWindow', () => {
   test('returns undefined for garbage input', () => {
     expect(getChatGPTCodexContextWindow('xyzzy')).toBeUndefined()
     expect(getChatGPTCodexContextWindow('not-a-plan')).toBeUndefined()
+  })
+})
+
+describe('getChatGPTCodexModelDisplayName', () => {
+  test('gpt-5.5 returns GPT-5.5', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.5')).toBe('GPT-5.5')
+  })
+
+  test('gpt-5.5-pro returns GPT-5.5 Pro', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.5-pro')).toBe('GPT-5.5 Pro')
+  })
+
+  test('gpt-5.4 returns GPT-5.4', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.4')).toBe('GPT-5.4')
+  })
+
+  test('gpt-5.4-mini returns GPT-5.4-Mini', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.4-mini')).toBe('GPT-5.4-Mini')
+  })
+
+  test('gpt-5.4-nano returns GPT-5.4-Nano', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.4-nano')).toBe('GPT-5.4-Nano')
+  })
+
+  test('gpt-5.3-codex returns GPT-5.3-Codex', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex')).toBe(
+      'GPT-5.3-Codex',
+    )
+  })
+
+  test('gpt-5.3-codex-spark returns GPT-5.3-Codex-Spark', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark')).toBe(
+      'GPT-5.3-Codex-Spark',
+    )
+  })
+
+  test('gpt-5.2 returns GPT-5.2', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.2')).toBe('GPT-5.2')
+  })
+
+  test('gpt-5.5[1m] returns GPT-5.5 (1M context)', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.5[1m]')).toBe(
+      'GPT-5.5 (1M context)',
+    )
+  })
+
+  test('gpt-5.5-pro[1m] returns GPT-5.5 Pro (1M context)', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.5-pro[1m]')).toBe(
+      'GPT-5.5 Pro (1M context)',
+    )
+  })
+
+  test('unknown model returns null', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-4')).toBeNull()
+    expect(getChatGPTCodexModelDisplayName('gpt-4o')).toBeNull()
+  })
+
+  test('empty string returns null', () => {
+    expect(getChatGPTCodexModelDisplayName('')).toBeNull()
   })
 })
