@@ -116,7 +116,7 @@ export function WebFetchPermissionRequest({
   }
 
   return (
-    <PermissionDialog title="Fetch" workerBadge={workerBadge}>
+    <PermissionDialog title={t('Fetch')} workerBadge={workerBadge}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text>
           {WebFetchTool.renderToolUseMessage(toolUseConfirm.input as { url: string; prompt: string }, {

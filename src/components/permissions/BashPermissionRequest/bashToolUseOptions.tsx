@@ -134,7 +134,7 @@ export function bashToolUseOptions({
         type: 'input',
         label: t('Yes, and don\u2019t ask again for'),
         value: 'yes-classifier-reviewed',
-        placeholder: 'describe what to allow...',
+        placeholder: t('describe what to allow...'),
         initialValue: classifierDescription ?? '',
         onChange: onClassifierDescriptionChange,
         allowEmptySubmitToCancel: true,

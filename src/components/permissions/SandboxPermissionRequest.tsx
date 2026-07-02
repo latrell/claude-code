@@ -74,7 +74,7 @@ export function SandboxPermissionRequest({
   ];
 
   return (
-    <PermissionDialog title="Network request outside of sandbox">
+    <PermissionDialog title={t('Network request outside of sandbox')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box>
           <Text dimColor>Host:</Text>

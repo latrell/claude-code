@@ -13,7 +13,7 @@ import {
   type IDEDiffSupport,
 } from '../FilePermissionDialog/ideDiffConfig.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 import { FileWriteToolDiff } from './FileWriteToolDiff.js';
 
 type FileWriteToolInput = z.infer<typeof FileWriteTool.inputSchema>;
@@ -81,7 +81,7 @@ export function FileWritePermissionRequest(props: PermissionRequestProps): React
       onDone={props.onDone}
       onReject={props.onReject}
       workerBadge={props.workerBadge}
-      title={fileExists ? 'Overwrite file' : 'Create file'}
+      title={fileExists ? t('Overwrite file') : t('Create file')}
       subtitle={relative(getCwd(), file_path)}
       question={
         <Text>

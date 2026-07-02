@@ -2013,7 +2013,7 @@ export function Config({
                             </Text>
                           ) : setting.id === 'defaultPermissionMode' ? (
                             <Text color={isSelected ? 'suggestion' : undefined}>
-                              {permissionModeShortTitle(setting.value as PermissionMode)}
+                              {t(permissionModeShortTitle(setting.value as PermissionMode))}
                             </Text>
                           ) : setting.id === 'autoUpdatesChannel' && autoUpdaterDisabledReason ? (
                             <Box flexDirection="column">

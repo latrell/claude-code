@@ -12,7 +12,7 @@ import {
   type IDEDiffSupport,
 } from '../FilePermissionDialog/ideDiffConfig.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 
 type FileEditInput = z.infer<typeof FileEditTool.inputSchema>;
 
@@ -51,7 +51,7 @@ export function FileEditPermissionRequest(props: PermissionRequestProps): React.
       onDone={props.onDone}
       onReject={props.onReject}
       workerBadge={props.workerBadge}
-      title="Edit file"
+      title={t('Edit file')}
       subtitle={relative(getCwd(), file_path)}
       question={
         <Text>

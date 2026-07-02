@@ -10,6 +10,7 @@ import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
 import { Select } from '../../CustomSelect/index.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
+import { t } from '../../../i18n/t.js';
 
 export function EnterPlanModePermissionRequest({
   toolUseConfirm,
@@ -36,7 +37,7 @@ export function EnterPlanModePermissionRequest({
   }
 
   return (
-    <PermissionDialog color="planMode" title="Enter plan mode?" workerBadge={workerBadge}>
+    <PermissionDialog color="planMode" title={t('Enter plan mode?')} workerBadge={workerBadge}>
       <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text>Claude wants to enter plan mode to explore and design an implementation approach.</Text>
 

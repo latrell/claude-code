@@ -87,7 +87,7 @@ function RuleDetails({
       {exitState.pending ? (
         <Text dimColor>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
       ) : (
-        <Text dimColor>Esc to cancel</Text>
+        <Text dimColor>{t('Esc to cancel')}</Text>
       )}
     </Box>
   );
@@ -687,13 +687,13 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
             {exitState.pending ? (
               <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : headerFocused ? (
-              <>←/→ tab switch · ↓ return · Esc cancel</>
+              <>{t('←/→ tab switch · ↓ return · Esc cancel')}</>
             ) : isSearchMode ? (
-              <>Type to filter · Enter/↓ select · ↑ tabs · Esc clear</>
+              <>{t('Type to filter · Enter/↓ select · ↑ tabs · Esc clear')}</>
             ) : hasDenials && defaultTab === 'recent' ? (
-              <>Enter approve · r retry · ↑↓ navigate · ←/→ switch · Esc cancel</>
+              <>{t('Enter approve · r retry · ↑↓ navigate · ←/→ switch · Esc cancel')}</>
             ) : (
-              <>↑↓ navigate · Enter select · Type to search · ←/→ switch · Esc cancel</>
+              <>{t('↑↓ navigate · Enter select · Type to search · ←/→ switch · Esc cancel')}</>
             )}
           </Text>
         </Box>

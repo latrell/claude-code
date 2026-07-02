@@ -91,7 +91,7 @@ function ComputerUseTccPanel({
   }
 
   return (
-    <Dialog title="Computer Use needs macOS permissions" onCancel={onDone}>
+    <Dialog title={t('Computer Use needs macOS permissions')} onCancel={onDone}>
       <Box flexDirection="column" paddingX={1} paddingY={1} gap={1}>
         <Box flexDirection="column">
           <Text>
@@ -187,7 +187,7 @@ function ComputerUseAppListPanel({ request, onDone }: ComputerUseApprovalProps):
   }
 
   return (
-    <Dialog title="Computer Use wants to control these apps" onCancel={() => respond(false)}>
+    <Dialog title={t('Computer Use wants to control these apps')} onCancel={() => respond(false)}>
       <Box flexDirection="column" paddingX={1} paddingY={1} gap={1}>
         {request.reason ? <Text dimColor>{request.reason}</Text> : null}
 

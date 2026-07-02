@@ -835,8 +835,8 @@ const zh: Record<string, string> = {
 
   // ── Common UI labels (currently wired) ─────────────────────────
   'Unknown error': '未知错误',
-  'Press {key} again to exit': '按 {key} 再次退出',
-  'Press {key} again to go back': '按 {key} 再次返回',
+  'Press {key} again to exit': '再按一次 {key} 退出',
+  'Press {key} again to go back': '再按一次 {key} 返回',
 
   // ── version command ─────────────────────────────────────────────
   'Print the version this session is running (not what autoupdate downloaded)':
@@ -1890,6 +1890,86 @@ const zh: Record<string, string> = {
   'See ya!': '回头见！',
   'Bye!': '拜拜！',
   'Catch you later!': '下次见！',
+
+  // ── Startup banner (LogoV2 / feeds / onboarding) ─────────────
+  'Your bash commands will be sandboxed. Disable with /sandbox.':
+    '您的 bash 命令将在沙箱中运行。可用 /sandbox 关闭。',
+  'Message from {org}:': '来自 {org} 的消息：',
+  'Detach: {prefix} d': '脱离会话：{prefix} d',
+  'Detach: {prefix} {prefix} d (press prefix twice - Claude uses {prefix})':
+    '脱离会话：{prefix} {prefix} d（前缀键按两次 —— Claude 占用了 {prefix}）',
+  'Recent activity': '最近活动',
+  '/resume for more': '/resume 查看更多',
+  'No recent activity': '暂无最近活动',
+  "What's new": '更新内容',
+  'Check the Claude Code changelog for updates':
+    '查看 Claude Code 更新日志了解最新变化',
+  '/release-notes for more': '/release-notes 查看更多',
+  'Tips for getting started': '入门提示',
+  'Note: You have launched claude in your home directory. For the best experience, launch it in a project directory instead.':
+    '注意：您在主目录中启动了 claude。为获得最佳体验，请在项目目录中启动。',
+  'Share Claude Code and earn {amount} of extra usage':
+    '分享 Claude Code，赚取 {amount} 额外用量',
+  'Share Claude Code with friends': '与好友分享 Claude Code',
+  '3 guest passes': '3 张好友通行证',
+  'Ask Claude to create a new app or clone a repository':
+    '让 Claude 创建新应用或克隆仓库',
+  'Run /init to create a CLAUDE.md file with instructions for Claude':
+    '运行 /init 创建 CLAUDE.md，写入给 Claude 的项目说明',
+
+  // ── Permission mode titles ────────────────────────────────────
+  'Plan Mode': '计划模式',
+  Plan: '计划',
+  'Accept edits': '接受编辑',
+  Accept: '接受',
+  Bypass: '绕过权限',
+  "Don't Ask": '不询问',
+  DontAsk: '不询问',
+
+  // ── Scattered tips ────────────────────────────────────────────
+  'Tip: You can launch Claude Code with just `claude`':
+    '提示：直接运行 `claude` 即可启动 Claude Code',
+  'Tip: start a named workflow with /<name>, or pass name via the Workflow tool.':
+    '提示：用 /<name> 启动命名工作流，或通过 Workflow 工具传入名称。',
+  'Tip: The shorthand "{repo}" assumes github.com. For internal GitHub Enterprise, use the full URL:\n  git@your-github-host.com:{repo}.git':
+    '提示：简写 "{repo}" 默认指向 github.com。如为内部 GitHub Enterprise，请使用完整 URL：\n  git@your-github-host.com:{repo}.git',
+  'Tip: Run `/insights --homespaces` to include sessions from your {count} running homespace(s)':
+    '提示：运行 `/insights --homespaces` 可纳入您 {count} 个运行中 homespace 的会话',
+
+  // ── Permission dialogs (batch 2: titles / footers / hints) ───
+  'describe what to allow...': '描述要允许的操作...',
+  'Enter to submit · Esc to cancel': 'Enter 提交 · Esc 取消',
+  '←/→ tab switch · ↓ return · Esc cancel':
+    '←/→ 切换标签 · ↓ 返回列表 · Esc 取消',
+  'Type to filter · Enter/↓ select · ↑ tabs · Esc clear':
+    '输入以筛选 · Enter/↓ 选择 · ↑ 标签栏 · Esc 清除',
+  'Enter approve · r retry · ↑↓ navigate · ←/→ switch · Esc cancel':
+    'Enter 批准 · r 重试 · ↑↓ 导航 · ←/→ 切换 · Esc 取消',
+  '↑↓ navigate · Enter select · Type to search · ←/→ switch · Esc cancel':
+    '↑↓ 导航 · Enter 选择 · 输入以搜索 · ←/→ 切换 · Esc 取消',
+  'Esc to reject': 'Esc 拒绝',
+  'Tab to add feedback': 'Tab 补充反馈',
+  'Tab to amend': 'Tab 补充说明',
+  'ctrl+e to hide': 'ctrl+e 隐藏解释',
+  'ctrl+e to explain': 'ctrl+e 查看解释',
+  'Ctrl+d to show debug info': 'Ctrl+d 显示调试信息',
+  'Bash command (unsandboxed)': 'Bash 命令（未沙箱化）',
+  'Bash command': 'Bash 命令',
+  'PowerShell command': 'PowerShell 命令',
+  'Tool use': '工具使用',
+  'Enter plan mode?': '进入计划模式？',
+  'Exit plan mode?': '退出计划模式？',
+  'Ready to code?': '准备开始编码？',
+  Monitor: '监控',
+  'Use skill "{skill}"?': '使用技能 "{skill}"？',
+  'Edit file': '编辑文件',
+  'Overwrite file': '覆盖文件',
+  'Create file': '创建文件',
+  'Edit notebook': '编辑 Notebook',
+  Fetch: '抓取网页',
+  'Network request outside of sandbox': '沙箱外网络请求',
+  'Computer Use needs macOS permissions': 'Computer Use 需要 macOS 权限',
+  'Computer Use wants to control these apps': 'Computer Use 请求控制以下应用',
 }
 
 export default zh

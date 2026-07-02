@@ -36,7 +36,7 @@ import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import { countCharInString } from '../utils/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
-import { t } from '../i18n/t.js'
+import { t, tf } from '../i18n/t.js'
 
 // Model for facet extraction and summarization (Opus - best quality)
 function getAnalysisModel(): string {
@@ -3039,7 +3039,10 @@ Then access at: ${s3Url}`
         remoteInfo = `\n_Collected ${remoteStats.totalCopied} new sessions from: ${hsNames}_\n`
       } else if (!collectRemote && hasRemoteHosts) {
         // Suggest using --homespaces if they have remote hosts but didn't use the flag
-        remoteInfo = `\n_Tip: Run \`/insights --homespaces\` to include sessions from your ${remoteHosts.length} running homespace(s)_\n`
+        remoteInfo = `\n_${tf(
+          'Tip: Run `/insights --homespaces` to include sessions from your {count} running homespace(s)',
+          { count: remoteHosts.length },
+        )}_\n`
       }
     }
 

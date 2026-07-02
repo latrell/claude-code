@@ -13,7 +13,7 @@ import {
   permissionRuleValueFromString,
   permissionRuleValueToString,
 } from '../../../utils/permissions/permissionRuleParser.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 
 export type PermissionRuleInputProps = {
   onCancel: () => void;
@@ -79,7 +79,7 @@ export function PermissionRuleInput({ onCancel, onSubmit, ruleBehavior }: Permis
         {exitState.pending ? (
           <Text dimColor>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
-          <Text dimColor>Enter to submit · Esc to cancel</Text>
+          <Text dimColor>{t('Enter to submit · Esc to cancel')}</Text>
         )}
       </Box>
     </>

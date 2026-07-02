@@ -11,6 +11,7 @@ import { PermissionDialog } from './PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from './PermissionPrompt.js';
 import type { PermissionRequestProps } from './PermissionRequest.js';
 import { PermissionRuleExplanation } from './PermissionRuleExplanation.js';
+import { t } from '../../i18n/t.js';
 
 type FallbackOptionValue = 'yes' | 'yes-dont-ask-again' | 'no';
 
@@ -155,7 +156,7 @@ export function FallbackPermissionRequest({
   );
 
   return (
-    <PermissionDialog title="Tool use" workerBadge={workerBadge}>
+    <PermissionDialog title={t('Tool use')} workerBadge={workerBadge}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text>
           {userFacingName}(

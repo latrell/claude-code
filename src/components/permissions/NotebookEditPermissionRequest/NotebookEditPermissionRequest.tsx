@@ -6,7 +6,7 @@ import { NotebookEditTool } from '@claude-code-best/builtin-tools/tools/Notebook
 import { logError } from '../../../utils/log.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 import { NotebookEditToolDiff } from './NotebookEditToolDiff.js';
 
 type NotebookEditInput = z.infer<typeof NotebookEditTool.inputSchema>;
@@ -47,7 +47,7 @@ export function NotebookEditPermissionRequest(props: PermissionRequestProps): Re
       onDone={props.onDone}
       onReject={props.onReject}
       workerBadge={props.workerBadge}
-      title="Edit notebook"
+      title={t('Edit notebook')}
       question={
         <Text>
           {questionPre}

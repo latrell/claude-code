@@ -75,6 +75,7 @@ import {
 } from './pluginDirectories.js'
 import { parsePluginIdentifier } from './pluginIdentifier.js'
 import { deletePluginOptions } from './pluginOptionsStorage.js'
+import { tf } from '../../i18n/t.js'
 import {
   isLocalMarketplaceSource,
   type KnownMarketplace,
@@ -1821,10 +1822,10 @@ export async function addMarketplaceSource(
 
     // If source is a github shorthand and there are hostPatterns, suggest using full URL
     if (resolvedSource.source === 'github' && hostPatterns.length > 0) {
-      errorMessage +=
-        `\n\nTip: The shorthand "${resolvedSource.repo}" assumes github.com. ` +
-        `For internal GitHub Enterprise, use the full URL:\n` +
-        `  git@your-github-host.com:${resolvedSource.repo}.git`
+      errorMessage += `\n\n${tf(
+        'Tip: The shorthand "{repo}" assumes github.com. For internal GitHub Enterprise, use the full URL:\n  git@your-github-host.com:{repo}.git',
+        { repo: resolvedSource.repo },
+      )}`
     }
 
     throw new Error(errorMessage)

@@ -9,6 +9,7 @@ import { PermissionDialog } from '../PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption } from '../PermissionPrompt.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
+import { t } from '../../../i18n/t.js';
 
 type OptionValue = 'yes' | 'yes-dont-ask-again' | 'no';
 
@@ -130,7 +131,7 @@ export function MonitorPermissionRequest({
   }, [toolUseConfirm, onDone, onReject]);
 
   return (
-    <PermissionDialog title="Monitor" workerBadge={workerBadge}>
+    <PermissionDialog title={t('Monitor')} workerBadge={workerBadge}>
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text bold color={theme.permission as any}>

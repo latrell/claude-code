@@ -111,6 +111,7 @@ import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '
 // AutoModeOptInDialog removed — auto mode is available to all users
 import { BridgeDialog } from '../BridgeDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
+import { tf } from '../../i18n/t.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';
 import { getFastIconString } from '../FastIcon.js';
@@ -956,7 +957,9 @@ function PromptInput({
           key: 'stash-hint',
           jsx: (
             <Text dimColor>
-              Tip: <ConfigurableShortcutHint action="chat:stash" context="Chat" fallback="ctrl+s" description="stash" />
+              {tf('Tip: {text}', { text: '\0' }).split('\0')[0]}
+              <ConfigurableShortcutHint action="chat:stash" context="Chat" fallback="ctrl+s" description="stash" />
+              {tf('Tip: {text}', { text: '\0' }).split('\0')[1]}
             </Text>
           ),
           priority: 'immediate',

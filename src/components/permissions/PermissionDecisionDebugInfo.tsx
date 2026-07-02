@@ -4,6 +4,7 @@ import figures from 'figures';
 import React, { useMemo } from 'react';
 import { Ansi, Box, color, Text, useTheme } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
+import { t } from '../../i18n/t.js';
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js';
 import { permissionModeTitle } from '../../utils/permissions/PermissionMode.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
@@ -221,7 +222,7 @@ function SuggestionDisplay({
           <Box justifyContent="flex-end" minWidth={width}>
             <Text dimColor> Mode </Text>
           </Box>
-          <Text>{permissionModeTitle(mode)}</Text>
+          <Text>{t(permissionModeTitle(mode))}</Text>
         </Box>
       )}
     </Box>

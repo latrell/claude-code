@@ -13,7 +13,7 @@ import { PermissionDialog } from '../PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from '../PermissionPrompt.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
-import { t } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 
 type SkillOptionValue = 'yes' | 'yes-exact' | 'yes-prefix' | 'no';
 
@@ -214,7 +214,7 @@ export function SkillPermissionRequest(props: PermissionRequestProps): React.Rea
   }, [toolUseConfirm, onDone, onReject]);
 
   return (
-    <PermissionDialog title={`Use skill "${skill}"?`} workerBadge={workerBadge}>
+    <PermissionDialog title={tf('Use skill "{skill}"?', { skill })} workerBadge={workerBadge}>
       <Text>Claude may use instructions, code, or files from this Skill.</Text>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor>{commandObj?.description ? t(commandObj.description) : undefined}</Text>

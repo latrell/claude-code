@@ -3,6 +3,7 @@ import { Box, Dialog, Text, useAnimationFrame } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { getWorkflowService } from '../service.js';
+import { t } from '../../i18n/t.js';
 import type { RunProgress } from '../progress/store.js';
 import { AgentList } from './AgentList.js';
 import { PhaseSidebar } from './PhaseSidebar.js';
@@ -176,7 +177,7 @@ export function WorkflowsPanel({
         .launch({ resumeFromRunId: focused.runId, name: focused.workflowName }, context, canUseTool)
         .catch(e => onDone(`resume failed: ${(e as Error).message}`));
     },
-    newRun: () => onDone('Tip: start a named workflow with /<name>, or pass name via the Workflow tool.'),
+    newRun: () => onDone(t('Tip: start a named workflow with /<name>, or pass name via the Workflow tool.')),
     quit: () => {
       // In confirm mode q = cancel confirmation (routeWorkflowKey already routed to confirmNo);
       // only in non-confirm mode does it really exit the panel.

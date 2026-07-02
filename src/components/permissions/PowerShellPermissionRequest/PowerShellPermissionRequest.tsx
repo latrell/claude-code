@@ -213,7 +213,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
   }
 
   return (
-    <PermissionDialog workerBadge={workerBadge} title="PowerShell command">
+    <PermissionDialog workerBadge={workerBadge} title={t('PowerShell command')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor={explainerState.visible}>
           {PowerShellTool.renderToolUseMessage(
@@ -254,12 +254,12 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
           </Box>
           <Box justifyContent="space-between" marginTop={1}>
             <Text dimColor>
-              Esc to cancel
+              {t('Esc to cancel')}
               {((focusedOption === 'yes' && !yesInputMode) || (focusedOption === 'no' && !noInputMode)) &&
-                ' · Tab to amend'}
-              {explainerState.enabled && ` · ctrl+e to ${explainerState.visible ? 'hide' : 'explain'}`}
+                ` · ${t('Tab to amend')}`}
+              {explainerState.enabled && ` · ${explainerState.visible ? t('ctrl+e to hide') : t('ctrl+e to explain')}`}
             </Text>
-            {toolUseContext.options.debug && <Text dimColor>Ctrl+d to show debug info</Text>}
+            {toolUseContext.options.debug && <Text dimColor>{t('Ctrl+d to show debug info')}</Text>}
           </Box>
         </>
       )}

@@ -458,7 +458,7 @@ function BashPermissionRequestInner({
   return (
     <PermissionDialog
       workerBadge={workerBadge}
-      title={sandboxingEnabled && !isSandboxed ? 'Bash command (unsandboxed)' : 'Bash command'}
+      title={sandboxingEnabled && !isSandboxed ? t('Bash command (unsandboxed)') : t('Bash command')}
       subtitle={classifierSubtitle}
     >
       <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -515,12 +515,12 @@ function BashPermissionRequestInner({
           </Box>
           <Box justifyContent="space-between" marginTop={1}>
             <Text dimColor>
-              Esc to reject
+              {t('Esc to reject')}
               {((focusedOption === 'yes' && !yesInputMode) || (focusedOption === 'no' && !noInputMode)) &&
-                ' · Tab to add feedback'}
-              {explainerState.enabled && ` · ctrl+e to ${explainerState.visible ? 'hide' : 'explain'}`}
+                ` · ${t('Tab to add feedback')}`}
+              {explainerState.enabled && ` · ${explainerState.visible ? t('ctrl+e to hide') : t('ctrl+e to explain')}`}
             </Text>
-            {toolUseContext.options.debug && <Text dimColor>Ctrl+d to show debug info</Text>}
+            {toolUseContext.options.debug && <Text dimColor>{t('Ctrl+d to show debug info')}</Text>}
           </Box>
         </>
       )}

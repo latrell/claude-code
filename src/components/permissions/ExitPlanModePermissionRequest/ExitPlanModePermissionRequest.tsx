@@ -691,7 +691,7 @@ export function ExitPlanModePermissionRequest({
     }
 
     return (
-      <PermissionDialog color="planMode" title="Exit plan mode?" workerBadge={workerBadge}>
+      <PermissionDialog color="planMode" title={t('Exit plan mode?')} workerBadge={workerBadge}>
         <Box flexDirection="column" paddingX={1} marginTop={1}>
           <Text>Claude wants to exit plan mode</Text>
           <Box marginTop={1}>
@@ -721,7 +721,7 @@ export function ExitPlanModePermissionRequest({
 
   return (
     <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
-      <PermissionDialog color="planMode" title="Ready to code?" innerPaddingX={0} workerBadge={workerBadge}>
+      <PermissionDialog color="planMode" title={t('Ready to code?')} innerPaddingX={0} workerBadge={workerBadge}>
         <Box flexDirection="column" marginTop={1}>
           <Box paddingX={1} flexDirection="column">
             <Text>Here is Claude&apos;s plan:</Text>

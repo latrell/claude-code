@@ -164,15 +164,17 @@ export function LogoV2(): React.ReactNode {
             <Text dimColor>tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}</Text>
             <Text dimColor>
               {process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS
-                ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Claude uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})`
-                : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}
+                ? tf('Detach: {prefix} {prefix} d (press prefix twice - Claude uses {prefix})', {
+                    prefix: process.env.CLAUDE_CODE_TMUX_PREFIX,
+                  })
+                : tf('Detach: {prefix} d', { prefix: process.env.CLAUDE_CODE_TMUX_PREFIX })}
             </Text>
           </Box>
         )}
         {announcement && (
           <Box paddingLeft={2} flexDirection="column">
             {!process.env.IS_DEMO && config.oauthAccount?.organizationName && (
-              <Text dimColor>Message from {config.oauthAccount.organizationName}:</Text>
+              <Text dimColor>{tf('Message from {org}:', { org: config.oauthAccount.organizationName })}</Text>
             )}
             <Text>{announcement}</Text>
           </Box>
@@ -256,7 +258,7 @@ export function LogoV2(): React.ReactNode {
         {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
         {showSandboxStatus && (
           <Box marginTop={1} flexDirection="column">
-            <Text color="warning">Your bash commands will be sandboxed. Disable with /sandbox.</Text>
+            <Text color="warning">{t('Your bash commands will be sandboxed. Disable with /sandbox.')}</Text>
           </Box>
         )}
         {process.env.USER_TYPE === 'ant' && <GateOverridesWarning />}
@@ -366,22 +368,24 @@ export function LogoV2(): React.ReactNode {
           <Text dimColor>tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}</Text>
           <Text dimColor>
             {process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS
-              ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Claude uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})`
-              : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}
+              ? tf('Detach: {prefix} {prefix} d (press prefix twice - Claude uses {prefix})', {
+                  prefix: process.env.CLAUDE_CODE_TMUX_PREFIX,
+                })
+              : tf('Detach: {prefix} d', { prefix: process.env.CLAUDE_CODE_TMUX_PREFIX })}
           </Text>
         </Box>
       )}
       {announcement && (
         <Box paddingLeft={2} flexDirection="column">
           {!process.env.IS_DEMO && config.oauthAccount?.organizationName && (
-            <Text dimColor>Message from {config.oauthAccount.organizationName}:</Text>
+            <Text dimColor>{tf('Message from {org}:', { org: config.oauthAccount.organizationName })}</Text>
           )}
           <Text>{announcement}</Text>
         </Box>
       )}
       {showSandboxStatus && (
         <Box paddingLeft={2} flexDirection="column">
-          <Text color="warning">Your bash commands will be sandboxed. Disable with /sandbox.</Text>
+          <Text color="warning">{t('Your bash commands will be sandboxed. Disable with /sandbox.')}</Text>
         </Box>
       )}
       {process.env.USER_TYPE === 'ant' && !process.env.DEMO_VERSION && (

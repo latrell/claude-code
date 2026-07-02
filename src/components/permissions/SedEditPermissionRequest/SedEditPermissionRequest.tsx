@@ -13,7 +13,7 @@ import {
 } from '@claude-code-best/builtin-tools/tools/BashTool/sedEditParser.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 
 type SedEditPermissionRequestProps = PermissionRequestProps & {
   sedInfo: SedEditInfo;
@@ -109,7 +109,7 @@ function SedEditPermissionRequestInner({
       toolUseContext={props.toolUseContext}
       onDone={props.onDone}
       onReject={props.onReject}
-      title="Edit file"
+      title={t('Edit file')}
       subtitle={relative(getCwd(), filePath)}
       question={
         <Text>

@@ -383,7 +383,8 @@ function ModeIndicator({
   const modePart =
     currentMode && hasActiveMode && !getIsRemoteMode() ? (
       <Text color={getModeColor(currentMode)} key="mode">
-        {permissionModeSymbol(currentMode)} {tf('{mode} on', { mode: permissionModeTitle(currentMode).toLowerCase() })}
+        {permissionModeSymbol(currentMode)}{' '}
+        {tf('{mode} on', { mode: t(permissionModeTitle(currentMode)).toLowerCase() })}
         {shouldShowModeHint && (
           <Text dimColor>
             {' '}
