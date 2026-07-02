@@ -15,7 +15,7 @@ import { type AppState, useAppState, useSetAppState } from '../state/AppState.js
 import { enterTeammateView, exitTeammateView } from '../state/teammateViewHelpers.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
-import { evictTerminalTask } from '../utils/task/framework.js';
+import { evictTerminalTask, PANEL_GRACE_MS, updateTaskState } from '../utils/task/framework.js';
 import { isTerminalStatus } from './tasks/taskStatusUtils.js';
 
 /**
@@ -42,23 +42,49 @@ export function CoordinatorTaskPanel(): React.ReactNode {
   const setAppState = useSetAppState();
 
   const visibleTasks = getVisibleAgentTasks(tasks);
-  const hasTasks = Object.values(tasks).some(isPanelAgentTask);
+  // Use visibleTasks so dismissed (evictAfter=0) tasks don't keep the timer alive.
+  const hasTasks = visibleTasks.length > 0;
 
-  // 1s tick: re-render for elapsed time + evict tasks past their deadline.
-  // The eviction deletes from prev.tasks, which makes useCoordinatorTaskCount
-  // (and other consumers) see the updated count without their own tick.
+  // 1s tick: re-render for elapsed time + auto-release stale retains + evict
+  // tasks past their deadline. The eviction deletes from prev.tasks, which makes
+  // useCoordinatorTaskCount (and other consumers) see the updated count without
+  // their own tick.
   const tasksRef = React.useRef(tasks);
   tasksRef.current = tasks;
+  const viewingRef = React.useRef(viewingAgentTaskId);
+  viewingRef.current = viewingAgentTaskId;
   const [, setTick] = React.useState(0);
   React.useEffect(() => {
     if (!hasTasks) return;
     const interval = setInterval(
-      (tasksRef, setAppState, setTick) => {
+      (tasksRef, setAppState, setTick, viewingRef) => {
         const now = Date.now();
         for (const t of Object.values(tasksRef.current)) {
-          if (isPanelAgentTask(t) && (t.evictAfter ?? Infinity) <= now) {
-            evictTerminalTask(t.id, setAppState);
+          if (!isPanelAgentTask(t)) continue;
+
+          // Terminal + notified: check retention and eviction.
+          if (isTerminalStatus(t.status) && t.notified) {
+            // Auto-release: retain=true but user is NOT currently viewing this
+            // task — the retain is stale. Release it so the grace period starts.
+            if (t.retain && t.id !== viewingRef.current) {
+              updateTaskState<LocalAgentTaskState>(t.id, setAppState, task => ({
+                ...task,
+                retain: false,
+                messages: undefined,
+                diskLoaded: false,
+                evictAfter: Date.now() + PANEL_GRACE_MS,
+              }));
+              continue;
+            }
+
+            // Normal eviction: deadline passed and not retained (or retained
+            // but being viewed — evictAfter stays undefined=never-evict).
+            if (!t.retain && (t.evictAfter ?? Infinity) <= now) {
+              evictTerminalTask(t.id, setAppState);
+            }
           }
+
+          // Running/pending tasks: no eviction.
         }
         setTick((prev: number) => prev + 1);
       },
@@ -66,6 +92,7 @@ export function CoordinatorTaskPanel(): React.ReactNode {
       tasksRef,
       setAppState,
       setTick,
+      viewingRef,
     );
     return () => clearInterval(interval);
   }, [hasTasks, setAppState]);
@@ -149,10 +176,13 @@ function AgentLine({ task, name, isSelected, isViewed, onClick }: AgentLineProps
   const [hover, setHover] = React.useState(false);
   const isRunning = !isTerminalStatus(task.status);
   const pausedMs = task.totalPausedMs ?? 0;
-  const elapsedMs = Math.max(
-    0,
-    isRunning ? Date.now() - task.startTime - pausedMs : (task.endTime ?? task.startTime) - task.startTime - pausedMs,
-  );
+
+  // Duration: for terminal tasks use endTime (set by completeAgentTask /
+  // failAgentTask / killAsyncAgent) so the displayed time is fixed and never
+  // grows on re-render.  For running tasks, use the live clock.
+  const elapsedMs = isRunning
+    ? Math.max(0, Date.now() - task.startTime - pausedMs)
+    : Math.max(0, (task.endTime ?? task.startTime) - task.startTime - pausedMs);
 
   const elapsed = formatDuration(elapsedMs);
   const tokenCount = task.progress?.tokenCount;

@@ -273,6 +273,54 @@ describe('completeAgentTask', () => {
     expect(task.evictAfter).toBeDefined()
   })
 
+  test('records endTime for completed task (fixed duration display)', () => {
+    const startTime = Date.now() - 5000 // 5s ago
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ startTime }) },
+    })
+
+    const beforeComplete = Date.now()
+    completeAgentTask(
+      {
+        agentId: 'test-agent-001',
+        content: [],
+        totalToolUseCount: 0,
+        totalDurationMs: 100,
+      } as any,
+      setAppState as any,
+    )
+    const afterComplete = Date.now()
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.endTime).toBeDefined()
+    expect(task.endTime! >= beforeComplete).toBe(true)
+    expect(task.endTime! <= afterComplete).toBe(true)
+    // Duration should be approximately 5 seconds (endTime - startTime)
+    const duration = task.endTime! - task.startTime
+    expect(duration >= 5000).toBe(true)
+  })
+
+  test('sets evictAfter=undefined when retain=true (viewing)', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ retain: true }) },
+    })
+
+    completeAgentTask(
+      {
+        agentId: 'test-agent-001',
+        content: [],
+        totalToolUseCount: 0,
+        totalDurationMs: 100,
+      } as any,
+      setAppState as any,
+    )
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.status).toBe('completed')
+    expect(task.retain).toBe(true)
+    expect(task.evictAfter).toBeUndefined()
+  })
+
   test('no-op if task not running', () => {
     const { setAppState, getState } = createSetAppState({
       tasks: { 'test-agent-001': makeRunningTask({ status: 'completed' }) },
@@ -305,6 +353,33 @@ describe('failAgentTask', () => {
     expect(task.status).toBe('failed')
     expect(task.error).toBe('Stream idle timeout')
     expect(task.endTime).toBeDefined()
+  })
+
+  test('records endTime for failed task', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({ startTime: Date.now() - 3000 }),
+      },
+    })
+
+    failAgentTask('test-agent-001', 'error', setAppState as any)
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.endTime).toBeDefined()
+    expect(task.endTime! >= task.startTime).toBe(true)
+  })
+
+  test('sets evictAfter=undefined when retain=true (viewing a failed task)', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ retain: true }) },
+    })
+
+    failAgentTask('test-agent-001', 'error', setAppState as any)
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.status).toBe('failed')
+    expect(task.retain).toBe(true)
+    expect(task.evictAfter).toBeUndefined()
   })
 
   test('no-op if task not running', () => {
@@ -340,6 +415,26 @@ describe('killAsyncAgent', () => {
     expect(ac.signal.aborted).toBe(true)
     expect(cleanup).toHaveBeenCalled()
     expect(task.abortController).toBeUndefined()
+    expect(task.endTime).toBeDefined()
+  })
+
+  test('sets evictAfter=undefined when retain=true (viewing a killed task)', () => {
+    const ac = new AbortController()
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({
+          abortController: ac,
+          retain: true,
+        }),
+      },
+    })
+
+    killAsyncAgent('test-agent-001', setAppState as any)
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.status).toBe('killed')
+    expect(task.retain).toBe(true)
+    expect(task.evictAfter).toBeUndefined()
   })
 
   test('no-op if task not running', () => {

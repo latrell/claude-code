@@ -200,6 +200,43 @@ describe('evictTerminalTask', () => {
     expect(getState().tasks['task-001']).toBeDefined()
   })
 
+  test('skips if retain=true and evictAfter is undefined (retained by viewer)', () => {
+    // retained terminal tasks with undefined evictAfter should NOT be evicted
+    // by evictTerminalTask — the CoordinatorTaskPanel tick auto-releases them
+    // only when no longer being viewed. This test verifies the guard.
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          status: 'completed',
+          notified: true,
+          retain: true,
+          // evictAfter intentionally omitted (undefined)
+        }),
+      },
+    })
+
+    evictTerminalTask('task-001', setAppState as any)
+
+    expect(getState().tasks['task-001']).toBeDefined()
+  })
+
+  test('evicts when retain=false and evictAfter has passed', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          status: 'completed',
+          notified: true,
+          retain: false,
+          evictAfter: Date.now() - 1,
+        }),
+      },
+    })
+
+    evictTerminalTask('task-001', setAppState as any)
+
+    expect(getState().tasks['task-001']).toBeUndefined()
+  })
+
   test('skips if task not found', () => {
     const { setAppState, getState } = createSetAppState({ tasks: {} })
 
