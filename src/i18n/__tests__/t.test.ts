@@ -105,7 +105,24 @@ describe('t', () => {
     expect(t('native select')).toBe('原生选择')
   })
 
-  test('translates template strings for first screen', () => {
+  test('translates spinner tip strings', () => {
+    mockPreferredLanguage = 'zh'
+    mockSystemLocale = 'en'
+    expect(
+      t('/mobile to use Claude Code from the Claude app on your phone'),
+    ).toBe('/mobile 通过手机上的 Claude 应用使用 Claude Code')
+    expect(t('Use /memory to view and manage Claude memory')).toBe(
+      '使用 /memory 查看和管理 Claude 记忆',
+    )
+    expect(t('Use /theme to change the color theme')).toBe(
+      '使用 /theme 更改颜色主题',
+    )
+    expect(t('Use /feedback to help us improve!')).toBe(
+      '使用 /feedback 帮助我们改进！',
+    )
+  })
+
+  test('translates template strings', () => {
     mockPreferredLanguage = 'zh'
     mockSystemLocale = 'en'
     expect(tf('Welcome back, {username}!', { username: 'Alice' })).toBe(

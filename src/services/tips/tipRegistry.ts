@@ -97,7 +97,9 @@ const externalTips: Tip[] = [
   {
     id: 'new-user-warmup',
     content: async () =>
-      `Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits`,
+      t(
+        'Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits',
+      ),
     cooldownSessions: 3,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -107,7 +109,10 @@ const externalTips: Tip[] = [
   {
     id: 'plan-mode-for-complex-tasks',
     content: async () =>
-      `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
+      tf(
+        'Use Plan Mode to prepare for a complex request before making changes. Press {shortcut} twice to enable.',
+        { shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab') },
+      ),
     cooldownSessions: 5,
     isRelevant: async () => {
       const config = getGlobalConfig()
@@ -121,7 +126,9 @@ const externalTips: Tip[] = [
   {
     id: 'default-permission-mode-config',
     content: async () =>
-      `Use /config to change your default permission mode (including Plan Mode)`,
+      t(
+        'Use /config to change your default permission mode (including Plan Mode)',
+      ),
     cooldownSessions: 10,
     isRelevant: async () => {
       try {
@@ -143,7 +150,7 @@ const externalTips: Tip[] = [
   {
     id: 'git-worktrees',
     content: async () =>
-      'Use git worktrees to run multiple Claude sessions in parallel.',
+      t('Use git worktrees to run multiple Claude sessions in parallel.'),
     cooldownSessions: 10,
     isRelevant: async () => {
       try {
@@ -158,7 +165,9 @@ const externalTips: Tip[] = [
   {
     id: 'color-when-multi-clauding',
     content: async () =>
-      'Running multiple Claude sessions? Use /color and /rename to tell them apart at a glance.',
+      t(
+        'Running multiple Claude sessions? Use /color and /rename to tell them apart at a glance.',
+      ),
     cooldownSessions: 10,
     isRelevant: async () => {
       if (getCurrentSessionAgentColor()) return false
@@ -222,7 +231,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'memory-command',
-    content: async () => 'Use /memory to view and manage Claude memory',
+    content: async () => t('Use /memory to view and manage Claude memory'),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -231,21 +240,25 @@ const externalTips: Tip[] = [
   },
   {
     id: 'theme-command',
-    content: async () => 'Use /theme to change the color theme',
+    content: async () => t('Use /theme to change the color theme'),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'colorterm-truecolor',
     content: async () =>
-      'Try setting environment variable COLORTERM=truecolor for richer colors',
+      t(
+        'Try setting environment variable COLORTERM=truecolor for richer colors',
+      ),
     cooldownSessions: 30,
     isRelevant: async () => !process.env.COLORTERM && chalk.level < 3,
   },
   {
     id: 'powershell-tool-env',
     content: async () =>
-      'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
+      t(
+        'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
+      ),
     cooldownSessions: 10,
     isRelevant: async () =>
       getPlatform() === 'windows' &&
@@ -254,14 +267,16 @@ const externalTips: Tip[] = [
   {
     id: 'status-line',
     content: async () =>
-      'Use /statusline to set up a custom status line that will display beneath the input box',
+      t(
+        'Use /statusline to set up a custom status line that will display beneath the input box',
+      ),
     cooldownSessions: 25,
     isRelevant: async () => getSettings_DEPRECATED().statusLine === undefined,
   },
   {
     id: 'prompt-queue',
     content: async () =>
-      'Hit Enter to queue up additional messages while Claude is working.',
+      t('Hit Enter to queue up additional messages while Claude is working.'),
     cooldownSessions: 5,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -271,21 +286,26 @@ const externalTips: Tip[] = [
   {
     id: 'enter-to-steer-in-relatime',
     content: async () =>
-      'Send messages to Claude while it works to steer Claude in real-time',
+      t('Send messages to Claude while it works to steer Claude in real-time'),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'todo-list',
     content: async () =>
-      'Ask Claude to create a todo list when working on complex tasks to track progress and remain on track',
+      t(
+        'Ask Claude to create a todo list when working on complex tasks to track progress and remain on track',
+      ),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'vscode-command-install',
     content: async () =>
-      `Open the Command Palette (Cmd+Shift+P) and run "Shell Command: Install '${env.terminal === 'vscode' ? 'code' : env.terminal}' command in PATH" to enable IDE integration`,
+      tf(
+        'Open the Command Palette (Cmd+Shift+P) and run "Shell Command: Install \'{terminal}\' command in PATH" to enable IDE integration',
+        { terminal: env.terminal === 'vscode' ? 'code' : env.terminal },
+      ),
     cooldownSessions: 0,
     async isRelevant() {
       // Only show this tip if we're in a VS Code-style terminal
@@ -311,7 +331,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'ide-upsell-external-terminal',
-    content: async () => 'Connect Claude to your IDE · /ide',
+    content: async () => t('Connect Claude to your IDE · /ide'),
     cooldownSessions: 4,
     async isRelevant() {
       if (isSupportedTerminal()) {
@@ -331,20 +351,24 @@ const externalTips: Tip[] = [
   {
     id: 'install-github-app',
     content: async () =>
-      'Run /install-github-app to tag @claude right from your Github issues and PRs',
+      t(
+        'Run /install-github-app to tag @claude right from your Github issues and PRs',
+      ),
     cooldownSessions: 10,
     isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
   },
   {
     id: 'install-slack-app',
-    content: async () => 'Run /install-slack-app to use Claude in Slack',
+    content: async () => t('Run /install-slack-app to use Claude in Slack'),
     cooldownSessions: 10,
     isRelevant: async () => !getGlobalConfig().slackAppInstallCount,
   },
   {
     id: 'permissions',
     content: async () =>
-      'Use /permissions to pre-approve and pre-deny bash, edit, and MCP tools',
+      t(
+        'Use /permissions to pre-approve and pre-deny bash, edit, and MCP tools',
+      ),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -354,42 +378,48 @@ const externalTips: Tip[] = [
   {
     id: 'drag-and-drop-images',
     content: async () =>
-      'Did you know you can drag and drop image files into your terminal?',
+      t('Did you know you can drag and drop image files into your terminal?'),
     cooldownSessions: 10,
     isRelevant: async () => !env.isSSH(),
   },
   {
     id: 'paste-images-mac',
     content: async () =>
-      'Paste images into Claude Code using control+v (not cmd+v!)',
+      t('Paste images into Claude Code using control+v (not cmd+v!)'),
     cooldownSessions: 10,
     isRelevant: async () => getPlatform() === 'macos',
   },
   {
     id: 'double-esc',
     content: async () =>
-      'Double-tap esc to rewind the conversation to a previous point in time',
+      t(
+        'Double-tap esc to rewind the conversation to a previous point in time',
+      ),
     cooldownSessions: 10,
     isRelevant: async () => !fileHistoryEnabled(),
   },
   {
     id: 'double-esc-code-restore',
     content: async () =>
-      'Double-tap esc to rewind the code and/or conversation to a previous point in time',
+      t(
+        'Double-tap esc to rewind the code and/or conversation to a previous point in time',
+      ),
     cooldownSessions: 10,
     isRelevant: async () => fileHistoryEnabled(),
   },
   {
     id: 'continue',
     content: async () =>
-      'Run claude --continue or claude --resume to resume a conversation',
+      t('Run claude --continue or claude --resume to resume a conversation'),
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
   {
     id: 'rename-conversation',
     content: async () =>
-      'Name your conversations with /rename to find them easily in /resume later',
+      t(
+        'Name your conversations with /rename to find them easily in /resume later',
+      ),
     cooldownSessions: 15,
     isRelevant: async () =>
       isCustomTitleEnabled() && getGlobalConfig().numStartups > 10,
@@ -397,7 +427,9 @@ const externalTips: Tip[] = [
   {
     id: 'custom-commands',
     content: async () =>
-      'Create skills by adding .md files to .claude/skills/ in your project or ~/.claude/skills/ for skills that work in any project',
+      t(
+        'Create skills by adding .md files to .claude/skills/ in your project or ~/.claude/skills/ for skills that work in any project',
+      ),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -407,14 +439,19 @@ const externalTips: Tip[] = [
   {
     id: 'shift-tab',
     content: async () =>
-      `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default, accept edits, plan, auto, and bypass modes`,
+      tf(
+        'Hit {shortcut} to cycle between default, accept edits, plan, auto, and bypass modes',
+        { shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab') },
+      ),
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
   {
     id: 'image-paste',
     content: async () =>
-      `Use ${getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v')} to paste images from your clipboard`,
+      tf('Use {shortcut} to paste images from your clipboard', {
+        shortcut: getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v'),
+      }),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
@@ -445,7 +482,9 @@ const externalTips: Tip[] = [
   {
     id: 'desktop-app',
     content: async () =>
-      'Run Claude Code locally or remotely using the Claude desktop app: clau.de/desktop',
+      t(
+        'Run Claude Code locally or remotely using the Claude desktop app: clau.de/desktop',
+      ),
     cooldownSessions: 15,
     isRelevant: async () => getPlatform() !== 'linux',
   },
@@ -453,7 +492,12 @@ const externalTips: Tip[] = [
     id: 'desktop-shortcut',
     content: async (ctx?) => {
       const blue = color('suggestion', ctx?.theme ?? 'dark')
-      return `Continue your session in Claude Code Desktop with ${blue('/desktop')}`
+      return tf(
+        'Continue your session in Claude Code Desktop with {desktop_cmd}',
+        {
+          desktop_cmd: blue('/desktop'),
+        },
+      )
     },
     cooldownSessions: 15,
     isRelevant: async () => {
@@ -467,21 +511,24 @@ const externalTips: Tip[] = [
   {
     id: 'web-app',
     content: async () =>
-      'Run tasks in the cloud while you keep coding locally · clau.de/web',
+      t('Run tasks in the cloud while you keep coding locally · clau.de/web'),
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
   {
     id: 'mobile-app',
     content: async () =>
-      '/mobile to use Claude Code from the Claude app on your phone',
+      t('/mobile to use Claude Code from the Claude app on your phone'),
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
   {
     id: 'opusplan-mode-reminder',
     content: async () =>
-      `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Claude Opus.`,
+      tf(
+        'Your default model setting is Opus Plan Mode. Press {shortcut} twice to activate Plan Mode and plan with Claude Opus.',
+        { shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab') },
+      ),
     cooldownSessions: 2,
     async isRelevant() {
       if (process.env.USER_TYPE === 'ant') return false
@@ -499,7 +546,14 @@ const externalTips: Tip[] = [
     id: 'frontend-design-plugin',
     content: async (ctx?) => {
       const blue = color('suggestion', ctx?.theme ?? 'dark')
-      return `Working with HTML/CSS? Install the frontend-design plugin:\n${blue(`/plugin install frontend-design@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return tf(
+        'Working with HTML/CSS? Install the frontend-design plugin:\n{install_cmd}',
+        {
+          install_cmd: blue(
+            `/plugin install frontend-design@${OFFICIAL_MARKETPLACE_NAME}`,
+          ),
+        },
+      )
     },
     cooldownSessions: 3,
     isRelevant: async (context?) =>
@@ -511,7 +565,14 @@ const externalTips: Tip[] = [
     id: 'vercel-plugin',
     content: async (ctx?) => {
       const blue = color('suggestion', ctx?.theme ?? 'dark')
-      return `Working with Vercel? Install the vercel plugin:\n${blue(`/plugin install vercel@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return tf(
+        'Working with Vercel? Install the vercel plugin:\n{install_cmd}',
+        {
+          install_cmd: blue(
+            `/plugin install vercel@${OFFICIAL_MARKETPLACE_NAME}`,
+          ),
+        },
+      )
     },
     cooldownSessions: 3,
     isRelevant: async (context?) =>
@@ -529,8 +590,13 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tide_elm', 'off')
       return variant === 'copy_b'
-        ? `Use ${cmd} for better one-shot answers. Claude thinks it through first.`
-        : `Working on something tricky? ${cmd} gives better first answers`
+        ? tf(
+            'Use {cmd} for better one-shot answers. Claude thinks it through first.',
+            { cmd },
+          )
+        : tf('Working on something tricky? {cmd} gives better first answers', {
+            cmd,
+          })
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -586,8 +652,14 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_timber_lark', 'off')
       return variant === 'copy_b'
-        ? `Use ${blue('/loop 5m check the deploy')} to run any prompt on a schedule. Set it and forget it.`
-        : `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
+        ? tf(
+            'Use {loop_cmd} to run any prompt on a schedule. Set it and forget it.',
+            { loop_cmd: blue('/loop 5m check the deploy') },
+          )
+        : tf(
+            '{loop_cmd} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.',
+            { loop_cmd: blue('/loop') },
+          )
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -607,8 +679,16 @@ const externalTips: Tip[] = [
       const claude = color('claude', ctx?.theme ?? 'dark')
       const reward = getCachedReferrerReward()
       return reward
-        ? `Share Claude Code and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
-        : `You have free guest passes to share · ${claude('/passes')}`
+        ? tf(
+            'Share Claude Code and earn {credit_amount} of extra usage · {passes_cmd}',
+            {
+              credit_amount: claude(formatCreditAmount(reward)),
+              passes_cmd: claude('/passes'),
+            },
+          )
+        : tf('You have free guest passes to share · {passes_cmd}', {
+            passes_cmd: claude('/passes'),
+          })
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -628,14 +708,20 @@ const externalTips: Tip[] = [
       const amount = info ? formatGrantAmount(info) : null
       if (!amount) return ''
       // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${claude('/extra-usage')}`
+      const amountText = tf('{amount} in extra usage, on us', {
+        amount: amount ?? '',
+      })
+      return tf('{amount_label} · third-party apps · {extra_usage_cmd}', {
+        amount_label: claude(amountText),
+        extra_usage_cmd: claude('/extra-usage'),
+      })
     },
     cooldownSessions: 3,
     isRelevant: async () => shouldShowOverageCreditUpsell(),
   },
   {
     id: 'feedback-command',
-    content: async () => 'Use /feedback to help us improve!',
+    content: async () => t('Use /feedback to help us improve!'),
     cooldownSessions: 15,
     async isRelevant() {
       if (process.env.USER_TYPE === 'ant') {

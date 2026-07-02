@@ -1722,6 +1722,90 @@ const zh: Record<string, string> = {
   'For big tasks, tell Claude to {blue_verb}. They work in parallel and keep your main thread clean.':
     '大型任务让 Claude {blue_verb}。它们并行工作，保持主线程干净。',
 
+  // ── Tips: all spinner tips (systematic localization) ─────────
+  'Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits':
+    '从小功能或 bug 修复开始，让 Claude 提出计划并验证其建议的编辑',
+  'Use Plan Mode to prepare for a complex request before making changes. Press {shortcut} twice to enable.':
+    '进行复杂请求前使用计划模式做好准备。按 {shortcut} 两次启用。',
+  'Use /config to change your default permission mode (including Plan Mode)':
+    '使用 /config 更改默认权限模式（包括计划模式）',
+  'Use git worktrees to run multiple Claude sessions in parallel.':
+    '使用 git worktrees 并行运行多个 Claude 会话。',
+  'Running multiple Claude sessions? Use /color and /rename to tell them apart at a glance.':
+    '运行多个 Claude 会话？使用 /color 和 /rename 一眼区分它们。',
+  'Use /memory to view and manage Claude memory':
+    '使用 /memory 查看和管理 Claude 记忆',
+  'Use /theme to change the color theme': '使用 /theme 更改颜色主题',
+  'Try setting environment variable COLORTERM=truecolor for richer colors':
+    '尝试设置环境变量 COLORTERM=truecolor 以获得更丰富的颜色',
+  'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)':
+    '设置 CLAUDE_CODE_USE_POWERSHELL_TOOL=1 启用 PowerShell 工具（预览）',
+  'Use /statusline to set up a custom status line that will display beneath the input box':
+    '使用 /statusline 设置在输入框下方显示的自定义状态行',
+  'Hit Enter to queue up additional messages while Claude is working.':
+    'Claude 工作时按 Enter 可排队发送额外消息。',
+  'Send messages to Claude while it works to steer Claude in real-time':
+    '在 Claude 工作时发送消息，实时引导 Claude',
+  'Ask Claude to create a todo list when working on complex tasks to track progress and remain on track':
+    '处理复杂任务时让 Claude 创建待办列表以跟踪进度并保持方向',
+  'Open the Command Palette (Cmd+Shift+P) and run "Shell Command: Install \'{terminal}\' command in PATH" to enable IDE integration':
+    '打开命令面板（Cmd+Shift+P），运行 "Shell Command: Install \'{terminal}\' command in PATH" 以启用 IDE 集成',
+  'Connect Claude to your IDE · /ide': '将 Claude 连接到您的 IDE · /ide',
+  'Run /install-github-app to tag @claude right from your Github issues and PRs':
+    '运行 /install-github-app 直接在 GitHub issues 和 PR 中 @claude',
+  'Run /install-slack-app to use Claude in Slack':
+    '运行 /install-slack-app 在 Slack 中使用 Claude',
+  'Use /permissions to pre-approve and pre-deny bash, edit, and MCP tools':
+    '使用 /permissions 预设 bash、编辑和 MCP 工具的批准/拒绝规则',
+  'Did you know you can drag and drop image files into your terminal?':
+    '您知道可以直接将图片文件拖放到终端中吗？',
+  'Paste images into Claude Code using control+v (not cmd+v!)':
+    '使用 control+v（不是 cmd+v！）将图片粘贴到 Claude Code',
+  'Double-tap esc to rewind the conversation to a previous point in time':
+    '双击 Esc 将会话回退到之前的某个时间点',
+  'Double-tap esc to rewind the code and/or conversation to a previous point in time':
+    '双击 Esc 将代码和/或会话回退到之前的某个时间点',
+  'Run claude --continue or claude --resume to resume a conversation':
+    '运行 claude --continue 或 claude --resume 恢复对话',
+  'Name your conversations with /rename to find them easily in /resume later':
+    '使用 /rename 给对话命名，方便之后在 /resume 中查找',
+  'Create skills by adding .md files to .claude/skills/ in your project or ~/.claude/skills/ for skills that work in any project':
+    '在项目的 .claude/skills/ 或 ~/.claude/skills/ 中添加 .md 文件创建技能，后者可在任意项目中使用',
+  'Hit {shortcut} to cycle between default, accept edits, plan, auto, and bypass modes':
+    '按 {shortcut} 在默认、接受编辑、计划、自动和绕过模式之间切换',
+  'Use {shortcut} to paste images from your clipboard':
+    '使用 {shortcut} 从剪贴板粘贴图片',
+  'Run Claude Code locally or remotely using the Claude desktop app: clau.de/desktop':
+    '使用 Claude 桌面应用在本地或远程运行 Claude Code：clau.de/desktop',
+  'Continue your session in Claude Code Desktop with {desktop_cmd}':
+    '使用 {desktop_cmd} 在 Claude Code Desktop 中继续会话',
+  'Run tasks in the cloud while you keep coding locally · clau.de/web':
+    '在云端运行任务，同时在本地继续编码 · clau.de/web',
+  '/mobile to use Claude Code from the Claude app on your phone':
+    '/mobile 通过手机上的 Claude 应用使用 Claude Code',
+  'Your default model setting is Opus Plan Mode. Press {shortcut} twice to activate Plan Mode and plan with Claude Opus.':
+    '您的默认模型设置为 Opus Plan Mode。按 {shortcut} 两次激活计划模式，使用 Claude Opus 进行规划。',
+  'Working with HTML/CSS? Install the frontend-design plugin:\n{install_cmd}':
+    '在开发 HTML/CSS？安装 frontend-design 插件：\n{install_cmd}',
+  'Working with Vercel? Install the vercel plugin:\n{install_cmd}':
+    '在使用 Vercel？安装 vercel 插件：\n{install_cmd}',
+  'Use {cmd} for better one-shot answers. Claude thinks it through first.':
+    '使用 {cmd} 获得更好的一次性答案。Claude 会先仔细思考。',
+  'Working on something tricky? {cmd} gives better first answers':
+    '在处理棘手问题？{cmd} 能给出更好的首次答案',
+  'Use {loop_cmd} to run any prompt on a schedule. Set it and forget it.':
+    '使用 {loop_cmd} 按计划运行任意提示。设置后即可高枕无忧。',
+  '{loop_cmd} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.':
+    '{loop_cmd} 按周期运行任意提示。非常适合监控部署、跟进 PR 或轮询状态。',
+  'Share Claude Code and earn {credit_amount} of extra usage · {passes_cmd}':
+    '分享 Claude Code 赚取 {credit_amount} 额外用量 · {passes_cmd}',
+  'You have free guest passes to share · {passes_cmd}':
+    '您有免费访客通行证可分享 · {passes_cmd}',
+  '{amount} in extra usage, on us': '{amount} 额外用量，我们请客',
+  '{amount_label} · third-party apps · {extra_usage_cmd}':
+    '{amount_label} · 第三方应用 · {extra_usage_cmd}',
+  'Use /feedback to help us improve!': '使用 /feedback 帮助我们改进！',
+
   // ── TeammateSpinnerLine ──────────────────────────────────────
   'Using {tool}…': '正在使用 {tool}…',
 
