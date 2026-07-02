@@ -53,9 +53,12 @@ export function modelSupports1M(model: string): boolean {
   }
   const canonical = getCanonicalName(model)
   return (
+    canonical.includes('claude-fable-5') ||
+    canonical.includes('claude-sonnet-5') ||
     canonical.includes('claude-sonnet-4') ||
-    canonical.includes('opus-4-6') ||
-    canonical.includes('opus-4-7')
+    canonical.includes('opus-4-8') ||
+    canonical.includes('opus-4-7') ||
+    canonical.includes('opus-4-6')
   )
 }
 
@@ -123,11 +126,12 @@ export function getSonnet1mExpTreatmentEnabled(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  // Only applies to sonnet 4.6 without an explicit [1m] suffix
+  // Only applies to sonnet 4.6/5 without an explicit [1m] suffix
   if (has1mContext(model)) {
     return false
   }
-  if (!getCanonicalName(model).includes('sonnet-4-6')) {
+  const canonical = getCanonicalName(model)
+  if (!canonical.includes('sonnet-4-6') && !canonical.includes('sonnet-5')) {
     return false
   }
   return getGlobalConfig().clientDataCache?.['coral_reef_sonnet'] === 'true'
@@ -192,10 +196,19 @@ export function getModelMaxOutputTokens(model: string): {
 
   const m = getCanonicalName(model)
 
-  if (m.includes('opus-4-7')) {
+  if (m.includes('fable-5')) {
+    defaultTokens = 64_000
+    upperLimit = 128_000
+  } else if (m.includes('opus-4-8')) {
+    defaultTokens = 64_000
+    upperLimit = 128_000
+  } else if (m.includes('opus-4-7')) {
     defaultTokens = 64_000
     upperLimit = 128_000
   } else if (m.includes('opus-4-6')) {
+    defaultTokens = 64_000
+    upperLimit = 128_000
+  } else if (m.includes('sonnet-5')) {
     defaultTokens = 64_000
     upperLimit = 128_000
   } else if (m.includes('sonnet-4-6')) {

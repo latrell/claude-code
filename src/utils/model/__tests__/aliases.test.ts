@@ -26,6 +26,10 @@ describe('isModelAlias', () => {
     expect(isModelAlias('opus[1m]')).toBe(true)
   })
 
+  test('returns true for "fable"', () => {
+    expect(isModelAlias('fable')).toBe(true)
+  })
+
   test('returns true for "opusplan"', () => {
     expect(isModelAlias('opusplan')).toBe(true)
   })
@@ -54,6 +58,10 @@ describe('isModelFamilyAlias', () => {
 
   test('returns true for "haiku"', () => {
     expect(isModelFamilyAlias('haiku')).toBe(true)
+  })
+
+  test('returns true for "fable"', () => {
+    expect(isModelFamilyAlias('fable')).toBe(true)
   })
 
   test('returns false for "best"', () => {

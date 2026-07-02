@@ -43,10 +43,10 @@ function resolveDefaultOpusModelForTests(): string {
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL)
     return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
   if (process.env.CLAUDE_CODE_USE_BEDROCK === '1')
-    return 'us.anthropic.claude-opus-4-7-v1'
-  if (process.env.CLAUDE_CODE_USE_VERTEX === '1') return 'claude-opus-4-7'
-  if (process.env.CLAUDE_CODE_USE_FOUNDRY === '1') return 'claude-opus-4-7'
-  return 'claude-opus-4-7'
+    return 'us.anthropic.claude-opus-4-8-v1'
+  if (process.env.CLAUDE_CODE_USE_VERTEX === '1') return 'claude-opus-4-8'
+  if (process.env.CLAUDE_CODE_USE_FOUNDRY === '1') return 'claude-opus-4-8'
+  return 'claude-opus-4-8'
 }
 
 // Inline the real firstPartyNameToCanonical logic so its semantics survive
@@ -54,11 +54,14 @@ function resolveDefaultOpusModelForTests(): string {
 // model.ts hangs the test process due to heavy transitive deps.
 function realFirstPartyNameToCanonical(name: string): string {
   name = name.toLowerCase()
+  if (name.includes('claude-fable-5')) return 'claude-fable-5'
+  if (name.includes('claude-opus-4-8')) return 'claude-opus-4-8'
   if (name.includes('claude-opus-4-7')) return 'claude-opus-4-7'
   if (name.includes('claude-opus-4-6')) return 'claude-opus-4-6'
   if (name.includes('claude-opus-4-5')) return 'claude-opus-4-5'
   if (name.includes('claude-opus-4-1')) return 'claude-opus-4-1'
   if (name.includes('claude-opus-4')) return 'claude-opus-4'
+  if (name.includes('claude-sonnet-5')) return 'claude-sonnet-5'
   if (name.includes('claude-sonnet-4-6')) return 'claude-sonnet-4-6'
   if (name.includes('claude-sonnet-4-5')) return 'claude-sonnet-4-5'
   if (name.includes('claude-sonnet-4')) return 'claude-sonnet-4'

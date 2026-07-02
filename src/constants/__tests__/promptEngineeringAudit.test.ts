@@ -13,7 +13,7 @@ const PROJECT_ROOT = resolve(__dirname, '..', '..', '..')
 const RUNNER_ABS = resolve(__dirname, '..', 'promptEngineeringAudit.runner.ts')
 const RUNNER_REL = './' + relative(PROJECT_ROOT, RUNNER_ABS).replace(/\\/g, '/')
 
-describe('Opus 4.7 Prompt Engineering Audit', () => {
+describe('Opus 4.8 Prompt Engineering Audit', () => {
   test('runs 64 audit checks in isolated subprocess', async () => {
     const proc = Bun.spawn(['bun', 'test', RUNNER_REL], {
       cwd: PROJECT_ROOT,

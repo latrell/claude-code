@@ -1,4 +1,8 @@
-import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
+import {
+  checkFable1mAccess,
+  checkOpus1mAccess,
+  checkSonnet1mAccess,
+} from './check1mAccess.js'
 import { getUserSpecifiedModelSetting } from './model.js'
 
 // @[MODEL LAUNCH]: Add a branch for the new model if it supports a 1M context upgrade path.
@@ -22,6 +26,12 @@ function getAvailableUpgrade(): {
     return {
       alias: 'sonnet[1m]',
       name: 'Sonnet 1M',
+      multiplier: 5,
+    }
+  } else if (currentModelSetting === 'fable' && checkFable1mAccess()) {
+    return {
+      alias: 'fable[1m]',
+      name: 'Fable 1M',
       multiplier: 5,
     }
   }

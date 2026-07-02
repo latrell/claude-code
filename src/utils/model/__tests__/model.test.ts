@@ -89,4 +89,21 @@ describe('firstPartyNameToCanonical', () => {
       'claude-sonnet-4',
     )
   })
+
+  test('maps fable-5', () => {
+    expect(firstPartyNameToCanonical('claude-fable-5')).toBe('claude-fable-5')
+  })
+
+  test('maps opus-4-8', () => {
+    expect(firstPartyNameToCanonical('claude-opus-4-8')).toBe('claude-opus-4-8')
+  })
+
+  test('maps sonnet-5', () => {
+    expect(firstPartyNameToCanonical('claude-sonnet-5')).toBe('claude-sonnet-5')
+  })
+
+  test('differentiates opus-4-7 vs opus-4-8', () => {
+    expect(firstPartyNameToCanonical('claude-opus-4-8')).toBe('claude-opus-4-8')
+    expect(firstPartyNameToCanonical('claude-opus-4-7')).toBe('claude-opus-4-7')
+  })
 })

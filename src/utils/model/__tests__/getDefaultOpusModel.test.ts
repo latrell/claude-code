@@ -10,15 +10,9 @@ import { getOpus46Option } from '../modelOptions.js'
 import { getModelStrings } from '../modelStrings.js'
 
 /**
- * Verifies getDefaultOpusModel() returns Opus 4.7 across all providers
- * (firstParty + Bedrock/Vertex/Foundry). This is the Gap #2 assertion:
- * as of 2026-04-17 all 3P vendors have published Opus 4.7, so the fork
- * must not fall back to Opus 4.6 on 3P.
- *
- * Authoritative sources for 3P availability:
- *   - AWS Bedrock: docs.aws.amazon.com/bedrock/.../model-card-anthropic-claude-opus-4-7.html
- *   - Google Vertex AI: docs.cloud.google.com/vertex-ai/.../claude/opus-4-7
- *   - Microsoft Foundry: ai.azure.com/catalog/models/claude-opus-4-7
+ * Verifies getDefaultOpusModel() returns Opus 4.8 across all providers
+ * (firstParty + Bedrock/Vertex/Foundry). As of 2026-07 the latest Opus
+ * is 4.8; the default must not fall back to Opus 4.7 on 3P.
  */
 
 const envKeys = [
@@ -31,6 +25,7 @@ const envKeys = [
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
   'GEMINI_DEFAULT_OPUS_MODEL',
+  'OPENAI_AUTH_MODE',
 ] as const
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -61,23 +56,23 @@ describe('getDefaultOpusModel', () => {
     resetProviderState()
   })
 
-  test('returns Opus 4.7 for firstParty', () => {
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.firstParty)
+  test('returns Opus 4.8 for firstParty', () => {
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus48.firstParty)
   })
 
-  test('returns Opus 4.7 for bedrock (3P no longer lags)', () => {
+  test('returns Opus 4.8 for bedrock', () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.bedrock)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus48.bedrock)
   })
 
-  test('returns Opus 4.7 for vertex (3P no longer lags)', () => {
+  test('returns Opus 4.8 for vertex', () => {
     process.env.CLAUDE_CODE_USE_VERTEX = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.vertex)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus48.vertex)
   })
 
-  test('returns Opus 4.7 for foundry (3P no longer lags)', () => {
+  test('returns Opus 4.8 for foundry', () => {
     process.env.CLAUDE_CODE_USE_FOUNDRY = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.foundry)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus48.foundry)
   })
 
   test('honors ANTHROPIC_DEFAULT_OPUS_MODEL env override (any provider)', () => {
@@ -94,10 +89,10 @@ describe('getDefaultOpusModel', () => {
 })
 
 /**
- * Gap #3 addition — "Opus 4.6" must appear as an explicit opt-in option in
+ * "Opus 4.6" must appear as an explicit opt-in option in
  * the /model picker across all non-ANT user tiers. The option's value MUST
  * be the canonical 4.6 model string, NOT the 'opus' alias (which would
- * resolve via getDefaultOpusModel back to 4.7 on firstParty, silently
+ * resolve via getDefaultOpusModel back to 4.8 on firstParty, silently
  * defeating the user's explicit choice).
  */
 describe('getOpus46Option', () => {

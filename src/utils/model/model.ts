@@ -10,9 +10,7 @@ import { resolveAntModel, getAntModelOverrideConfig } from './antModels.js'
 import {
   getSubscriptionType,
   isClaudeAISubscriber,
-  isMaxSubscriber,
   isProSubscriber,
-  isTeamPremiumSubscriber,
 } from '../auth.js'
 import {
   has1mContext,
@@ -61,7 +59,8 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
     model === getModelStrings().opus41 ||
     model === getModelStrings().opus45 ||
     model === getModelStrings().opus46 ||
-    model === getModelStrings().opus47
+    model === getModelStrings().opus47 ||
+    model === getModelStrings().opus48
   )
 }
 
@@ -117,7 +116,7 @@ export function getMainLoopModel(): ModelName {
 }
 
 export function getBestModel(): ModelName {
-  return getDefaultOpusModel()
+  return getDefaultModel()
 }
 
 /**
@@ -131,6 +130,33 @@ function getProviderPrimaryModel(): ModelName | undefined {
   if (provider === 'gemini') return process.env.GEMINI_MODEL
   if (provider === 'grok') return process.env.GROK_MODEL
   return undefined
+}
+
+// @[MODEL LAUNCH]: Update the default (Fable) model — this is the recommended default for all users.
+export function getDefaultModel(): ModelName {
+  const provider = getAPIProvider()
+  if (provider === 'openai' && isChatGPTAuthMode()) {
+    return CHATGPT_CODEX_DEFAULT_MODEL
+  }
+  // For OpenAI provider, check OPENAI_DEFAULT_MODEL first
+  if (provider === 'openai' && process.env.OPENAI_DEFAULT_MODEL) {
+    return process.env.OPENAI_DEFAULT_MODEL
+  }
+  // For Gemini provider, check GEMINI_DEFAULT_MODEL
+  if (provider === 'gemini' && process.env.GEMINI_DEFAULT_MODEL) {
+    return process.env.GEMINI_DEFAULT_MODEL
+  }
+  // Anthropic-specific override (for first-party and other 3P providers)
+  if (process.env.ANTHROPIC_DEFAULT_MODEL) {
+    return process.env.ANTHROPIC_DEFAULT_MODEL
+  }
+  // 3P providers: if user set a primary model, fall back to it
+  const primaryModel = getProviderPrimaryModel()
+  if (primaryModel) return primaryModel
+  if (provider !== 'firstParty') {
+    return getModelStrings().fable50
+  }
+  return getModelStrings().fable50
 }
 
 // @[MODEL LAUNCH]: Update the default Opus model (3P providers may lag so keep defaults unchanged).
@@ -158,9 +184,9 @@ export function getDefaultOpusModel(): ModelName {
   const primaryModel = getProviderPrimaryModel()
   if (primaryModel) return primaryModel
   if (provider !== 'firstParty') {
-    return getModelStrings().opus47
+    return getModelStrings().opus48
   }
-  return getModelStrings().opus47
+  return getModelStrings().opus48
 }
 
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
@@ -187,9 +213,9 @@ export function getDefaultSonnetModel(): ModelName {
   const primaryModel = getProviderPrimaryModel()
   if (primaryModel) return primaryModel
   if (provider !== 'firstParty') {
-    return getModelStrings().sonnet45
+    return getModelStrings().sonnet50
   }
-  return getModelStrings().sonnet46
+  return getModelStrings().sonnet50
 }
 
 // @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
@@ -252,33 +278,21 @@ export function getRuntimeMainLoopModel(params: {
  * Get the default main loop model setting.
  *
  * This handles the built-in default:
- * - Opus for Max and Team Premium users
- * - Sonnet 4.6 for all other users (including Team Standard, Pro, Enterprise)
+ * - Fable 5 for all users — the new recommended default model
  *
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Ants default to defaultModel from flag config, or Opus 1M if not configured
+  // Ants default to defaultModel from flag config, or Fable 5 if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
       (getAntModelOverrideConfig()?.defaultModel as string) ??
-      getDefaultOpusModel() + '[1m]'
+      getDefaultModel() + '[1m]'
     )
   }
 
-  // Max users get Opus as default
-  if (isMaxSubscriber()) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
-
-  // Team Premium gets Opus (same as Max)
-  if (isTeamPremiumSubscriber()) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
-
-  // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
-  // Note that PAYG (3P) may default to an older Sonnet model
-  return getDefaultSonnetModel()
+  // Fable 5 is the new default recommended model for all users
+  return getDefaultModel()
 }
 
 /**
@@ -300,6 +314,12 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   name = name.toLowerCase()
   // Special cases for Claude 4+ models to differentiate versions
   // Order matters: check more specific versions first (4-5 before 4)
+  if (name.includes('claude-fable-5')) {
+    return 'claude-fable-5'
+  }
+  if (name.includes('claude-opus-4-8')) {
+    return 'claude-opus-4-8'
+  }
   if (name.includes('claude-opus-4-7')) {
     return 'claude-opus-4-7'
   }
@@ -314,6 +334,9 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   }
   if (name.includes('claude-opus-4')) {
     return 'claude-opus-4'
+  }
+  if (name.includes('claude-sonnet-5')) {
+    return 'claude-sonnet-5'
   }
   if (name.includes('claude-sonnet-4-6')) {
     return 'claude-sonnet-4-6'
@@ -371,20 +394,14 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 export function getClaudeAiUserDefaultModelDescription(
   fastMode = false,
 ): string {
-  if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
-    if (isOpus1mMergeEnabled()) {
-      return `Opus 4.7 with 1M context · Most capable for complex work${fastMode ? getOpusPricingSuffix(true) : ''}`
-    }
-    return `Opus 4.7 · Most capable for complex work${fastMode ? getOpusPricingSuffix(true) : ''}`
-  }
-  return 'Sonnet 4.6 · Best for everyday tasks'
+  return `Fable 5 · Best for everyday tasks${fastMode ? getOpusPricingSuffix(true) : ''}`
 }
 
 export function renderDefaultModelSetting(
   setting: ModelName | ModelAlias,
 ): string {
   if (setting === 'opusplan') {
-    return 'Opus 4.7 in plan mode, else Sonnet 4.6'
+    return 'Opus 4.8 in plan mode, else Fable 5'
   }
   return renderModelName(parseUserSpecifiedModel(setting))
 }
@@ -434,6 +451,14 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
   switch (model) {
+    case getModelStrings().fable50:
+      return 'Fable 5'
+    case getModelStrings().fable50 + '[1m]':
+      return 'Fable 5 (1M context)'
+    case getModelStrings().opus48:
+      return 'Opus 4.8'
+    case getModelStrings().opus48 + '[1m]':
+      return 'Opus 4.8 (1M context)'
     case getModelStrings().opus47:
       return 'Opus 4.7'
     case getModelStrings().opus47 + '[1m]':
@@ -448,6 +473,10 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
       return 'Opus 4.1'
     case getModelStrings().opus40:
       return 'Opus 4'
+    case getModelStrings().sonnet50:
+      return 'Sonnet 5'
+    case getModelStrings().sonnet50 + '[1m]':
+      return 'Sonnet 5 (1M context)'
     case getModelStrings().sonnet46 + '[1m]':
       return 'Sonnet 4.6 (1M context)'
     case getModelStrings().sonnet46:
@@ -546,13 +575,15 @@ export function parseUserSpecifiedModel(
   if (isModelAlias(modelString)) {
     switch (modelString) {
       case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
+        return getDefaultModel() + (has1mTag ? '[1m]' : '') // Fable 5 is default, Opus 4.8 in plan mode
       case 'sonnet':
         return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
       case 'haiku':
         return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
       case 'opus':
         return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+      case 'fable':
+        return getDefaultModel() + (has1mTag ? '[1m]' : '')
       case 'best':
         return getBestModel()
       default:
@@ -667,6 +698,12 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
   const has1m = modelId.toLowerCase().includes('[1m]')
   const canonical = getCanonicalName(modelId)
 
+  if (canonical.includes('claude-fable-5')) {
+    return has1m ? 'Fable 5 (with 1M context)' : 'Fable 5'
+  }
+  if (canonical.includes('claude-opus-4-8')) {
+    return has1m ? 'Opus 4.8 (with 1M context)' : 'Opus 4.8'
+  }
   if (canonical.includes('claude-opus-4-7')) {
     return has1m ? 'Opus 4.7 (with 1M context)' : 'Opus 4.7'
   }
@@ -681,6 +718,9 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
   }
   if (canonical.includes('claude-opus-4')) {
     return 'Opus 4'
+  }
+  if (canonical.includes('claude-sonnet-5')) {
+    return has1m ? 'Sonnet 5 (with 1M context)' : 'Sonnet 5'
   }
   if (canonical.includes('claude-sonnet-4-6')) {
     return has1m ? 'Sonnet 4.6 (with 1M context)' : 'Sonnet 4.6'

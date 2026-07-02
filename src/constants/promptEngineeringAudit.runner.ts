@@ -56,8 +56,11 @@ mock.module('src/utils/envUtils.js', () => ({
 mock.module('src/utils/model/model.js', () => ({
   getCanonicalName: (id: string) => id,
   getMarketingNameForModel: (id: string) => {
+    if (id.includes('fable-5')) return 'Claude Fable 5'
+    if (id.includes('opus-4-8')) return 'Claude Opus 4.8'
     if (id.includes('opus-4-7')) return 'Claude Opus 4.7'
     if (id.includes('opus-4-6')) return 'Claude Opus 4.6'
+    if (id.includes('sonnet-5')) return 'Claude Sonnet 5'
     if (id.includes('sonnet-4-6')) return 'Claude Sonnet 4.6'
     return null
   },
@@ -232,7 +235,7 @@ async function getFullPrompt(
 // 对应审计文档 第一部分 #1-#10
 // =====================================================================
 
-describe('Opus 4.7 Prompt Engineering Audit', () => {
+describe('Opus 4.8 Prompt Engineering Audit', () => {
   // ------------------------------------------------------------------
   // #1 决策树结构 (Decision Tree)
   // TXT 来源: {request_evaluation_checklist} — Step 0→1→2→3
@@ -586,19 +589,20 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
     })
 
     test('env info contains model family', async () => {
-      const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
-      expect(envInfo).toContain('Claude 4.5/4.6/4.7')
+      const envInfo = await computeSimpleEnvInfo('claude-opus-4-8')
+      expect(envInfo).toContain('Claude 4.8/5')
     })
 
     test('env info contains correct model IDs', async () => {
-      const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
-      expect(envInfo).toContain('claude-opus-4-7')
-      expect(envInfo).toContain('claude-sonnet-4-6')
+      const envInfo = await computeSimpleEnvInfo('claude-opus-4-8')
+      expect(envInfo).toContain('claude-opus-4-8')
+      expect(envInfo).toContain('claude-sonnet-5')
       expect(envInfo).toContain('claude-haiku-4-5')
+      expect(envInfo).toContain('claude-fable-5')
     })
 
     test('mentions Chrome/Excel/Cowork products', async () => {
-      const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
+      const envInfo = await computeSimpleEnvInfo('claude-opus-4-8')
       expect(envInfo).toContain('Chrome')
       expect(envInfo).toContain('Excel')
       expect(envInfo).toContain('Cowork')
@@ -706,6 +710,11 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
   // =====================================================================
 
   describe('Knowledge cutoff correctness', () => {
+    test('Opus 4.8 cutoff is July 2026', async () => {
+      const envInfo = await computeSimpleEnvInfo('claude-opus-4-8')
+      expect(envInfo).toContain('July 2026')
+    })
+
     test('Opus 4.7 cutoff is January 2026', async () => {
       const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
       expect(envInfo).toContain('January 2026')
@@ -716,14 +725,19 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
       expect(envInfo).toContain('May 2025')
     })
 
+    test('Sonnet 5 cutoff is July 2026', async () => {
+      const envInfo = await computeSimpleEnvInfo('claude-sonnet-5')
+      expect(envInfo).toContain('July 2026')
+    })
+
     test('Sonnet 4.6 cutoff is August 2025', async () => {
       const envInfo = await computeSimpleEnvInfo('claude-sonnet-4-6')
       expect(envInfo).toContain('August 2025')
     })
 
-    test('Opus 4.7 frontier model name is correct', async () => {
-      const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
-      expect(envInfo).toContain('Claude Opus 4.7')
+    test('Opus 4.8 frontier model name is correct', async () => {
+      const envInfo = await computeSimpleEnvInfo('claude-opus-4-8')
+      expect(envInfo).toContain('Claude Opus 4.8')
     })
   })
 })

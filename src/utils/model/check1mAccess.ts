@@ -70,3 +70,17 @@ export function checkSonnet1mAccess(): boolean {
   // Non-subscribers (API/PAYG) have access
   return true
 }
+
+export function checkFable1mAccess(): boolean {
+  if (is1mContextDisabled()) {
+    return false
+  }
+
+  if (isClaudeAISubscriber()) {
+    // Subscribers have access if extra usage is enabled for their account
+    return isExtraUsageEnabled()
+  }
+
+  // Non-subscribers (API/PAYG) have access
+  return true
+}

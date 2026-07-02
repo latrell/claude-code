@@ -117,15 +117,19 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
     return supported3P
   }
   const canonical = getCanonicalName(model)
-  // Supported by a subset of Claude 4 models
+  // Supported by a subset of Claude 4+ models
+  // Fable 5: adaptive thinking is always on
   if (
+    canonical.includes('fable-5') ||
+    canonical.includes('opus-4-8') ||
     canonical.includes('opus-4-7') ||
     canonical.includes('opus-4-6') ||
+    canonical.includes('sonnet-5') ||
     canonical.includes('sonnet-4-6')
   ) {
     return true
   }
-  // Exclude any other known legacy models (allowlist above catches 4-6+ variants first)
+  // Exclude any other known legacy models (allowlist above catches newer variants first)
   if (
     canonical.includes('opus') ||
     canonical.includes('sonnet') ||
