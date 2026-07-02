@@ -7,7 +7,13 @@ import { formatTokens } from '../../utils/format.js';
 import { t, tf } from '../../i18n/t.js';
 
 function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }) {
-  const elapsed = useElapsedTime(task.startTime, task.status === 'running');
+  const elapsed = useElapsedTime(
+    task.startTime,
+    task.status === 'running',
+    1000,
+    task.totalPausedMs ?? 0,
+    task.endTime,
+  );
   const tokens = task.progress?.tokenCount ?? 0;
   const isRunning = task.status === 'running';
   return (

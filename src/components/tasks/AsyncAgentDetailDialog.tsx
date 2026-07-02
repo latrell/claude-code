@@ -27,7 +27,13 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
   // Get tools for rendering activity messages
   const tools = useMemo(() => getTools(getEmptyToolPermissionContext()), []);
 
-  const elapsedTime = useElapsedTime(agent.startTime, agent.status === 'running', 1000, agent.totalPausedMs ?? 0);
+  const elapsedTime = useElapsedTime(
+    agent.startTime,
+    agent.status === 'running',
+    1000,
+    agent.totalPausedMs ?? 0,
+    agent.endTime,
+  );
 
   // Restore confirm:yes (Enter/y) dismissal — Dialog handles confirm:no (Esc)
   // internally but does NOT auto-wire confirm:yes.

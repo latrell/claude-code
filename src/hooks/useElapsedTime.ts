@@ -1,5 +1,25 @@
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { formatDuration } from '../utils/format.js'
+
+/**
+ * Compute elapsed milliseconds from startTime to now/endTime, minus pausedMs.
+ *
+ * This is the pure computation shared by useElapsedTime and tested in isolation.
+ * Callers that don't use the hook (e.g. Spinner.tsx idle branch) should use
+ * this helper directly to avoid Date.now() leakage on completed tasks.
+ *
+ * @param startTime - Task start timestamp in ms
+ * @param nowOrEndTime - Current time (Date.now()) or task endTime for terminal tasks
+ * @param pausedMs - Total paused duration to subtract
+ * @returns Non-negative elapsed milliseconds
+ */
+export function computeElapsedMs(
+  startTime: number,
+  nowOrEndTime: number,
+  pausedMs: number = 0,
+): number {
+  return Math.max(0, nowOrEndTime - startTime - pausedMs)
+}
 
 /**
  * Hook that returns formatted elapsed time since startTime.
@@ -21,8 +41,25 @@ export function useElapsedTime(
   pausedMs: number = 0,
   endTime?: number,
 ): string {
+  // Freeze a snapshot when we stop running without an explicit endTime.
+  // Without this, every re-render recalculates with Date.now() causing the
+  // displayed duration to grow even though the task has finished.
+  const frozenRef = useRef<number | null>(null)
+  if (!isRunning && endTime === undefined && frozenRef.current === null) {
+    frozenRef.current = Date.now()
+  }
+  if (isRunning || endTime !== undefined) {
+    frozenRef.current = null
+  }
+
   const get = () =>
-    formatDuration(Math.max(0, (endTime ?? Date.now()) - startTime - pausedMs))
+    formatDuration(
+      computeElapsedMs(
+        startTime,
+        endTime ?? frozenRef.current ?? Date.now(),
+        pausedMs,
+      ),
+    )
 
   const subscribe = useCallback(
     (notify: () => void) => {

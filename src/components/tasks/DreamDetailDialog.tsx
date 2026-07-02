@@ -18,7 +18,7 @@ type Props = {
 const VISIBLE_TURNS = 6;
 
 export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): React.ReactNode {
-  const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0);
+  const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0, task.endTime);
 
   // Dialog handles confirm:no (Esc) → onCancel. Wire confirm:yes (Enter/y) too.
   useKeybindings({ 'confirm:yes': onDone }, { context: 'Confirmation' });

@@ -166,6 +166,7 @@ import { CancelRequestHandler } from '../hooks/useCancelRequest.js';
 import { useBackgroundTaskNavigation } from '../hooks/useBackgroundTaskNavigation.js';
 import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
+import { useLocalAgentEvictionTick } from '../hooks/useLocalAgentEvictionTick.js';
 import { errorMessage, toError } from '../utils/errors.js';
 import { isHumanTurn } from '../utils/messagePredicates.js';
 import { logError } from '../utils/log.js';
@@ -5524,6 +5525,11 @@ export function REPL({
   });
   // Auto-exit viewing mode when teammate completes or errors
   useTeammateViewAutoExit();
+
+  // Eviction tick for local_agent tasks (terminal release + eviction).
+  // CoordinatorTaskPanel also calls this hook for ant users; running both
+  // is harmless (two 1s intervals instead of one, negligible overhead).
+  useLocalAgentEvictionTick();
 
   // Get viewed agent task (inlined from selectors for explicit data flow).
   // viewedAgentTask: teammate OR local_agent — drives the boolean checks

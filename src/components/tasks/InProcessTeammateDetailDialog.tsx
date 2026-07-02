@@ -35,6 +35,7 @@ export function InProcessTeammateDetailDialog({
     teammate.status === 'running',
     1000,
     teammate.totalPausedMs ?? 0,
+    teammate.endTime,
   );
 
   // Restore confirm:yes (Enter/y) dismissal — Dialog handles confirm:no (Esc)

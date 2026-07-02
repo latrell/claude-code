@@ -115,11 +115,12 @@ export function TeammateSpinnerLine({
   // Get elapsed idle time (how long they've been idle) - for "Idle for X..." display
   const idleElapsedTime = useElapsedTime(idleStartRef.current ?? Date.now(), teammate.isIdle && !allIdle);
 
-  // Freeze the duration when we first detect all idle
-  // Use the teammate's actual work time (since task started) for the past-tense display
+  // Freeze the duration when we first detect all idle.
+  // Prefer teammate.endTime for terminal tasks so the displayed duration is
+  // fixed; for running/idle tasks fall back to Date.now().
   if (allIdle && frozenDurationRef.current === null) {
     frozenDurationRef.current = formatDuration(
-      Math.max(0, Date.now() - teammate.startTime - (teammate.totalPausedMs ?? 0)),
+      Math.max(0, (teammate.endTime ?? Date.now()) - teammate.startTime - (teammate.totalPausedMs ?? 0)),
     );
   }
 

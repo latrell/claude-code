@@ -285,7 +285,14 @@ function SpinnerWithVerbInner({
     const idleText = allIdle
       ? tf('{asterisk} Worked for {duration}', {
           asterisk: TEARDROP_ASTERISK,
-          duration: formatDuration(Date.now() - foregroundedTeammate.startTime),
+          duration: formatDuration(
+            Math.max(
+              0,
+              (foregroundedTeammate.endTime ?? Date.now()) -
+                foregroundedTeammate.startTime -
+                (foregroundedTeammate.totalPausedMs ?? 0),
+            ),
+          ),
         })
       : `${TEARDROP_ASTERISK} ${t('Idle')}`;
     return (

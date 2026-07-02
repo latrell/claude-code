@@ -20,7 +20,7 @@ type Props = {
  * Follows the DreamDetailDialog/ShellDetailDialog pattern.
  */
 export function MonitorMcpDetailDialog({ task, onBack, onKill }: Props): React.ReactNode {
-  const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0);
+  const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0, task.endTime);
 
   useKeybindings({}, { context: 'MonitorMcpDetail' });
 
