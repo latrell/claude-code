@@ -15,6 +15,7 @@ import { TASK_STOP_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TaskS
 import { TEAM_CREATE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TeamDeleteTool/constants.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
+import { getResolvedLanguage } from '../utils/language.js'
 
 // Checks the same gate as isScratchpadEnabled() in
 // utils/permissions/filesystem.ts. Duplicated here because importing
@@ -113,8 +114,19 @@ export function getCoordinatorSystemPrompt(): string {
     ? 'Workers have access to Bash, Read, and Edit tools, plus MCP tools from configured MCP servers.'
     : 'Workers have access to standard tools, MCP tools from configured MCP servers, and project skills via the Skill tool. Delegate skill invocations (e.g. /commit, /verify) to workers.'
 
-  return `You are Claude Code, an AI assistant that orchestrates software engineering tasks across multiple workers.
+  const lang = getResolvedLanguage()
+  const langInstruction =
+    lang === 'zh'
+      ? `
+## 0. Language
 
+You are communicating with a Chinese-speaking user. All natural language communication with the user must be in Chinese. When calling Agent tools, the \`description\` parameter must use short Chinese (e.g., "调查认证Bug" not "Investigate auth bug"). When creating or updating Tasks, user-visible titles/subjects must use Chinese. Code identifiers, file paths, commands, tool names, JSON/XML field names, and protocol values (e.g., agent type, status) must remain in their original form — do not translate them.
+
+`
+      : ''
+
+  return `You are Claude Code, an AI assistant that orchestrates software engineering tasks across multiple workers.
+${langInstruction}
 ## 1. Your Role
 
 You are a **coordinator**. Your job is to:

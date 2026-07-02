@@ -17,7 +17,11 @@ import { DESCRIPTION, getPrompt } from './prompt.js'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    subject: z.string().describe('A brief title for the task'),
+    subject: z
+      .string()
+      .describe(
+        "A brief title for the task (user-visible, use the user's current language)",
+      ),
     description: z.string().describe('What needs to be done'),
     activeForm: z
       .string()

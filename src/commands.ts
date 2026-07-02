@@ -832,7 +832,7 @@ export function formatDescriptionWithSource(cmd: Command): string {
   }
 
   if (cmd.kind === 'workflow') {
-    return `${t(cmd.description)} (workflow)`
+    return `${t(cmd.description)} ${t('(workflow)')}`
   }
 
   if (cmd.source === 'plugin') {
@@ -840,7 +840,7 @@ export function formatDescriptionWithSource(cmd: Command): string {
     if (pluginName) {
       return `(${pluginName}) ${t(cmd.description)}`
     }
-    return `${t(cmd.description)} (plugin)`
+    return `${t(cmd.description)} ${t('(plugin)')}`
   }
 
   if (cmd.source === 'builtin' || cmd.source === 'mcp') {
@@ -848,7 +848,7 @@ export function formatDescriptionWithSource(cmd: Command): string {
   }
 
   if (cmd.source === 'bundled') {
-    return `${t(cmd.description)} (bundled)`
+    return `${t(cmd.description)} ${t('(bundled)')}`
   }
 
   return `${t(cmd.description)} (${getSettingSourceName(cmd.source)})`

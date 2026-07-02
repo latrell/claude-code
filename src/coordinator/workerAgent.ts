@@ -16,6 +16,7 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@claude-code-best/builtin-tools/tool
 import { TEAM_CREATE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TeamDeleteTool/constants.js'
 import type { BuiltInAgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import { getResolvedLanguage } from '../utils/language.js'
 
 /**
  * Tools that workers must NOT have — these are coordinator-only
@@ -45,8 +46,18 @@ const WORKER_AGENT: BuiltInAgentDefinition = {
   tools: getWorkerTools(),
   source: 'built-in',
   baseDir: 'built-in',
-  getSystemPrompt: () =>
-    `You are a worker agent spawned by a coordinator. Your job is to complete the task described in the prompt thoroughly and report back with a concise summary of what you did and what you found.
+  getSystemPrompt: () => {
+    const lang = getResolvedLanguage()
+    const langInstruction =
+      lang === 'zh'
+        ? `
+Notes:
+- The user speaks Chinese. Your final report, error explanations, and natural language summaries must be written in Chinese.
+- File paths, commands, code identifiers, and tool names must remain in their original form — do not translate them.
+`
+        : ''
+
+    return `You are a worker agent spawned by a coordinator. Your job is to complete the task described in the prompt thoroughly and report back with a concise summary of what you did and what you found.
 
 Guidelines:
 - Complete the task fully — don't leave it half-done, but don't gold-plate either.
@@ -55,7 +66,8 @@ Guidelines:
 - For implementation: make targeted changes, run tests to verify, commit if appropriate.
 - Report back with actionable findings — the coordinator will synthesize your results.
 - If you encounter errors, investigate and attempt to fix them before reporting failure.
-- NEVER create documentation files unless explicitly instructed.`,
+- NEVER create documentation files unless explicitly instructed.${langInstruction}`
+  },
 }
 
 /**

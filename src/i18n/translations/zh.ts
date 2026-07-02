@@ -1389,6 +1389,43 @@ const zh: Record<string, string> = {
 
   // ── API Error prefix ────────────────────────────────────────────
   'API Error': 'API 错误',
+
+  // ── Bundled skill descriptions (model-invocable, user-visible in /help) ─
+  'Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".':
+    '用于用户想要自定义键盘快捷键、重新绑定按键、添加组合快捷键或修改 ~/.claude/keybindings.json 时。例如："rebind ctrl+s"、"add a chord shortcut"、"change the submit key"、"customize keybindings"。',
+  'Verify a code change does what it should by running the app.':
+    '通过运行应用验证代码改动是否符合预期。',
+  'Submit feedback about Claude Code': '提交关于 Claude Code 的反馈',
+  'Restore the code and/or conversation to a previous point':
+    '将代码和/或对话恢复到之前的某个时间点',
+  'List HTML artifacts uploaded to cloud-artifacts in this session':
+    '列出本会话中上传到 cloud-artifacts 的 HTML 工件',
+  'Manage credential vault': '管理凭据保险库',
+  'Manage local credential vault': '管理本地凭据保险库',
+  'Manage local memory stores': '管理本地记忆存储',
+  'Security review of the current project': '对当前项目进行安全审查',
+  'Toggle sandboxing behavior for this session': '切换本会话的沙箱行为',
+  'Manage memory stores': '管理记忆存储',
+  'Manage Claude Code plugins and marketplaces': '管理 Claude Code 插件和市场',
+  'Manage skill store': '管理技能商店',
+
+  // ── Source suffix labels (used in formatDescriptionWithSource) ──
+  '(bundled)': '（内置包）',
+  '(plugin)': '（插件）',
+  '(workflow)': '（工作流）',
+  '(plugin: local)': '（插件：本地）',
+  '(project)': '（项目）',
+  '(user)': '（用户）',
+
+  // ── Additional command descriptions for i18n completeness ──
+  'Manage remote secret vaults and credentials for cloud agents. Requires Claude Pro/Max/Team subscription.':
+    '管理云端凭据保险库和云代理凭据。需要 Claude Pro/Max/Team 订阅。',
+  'Manage local encrypted secrets. Stored in OS keychain or encrypted file fallback \u2014 no API key required.':
+    '管理本地加密凭据。存储在操作系统密钥链或加密文件回退中 \u2014 无需 API 密钥。',
+  'Manage remote memory stores (cross-device memory persistence). Requires Claude Pro/Max/Team subscription.':
+    '管理远程记忆存储（跨设备记忆持久化）。需要 Claude Pro/Max/Team 订阅。',
+  'Browse and install remote skills from the Anthropic skill marketplace. Requires Claude Pro/Max/Team subscription.':
+    '浏览并安装来自 Anthropic 技能市场的远程技能。需要 Claude Pro/Max/Team 订阅。',
 }
 
 export default zh
