@@ -26,7 +26,8 @@ const zh: Record<string, string> = {
   'Toggle a searchable tag on the current session': '为当前会话切换可搜索标签',
   'Enable plan mode or view the current session plan':
     '启用计划模式或查看当前会话计划',
-  'Fork the current session into a new sub-agent': '将当前会话分支为新的子代理',
+  'Fork the current session into a new sub-agent':
+    '将当前会话分支为新的子智能体',
   'Add a new working directory': '添加新的工作目录',
   'Set the AI model for Claude Code (currently {model})':
     '设置 Claude Code 的 AI 模型（当前 {model}）',
@@ -82,7 +83,7 @@ const zh: Record<string, string> = {
     '在此处创建当前对话的分支',
   '[INTERNAL] Development debug command (reserved)':
     '【内部】开发调试命令（保留）',
-  'Manage agent configurations': '管理代理配置',
+  'Manage agent configurations': '管理智能体配置',
   'Configure web search and web fetch backends': '配置网页搜索和获取后端',
   'Create a git commit': '创建 git 提交',
   'Configure the advisor model': '配置顾问模型',
@@ -108,7 +109,7 @@ const zh: Record<string, string> = {
   'Review a pull request': '审查拉取请求',
   'View hook configurations for tool events': '查看工具事件的钩子配置',
   'Manage scheduled remote agents (cron-style triggers)':
-    '管理定时远程代理（cron 样式触发器）',
+    '管理定时远程智能体（cron 样式触发器）',
   'Configure the provider/account used by Agent sub-sessions':
     '配置 Agent 子会话使用的提供商/账户',
   'Generate a report analyzing your Claude Code sessions':
@@ -161,7 +162,7 @@ const zh: Record<string, string> = {
   'Theme picker dismissed': '主题选择器已关闭',
   'Background tasks dialog dismissed': '后台任务面板已关闭',
   'Skills dialog dismissed': '技能面板已关闭',
-  'Agents dialog dismissed': '代理面板已关闭',
+  'Agents dialog dismissed': '智能体面板已关闭',
   'Hooks dialog dismissed': '钩子面板已关闭',
   'Diff dialog dismissed': '差异面板已关闭',
   'Help dialog dismissed': '帮助面板已关闭',
@@ -293,7 +294,7 @@ const zh: Record<string, string> = {
   'Show PR status footer': '显示 PR 状态页脚',
   Model: '模型',
   'Default (recommended)': '默认（推荐）',
-  "Default (leader's model)": '默认（跟随主代理模型）',
+  "Default (leader's model)": '默认（跟随主智能体模型）',
   'Default (English)': '默认（英语）',
   'Diff tool': '差异工具',
   'Auto-connect to IDE (external terminal)': '自动连接 IDE（外部终端）',
@@ -308,7 +309,7 @@ const zh: Record<string, string> = {
   'Billed as extra usage': '计入超额使用',
   'Use auto mode during plan': '计划期间使用自动模式',
   "Default model for newly spawned teammates. The leader can override via the tool call's model parameter.":
-    '新创建队友的默认模型。主代理可通过工具调用的模型参数覆盖。',
+    '新创建队友的默认模型。主智能体可通过工具调用的模型参数覆盖。',
   'disable external includes': '禁用外部引用',
   'Enable Auto-Updates': '启用自动更新',
   'Auto-updates are controlled by an environment variable and cannot be changed here.':
@@ -397,8 +398,8 @@ const zh: Record<string, string> = {
   // ── Logo / Startup banner ──────────────────────────────────────
   'Welcome back!': '欢迎回来！',
   'Welcome back, {username}!': '欢迎回来，{username}！',
-  'Inherit from parent': '继承自父代理',
-  'Subagent:': '子代理：',
+  'Inherit from parent': '继承自父智能体',
+  'Subagent:': '子智能体：',
 
   // ── Interrupted by user ─────────────────────────────────────────
   'Interrupted ': '已中断 ',
@@ -429,8 +430,8 @@ const zh: Record<string, string> = {
   'show teammates': '显示队友',
   hide: '隐藏',
   manage: '管理',
-  'stop agents': '停止代理',
-  'return to team lead': '返回主代理',
+  'stop agents': '停止智能体',
+  'return to team lead': '返回主智能体',
   'view tasks': '查看任务',
   copy: '复制',
   'native select': '原生选择',
@@ -758,6 +759,12 @@ const zh: Record<string, string> = {
     '无效颜色 "{color}"。可用颜色：{colors}、default',
   'Session color set to: {color}': '会话颜色已设置为：{color}',
 
+  // ── coordinator mode session matching ──────────────────────────
+  'Entered coordinator mode to match resumed session.':
+    '已进入协调器模式以匹配已恢复的会话。',
+  'Exited coordinator mode to match resumed session.':
+    '已退出协调器模式以匹配已恢复的会话。',
+
   // ── coordinator command ─────────────────────────────────────────
   'Coordinator mode disabled — back to normal mode':
     '协调器模式已禁用 — 返回普通模式',
@@ -791,7 +798,7 @@ const zh: Record<string, string> = {
 
   // ── fork command ────────────────────────────────────────────────
   'Fork subagent feature is not enabled. Set FEATURE_FORK_SUBAGENT=1 to enable.':
-    'Fork 子代理功能未启用。设置 FEATURE_FORK_SUBAGENT=1 以启用。',
+    'Fork 子智能体功能未启用。设置 FEATURE_FORK_SUBAGENT=1 以启用。',
   'Fork is not available inside a forked worker. Complete your task directly using your tools.':
     'Fork 在已 Fork 的 worker 中不可用。请直接使用您的工具完成任务。',
   'Usage: /fork <directive>\nExample: /fork Fix the null check in validate.ts':
@@ -799,7 +806,7 @@ const zh: Record<string, string> = {
   'Cannot fork: no assistant response in conversation history.':
     '无法 fork：对话历史中没有助手回复。',
   'Forked subagent started with directive: "{directive}"':
-    'Fork 子代理已启动，指令："{directive}"',
+    'Fork 子智能体已启动，指令："{directive}"',
   'Fork failed: {error}': 'Fork 失败：{error}',
 
   // ── goal command ────────────────────────────────────────────────
@@ -1128,7 +1135,7 @@ const zh: Record<string, string> = {
     '连接到 Claude Code 服务器（内部使用 — 使用 cc:// URL）',
   'Set up a long-lived authentication token (requires Claude subscription)':
     '设置长期认证令牌（需要 Claude 订阅）',
-  'List configured agents': '列出已配置的代理',
+  'List configured agents': '列出已配置的智能体',
   'Inspect auto mode classifier configuration': '检查自动模式分类器配置',
   'Print the default auto mode environment, allow, and deny rules as JSON':
     '以 JSON 格式打印默认的自动模式环境以及允许和拒绝规则',
@@ -1177,7 +1184,7 @@ const zh: Record<string, string> = {
   'Show the tasks directory path': '显示任务目录路径',
 
   // ── REPL error notifications ────────────────────────────────────
-  'Failed to resume agent: {error}': '恢复代理失败：{error}',
+  'Failed to resume agent: {error}': '恢复智能体失败：{error}',
 
   // ── Bundled skill descriptions (user-visible in /help, typeahead) ─
   'Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m)':
@@ -1194,9 +1201,9 @@ const zh: Record<string, string> = {
   'Use this skill to configure the Claude Code harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move permission to"), env vars ("set X=Y"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: "allow npm commands", "add bq permission to global settings", "move permission to user settings", "set DEBUG=true", "when claude stops show X". For simple settings like theme/model, use Config tool.':
     '使用此技能通过 settings.json 配置 Claude Code 框架。自动化行为（"from now on when X"、"each time X" 等）需要在 settings.json 中配置 hooks — 框架负责执行而非 Claude，因此记忆/偏好无法实现。也可用于：权限（"allow X"、"add permission"、"move permission to"）、环境变量（"set X=Y"）、hook 故障排除，或对 settings.json/settings.local.json 文件的任何更改。示例："allow npm commands"、"add bq permission to global settings"、"move permission to user settings"、"set DEBUG=true"、"when claude stops show X"。对于主题/模型等简单设置，请使用 Config 工具。',
   'Research and plan a large-scale change, then execute it in parallel across 5\u201330 isolated worktree agents that each open a PR.':
-    '研究并规划大规模更改，然后在 5\u201330 个隔离的 worktree 代理中并行执行，每个代理创建一个 PR',
+    '研究并规划大规模更改，然后在 5\u201330 个隔离的 worktree 智能体中并行执行，每个智能体创建一个 PR',
   'Teach the agent when and how to use the artifact tool: what content belongs in artifacts, when to upload/update, and the SearchExtraTools + ExecuteExtraTool invocation flow for the deferred artifact tool.':
-    '教代理何时以及如何使用 artifact 工具：哪些内容属于 artifact、何时上传/更新、以及延迟 artifact 工具的 SearchExtraTools + ExecuteExtraTool 调用流程',
+    '教智能体何时以及如何使用 artifact 工具：哪些内容属于 artifact、何时上传/更新、以及延迟 artifact 工具的 SearchExtraTools + ExecuteExtraTool 调用流程',
   '[ANT-ONLY] Investigate frozen/stuck/slow Claude Code sessions on this machine and post a diagnostic report to #claude-code-feedback.':
     '【内部】调查此机器上冻结/卡住/缓慢的 Claude Code 会话并向 #claude-code-feedback 发布诊断报告',
   'Enable debug logging for this session and help diagnose issues':
@@ -1206,26 +1213,27 @@ const zh: Record<string, string> = {
   'Generate filler text for long context testing. Specify token count as argument (e.g., /lorem-ipsum 50000). Outputs approximately the requested number of tokens. Ant-only.':
     '生成长上下文测试的填充文本。指定 token 数量作为参数（例如 /lorem-ipsum 50000）。输出大约请求数量的 token。仅供内部使用。',
   'Enter multi-agent workflow orchestration mode: when to use the Workflow tool, script primitives, quality patterns, determinism constraints, resume/budget, and files/commands.':
-    '进入多代理工作流编排模式：何时使用 Workflow 工具、脚本原语、质量模式、确定性约束、恢复/预算以及文件/命令',
+    '进入多智能体工作流编排模式：何时使用 Workflow 工具、脚本原语、质量模式、确定性约束、恢复/预算以及文件/命令',
   'Automates your Chrome browser to interact with web pages - clicking elements, filling forms, capturing screenshots, reading console logs, and navigating sites. Opens pages in new tabs within your existing Chrome session. Requires site-level permissions before executing (configured in the extension).':
     '自动化 Chrome 浏览器与网页交互 — 点击元素、填写表单、截屏、读取控制台日志和导航网站。在现有 Chrome 会话的新标签页中打开页面。执行前需要站点级权限（在扩展中配置）',
   'Create, update, list, or run scheduled remote agents (triggers) that execute on a cron schedule.':
-    '创建、更新、列出或运行按 cron 计划执行的定时远程代理（触发器）',
+    '创建、更新、列出或运行按 cron 计划执行的定时远程智能体（触发器）',
   "Capture this session's repeatable process into a skill. Call at end of the process you want to capture with an optional description.":
     '将本会话的可重复流程捕获为技能。在要捕获的流程结束时调用，可附带描述',
   'Build apps with the Claude API or Anthropic SDK.\nTRIGGER when: code imports `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`, or user asks to use Claude API, Anthropic SDKs, or Agent SDK.\nDO NOT TRIGGER when: code imports `openai`/other AI SDK, general programming, or ML/data-science tasks.':
     '使用 Claude API 或 Anthropic SDK 构建应用。\n触发条件：代码导入 anthropic/@anthropic-ai-sdk/claude_agent_sdk，或用户要求使用 Claude API、Anthropic SDK 或 Agent SDK。\n不触发：代码导入 openai/其他 AI SDK、通用编程或 ML/数据科学任务。',
 
   // ── Agent / Task status UI ───────────────────────────────────────
-  'Backgrounded agent': '后台代理',
-  'Remote agent launched': '远程代理已启动',
+  'Backgrounded agent': '后台智能体',
+  'Remote agent launched': '远程智能体已启动',
   'Done ({result})': '完成（{result}）',
   '1 tool use': '1 次工具调用',
   '{count} tool uses': '{count} 次工具调用',
   '{count} tokens': '{count} 词元',
-  'Agent "{description}" completed': '代理 "{description}" 已完成',
-  'Agent "{description}" failed: {error}': '代理 "{description}" 失败：{error}',
-  'Agent "{description}" was stopped': '代理 "{description}" 已停止',
+  'Agent "{description}" completed': '智能体 "{description}" 已完成',
+  'Agent "{description}" failed: {error}':
+    '智能体 "{description}" 失败：{error}',
+  'Agent "{description}" was stopped': '智能体 "{description}" 已停止',
   done: '完成',
   error: '错误',
   stopped: '已停止',
@@ -1239,15 +1247,15 @@ const zh: Record<string, string> = {
   'Viewing teammate': '查看队友',
   'Viewing leader': '查看领导者',
   'Background tasks': '后台任务',
-  'active agent': '活跃代理',
-  'active agents': '活跃代理',
-  Agents: '代理',
+  'active agent': '活跃智能体',
+  'active agents': '活跃智能体',
+  Agents: '智能体',
   Shells: 'Shell',
   Monitors: '监控',
   Completed: '已完成',
   Failed: '失败',
   Stopped: '已停止',
-  'Async agent': '异步代理',
+  'Async agent': '异步智能体',
   Progress: '进度',
   Prompt: '提示',
   Error: '错误',
@@ -1305,9 +1313,9 @@ const zh: Record<string, string> = {
   ultraplan: 'ultraplan',
   ultrareview: 'ultrareview',
   'error · {error}': '错误 · {error}',
-  'background agents launched': '个后台代理已启动',
-  agents: '代理',
-  '{type} agents': '{type} 代理',
+  'background agents launched': '个后台智能体已启动',
+  agents: '智能体',
+  '{type} agents': '{type} 智能体',
   finished: '已完成',
   Running: '运行',
   'Initializing…': '初始化中…',
@@ -1350,13 +1358,13 @@ const zh: Record<string, string> = {
   stash: '暂存',
   'toggle branch': '切换分支',
   'run in background': '后台运行',
-  'stop all agents': '停止所有代理',
-  'manage background agents': '管理后台代理',
+  'stop all agents': '停止所有智能体',
+  'manage background agents': '管理后台智能体',
   'more tool': '更多工具',
 
   // ── BackgroundAgentSelector hint strings ────────────────────────
   'up/down to select · Enter to view': '↑/↓ 选择 · Enter 查看',
-  'shift+downarrow to manage background agents': 'shift+↓ 管理后台代理',
+  'shift+downarrow to manage background agents': 'shift+↓ 管理后台智能体',
   'shift+downarrow to manage · x to stop': 'shift+↓ 管理 · x 停止',
   'shift+downarrow to manage · x to clear': 'shift+↓ 管理 · x 清除',
 
@@ -1367,8 +1375,8 @@ const zh: Record<string, string> = {
   '{n} monitors': '{n} 个监控',
   '{n} team': '{n} 个团队',
   '{n} teams': '{n} 个团队',
-  '{n} local agent': '{n} 个本地代理',
-  '{n} local agents': '{n} 个本地代理',
+  '{n} local agent': '{n} 个本地智能体',
+  '{n} local agents': '{n} 个本地智能体',
   '{n} cloud session': '{n} 个云端会话',
   '{n} cloud sessions': '{n} 个云端会话',
   '{n} background workflow': '{n} 后台工作流',
@@ -1435,7 +1443,7 @@ const zh: Record<string, string> = {
 
   // ── Additional command descriptions for i18n completeness ──
   'Manage remote secret vaults and credentials for cloud agents. Requires Claude Pro/Max/Team subscription.':
-    '管理云端凭据保险库和云代理凭据。需要 Claude Pro/Max/Team 订阅。',
+    '管理云端凭据保险库和云智能体凭据。需要 Claude Pro/Max/Team 订阅。',
   'Manage local encrypted secrets. Stored in OS keychain or encrypted file fallback \u2014 no API key required.':
     '管理本地加密凭据。存储在操作系统密钥链或加密文件回退中 \u2014 无需 API 密钥。',
   'Manage remote memory stores (cross-device memory persistence). Requires Claude Pro/Max/Team subscription.':
@@ -1471,7 +1479,7 @@ const zh: Record<string, string> = {
   'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)':
     '切换 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry）',
   'Manage scheduled remote agent triggers (cloud cron). Requires Claude Pro/Max/Team subscription.':
-    '管理定时远程代理触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
+    '管理定时远程智能体触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
   'Show Claude Code status including version, model, account, API connectivity, and tool statuses':
     '显示 Claude Code 状态，包括版本、模型、账户、API 连接和工具状态',
   'Manage flicker-free TUI mode. Open actions or run: status, on, off, toggle':
@@ -1505,6 +1513,83 @@ const zh: Record<string, string> = {
   // ── Built-in plugin skill descriptions ───────────────────────
   'Set up Claude GitHub Actions for a repository':
     '为仓库设置 Claude GitHub Actions',
+
+  // ── SendMessageTool messages ─────────────────────────────────
+  'Message queued for delivery to {to} at its next tool round.':
+    '消息已加入队列，将在 {to} 的下一个工具轮次中送达。',
+  'Agent "{to}" was stopped ({status}); resumed it in the background with your message. You\'ll be notified when it finishes. Output: {output}':
+    '智能体 "{to}" 已停止（{status}）；已在后台用您的消息恢复。完成后您将收到通知。输出：{output}',
+  'Agent "{to}" is stopped ({status}) and could not be resumed: {error}':
+    '智能体 "{to}" 已停止（{status}），无法恢复：{error}',
+  'Agent "{to}" had no active task; resumed from transcript in the background with your message. You\'ll be notified when it finishes. Output: {output}':
+    '智能体 "{to}" 无活动任务；已在后台从记录中用您的消息恢复。完成后您将收到通知。输出：{output}',
+  'Agent "{to}" is registered but has no transcript to resume. It may have been cleaned up. ({error})':
+    '智能体 "{to}" 已注册但无记录可恢复。可能已被清理。（{error}）',
+
+  // ── CoordinatorAgentStatus ───────────────────────────────────
+  'x to stop': 'x 停止',
+  'x to clear': 'x 清除',
+  '{n} queued': '{n} 个排队',
+
+  // ── BackgroundTasksDialog section headers ────────────────────
+  'Remote agents': '远程智能体',
+  'Local agents': '本地智能体',
+  Workflows: '工作流',
+  'No agents found': '未找到智能体',
+
+  // ── AgentsList empty state ───────────────────────────────────
+  'No agents found. Create specialized subagents that Claude can delegate to.':
+    '未找到智能体。创建专门化子智能体，Claude 可以委派任务。',
+  'Each subagent has its own context window, custom system prompt, and specific tools.':
+    '每个子智能体拥有独立的上下文窗口、自定义系统提示和特定工具。',
+  'Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.':
+    '尝试创建：代码审查员、代码简化员、安全审查员、技术主管或 UX 审查员。',
+  'Built-in agents': '内置智能体',
+  '(always available)': '（始终可用）',
+  'Built-in agents are provided by default and cannot be modified.':
+    '内置智能体默认提供，不可修改。',
+
+  // ── agents CLI handler ───────────────────────────────────────
+  '{n} active agents': '{n} 个活跃智能体',
+
+  // ── Coordinator agent kill confirmation ──────────────────────
+  'All background agents stopped': '所有后台智能体已停止',
+
+  // ── useCancelRequest notifications ───────────────────────────
+  'No background agents running': '没有后台智能体在运行',
+  'Press {shortcut} again to stop background agents':
+    '再次按 {shortcut} 停止后台智能体',
+  'Background agent "{description}" was stopped by the user.':
+    '后台智能体 "{description}" 已被用户停止。',
+  '{n} background agents were stopped by the user: {descriptions}':
+    '{n} 个后台智能体已被用户停止：{descriptions}',
+
+  // ── Pill label ultraplan ─────────────────────────────────────
+  'ultraplan ready': 'ultraplan 就绪',
+  'ultraplan needs your input': 'ultraplan 需要您的输入',
+
+  // ── Tips: agent-related tip content ──────────────────────────
+  'Use /agents to optimize specific tasks. Eg. Software Architect, Code Writer, Code Reviewer':
+    '使用 /agents 优化特定任务。例如：软件架构师、代码编写者、代码审查者',
+  'Use --agent <agent_name> to directly start a conversation with a subagent':
+    '使用 --agent <智能体名称> 直接开始与子智能体的对话',
+
+  // ── Tips: subagent-fanout-nudge ──────────────────────────────
+  '"fan out subagents"': '"派出子智能体"',
+  'use subagents': '使用子智能体',
+  'Say {blue_verb} and Claude sends a team. Each one digs deep so nothing gets missed.':
+    '说{blue_verb}，Claude 会派遣团队，每个深入挖掘，不遗漏任何内容。',
+  'For big tasks, tell Claude to {blue_verb}. They work in parallel and keep your main thread clean.':
+    '大型任务让 Claude {blue_verb}。它们并行工作，保持主线程干净。',
+
+  // ── TeammateSpinnerLine ──────────────────────────────────────
+  'Using {tool}…': '正在使用 {tool}…',
+
+  // ── sdkMessageAdapter ────────────────────────────────────────
+  'Session completed successfully': '会话已成功完成',
+  'Compacting conversation…': '正在压缩对话…',
+  'Remote session initialized (model: {model})':
+    '远程会话已初始化（模型：{model}）',
 }
 
 export default zh

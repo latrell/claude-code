@@ -13,7 +13,7 @@ import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCr
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth.js'
-import { t } from '../../i18n/t.js'
+import { t, tf } from '../../i18n/t.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import {
@@ -421,7 +421,9 @@ const externalTips: Tip[] = [
   {
     id: 'custom-agents',
     content: async () =>
-      'Use /agents to optimize specific tasks. Eg. Software Architect, Code Writer, Code Reviewer',
+      t(
+        'Use /agents to optimize specific tasks. Eg. Software Architect, Code Writer, Code Reviewer',
+      ),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -431,7 +433,9 @@ const externalTips: Tip[] = [
   {
     id: 'agent-flag',
     content: async () =>
-      'Use --agent <agent_name> to directly start a conversation with a subagent',
+      t(
+        'Use --agent <agent_name> to directly start a conversation with a subagent',
+      ),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -554,8 +558,14 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tern_alloy', 'off')
       return variant === 'copy_b'
-        ? `For big tasks, tell Claude to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
-        : `Say ${blue('"fan out subagents"')} and Claude sends a team. Each one digs deep so nothing gets missed.`
+        ? tf(
+            'For big tasks, tell Claude to {blue_verb}. They work in parallel and keep your main thread clean.',
+            { blue_verb: blue(t('use subagents')) },
+          )
+        : tf(
+            'Say {blue_verb} and Claude sends a team. Each one digs deep so nothing gets missed.',
+            { blue_verb: blue(t('"fan out subagents"')) },
+          )
     },
     cooldownSessions: 3,
     isRelevant: async () => {

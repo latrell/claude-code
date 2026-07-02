@@ -1,7 +1,7 @@
 import { DIAMOND_FILLED, DIAMOND_OPEN } from '../constants/figures.js'
 import { count } from '../utils/array.js'
 import type { BackgroundTaskState } from './types.js'
-import { tf } from '../i18n/t.js'
+import { t, tf } from '../i18n/t.js'
 
 /**
  * Produces the compact footer-pill label for a set of background tasks.
@@ -56,11 +56,11 @@ export function getPillLabel(tasks: BackgroundTaskState[]): string {
         if (n === 1 && first.type === 'remote_agent' && first.isUltraplan) {
           switch (first.ultraplanPhase) {
             case 'plan_ready':
-              return `${DIAMOND_FILLED} ultraplan ready`
+              return `${DIAMOND_FILLED} ${t('ultraplan ready')}`
             case 'needs_input':
-              return `${DIAMOND_OPEN} ultraplan needs your input`
+              return `${DIAMOND_OPEN} ${t('ultraplan needs your input')}`
             default:
-              return `${DIAMOND_OPEN} ultraplan`
+              return `${DIAMOND_OPEN} ${t('ultraplan')}`
           }
         }
         return n === 1

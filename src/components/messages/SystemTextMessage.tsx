@@ -32,7 +32,7 @@ import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { useAppStateStore } from '../../state/AppState.js';
 import { isBackgroundTask, type TaskState } from '../../tasks/types.js';
 import { getPillLabel } from '../../tasks/pillLabel.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { useSelectedMessageBg } from '../messageActions.js';
 
 type Props = {
@@ -71,7 +71,7 @@ export function SystemTextMessage({ message, addMargin, verbose, isTranscriptMod
         <Box minWidth={2}>
           <Text color="error">{BLACK_CIRCLE}</Text>
         </Box>
-        <Text dimColor>All background agents stopped</Text>
+        <Text dimColor>{t('All background agents stopped')}</Text>
       </Box>
     );
   }
@@ -331,7 +331,7 @@ function TurnDurationMessage({
         <Text dimColor>{TEARDROP_ASTERISK}</Text>
       </Box>
       <Text dimColor>
-        {showTurnDuration && `${verb} for ${duration}`}
+        {showTurnDuration && tf('{verb} for {duration}', { verb: t(verb), duration })}
         {budgetSuffix}
         {backgroundTaskSummary && ` \u00B7 ${backgroundTaskSummary} ${t('still running')}`}
       </Text>

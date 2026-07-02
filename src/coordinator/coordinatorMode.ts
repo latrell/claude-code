@@ -5,6 +5,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
+import { t } from '../i18n/t.js'
 import { AGENT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/AgentTool/constants.js'
 import { BASH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileEditTool/constants.js'
@@ -74,8 +75,8 @@ export function matchSessionMode(
   })
 
   return sessionIsCoordinator
-    ? 'Entered coordinator mode to match resumed session.'
-    : 'Exited coordinator mode to match resumed session.'
+    ? t('Entered coordinator mode to match resumed session.')
+    : t('Exited coordinator mode to match resumed session.')
 }
 
 export function getCoordinatorUserContext(

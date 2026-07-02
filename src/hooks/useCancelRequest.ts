@@ -17,6 +17,7 @@ import type { ToolUseConfirm } from '../components/permissions/PermissionRequest
 import type { SpinnerMode } from '../components/Spinner/types.js'
 import { useNotifications } from '../context/notifications.js'
 import { useIsOverlayActive } from '../context/overlayContext.js'
+import { t, tf } from '../i18n/t.js'
 import { useCommandQueue } from '../hooks/useCommandQueue.js'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
@@ -187,8 +188,13 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     }
     const summary =
       descriptions.length === 1
-        ? `Background agent "${descriptions[0]}" was stopped by the user.`
-        : `${descriptions.length} background agents were stopped by the user: ${descriptions.map(d => `"${d}"`).join(', ')}.`
+        ? tf('Background agent "{description}" was stopped by the user.', {
+            description: descriptions[0],
+          })
+        : tf('{n} background agents were stopped by the user: {descriptions}', {
+            n: descriptions.length,
+            descriptions: descriptions.map(d => `"${d}"`).join(', '),
+          })
     enqueuePendingNotification({ value: summary, mode: 'task-notification' })
     onAgentsKilled()
     return true
@@ -230,7 +236,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     if (!hasRunningAgents) {
       addNotification({
         key: 'kill-agents-none',
-        text: 'No background agents running',
+        text: t('No background agents running'),
         priority: 'immediate',
         timeoutMs: 2000,
       })
@@ -259,7 +265,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     )
     addNotification({
       key: 'kill-agents-confirm',
-      text: `Press ${shortcut} again to stop background agents`,
+      text: tf('Press {shortcut} again to stop background agents', {
+        shortcut,
+      }),
       priority: 'immediate',
       timeoutMs: KILL_AGENTS_CONFIRM_WINDOW_MS,
     })

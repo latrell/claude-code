@@ -26,7 +26,7 @@ function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boo
       </Box>
       <Box flexShrink={0}>
         <Text dimColor>
-          {elapsed} · ↓ {formatTokens(tokens)} tokens
+          {elapsed} · ↓ {formatTokens(tokens)} {t('tokens')}
         </Text>
       </Box>
     </Box>

@@ -38,6 +38,7 @@ import {
   createShutdownRequestMessage,
   writeToMailbox,
 } from 'src/utils/teammateMailbox.js'
+import { tf } from 'src/i18n/t.js'
 import { resumeAgentBackground } from '../AgentTool/resumeAgent.js'
 import { SEND_MESSAGE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
@@ -924,7 +925,10 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
               return {
                 data: {
                   success: true,
-                  message: `Message queued for delivery to ${input.to} at its next tool round.`,
+                  message: tf(
+                    'Message queued for delivery to {to} at its next tool round.',
+                    { to: input.to },
+                  ),
                 },
               }
             }
@@ -942,14 +946,28 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
               return {
                 data: {
                   success: true,
-                  message: `Agent "${input.to}" was stopped (${task.status}); resumed it in the background with your message. You'll be notified when it finishes. Output: ${result.outputFile}`,
+                  message: tf(
+                    'Agent "{to}" was stopped ({status}); resumed it in the background with your message. You\'ll be notified when it finishes. Output: {output}',
+                    {
+                      to: input.to,
+                      status: task.status,
+                      output: result.outputFile,
+                    },
+                  ),
                 },
               }
             } catch (e) {
               return {
                 data: {
                   success: false,
-                  message: `Agent "${input.to}" is stopped (${task.status}) and could not be resumed: ${errorMessage(e)}`,
+                  message: tf(
+                    'Agent "{to}" is stopped ({status}) and could not be resumed: {error}',
+                    {
+                      to: input.to,
+                      status: task.status,
+                      error: errorMessage(e),
+                    },
+                  ),
                 },
               }
             }
@@ -971,14 +989,20 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
               return {
                 data: {
                   success: true,
-                  message: `Agent "${input.to}" had no active task; resumed from transcript in the background with your message. You'll be notified when it finishes. Output: ${result.outputFile}`,
+                  message: tf(
+                    'Agent "{to}" had no active task; resumed from transcript in the background with your message. You\'ll be notified when it finishes. Output: {output}',
+                    { to: input.to, output: result.outputFile },
+                  ),
                 },
               }
             } catch (e) {
               return {
                 data: {
                   success: false,
-                  message: `Agent "${input.to}" is registered but has no transcript to resume. It may have been cleaned up. (${errorMessage(e)})`,
+                  message: tf(
+                    'Agent "{to}" is registered but has no transcript to resume. It may have been cleaned up. ({error})',
+                    { to: input.to, error: errorMessage(e) },
+                  ),
                 },
               }
             }

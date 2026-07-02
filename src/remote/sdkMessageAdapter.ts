@@ -18,6 +18,7 @@ import type {
 import { logForDebugging } from '../utils/debug.js'
 import { fromSDKCompactMetadata } from '../utils/messages/mappers.js'
 import { createUserMessage } from '../utils/messages.js'
+import { t, tf } from '../i18n/t.js'
 
 /**
  * Converts SDKMessage from CCR to REPL Message types.
@@ -56,8 +57,8 @@ function convertStreamEvent(msg: SDKPartialAssistantMessage): StreamEvent {
 function convertResultMessage(msg: SDKResultMessage): SystemMessage {
   const isError = msg.subtype !== 'success'
   const content = isError
-    ? msg.errors?.join(', ') || 'Unknown error'
-    : 'Session completed successfully'
+    ? msg.errors?.join(', ') || t('Unknown error')
+    : t('Session completed successfully')
 
   return {
     type: 'system',
@@ -76,7 +77,9 @@ function convertInitMessage(msg: SDKSystemMessage): SystemMessage {
   return {
     type: 'system',
     subtype: 'informational',
-    content: `Remote session initialized (model: ${msg.model})`,
+    content: tf('Remote session initialized (model: {model})', {
+      model: msg.model,
+    }),
     level: 'info',
     uuid: msg.uuid!,
     timestamp: new Date().toISOString(),
@@ -96,7 +99,7 @@ function convertStatusMessage(msg: SDKStatusMessage): SystemMessage | null {
     subtype: 'informational',
     content:
       msg.status === 'compacting'
-        ? 'Compacting conversation…'
+        ? t('Compacting conversation…')
         : `Status: ${msg.status}`,
     level: 'info',
     uuid: msg.uuid!,

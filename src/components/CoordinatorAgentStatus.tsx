@@ -17,6 +17,7 @@ import { isPanelAgentTask, type LocalAgentTaskState } from '../tasks/LocalAgentT
 import { formatDuration, formatNumber } from '../utils/format.js';
 import { isTerminalStatus } from './tasks/taskStatusUtils.js';
 import { useLocalAgentEvictionTick } from '../hooks/useLocalAgentEvictionTick.js';
+import { t, tf } from '../i18n/t.js';
 
 /**
  * Which panel-managed tasks currently have a visible row.
@@ -154,10 +155,11 @@ function AgentLine({ task, name, isSelected, isViewed, onClick }: AgentLineProps
   const lastActivity = task.progress?.lastActivity;
   const arrow = lastActivity ? figures.arrowDown : figures.arrowUp;
 
-  const tokenText = tokenCount !== undefined && tokenCount > 0 ? ` · ${arrow} ${formatNumber(tokenCount)} tokens` : '';
+  const tokenText =
+    tokenCount !== undefined && tokenCount > 0 ? ` · ${arrow} ${formatNumber(tokenCount)} ${t('tokens')}` : '';
 
   const queuedCount = task.pendingMessages.length;
-  const queuedText = queuedCount > 0 ? ` · ${queuedCount} queued` : '';
+  const queuedText = queuedCount > 0 ? ` · ${tf('{n} queued', { n: queuedCount })}` : '';
 
   // Precedence: AI summary > static description (no tool-call activity noise)
   const displayDescription = task.progress?.summary || task.description;
@@ -172,7 +174,7 @@ function AgentLine({ task, name, isSelected, isViewed, onClick }: AgentLineProps
   // stays readable even when the row is inactive. Short by convention (the
   // Agent tool prompt asks for "one or two words, lowercase").
   const namePart = name ? `${name}: ` : '';
-  const hintPart = isSelected && !isViewed ? ` · x to ${isRunning ? 'stop' : 'clear'}` : '';
+  const hintPart = isSelected && !isViewed ? ` · ${isRunning ? t('x to stop') : t('x to clear')}` : '';
   const suffixPart = ` ${sep} ${elapsed}${tokenText}${queuedText}${hintPart}`;
   const availableForDesc =
     columns - stringWidth(prefix) - stringWidth(`${bullet} `) - stringWidth(namePart) - stringWidth(suffixPart);

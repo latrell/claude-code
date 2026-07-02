@@ -50,7 +50,7 @@ function getMessagePreview(messages: InProcessTeammateTaskState['messages']): st
       if ('type' in block && block.type === 'tool_use' && 'name' in block) {
         // Try to show meaningful info from tool input
         const input = 'input' in block ? (block.input as Record<string, unknown>) : null;
-        let toolLine = `Using ${block.name}…`;
+        let toolLine = tf('Using {tool}…', { tool: block.name });
         if (input) {
           // Look for common descriptive fields
           const desc =
@@ -235,7 +235,8 @@ export function TeammateSpinnerLine({
         {showStats && (
           <Text dimColor>
             {' '}
-            · {toolUseCount} tool {toolUseCount === 1 ? 'use' : 'uses'} · {formatNumber(tokenCount)} tokens
+            · {toolUseCount} {toolUseCount === 1 ? t('tool use') : t('tool uses')} · {formatNumber(tokenCount)}{' '}
+            {t('tokens')}
           </Text>
         )}
         {/* Hints: select hint when highlighted, view hint when selected but not foregrounded */}

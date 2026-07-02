@@ -653,7 +653,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
                 marginTop={teammateTasks.length > 0 || bashTasks.length > 0 || mcpMonitors.length > 0 ? 1 : 0}
               >
                 <Text dimColor>
-                  <Text bold>{'  '}Remote agents</Text> ({remoteSessions.length})
+                  <Text bold>
+                    {'  '}
+                    {t('Remote agents')}
+                  </Text>{' '}
+                  ({remoteSessions.length})
                 </Text>
                 <Box flexDirection="column">
                   {remoteSessions.map(item => (
@@ -676,7 +680,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
                 }
               >
                 <Text dimColor>
-                  <Text bold>{'  '}Local agents</Text> ({agentTasks.length})
+                  <Text bold>
+                    {'  '}
+                    {t('Local agents')}
+                  </Text>{' '}
+                  ({agentTasks.length})
                 </Text>
                 <Box flexDirection="column">
                   {agentTasks.map(item => (
@@ -700,7 +708,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
                 }
               >
                 <Text dimColor>
-                  <Text bold>{'  '}Workflows</Text> ({workflowTasks.length})
+                  <Text bold>
+                    {'  '}
+                    {t('Workflows')}
+                  </Text>{' '}
+                  ({workflowTasks.length})
                 </Text>
                 <Box flexDirection="column">
                   {workflowTasks.map(item => (

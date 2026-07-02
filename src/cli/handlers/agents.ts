@@ -16,6 +16,7 @@ import {
   getAgentDefinitionsWithOverrides,
 } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { getCwd } from '../../utils/cwd.js'
+import { t, tf } from '../../i18n/t.js'
 
 function formatAgent(agent: ResolvedAgent): string {
   const model = resolveAgentModelDisplay(agent)
@@ -59,9 +60,9 @@ export async function agentsHandler(): Promise<void> {
   }
 
   if (lines.length === 0) {
-    console.log('No agents found.')
+    console.log(t('No agents found'))
   } else {
-    console.log(`${totalActive} active agents\n`)
+    console.log(tf('{n} active agents', { n: totalActive }) + '\n')
     console.log(lines.join('\n').trimEnd())
   }
 }

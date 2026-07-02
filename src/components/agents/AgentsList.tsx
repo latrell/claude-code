@@ -12,6 +12,7 @@ import {
 import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { count } from '../../utils/array.js';
 import { Dialog, Divider } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 import { getAgentSourceDisplayName } from './utils.js';
 
 type Props = {
@@ -207,13 +208,15 @@ export function AgentsList({ source, agents, onBack, onSelect, onCreateNew, chan
 
   if (hasNoAgents) {
     return (
-      <Dialog title={sourceTitle} subtitle="No agents found" onCancel={onBack} hideInputGuide>
+      <Dialog title={sourceTitle} subtitle={t('No agents found')} onCancel={onBack} hideInputGuide>
         <Box flexDirection="column" gap={1} tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
           {onCreateNew && <Box>{renderCreateNewOption()}</Box>}
-          <Text dimColor>No agents found. Create specialized subagents that Claude can delegate to.</Text>
-          <Text dimColor>Each subagent has its own context window, custom system prompt, and specific tools.</Text>
+          <Text dimColor>{t('No agents found. Create specialized subagents that Claude can delegate to.')}</Text>
           <Text dimColor>
-            Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.
+            {t('Each subagent has its own context window, custom system prompt, and specific tools.')}
+          </Text>
+          <Text dimColor>
+            {t('Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.')}
           </Text>
           {source !== 'built-in' && sortedAgents.some(a => a.source === 'built-in') && (
             <>
@@ -253,7 +256,7 @@ export function AgentsList({ source, agents, onBack, onSelect, onCreateNew, chan
             {builtInAgents.length > 0 && (
               <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
                 <Text dimColor>
-                  <Text bold>Built-in agents</Text> (always available)
+                  <Text bold>{t('Built-in agents')}</Text> {t('(always available)')}
                 </Text>
                 {builtInAgents.map(renderAgent)}
               </Box>
@@ -262,7 +265,7 @@ export function AgentsList({ source, agents, onBack, onSelect, onCreateNew, chan
         ) : source === 'built-in' ? (
           <>
             <Text dimColor italic>
-              Built-in agents are provided by default and cannot be modified.
+              {t('Built-in agents are provided by default and cannot be modified.')}
             </Text>
             <Box marginTop={1} flexDirection="column">
               {sortedAgents.map(agent => renderAgent(agent))}

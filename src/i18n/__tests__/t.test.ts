@@ -76,8 +76,8 @@ describe('t', () => {
     mockPreferredLanguage = 'zh'
     mockSystemLocale = 'en'
     expect(t('Welcome back!')).toBe('欢迎回来！')
-    expect(t('Inherit from parent')).toBe('继承自父代理')
-    expect(t('Subagent:')).toBe('子代理：')
+    expect(t('Inherit from parent')).toBe('继承自父智能体')
+    expect(t('Subagent:')).toBe('子智能体：')
     expect(t('Subagent:')).not.toBe('Subagent:')
     expect(t('cycle')).toBe('切换')
     expect(t('interrupt')).toBe('中断')
@@ -98,8 +98,8 @@ describe('t', () => {
     expect(t('show teammates')).toBe('显示队友')
     expect(t('hide')).toBe('隐藏')
     expect(t('manage')).toBe('管理')
-    expect(t('stop agents')).toBe('停止代理')
-    expect(t('return to team lead')).toBe('返回主代理')
+    expect(t('stop agents')).toBe('停止智能体')
+    expect(t('return to team lead')).toBe('返回主智能体')
     expect(t('view tasks')).toBe('查看任务')
     expect(t('copy')).toBe('复制')
     expect(t('native select')).toBe('原生选择')
