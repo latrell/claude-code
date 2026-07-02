@@ -606,6 +606,31 @@ export async function runAsyncAgentLifecycle({
 
     stopSummarization?.()
 
+    // If the agent's final assistant message is an API error (e.g.
+    // "API Error: terminated"), the stream was interrupted and the
+    // model never produced a valid response. Fail the task instead of
+    // marking it completed with partial/invalid output.
+    const lastMsg = agentMessages.findLast(m => m.type === 'assistant')
+    if (lastMsg?.isApiErrorMessage) {
+      const errText =
+        extractTextContent(
+          (lastMsg.message?.content as ContentItem[]) ?? [],
+          '\n',
+        ) || 'API error'
+      failAsyncAgent(taskId, errText, rootSetAppState)
+      const worktreeResult = await getWorktreeResult()
+      enqueueAgentNotification({
+        taskId,
+        description,
+        status: 'failed',
+        error: errText,
+        setAppState: rootSetAppState,
+        toolUseId: toolUseContext.toolUseId,
+        ...worktreeResult,
+      })
+      return
+    }
+
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
 
     // Mark task completed FIRST so TaskOutput(block=true) unblocks

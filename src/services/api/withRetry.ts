@@ -117,6 +117,8 @@ function isStaleConnectionError(error: unknown): boolean {
   return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
 }
 
+import { isStreamInterruptionError } from './streamErrors.js'
+
 export interface RetryContext {
   maxTokensOverride?: number
   model: string
@@ -215,16 +217,13 @@ export async function* withRetry<T>(
       // - Bedrock-specific auth errors (403 or CredentialsProviderError)
       // - Vertex-specific auth errors (credential refresh failures, 401)
       // - ECONNRESET/EPIPE: stale keep-alive socket; disable pooling and reconnect
+      // - Stream interruption (TypeError("terminated")): undici closed the
+      //   connection mid-stream — same stale-connection pattern.
       const isStaleConnection = isStaleConnectionError(lastError)
-      if (
-        isStaleConnection &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_disable_keepalive_on_econnreset',
-          false,
-        )
-      ) {
+      const isStreamInterruption = isStreamInterruptionError(lastError)
+      if (isStreamInterruption || isStaleConnection) {
         logForDebugging(
-          'Stale connection (ECONNRESET/EPIPE) — disabling keep-alive for retry',
+          `Connection issue on retry — ${isStreamInterruption ? 'stream terminated' : 'ECONNRESET/EPIPE'} — disabling keep-alive`,
         )
         disableKeepAlive()
       }
@@ -235,7 +234,8 @@ export async function* withRetry<T>(
         isOAuthTokenRevokedError(lastError) ||
         isBedrockAuthError(lastError) ||
         isVertexAuthError(lastError) ||
-        isStaleConnection
+        isStaleConnection ||
+        isStreamInterruption
       ) {
         // On 401 "token expired" or 403 "token revoked", force a token refresh
         if (
@@ -372,10 +372,14 @@ export async function* withRetry<T>(
       }
 
       // AWS/GCP errors aren't always APIError, but can be retried
+      // Stream interruption errors (undici TypeError("terminated")) are also
+      // retryable — they indicate a transient network disconnect, not a
+      // protocol-level failure.
       const handledCloudAuthError =
         handleAwsCredentialError(error) || handleGcpCredentialError(error)
       if (
         !handledCloudAuthError &&
+        !isStreamInterruptionError(error) &&
         (!(error instanceof APIError) || !shouldRetry(error))
       ) {
         throw new CannotRetryError(error, retryContext)

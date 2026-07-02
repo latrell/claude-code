@@ -46,6 +46,7 @@ const WORKER_AGENT: BuiltInAgentDefinition = {
   tools: getWorkerTools(),
   source: 'built-in',
   baseDir: 'built-in',
+  maxTurns: 100,
   getSystemPrompt: () => {
     const lang = getResolvedLanguage()
     const langInstruction =

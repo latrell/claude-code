@@ -1350,6 +1350,22 @@ async function* queryLoop(
       }
     }
 
+    // API error check must fire regardless of needsFollowUp: if the last
+    // assistant message is an API error (e.g. "API Error: terminated" from
+    // a mid-stream disconnect), the model never produced a valid response.
+    // Skipping this when needsFollowUp is true (because a prior partial
+    // tool_use needs execution) creates a tool-execution death spiral on a
+    // truncated/invalid assistant turn.
+    const lastAssistantMsg = assistantMessages.at(-1)
+    if (lastAssistantMsg?.isApiErrorMessage) {
+      void executeStopFailureHooks(lastAssistantMsg, toolUseContext)
+      return {
+        reason: 'model_error' as const,
+        error:
+          lastAssistantMsg.error ?? lastAssistantMsg.apiError ?? 'api_error',
+      }
+    }
+
     if (!needsFollowUp) {
       const lastMessage = assistantMessages.at(-1)
 
@@ -1544,18 +1560,6 @@ async function* queryLoop(
 
         // Recovery exhausted — surface the withheld error now.
         yield lastMessage
-      }
-
-      // Skip stop hooks when the last message is an API error (rate limit,
-      // prompt-too-long, auth failure, etc.). The model never produced a
-      // real response — hooks evaluating it create a death spiral:
-      // error → hook blocking → retry → error → …
-      if (lastMessage?.isApiErrorMessage) {
-        void executeStopFailureHooks(lastMessage, toolUseContext)
-        return {
-          reason: 'model_error',
-          error: lastMessage.error ?? lastMessage.apiError ?? 'api_error',
-        }
       }
 
       const stopHookResult = yield* handleStopHooks(

@@ -1425,6 +1425,19 @@ export const AgentTool = buildTool({
               throw syncAgentError;
             }
 
+            // If the last assistant message is an API error (e.g. stream
+            // terminated mid-response), the model never produced a valid
+            // result. Re-throw so the tool framework marks the task as
+            // failed instead of returning partial output as completed.
+            const lastAssistant = agentMessages.findLast(m => m.type === 'assistant');
+            if (lastAssistant && (lastAssistant as Record<string, unknown>).isApiErrorMessage === true) {
+              const errText =
+                typeof (lastAssistant as Record<string, unknown>).errorDetails === 'string'
+                  ? ((lastAssistant as Record<string, unknown>).errorDetails as string)
+                  : errorMessage(syncAgentError);
+              throw new Error(errText);
+            }
+
             // We have some messages, try to finalize and return them
             // This allows the parent agent to see partial progress even after an error
             logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
