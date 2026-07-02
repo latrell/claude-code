@@ -1,5 +1,98 @@
 import { describe, expect, test } from 'bun:test'
-import { getChatGPTCodexContextWindow } from '../chatgptModels.js'
+import {
+  CHATGPT_CODEX_DEFAULT_MODEL,
+  CHATGPT_CODEX_FAST_MODEL,
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  getChatGPTCodexContextWindow,
+  isChatGPTCodexReasoningModel,
+} from '../chatgptModels.js'
+
+describe('CHATGPT_CODEX_MODEL_OPTIONS', () => {
+  test('default model is gpt-5.5', () => {
+    expect(CHATGPT_CODEX_DEFAULT_MODEL).toBe('gpt-5.5')
+  })
+
+  test('fast model is gpt-5.4-mini', () => {
+    expect(CHATGPT_CODEX_FAST_MODEL).toBe('gpt-5.4-mini')
+  })
+
+  test('includes all recommended models', () => {
+    const values = CHATGPT_CODEX_MODEL_OPTIONS.map(o => o.value)
+    expect(values).toContain('gpt-5.5')
+    expect(values).toContain('gpt-5.5-pro')
+    expect(values).toContain('gpt-5.4')
+    expect(values).toContain('gpt-5.4-mini')
+    expect(values).toContain('gpt-5.4-nano')
+    expect(values).toContain('gpt-5.3-codex')
+    expect(values).toContain('gpt-5.3-codex-spark')
+    expect(values).toContain('gpt-5.2')
+  })
+
+  test('model count is 8', () => {
+    expect(CHATGPT_CODEX_MODEL_OPTIONS).toHaveLength(8)
+  })
+
+  test('every option has a non-empty value, label, and description', () => {
+    for (const opt of CHATGPT_CODEX_MODEL_OPTIONS) {
+      expect(opt.value).toBeTruthy()
+      expect(opt.label).toBeTruthy()
+      expect(opt.description).toBeTruthy()
+    }
+  })
+
+  test('values are unique', () => {
+    const values = CHATGPT_CODEX_MODEL_OPTIONS.map(o => o.value)
+    expect(new Set(values).size).toBe(values.length)
+  })
+})
+
+describe('isChatGPTCodexReasoningModel', () => {
+  test('gpt-5.5 is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.5')).toBe(true)
+  })
+
+  test('gpt-5.5-pro is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.5-pro')).toBe(true)
+  })
+
+  test('gpt-5.4 is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.4')).toBe(true)
+  })
+
+  test('gpt-5.4-mini is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.4-mini')).toBe(true)
+  })
+
+  test('gpt-5.4-nano is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.4-nano')).toBe(true)
+  })
+
+  test('gpt-5.3-codex is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.3-codex')).toBe(true)
+  })
+
+  test('gpt-5.3-codex-spark is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.3-codex-spark')).toBe(true)
+  })
+
+  test('gpt-5.2 is a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.2')).toBe(true)
+  })
+
+  test('unknown model is not a reasoning model', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-4')).toBe(false)
+  })
+
+  test('case insensitive match', () => {
+    expect(isChatGPTCodexReasoningModel('GPT-5.5')).toBe(true)
+    expect(isChatGPTCodexReasoningModel('Gpt-5.5-Pro')).toBe(true)
+  })
+
+  test('strip [1m] suffix before matching', () => {
+    expect(isChatGPTCodexReasoningModel('gpt-5.5[1m]')).toBe(true)
+    expect(isChatGPTCodexReasoningModel('gpt-5.4-nano[1m]')).toBe(true)
+  })
+})
 
 describe('getChatGPTCodexContextWindow', () => {
   // ---------------------------------------------------------------------------

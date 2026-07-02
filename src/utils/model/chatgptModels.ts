@@ -56,6 +56,12 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
       'Frontier model for complex coding, research, and real-world work',
   },
   {
+    value: 'gpt-5.5-pro',
+    label: 'GPT-5.5 Pro',
+    description:
+      'Smarter, more precise responses for the most demanding reasoning tasks',
+  },
+  {
     value: 'gpt-5.4',
     label: 'GPT-5.4',
     description: 'Strong model for everyday coding',
@@ -65,6 +71,12 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     label: 'GPT-5.4-Mini',
     description:
       'Small, fast, and cost-efficient model for simpler coding tasks',
+  },
+  {
+    value: 'gpt-5.4-nano',
+    label: 'GPT-5.4-Nano',
+    description:
+      'Ultra-low-latency, lowest-cost model for classification, extraction, and high-volume subagents',
   },
   {
     value: 'gpt-5.3-codex',
