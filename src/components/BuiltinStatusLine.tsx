@@ -4,6 +4,7 @@ import { Box, Text } from '@anthropic/ink';
 import { formatTokens } from '../utils/format.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { t } from '../i18n/t.js';
+import type { ProviderUsageBucket } from '../services/providerUsage/types.js';
 
 type RateLimitBucket = {
   utilization: number;
@@ -20,6 +21,8 @@ type BuiltinStatusLineProps = {
     five_hour?: RateLimitBucket;
     seven_day?: RateLimitBucket;
   };
+  /** Non-Anthropic provider usage buckets (e.g. OpenAI RPM/TPM). */
+  providerBuckets?: ProviderUsageBucket[];
 };
 
 /**
@@ -43,6 +46,20 @@ function Separator() {
   return <Text dimColor>{' \u2502 '}</Text>;
 }
 
+function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; narrow: boolean }): React.ReactNode {
+  const pct = Math.round(bucket.utilization * 100);
+  return (
+    <>
+      <Separator />
+      <Text dimColor>{bucket.label} </Text>
+      <Text>{pct}%</Text>
+      {!narrow && bucket.resetsAt !== undefined && bucket.resetsAt > 0 && (
+        <Text dimColor> {formatCountdown(bucket.resetsAt)}</Text>
+      )}
+    </>
+  );
+}
+
 function BuiltinStatusLineInner({
   modelName,
   contextUsedPct,
@@ -50,17 +67,28 @@ function BuiltinStatusLineInner({
   contextWindowSize,
   totalCostUsd,
   rateLimits,
+  providerBuckets,
 }: BuiltinStatusLineProps) {
   const { columns } = useTerminalSize();
+
+  const hasFiveHour = rateLimits.five_hour != null;
+  const hasSevenDay = rateLimits.seven_day != null;
+  const hasProviderBuckets = providerBuckets !== undefined && providerBuckets.length > 0;
+
+  // Collect resets_at values for the 60s tick: Anthropic rate limits first,
+  // then fall back to provider bucket reset times.
+  const tickResetValues = (rateLimits.five_hour?.resets_at ? [rateLimits.five_hour.resets_at] : [])
+    .concat(rateLimits.seven_day?.resets_at ? [rateLimits.seven_day.resets_at] : [])
+    .concat(hasProviderBuckets ? providerBuckets!.map(b => b.resetsAt ?? 0).filter(t => t > 0) : []);
 
   // Force re-render every 60s so countdowns stay current
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const hasResetTime = (rateLimits.five_hour?.resets_at ?? 0) || (rateLimits.seven_day?.resets_at ?? 0);
-    if (!hasResetTime) return;
+    if (tickResetValues.length === 0) return;
     const id = setInterval(() => setTick(t => t + 1), 60_000);
     return () => clearInterval(id);
-  }, [rateLimits.five_hour?.resets_at, rateLimits.seven_day?.resets_at]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(tickResetValues)]);
 
   // Suppress unused-variable lint for tick (it exists only to trigger re-renders)
   void tick;
@@ -70,9 +98,6 @@ function BuiltinStatusLineInner({
   const shortModel = modelParts.length >= 2 ? `${modelParts[0]} ${modelParts[1]}` : modelName;
 
   const narrow = columns < 60;
-
-  const hasFiveHour = rateLimits.five_hour != null;
-  const hasSevenDay = rateLimits.seven_day != null;
 
   const fiveHourPct = hasFiveHour ? Math.round(rateLimits.five_hour!.utilization * 100) : 0;
   const sevenDayPct = hasSevenDay ? Math.round(rateLimits.seven_day!.utilization * 100) : 0;
@@ -114,6 +139,14 @@ function BuiltinStatusLineInner({
           )}
         </>
       )}
+
+      {/* Non-Anthropic provider usage buckets (fallback when no Anthropic rate limits) */}
+      {!hasFiveHour &&
+        !hasSevenDay &&
+        hasProviderBuckets &&
+        providerBuckets!.map((bucket, i) => (
+          <ProviderBucketItem key={`${bucket.kind}-${i}`} bucket={bucket} narrow={narrow} />
+        ))}
 
       {/* Cost */}
       {totalCostUsd > 0 && (

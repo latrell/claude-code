@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
+import { openaiAdapter } from '../../providerUsage/adapters/openai.js'
+import { updateProviderBuckets } from '../../providerUsage/store.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
@@ -221,7 +223,11 @@ async function* parseSSE(
   }
 }
 
-function extractUsage(
+/**
+ * Extract Anthropic-style usage from a ChatGPT Responses API response object.
+ * Exported for testing.
+ */
+export function extractUsage(
   response: Record<string, unknown> | undefined,
 ): AnthropicUsage {
   const usage = response?.usage as Record<string, unknown> | undefined
@@ -476,6 +482,16 @@ export async function createChatGPTResponsesStream(params: {
     throw new Error(
       `ChatGPT Responses API request failed (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`,
     )
+  }
+  // Feed response headers into the provider usage store so the status-line
+  // can display rate-limit buckets for compatible providers.
+  try {
+    updateProviderBuckets(
+      'openai',
+      openaiAdapter.parseHeaders(response.headers),
+    )
+  } catch {
+    // Ignore — usage tracking must not break the stream.
   }
   return parseSSE(response)
 }

@@ -27,6 +27,7 @@ import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, Text } from '@anthropic/ink';
 import { getRawUtilization } from '../services/claudeAiLimits.js';
+import { getProviderUsage } from '../services/providerUsage/store.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
@@ -547,6 +548,12 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
     }),
   };
 
+  // When no Anthropic rate limits are available (e.g. OpenAI/ChatGPT provider),
+  // fall back to the provider usage store for non-Anthropic bucket display.
+  const hasAnthropicLimits = builtinRawUtil.five_hour !== undefined || builtinRawUtil.seven_day !== undefined;
+  const providerUsage = !hasAnthropicLimits ? getProviderUsage() : null;
+  const builtinProviderBuckets = providerUsage && providerUsage.buckets.length > 0 ? providerUsage.buckets : undefined;
+
   // BuiltinStatusLine + CachePill: only when statusLineEnabled is explicitly true.
   // Shell command output: only when a statusLine.command is configured.
   // These are independent — a user can have one, both, or neither.
@@ -565,6 +572,7 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
             contextWindowSize={builtinContextWindowSize}
             totalCostUsd={getTotalCost()}
             rateLimits={builtinRateLimits}
+            providerBuckets={builtinProviderBuckets}
           />
           <GoalPill />
           <CachePill messages={messagesRef.current} />
