@@ -265,7 +265,7 @@ const zh: Record<string, string> = {
   'Reduce motion': '减少动画',
   'Thinking mode': '思考模式',
   'Prompt suggestions': '提示建议',
-  'Poor mode (save tokens)': '节省模式（节省 Token）',
+  'Poor mode (save tokens)': '节省模式（节省词元）',
   'Verbose output': '详细输出',
   'Terminal progress bar': '终端进度条',
   'Show status in terminal tab': '在终端标签页显示状态',
@@ -359,8 +359,8 @@ const zh: Record<string, string> = {
   '{pct}% used': '已用 {pct}%',
   'Resets {time}': '{time} 后重置',
   'No rate limit data available.': '无速率限制数据。',
-  'Daily tokens': '每日 Token',
-  '{tokens} tokens used on {date}': '{date} 已使用 {tokens} Token',
+  'Daily tokens': '每日词元',
+  '{tokens} tokens used on {date}': '{date} 已使用 {tokens} 词元',
   'Loading usage data\u2026': '正在加载用量数据\u2026',
   'Current session': '当前会话',
   'Current week (all models)': '本周（全部模型）',
@@ -378,6 +378,17 @@ const zh: Record<string, string> = {
     '这将更改 Claude Code 与您的交流方式',
   'Loading output styles\u2026': '正在加载输出风格\u2026',
 
+  // Output style names and descriptions
+  Default: '默认',
+  Explanatory: '解释型',
+  Learning: '学习型',
+  'Claude completes coding tasks efficiently and provides concise responses':
+    'Claude 高效完成编码任务并提供简洁回复',
+  'Claude explains its implementation choices and codebase patterns':
+    'Claude 解释其实现选择和代码库模式',
+  'Claude pauses and asks you to write small pieces of code for hands-on practice':
+    'Claude 会暂停并邀请您编写小段代码进行动手练习',
+
   // ── Stats ──────────────────────────────────────────────────────
   'Last 7 days': '最近 7 天',
   'Last 30 days': '最近 30 天',
@@ -389,6 +400,10 @@ const zh: Record<string, string> = {
   'Inherit from parent': '继承自父代理',
   'Subagent:': '子代理：',
 
+  // ── Interrupted by user ─────────────────────────────────────────
+  'Interrupted ': '已中断 ',
+  '\u00b7 What should Claude do instead?': '· Claude 应该改做什么？',
+
   // ── Prompt placeholder ─────────────────────────────────────────
   'Try "{command}"': '试试 "{command}"',
   'Message @{name}': '向 @{name} 发送消息…',
@@ -396,6 +411,15 @@ const zh: Record<string, string> = {
 
   // ── Status line / mode indicator ───────────────────────────────
   '{mode} on': '{mode} 已开启',
+
+  // ── StatusLine Cache pill ──────────────────────────────────────
+  ' Cache ': ' 缓存 ',
+  ' Cache --% --:--': ' 缓存 --% --:--',
+
+  // ── Background task status strings ─────────────────────────────
+  'still running': '仍在运行',
+  'still running in background': '仍在后台运行',
+  'completed in background': '已在后台完成',
 
   // ── Footer shortcut action strings (first screen) ──────────────
   cycle: '切换',
@@ -642,7 +666,7 @@ const zh: Record<string, string> = {
   'shift + ↑/↓ to select': 'shift + ↑/↓ 选择',
   'tool use': '次工具调用',
   'tool uses': '次工具调用',
-  tokens: 'token',
+  tokens: '词元',
   '{count} in background': '后台 {count} 个',
   Reconnecting: '重新连接中',
   'Reconnecting…': '重新连接中…',
@@ -784,7 +808,7 @@ const zh: Record<string, string> = {
   'Goal: {objective}': '目标：{objective}',
   'Status: {status}': '状态：{status}',
   'Time: {elapsed}': '时间：{elapsed}',
-  'Tokens: {tokens}': 'Token：{tokens}',
+  'Tokens: {tokens}': '词元：{tokens}',
   'Continuation turns: {turns}': '连续轮次：{turns}',
   'Hint: Max continuation turns reached ({maxTurns}). Run `/goal continue` to reset and continue.':
     '提示：已达最大连续轮次（{maxTurns}）。运行 `/goal continue` 重置并继续。',
@@ -815,7 +839,7 @@ const zh: Record<string, string> = {
   '· Objective: ': '· 目标：',
   '· Status: ': '· 状态：',
   '· Time: ': '· 时间：',
-  '· Tokens: ': '· Token：',
+  '· Tokens: ': '· 词元：',
   'New objective:': '新目标：',
   'Yes, replace the goal': '是，替换目标',
   'No, keep the current goal': '否，保留当前目标',
@@ -1052,6 +1076,20 @@ const zh: Record<string, string> = {
   'No, maybe later with /terminal-setup': '否，以后通过 /terminal-setup 设置',
   'Enter to confirm · Esc to skip': '回车确认 · Esc 跳过',
 
+  // Terminal setup tips (shown as spinner hints)
+  'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more':
+    '运行 /terminal-setup 启用便捷终端集成，如 Option+Enter 换行等',
+  'Run /terminal-setup to enable convenient terminal integration like Shift + Enter for new line and more':
+    '运行 /terminal-setup 启用便捷终端集成，如 Shift+Enter 换行等',
+  'Press Option+Enter to send a multi-line message':
+    '按 Option+Enter 发送多行消息',
+  'Press Shift+Enter to send a multi-line message':
+    '按 Shift+Enter 发送多行消息',
+  'Run /terminal-setup to enable Option+Enter for new lines':
+    '运行 /terminal-setup 启用 Option+Enter 换行',
+  'Run /terminal-setup to enable Shift+Enter for new lines':
+    '运行 /terminal-setup 启用 Shift+Enter 换行',
+
   // ── Ide Onboarding Dialog ──────────────────────────────────────
   'Welcome to Claude Code for {ideName}': '欢迎使用 Claude Code for {ideName}',
   'installed {pluginOrExtension} v{installedVersion}':
@@ -1184,7 +1222,7 @@ const zh: Record<string, string> = {
   'Done ({result})': '完成（{result}）',
   '1 tool use': '1 次工具调用',
   '{count} tool uses': '{count} 次工具调用',
-  '{count} tokens': '{count} tokens',
+  '{count} tokens': '{count} 词元',
   'Agent "{description}" completed': '代理 "{description}" 已完成',
   'Agent "{description}" failed: {error}': '代理 "{description}" 失败：{error}',
   'Agent "{description}" was stopped': '代理 "{description}" 已停止',
@@ -1342,6 +1380,15 @@ const zh: Record<string, string> = {
   // ── AgentTool progress display strings ──────────────────────────
   'In progress': '进行中',
   '+{n} more tool {unit}': '+{n} 更多工具 {unit}',
+
+  // ── Dialog / misc ───────────────────────────────────────────────
+  'Enter to confirm · Esc to cancel': '回车确认 · Esc 取消',
+  'Feedback / bug report cancelled': '反馈/错误报告已取消',
+  'Feedback cancelled': '反馈已取消',
+  'Export cancelled': '导出已取消',
+
+  // ── API Error prefix ────────────────────────────────────────────
+  'API Error': 'API 错误',
 }
 
 export default zh

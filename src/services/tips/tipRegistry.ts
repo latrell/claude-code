@@ -13,6 +13,7 @@ import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCr
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth.js'
+import { t } from '../../i18n/t.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import {
@@ -168,9 +169,11 @@ const externalTips: Tip[] = [
   {
     id: 'terminal-setup',
     content: async () =>
-      env.terminal === 'Apple_Terminal'
-        ? 'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more'
-        : 'Run /terminal-setup to enable convenient terminal integration like Shift + Enter for new line and more',
+      t(
+        env.terminal === 'Apple_Terminal'
+          ? 'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more'
+          : 'Run /terminal-setup to enable convenient terminal integration like Shift + Enter for new line and more',
+      ),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -183,9 +186,11 @@ const externalTips: Tip[] = [
   {
     id: 'shift-enter',
     content: async () =>
-      env.terminal === 'Apple_Terminal'
-        ? 'Press Option+Enter to send a multi-line message'
-        : 'Press Shift+Enter to send a multi-line message',
+      t(
+        env.terminal === 'Apple_Terminal'
+          ? 'Press Option+Enter to send a multi-line message'
+          : 'Press Shift+Enter to send a multi-line message',
+      ),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -199,9 +204,11 @@ const externalTips: Tip[] = [
   {
     id: 'shift-enter-setup',
     content: async () =>
-      env.terminal === 'Apple_Terminal'
-        ? 'Run /terminal-setup to enable Option+Enter for new lines'
-        : 'Run /terminal-setup to enable Shift+Enter for new lines',
+      t(
+        env.terminal === 'Apple_Terminal'
+          ? 'Run /terminal-setup to enable Option+Enter for new lines'
+          : 'Run /terminal-setup to enable Shift+Enter for new lines',
+      ),
     cooldownSessions: 10,
     async isRelevant() {
       if (!shouldOfferTerminalSetup()) {

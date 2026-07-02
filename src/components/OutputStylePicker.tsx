@@ -13,9 +13,9 @@ const DEFAULT_OUTPUT_STYLE_DESCRIPTION = 'Claude completes coding tasks efficien
 
 function mapConfigsToOptions(styles: { [styleName: string]: OutputStyleConfig | null }): OptionWithDescription[] {
   return Object.entries(styles).map(([style, config]) => ({
-    label: config?.name ?? DEFAULT_OUTPUT_STYLE_LABEL,
+    label: t(config?.name ?? DEFAULT_OUTPUT_STYLE_LABEL),
     value: style,
-    description: config?.description ?? DEFAULT_OUTPUT_STYLE_DESCRIPTION,
+    description: t(config?.description ?? DEFAULT_OUTPUT_STYLE_DESCRIPTION),
   }));
 }
 

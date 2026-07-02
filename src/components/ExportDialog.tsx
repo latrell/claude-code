@@ -71,7 +71,7 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
     if (showFilenameInput) {
       handleGoBack();
     } else {
-      onDone({ success: false, message: 'Export cancelled' });
+      onDone({ success: false, message: t('Export cancelled') });
     }
   }, [showFilenameInput, handleGoBack, onDone]);
 

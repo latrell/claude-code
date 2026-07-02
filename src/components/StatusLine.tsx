@@ -45,6 +45,7 @@ import { isVimModeEnabled } from './PromptInput/utils.js';
 import { computeHitRate, tokenSignature } from '../utils/cacheStats.js';
 import { onResponse as cacheOnResponse, getCacheStatsState, initCacheStatsState } from '../utils/cacheStatsState.js';
 import { BuiltinStatusLine } from './BuiltinStatusLine.js';
+import { t } from '../i18n/t.js';
 import { formatTokens } from 'src/utils/format.js';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ function CachePill({ messages }: CachePillProps): React.ReactNode {
 
   // No data yet — show placeholder
   if (displayHitRate === null && lastResetAt === null) {
-    return <Text dimColor>{' Cache --% --:--'}</Text>;
+    return <Text dimColor>{t(' Cache --% --:--')}</Text>;
   }
 
   const countdownText = remaining !== null ? formatCountdown(remaining) : '--:--';
@@ -147,7 +148,7 @@ function CachePill({ messages }: CachePillProps): React.ReactNode {
 
   return (
     <Text>
-      <Text dimColor>{' Cache '}</Text>
+      <Text dimColor>{t(' Cache ')}</Text>
       <Text color={hitRateColor}>{hitRateText}</Text>
       <Text color={timerColor} dimColor={inFlashZone && !isFlashOn}>
         {' '}

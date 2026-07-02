@@ -49,14 +49,22 @@ import {
   type OverageDisabledReason,
 } from '../claudeAiLimits.js'
 import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
+import { t } from 'src/i18n/t.js'
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'
 
+/** Returns the localized API Error prefix for user-visible error messages. */
+export function getApiErrorPrefix(): string {
+  return t('API Error')
+}
+
 export function startsWithApiErrorPrefix(text: string): boolean {
   return (
     text.startsWith(API_ERROR_MESSAGE_PREFIX) ||
-    text.startsWith(`Please run /login · ${API_ERROR_MESSAGE_PREFIX}`)
+    text.startsWith(`Please run /login · ${getApiErrorPrefix()}`) ||
+    text.startsWith(getApiErrorPrefix()) ||
+    text.startsWith(`请运行 /login · ${getApiErrorPrefix()}`)
   )
 }
 export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
@@ -542,7 +550,7 @@ export function getAssistantMessageFromError(
         ? 'enable extra usage at claude.ai/settings/usage, or use --model to switch to standard context'
         : 'run /extra-usage to enable, or /model to switch to standard context'
       return createAssistantAPIErrorMessage({
-        content: `${API_ERROR_MESSAGE_PREFIX}: Extra usage is required for 1M context · ${hint}`,
+        content: `${getApiErrorPrefix()}: Extra usage is required for 1M context · ${hint}`,
         error: 'rate_limit',
       })
     }
@@ -552,7 +560,7 @@ export function getAssistantMessageFromError(
     const innerMessage = stripped.match(/"message"\s*:\s*"([^"]*)"/)?.[1]
     const detail = innerMessage || stripped
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check status.anthropic.com'}`,
+      content: `${getApiErrorPrefix()}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check status.anthropic.com'}`,
       error: 'rate_limit',
     })
   }
@@ -877,8 +885,8 @@ export function getAssistantMessageFromError(
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
       content: getIsNonInteractiveSession()
-        ? `Failed to authenticate. ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`
-        : `Please run /login · ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`,
+        ? `Failed to authenticate. ${getApiErrorPrefix()}: ${error.message}`
+        : `Please run /login · ${getApiErrorPrefix()}: ${error.message}`,
     })
   }
 
@@ -893,8 +901,8 @@ export function getAssistantMessageFromError(
     const fallbackSuggestion = get3PModelFallbackSuggestion(model)
     return createAssistantAPIErrorMessage({
       content: fallbackSuggestion
-        ? `${API_ERROR_MESSAGE_PREFIX} (${model}): ${error.message}. Try ${switchCmd} to switch to ${fallbackSuggestion}.`
-        : `${API_ERROR_MESSAGE_PREFIX} (${model}): ${error.message}. Run ${switchCmd} to pick a different model.`,
+        ? `${getApiErrorPrefix()} (${model}): ${error.message}. Try ${switchCmd} to switch to ${fallbackSuggestion}.`
+        : `${getApiErrorPrefix()} (${model}): ${error.message}. Run ${switchCmd} to pick a different model.`,
       error: 'invalid_request',
     })
   }
@@ -916,19 +924,19 @@ export function getAssistantMessageFromError(
   // Connection errors (non-timeout) — use formatAPIError for detailed messages
   if (error instanceof APIConnectionError) {
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatAPIError(error)}`,
+      content: `${getApiErrorPrefix()}: ${formatAPIError(error)}`,
       error: 'unknown',
     })
   }
 
   if (error instanceof Error) {
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: ${error.message}`,
+      content: `${getApiErrorPrefix()}: ${error.message}`,
       error: 'unknown',
     })
   }
   return createAssistantAPIErrorMessage({
-    content: API_ERROR_MESSAGE_PREFIX,
+    content: getApiErrorPrefix(),
     error: 'unknown',
   })
 }
@@ -1195,8 +1203,8 @@ export function getErrorMessageIfRefusal(
   logEvent('tengu_refusal_api_response', {})
 
   const baseMessage = getIsNonInteractiveSession()
-    ? `${API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach.`
-    : `${API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claude Code to assist with a different task.`
+    ? `${getApiErrorPrefix()}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach.`
+    : `${getApiErrorPrefix()}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claude Code to assist with a different task.`
 
   const modelSuggestion =
     model !== 'claude-sonnet-4-20250514'

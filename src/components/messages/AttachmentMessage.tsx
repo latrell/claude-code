@@ -27,6 +27,7 @@ import { isShutdownApproved } from '../../utils/teammateMailbox.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 
 import { feature } from 'bun:bundle';
+import { t } from '../../i18n/t.js';
 import { useSelectedMessageBg } from '../messageActions.js';
 
 type Props = {
@@ -444,11 +445,11 @@ function GenericTaskStatus({ attachment }: { attachment: TaskStatusAttachment })
   const bg = useSelectedMessageBg();
   const statusText =
     attachment.status === 'completed'
-      ? 'completed in background'
+      ? t('completed in background')
       : attachment.status === 'killed'
-        ? 'stopped'
+        ? t('stopped')
         : attachment.status === 'running'
-          ? 'still running in background'
+          ? t('still running in background')
           : attachment.status;
   return (
     <Box flexDirection="row" width="100%" marginTop={1} backgroundColor={bg}>

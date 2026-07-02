@@ -32,6 +32,7 @@ import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { useAppStateStore } from '../../state/AppState.js';
 import { isBackgroundTask, type TaskState } from '../../tasks/types.js';
 import { getPillLabel } from '../../tasks/pillLabel.js';
+import { t } from '../../i18n/t.js';
 import { useSelectedMessageBg } from '../messageActions.js';
 
 type Props = {
@@ -332,7 +333,7 @@ function TurnDurationMessage({
       <Text dimColor>
         {showTurnDuration && `${verb} for ${duration}`}
         {budgetSuffix}
-        {backgroundTaskSummary && ` \u00B7 ${backgroundTaskSummary} still running`}
+        {backgroundTaskSummary && ` \u00B7 ${backgroundTaskSummary} ${t('still running')}`}
       </Text>
     </Box>
   );
