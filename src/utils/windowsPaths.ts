@@ -72,20 +72,26 @@ const DEFAULT_DEPS: GitBashDiscoveryDeps = {
  * Matches (case-insensitive, both slash styles):
  *   - `...\System32\bash.exe` (also `SysWOW64` / `Sysnative` variants)
  *   - `...\WindowsApps\...\bash.exe` (app-execution alias)
+ *
+ * The `.exe` extension is optional: Windows CreateProcess appends `.exe`
+ * automatically, so an extensionless `C:\Windows\System32\bash` (e.g. via
+ * CLAUDE_CODE_SHELL / SHELL) spawns the exact same WSL launcher — verified
+ * empirically. POSIX paths like `/bin/bash` can never contain a
+ * `\system32\` / `\windowsapps\` segment, so this stays false-positive-free.
  */
 export function isWslLauncherBashPath(filePath: string): boolean {
   const normalized = filePath.replace(/\//g, '\\').toLowerCase()
   // System directory launcher: C:\Windows\System32\bash.exe.
   // SysWOW64 (32-bit view) and Sysnative (64-bit alias visible from 32-bit
   // processes) expose the same WSL launcher under different directory names.
-  if (/\\(?:system32|syswow64|sysnative)\\bash\.exe$/.test(normalized)) {
+  if (/\\(?:system32|syswow64|sysnative)\\bash(?:\.exe)?$/.test(normalized)) {
     return true
   }
   // App-execution alias: %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe
   // (possibly nested under a package subdirectory).
   if (
     normalized.includes('\\windowsapps\\') &&
-    normalized.endsWith('\\bash.exe')
+    /\\bash(?:\.exe)?$/.test(normalized)
   ) {
     return true
   }

@@ -170,6 +170,22 @@ describe('isWslLauncherBashPath', () => {
     expect(isWslLauncherBashPath('/usr/bin/zsh')).toBe(false)
   })
 
+  test('detects extensionless launcher path (CreateProcess appends .exe)', () => {
+    // `C:\Windows\System32\bash` spawns the same WSL launcher — Windows
+    // CreateProcess resolves the .exe automatically (verified empirically).
+    expect(isWslLauncherBashPath('C:\\Windows\\System32\\bash')).toBe(true)
+    expect(
+      isWslLauncherBashPath(
+        'C:\\Users\\i\\AppData\\Local\\Microsoft\\WindowsApps\\bash',
+      ),
+    ).toBe(true)
+  })
+
+  test('does not match extensionless non-bash names', () => {
+    expect(isWslLauncherBashPath('C:\\Windows\\System32\\wsl')).toBe(false)
+    expect(isWslLauncherBashPath('C:\\Windows\\System32\\bashful')).toBe(false)
+  })
+
   test('does not match other executables in System32', () => {
     expect(isWslLauncherBashPath('C:\\Windows\\System32\\wsl.exe')).toBe(false)
   })
