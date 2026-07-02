@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from 'bun:test'
+import { afterEach, describe, expect, test, mock } from 'bun:test'
 
 // Mock auth to prevent reading real local OAuth state.
 // Default: non-subscriber → getBillingDisplayName returns 'Anthropic API'.
@@ -8,6 +8,7 @@ mock.module('src/utils/auth.js', () => ({
   getSubscriptionName: () => 'Claude Max',
 }))
 
+import { setChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
 import type { ProviderRuntimeConfig } from '../model/subagentProvider.js'
 import {
   formatSubagentDisplayLine,
@@ -259,6 +260,10 @@ describe('formatSubagentDisplayLine', () => {
 })
 
 describe('getBillingDisplayName', () => {
+  afterEach(() => {
+    setChatGPTSubscriptionPlan(null)
+  })
+
   test('returns Anthropic API for firstParty non-subscriber', () => {
     const result = getBillingDisplayName(
       {},
@@ -274,6 +279,61 @@ describe('getBillingDisplayName', () => {
       { OPENAI_AUTH_MODE: 'chatgpt' },
     )
     expect(result).toBe('ChatGPT Subscription')
+  })
+
+  test('returns ChatGPT Pro when cached plan is pro', () => {
+    setChatGPTSubscriptionPlan('pro')
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Pro')
+  })
+
+  test('returns ChatGPT Plus when cached plan is plus', () => {
+    setChatGPTSubscriptionPlan('plus')
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Plus')
+  })
+
+  test('returns ChatGPT Free when cached plan is free', () => {
+    setChatGPTSubscriptionPlan('free')
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Free')
+  })
+
+  test('returns ChatGPT Enterprise when cached plan is enterprise', () => {
+    setChatGPTSubscriptionPlan('enterprise')
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Enterprise')
+  })
+
+  test('returns ChatGPT Subscription for chatgpt auth mode when plan is null', () => {
+    // Explicit null after a previous set
+    setChatGPTSubscriptionPlan(null)
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Subscription')
+  })
+
+  test('returns ChatGPT Team when cached plan is team', () => {
+    setChatGPTSubscriptionPlan('team')
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+    )
+    expect(result).toBe('ChatGPT Team')
   })
 
   test('returns OpenAI API for openai modelType with no special env', () => {
@@ -364,6 +424,10 @@ describe('getBillingDisplayName', () => {
 })
 
 describe('getSubagentBillingDisplayName', () => {
+  afterEach(() => {
+    setChatGPTSubscriptionPlan(null)
+  })
+
   test('returns undefined when runtimeConfig is undefined', () => {
     expect(
       getSubagentBillingDisplayName(undefined, 'Claude Max'),
@@ -399,6 +463,30 @@ describe('getSubagentBillingDisplayName', () => {
   })
 
   test('OpenAI subagent with chatgpt auth mode', () => {
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      env: { OPENAI_AUTH_MODE: 'chatgpt' },
+    }
+    expect(getSubagentBillingDisplayName(config, 'OpenAI API')).toBe(
+      'ChatGPT Subscription',
+    )
+  })
+
+  test('OpenAI subagent with chatgpt auth and cached pro plan', () => {
+    setChatGPTSubscriptionPlan('pro')
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      env: { OPENAI_AUTH_MODE: 'chatgpt' },
+    }
+    expect(getSubagentBillingDisplayName(config, 'OpenAI API')).toBe(
+      'ChatGPT Pro',
+    )
+  })
+
+  test('OpenAI subagent with chatgpt auth and null plan falls back', () => {
+    setChatGPTSubscriptionPlan(null)
     const config: ProviderRuntimeConfig = {
       provider: 'openai',
       modelType: 'openai',

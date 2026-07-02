@@ -1,4 +1,8 @@
-import { getDirectConnectServerUrl, getSessionId } from '../bootstrap/state.js'
+import {
+  getChatGPTSubscriptionPlan,
+  getDirectConnectServerUrl,
+  getSessionId,
+} from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
 import type { LogOption } from '../types/logs.js'
 import { t, tf } from '../i18n/t.js'
@@ -143,6 +147,38 @@ function formatProviderName(runtimeConfig: ProviderRuntimeConfig): string {
 }
 
 /**
+ * Maps a raw ChatGPT subscription plan string (from the Codex /wham/usage API)
+ * to a human-readable billing label for the startup banner and subagent display.
+ *
+ * Falls back to "ChatGPT Subscription" when no plan is cached yet (e.g. before
+ * the fire-and-forget fetchCodexUsage() prefetch completes).
+ */
+function getChatGPTBillingName(): string {
+  const plan = getChatGPTSubscriptionPlan()
+  if (!plan) return 'ChatGPT Subscription'
+
+  const KNOWN: Record<string, string> = {
+    free: 'ChatGPT Free',
+    go: 'ChatGPT Go',
+    plus: 'ChatGPT Plus',
+    pro: 'ChatGPT Pro',
+    team: 'ChatGPT Team',
+    business: 'ChatGPT Business',
+    enterprise: 'ChatGPT Enterprise',
+    edu: 'ChatGPT Edu',
+  }
+  const key = plan.toLowerCase().trim()
+  const known = KNOWN[key]
+  if (known) return known
+
+  // Defensive: capitalise each word separated by _, -, or space
+  const friendly = key
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+  return `ChatGPT ${friendly}`
+}
+
+/**
  * Computes the human-readable billing/entitlement name for the main model.
  *
  * @param settings - Optional settings override (for testing)
@@ -161,7 +197,7 @@ export function getBillingDisplayName(
     case 'openai': {
       const authMode = env ? env.OPENAI_AUTH_MODE : process.env.OPENAI_AUTH_MODE
       const baseUrl = env ? env.OPENAI_BASE_URL : process.env.OPENAI_BASE_URL
-      if (authMode === 'chatgpt') return 'ChatGPT Subscription'
+      if (authMode === 'chatgpt') return getChatGPTBillingName()
       if (isDeepSeekBaseUrl(baseUrl)) return 'DeepSeek API'
       if (baseUrl) return 'OpenAI-compatible API'
       return 'OpenAI API'
@@ -224,7 +260,7 @@ export function getSubagentBillingDisplayName(
     case 'openai': {
       const baseUrl = env.OPENAI_BASE_URL
       const authMode = env.OPENAI_AUTH_MODE
-      if (authMode === 'chatgpt') return 'ChatGPT Subscription'
+      if (authMode === 'chatgpt') return getChatGPTBillingName()
       if (isDeepSeekBaseUrl(baseUrl)) return 'DeepSeek API'
       if (baseUrl) return 'OpenAI-compatible API'
       return 'OpenAI API'

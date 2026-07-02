@@ -281,7 +281,7 @@ import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js'
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
-import { fetchCodexUsage } from 'src/services/api/openai/codexUsage.js';
+import { fetchCodexUsage, initializeChatGPTPlan } from 'src/services/api/openai/codexUsage.js';
 import { isChatGPTAuthEnabled } from 'src/services/api/openai/chatgptAuth.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
 import { setCwd } from 'src/utils/Shell.js';
@@ -535,7 +535,7 @@ function prefetchSystemContextIfSafe(): void {
  * spawning during the critical startup path.
  * Call this after the REPL has been rendered.
  */
-export function startDeferredPrefetches(): void {
+export async function startDeferredPrefetches(): Promise<void> {
   // This function runs after first render, so it doesn't block the initial paint.
   // However, the spawned processes and async work still contend for CPU and event
   // loop time, which skews startup benchmarks (CPU profiles, time-to-first-render
@@ -570,11 +570,25 @@ export function startDeferredPrefetches(): void {
 
   void refreshModelCapabilities();
 
-  // Pre-fetch ChatGPT Codex plan at startup so the context window is
-  // correct from the first turn (not just after a manual /usage call).
-  // Fire-and-forget — errors are swallowed/logged and do not delay startup.
+  // Initialize ChatGPT Codex plan at startup so the context window and
+  // startup billing label are correct from the first render.
+  //
+  // Strategy:
+  //  1. Try to load the plan from the on-disk cache (sync, keyed by
+  //     accountId, TTL-guarded at 6 hours).
+  //  2. Cache hit  → setChatGPTSubscriptionPlan() already called inside
+  //     initializeChatGPTPlan(); fire-and-forget a background refresh so
+  //     subscription changes are picked up without blocking startup.
+  //  3. Cache miss → await fetchCodexUsage() so the plan is populated
+  //     before the logo renders. On auth/network failure the await
+  //     resolves to null and startup continues (no plan, no crash).
   if (isChatGPTAuthEnabled()) {
-    void fetchCodexUsage().catch(() => undefined);
+    const { usedCache } = initializeChatGPTPlan();
+    if (usedCache) {
+      void fetchCodexUsage().catch(() => undefined);
+    } else {
+      await fetchCodexUsage().catch(() => undefined);
+    }
   }
 
   // File change detectors deferred from init() to unblock first render
@@ -3369,7 +3383,7 @@ async function run(): Promise<CommanderCommand> {
         // cleanupOldMessageFiles) and sdkHeapDumpMonitor are all bookkeeping
         // that scripted calls don't need — the next interactive session reconciles.
         if (!isBareMode()) {
-          startDeferredPrefetches();
+          await startDeferredPrefetches();
           void import('./utils/backgroundHousekeeping.js').then(m => m.startBackgroundHousekeeping());
           if (process.env.USER_TYPE === 'ant') {
             void import('./utils/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());

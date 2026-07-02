@@ -22,6 +22,7 @@ import { startDeferredPrefetches } from './main.js';
 import { initializeGrowthBook, resetGrowthBook } from './services/analytics/growthbook.js';
 import { isQualifiedForGrove } from './services/api/grove.js';
 import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
+import { fetchCodexUsage, initializeChatGPTPlan } from './services/api/openai/codexUsage.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { ThemeProvider } from '@anthropic/ink';
@@ -120,8 +121,19 @@ export function showSetupDialog<T = void>(
 /**
  * Render the main UI into the root and wait for it to exit.
  * Handles the common epilogue: start deferred prefetches, wait for exit, graceful shutdown.
+ *
+ * Before the first render, initialises the ChatGPT subscription plan from the
+ * on-disk cache so the startup billing label reflects the actual plan. On cache
+ * miss it awaits a network fetch (errors are swallowed, startup is never blocked).
  */
 export async function renderAndRun(root: Root, element: React.ReactNode): Promise<void> {
+  // Sync plan init: if a fresh cached plan exists (keyed by accountId, TTL 6h),
+  // setChatGPTSubscriptionPlan() is called immediately. Otherwise await the
+  // fetch so the context window and logo label are correct on the first paint.
+  const { usedCache } = initializeChatGPTPlan();
+  if (!usedCache) {
+    await fetchCodexUsage().catch(() => undefined);
+  }
   root.render(element);
   startDeferredPrefetches();
   await root.waitUntilExit();

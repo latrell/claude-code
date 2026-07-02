@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
 import { setChatGPTSubscriptionPlan } from 'src/bootstrap/state.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { getValidChatGPTAuth, isChatGPTAuthEnabled } from './chatgptAuth.js'
@@ -28,6 +31,168 @@ export interface CodexUsageSnapshot {
   account?: CodexAccount
   rateLimits?: CodexRateLimitBucket[]
   tokenUsage?: CodexTokenUsage
+}
+
+// ---------------------------------------------------------------------------
+// Plan cache (persisted to disk, keyed by accountId, TTL-guarded)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum age of a cached plan before a network refresh is required.
+ * 6 hours balances freshness (subscription changes are rare) against
+ * startup speed (no network round-trip for most sessions).
+ */
+const PLAN_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+
+interface PlanCacheEntry {
+  accountId: string
+  plan: string | null
+  updatedAt: number
+}
+
+function getPlanCachePath(): string {
+  const dir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+  return join(dir.normalize('NFC'), 'openai-chatgpt-plan-cache.json')
+}
+
+function getClaudeConfigDir(): string {
+  return (
+    process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+  ).normalize('NFC')
+}
+
+function getAuthFilePath(): string {
+  return join(getClaudeConfigDir(), 'openai-chatgpt-auth.json')
+}
+
+function readPlanCacheSync(): PlanCacheEntry | null {
+  try {
+    const raw = readFileSync(getPlanCachePath(), 'utf8')
+    const parsed = JSON.parse(raw) as PlanCacheEntry
+    if (
+      parsed &&
+      typeof parsed.accountId === 'string' &&
+      typeof parsed.updatedAt === 'number'
+    ) {
+      return parsed
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function writePlanCacheSync(
+  accountId: string,
+  plan: string | null | undefined,
+): void {
+  const entry: PlanCacheEntry = {
+    accountId,
+    plan: plan ?? null,
+    updatedAt: Date.now(),
+  }
+  try {
+    mkdirSync(getClaudeConfigDir(), { recursive: true })
+    writeFileSync(getPlanCachePath(), `${JSON.stringify(entry)}\n`, {
+      mode: 0o600,
+    })
+  } catch {
+    // Cache write failures should never block startup or usage display.
+  }
+}
+
+/**
+ * Extract accountId from the on-disk ChatGPT auth file without touching
+ * the network or the token-refresh machinery. Used at startup so the plan
+ * cache can be validated synchronously before the first render.
+ */
+function extractAccountIdFromAuthFileSync(): string | undefined {
+  try {
+    const raw = readFileSync(getAuthFilePath(), 'utf8')
+    const stored = JSON.parse(raw) as {
+      tokens?: { account_id?: string; id_token?: string; access_token?: string }
+    }
+    const tokens = stored.tokens
+    if (!tokens) return undefined
+
+    // Direct account_id field (set during login)
+    if (typeof tokens.account_id === 'string' && tokens.account_id.length > 0) {
+      return tokens.account_id
+    }
+
+    // Fallback: decode JWT payload from id_token or access_token
+    for (const token of [tokens.id_token, tokens.access_token]) {
+      if (typeof token !== 'string') continue
+      try {
+        const [, payload] = token.split('.')
+        if (!payload) continue
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+        const padded = normalized.padEnd(
+          normalized.length + ((4 - (normalized.length % 4)) % 4),
+          '=',
+        )
+        const json = Buffer.from(padded, 'base64').toString('utf8')
+        const claims = JSON.parse(json) as Record<string, unknown>
+        const nested = claims['https://api.openai.com/auth']
+        const authClaims = (
+          nested && typeof nested === 'object' ? nested : claims
+        ) as Record<string, unknown>
+        const accountId =
+          authClaims.chatgpt_account_id ??
+          authClaims.chatgpt_account_user_id ??
+          authClaims.account_id
+        if (typeof accountId === 'string' && accountId.length > 0) {
+          return accountId
+        }
+      } catch {
+        // Continue to next token
+      }
+    }
+
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Initialize the ChatGPT subscription plan for the current session.
+ *
+ * Strategy:
+ * 1. Read the on-disk auth file to extract the current accountId (sync).
+ * 2. Read the plan cache (sync).
+ * 3. If the cached entry matches the current accountId AND is within
+ *    PLAN_CACHE_TTL_MS, call setChatGPTSubscriptionPlan() immediately and
+ *    return `{ usedCache: true }` — the caller can fire-and-forget a
+ *    background refresh.
+ * 4. Otherwise return `{ usedCache: false }` — the caller should await
+ *    fetchCodexUsage() before proceeding so the context window and startup
+ *    billing label are accurate on the first render.
+ *
+ * This is intentionally synchronous for the cache-hit path so the logo /
+ * billing label is correct without blocking the event loop. Cache-miss and
+ * expired-cache callers pay the network cost once at startup (swallowing
+ * failures so auth/network errors never prevent CLI launch).
+ */
+export function initializeChatGPTPlan(): { usedCache: boolean } {
+  if (!isChatGPTAuthEnabled()) return { usedCache: false }
+
+  const accountId = extractAccountIdFromAuthFileSync()
+  if (!accountId) return { usedCache: false }
+
+  const entry = readPlanCacheSync()
+  if (
+    entry &&
+    entry.accountId === accountId &&
+    entry.plan &&
+    Date.now() - entry.updatedAt < PLAN_CACHE_TTL_MS
+  ) {
+    setChatGPTSubscriptionPlan(entry.plan)
+    logForDebugging(`[codexUsage] plan loaded from cache: ${entry.plan}`)
+    return { usedCache: true }
+  }
+
+  return { usedCache: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +498,13 @@ export async function fetchCodexUsage(
   // Cache the subscription plan so getContextWindowForModel can auto-adapt
   // the context window for ChatGPT Codex auth-mode sessions.
   setChatGPTSubscriptionPlan(account?.subscriptionPlan)
+
+  // Persist plan to disk cache so the next startup can read it synchronously
+  // without a network round-trip. Keyed by accountId so plan changes on
+  // a different account are not accidentally served from stale cache.
+  if (accountId) {
+    writePlanCacheSync(accountId, account?.subscriptionPlan)
+  }
 
   if (!account && !rateLimits && !tokenUsage) {
     logForDebugging('[codexUsage] no usable data from online API')
