@@ -40,7 +40,10 @@ import { getCachedPowerShellPath } from './shell/powershellDetection.js'
 import { createPowerShellProvider } from './shell/powershellProvider.js'
 import type { ShellProvider, ShellType } from './shell/shellProvider.js'
 import { subprocessEnv } from './subprocessEnv.js'
-import { posixPathToWindowsPath } from './windowsPaths.js'
+import {
+  isWslLauncherBashPath,
+  posixPathToWindowsPath,
+} from './windowsPaths.js'
 
 const DEFAULT_TIMEOUT = 30 * 60 * 1000 // 30 minutes
 
@@ -75,9 +78,12 @@ export async function findSuitableShell(): Promise<string> {
   // Check for explicit shell override first
   const shellOverride = process.env.CLAUDE_CODE_SHELL
   if (shellOverride) {
-    // Validate it's a supported shell type
+    // Validate it's a supported shell type. Reject the Windows WSL launcher
+    // (System32/WindowsApps bash.exe) — it boots a WSL distro per command
+    // and pops a visible console window; it is not a usable Git Bash.
     const isSupported =
-      shellOverride.includes('bash') || shellOverride.includes('zsh')
+      (shellOverride.includes('bash') || shellOverride.includes('zsh')) &&
+      !isWslLauncherBashPath(shellOverride)
     if (isSupported && isExecutable(shellOverride)) {
       logForDebugging(`Using shell override: ${shellOverride}`)
       return shellOverride
@@ -91,9 +97,12 @@ export async function findSuitableShell(): Promise<string> {
 
   // Check user's preferred shell from environment
   const env_shell = process.env.SHELL
-  // Only consider SHELL if it's bash or zsh
+  // Only consider SHELL if it's bash or zsh — and not the WSL launcher,
+  // which an older/poisoned setShellIfWindows() may have written to SHELL.
   const isEnvShellSupported =
-    env_shell && (env_shell.includes('bash') || env_shell.includes('zsh'))
+    env_shell &&
+    (env_shell.includes('bash') || env_shell.includes('zsh')) &&
+    !isWslLauncherBashPath(env_shell)
   const preferBash = env_shell?.includes('bash')
 
   // Try to locate shells using which (uses Bun.which when available)
@@ -123,7 +132,11 @@ export async function findSuitableShell(): Promise<string> {
     supportedShells.unshift(env_shell)
   }
 
-  const shellPath = supportedShells.find(shell => shell && isExecutable(shell))
+  // Filter WSL launcher entries here too — `which('bash')` on Windows can
+  // resolve to C:\Windows\System32\bash.exe when WSL is enabled.
+  const shellPath = supportedShells.find(
+    shell => shell && !isWslLauncherBashPath(shell) && isExecutable(shell),
+  )
 
   // If no valid shell found, throw a helpful error
   if (!shellPath) {

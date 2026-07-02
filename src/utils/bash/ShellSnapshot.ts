@@ -469,6 +469,8 @@ export const createAndSaveSnapshot = async (
           timeout: SNAPSHOT_CREATION_TIMEOUT,
           maxBuffer: 1024 * 1024, // 1MB buffer
           encoding: 'utf8',
+          // Prevent visible console window on Windows (no-op elsewhere)
+          windowsHide: true,
         },
         async (error, stdout, stderr) => {
           if (error) {

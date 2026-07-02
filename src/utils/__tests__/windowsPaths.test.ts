@@ -3,6 +3,7 @@ import {
   windowsPathToPosixPath,
   posixPathToWindowsPath,
   findGitBashPathOrNullWithDeps,
+  isWslLauncherBashPath,
   type GitBashDiscoveryDeps,
 } from '../windowsPaths'
 
@@ -112,6 +113,71 @@ describe('round-trip conversions', () => {
     const win = posixPathToWindowsPath(original)
     const back = windowsPathToPosixPath(win)
     expect(back).toBe(original)
+  })
+})
+
+// ─── isWslLauncherBashPath ─────────────────────────────────────────────
+
+describe('isWslLauncherBashPath', () => {
+  test('detects System32 WSL launcher', () => {
+    expect(isWslLauncherBashPath('C:\\Windows\\System32\\bash.exe')).toBe(true)
+  })
+
+  test('detects SysWOW64 variant', () => {
+    expect(isWslLauncherBashPath('C:\\Windows\\SysWOW64\\bash.exe')).toBe(true)
+  })
+
+  test('detects Sysnative variant', () => {
+    expect(isWslLauncherBashPath('C:\\Windows\\Sysnative\\bash.exe')).toBe(true)
+  })
+
+  test('detects WindowsApps app-execution alias', () => {
+    expect(
+      isWslLauncherBashPath(
+        'C:\\Users\\i\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe',
+      ),
+    ).toBe(true)
+  })
+
+  test('detects WindowsApps alias nested under package directory', () => {
+    expect(
+      isWslLauncherBashPath(
+        'C:\\Users\\i\\AppData\\Local\\Microsoft\\WindowsApps\\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\\bash.exe',
+      ),
+    ).toBe(true)
+  })
+
+  test('is case-insensitive', () => {
+    expect(isWslLauncherBashPath('c:\\windows\\SYSTEM32\\BASH.EXE')).toBe(true)
+  })
+
+  test('handles forward slashes (POSIX-style SHELL values)', () => {
+    expect(isWslLauncherBashPath('/c/Windows/System32/bash.exe')).toBe(true)
+    expect(isWslLauncherBashPath('C:/Windows/System32/bash.exe')).toBe(true)
+  })
+
+  test('does not match Git Bash paths', () => {
+    expect(isWslLauncherBashPath('C:\\Program Files\\Git\\bin\\bash.exe')).toBe(
+      false,
+    )
+    expect(
+      isWslLauncherBashPath('D:\\Program Files\\Git\\usr\\bin\\bash.exe'),
+    ).toBe(false)
+  })
+
+  test('does not match POSIX shells', () => {
+    expect(isWslLauncherBashPath('/bin/bash')).toBe(false)
+    expect(isWslLauncherBashPath('/usr/bin/zsh')).toBe(false)
+  })
+
+  test('does not match other executables in System32', () => {
+    expect(isWslLauncherBashPath('C:\\Windows\\System32\\wsl.exe')).toBe(false)
+  })
+
+  test('does not match bash.exe merely containing system32 in a segment', () => {
+    expect(isWslLauncherBashPath('D:\\tools\\my-system32\\bash.exe')).toBe(
+      false,
+    )
   })
 })
 
@@ -294,6 +360,61 @@ describe('findGitBashPathOrNullWithDeps', () => {
     }
     expect(findGitBashPathOrNullWithDeps(deps)).toBe(bashPath)
     expect(gitProbed).toBe(false)
+  })
+
+  test('skips WSL launcher from where.exe and picks later Git Bash entry', () => {
+    // With WSL enabled, `where.exe bash` returns the System32 launcher
+    // first. A real Git Bash entry later in PATH must still win.
+    const wslBash = 'C:\\Windows\\System32\\bash.exe'
+    const gitBash = 'D:\\Program Files\\Git\\usr\\bin\\bash.exe'
+    const deps = makeDeps({
+      exists: [wslBash, gitBash],
+      bashInPath: `${wslBash}\r\n${gitBash}`,
+    })
+    expect(findGitBashPathOrNullWithDeps(deps)).toBe(gitBash)
+  })
+
+  test('falls through to git derivation when where.exe only finds WSL bash', () => {
+    // Reproduces the reported bug: WSL launcher shadows bash in PATH while
+    // Git lives on a non-default drive. Discovery must skip the launcher
+    // and derive bash from git.exe instead.
+    const wslBash = 'C:\\Windows\\System32\\bash.exe'
+    const wslAlias =
+      'C:\\Users\\i\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe'
+    const gitPath = 'D:\\Program Files\\Git\\cmd\\git.exe'
+    const gitBash = 'D:\\Program Files\\Git\\bin\\bash.exe'
+    const deps = makeDeps({
+      exists: [wslBash, wslAlias, gitBash],
+      bashInPath: `${wslBash}\r\n${wslAlias}`,
+      gitInPath: gitPath,
+    })
+    expect(findGitBashPathOrNullWithDeps(deps)).toBe(gitBash)
+  })
+
+  test('ignores WSL launcher envOverride and falls back to detection', () => {
+    // CLAUDE_CODE_GIT_BASH_PATH is propagated to child processes, so a value
+    // poisoned by an older build must not short-circuit discovery.
+    const wslBash = 'C:\\Windows\\System32\\bash.exe'
+    const gitPath = 'D:\\Program Files\\Git\\cmd\\git.exe'
+    const gitBash = 'D:\\Program Files\\Git\\bin\\bash.exe'
+    const deps: GitBashDiscoveryDeps = {
+      ...makeDeps({
+        exists: [wslBash, gitBash],
+        bashInPath: wslBash,
+        gitInPath: gitPath,
+      }),
+      envOverride: wslBash,
+    }
+    expect(findGitBashPathOrNullWithDeps(deps)).toBe(gitBash)
+  })
+
+  test('returns null when only WSL launcher bash is available', () => {
+    const wslBash = 'C:\\Windows\\System32\\bash.exe'
+    const deps = makeDeps({
+      exists: [wslBash],
+      bashInPath: wslBash,
+    })
+    expect(findGitBashPathOrNullWithDeps(deps)).toBeNull()
   })
 
   test('filters malicious where.exe hits in current working directory', () => {

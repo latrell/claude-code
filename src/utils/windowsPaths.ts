@@ -59,6 +59,40 @@ const DEFAULT_DEPS: GitBashDiscoveryDeps = {
 }
 
 /**
+ * Returns true when a bash path is the Windows WSL launcher rather than a
+ * real Git Bash (MSYS2) binary.
+ *
+ * On machines with WSL enabled, `where.exe bash` typically resolves to
+ * `C:\Windows\System32\bash.exe` (or the `WindowsApps` app-execution alias)
+ * before any Git Bash entry. Executing shell commands through that launcher
+ * boots a WSL distro and — because wsl.exe allocates its own console when
+ * spawned without one — pops a visible terminal window for every command.
+ * These paths must never be selected as Claude's POSIX shell.
+ *
+ * Matches (case-insensitive, both slash styles):
+ *   - `...\System32\bash.exe` (also `SysWOW64` / `Sysnative` variants)
+ *   - `...\WindowsApps\...\bash.exe` (app-execution alias)
+ */
+export function isWslLauncherBashPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\//g, '\\').toLowerCase()
+  // System directory launcher: C:\Windows\System32\bash.exe.
+  // SysWOW64 (32-bit view) and Sysnative (64-bit alias visible from 32-bit
+  // processes) expose the same WSL launcher under different directory names.
+  if (/\\(?:system32|syswow64|sysnative)\\bash\.exe$/.test(normalized)) {
+    return true
+  }
+  // App-execution alias: %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe
+  // (possibly nested under a package subdirectory).
+  if (
+    normalized.includes('\\windowsapps\\') &&
+    normalized.endsWith('\\bash.exe')
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
  * Search common install locations for bash.exe directly. Returns the first
  * existing candidate or null if none match. Used as a last-resort fallback
  * when `where.exe` cannot locate bash via PATH and git is also unknown.
@@ -157,6 +191,19 @@ function findExecutableWithDeps(
         continue
       }
 
+      // When resolving bash, skip WSL launcher entries (System32 /
+      // WindowsApps). With WSL enabled they shadow Git Bash in PATH and
+      // would silently route every shell command through a WSL distro.
+      // Skipping (not aborting) lets a real Git Bash entry later in the
+      // `where.exe` output win; otherwise discovery falls through to the
+      // git.exe derivation / default-location steps.
+      if (executable === 'bash' && isWslLauncherBashPath(candidatePath)) {
+        logForDebugging(
+          `Skipping WSL launcher bash (not Git Bash): ${candidatePath}`,
+        )
+        continue
+      }
+
       // Return the first valid path that's not in the current directory
       return candidatePath
     }
@@ -180,9 +227,20 @@ export function findGitBashPathOrNullWithDeps(
 ): string | null {
   const envOverride = deps.envOverride ?? process.env.CLAUDE_CODE_GIT_BASH_PATH
 
-  // 1. Honor explicit CLAUDE_CODE_GIT_BASH_PATH override
+  // 1. Honor explicit CLAUDE_CODE_GIT_BASH_PATH override.
+  //    Exception: if the override points at the WSL launcher, ignore it and
+  //    fall through to auto-detection instead of returning it (or failing
+  //    hard). This matters because setShellIfWindows() propagates
+  //    CLAUDE_CODE_GIT_BASH_PATH to child processes — a value poisoned by an
+  //    older build would otherwise keep re-infecting every child session.
   if (envOverride) {
-    return deps.checkExists(envOverride) ? envOverride : null
+    if (isWslLauncherBashPath(envOverride)) {
+      logForDebugging(
+        `Ignoring CLAUDE_CODE_GIT_BASH_PATH="${envOverride}" (WSL launcher, not Git Bash); falling back to auto-detection`,
+      )
+    } else {
+      return deps.checkExists(envOverride) ? envOverride : null
+    }
   }
 
   // 2. Look up bash.exe directly via PATH. This is the most reliable
@@ -224,9 +282,11 @@ export function findGitBashPathOrNullWithDeps(
  *
  * Discovery order (each step is skipped if the previous one resolves):
  *   1. `CLAUDE_CODE_GIT_BASH_PATH` env var, if set and the file exists
+ *      (ignored when it points at the WSL launcher — see isWslLauncherBashPath)
  *   2. `where.exe bash` lookup (works whenever Git Bash's bin dir is in PATH,
  *      e.g. portable installs at `D:\software\Git\` where bash is at
- *      `<root>/usr/bin/bash.exe` rather than the conventional `<root>/bin/bash.exe`)
+ *      `<root>/usr/bin/bash.exe` rather than the conventional `<root>/bin/bash.exe`).
+ *      WSL launcher entries (System32 / WindowsApps bash.exe) are skipped.
  *   3. Derive from `where.exe git`, trying multiple relative layouts
  *      (standard Git for Windows, PortableGit, sibling install)
  *   4. Check common default install locations directly

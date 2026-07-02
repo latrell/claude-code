@@ -72,7 +72,13 @@ export async function createBashShellProvider(
   return {
     type: 'bash',
     shellPath,
-    detached: true,
+    // POSIX: detach to get a separate process group (tree-kill semantics).
+    // Windows: detached spawns the child with DETACHED_PROCESS (no console),
+    // which makes console-allocating children (e.g. the WSL launcher, some
+    // Win32 console apps) pop a visible terminal window that windowsHide
+    // cannot suppress. POSIX process groups don't exist on Windows anyway —
+    // termination is handled by tree-kill via taskkill — so stay attached.
+    detached: getPlatform() !== 'windows',
 
     async buildExecCommand(
       command: string,
