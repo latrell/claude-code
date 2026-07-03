@@ -4,7 +4,7 @@ import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Text, Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { SelectMulti } from './CustomSelect/SelectMulti.js';
-import { tf } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 type WorkflowOption = {
   value: Workflow;
@@ -95,7 +95,7 @@ export function WorkflowMultiselectDialog({ onSubmit, defaultSelections }: Props
 
       {showError && (
         <Box>
-          <Text color="error">You must select at least one workflow to continue</Text>
+          <Text color="error">{t('You must select at least one workflow to continue')}</Text>
         </Box>
       )}
     </Dialog>

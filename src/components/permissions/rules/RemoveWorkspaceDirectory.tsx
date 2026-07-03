@@ -5,6 +5,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { ToolPermissionContext } from '../../../Tool.js';
 import { applyPermissionUpdate } from '../../../utils/permissions/PermissionUpdate.js';
 import { Dialog } from '@anthropic/ink';
+import { t } from '../../../i18n/t.js';
 
 type Props = {
   directoryPath: string;
@@ -48,7 +49,7 @@ export function RemoveWorkspaceDirectory({
       <Box marginX={2} flexDirection="column">
         <Text bold>{directoryPath}</Text>
       </Box>
-      <Text>Claude Code will no longer have access to files in this directory.</Text>
+      <Text>{t('Claude Code will no longer have access to files in this directory.')}</Text>
       <Select
         onChange={handleSelect}
         onCancel={onCancel}

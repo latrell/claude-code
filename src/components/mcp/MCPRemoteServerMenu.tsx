@@ -36,7 +36,7 @@ import TextInput from '../TextInput.js';
 import { CapabilitiesSection } from './CapabilitiesSection.js';
 import type { ClaudeAIServerInfo, HTTPServerInfo, SSEServerInfo } from './types.js';
 import { handleReconnectError, handleReconnectResult } from './utils/reconnectHelpers.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   server: SSEServerInfo | HTTPServerInfo | ClaudeAIServerInfo;
@@ -446,7 +446,7 @@ export function MCPRemoteServerMenu({
           </Box>
         )}
         <Box marginLeft={3}>
-          <Text dimColor>Return here after authenticating in your browser. Press Esc to go back.</Text>
+          <Text dimColor>{t('Return here after authenticating in your browser. Press Esc to go back.')}</Text>
         </Box>
       </Box>
     );

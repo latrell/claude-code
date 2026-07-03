@@ -10,6 +10,7 @@ import type { ProgressMessage } from 'src/types/message.js';
 import { getDisplayPath } from 'src/utils/file.js';
 import { getPlan } from 'src/utils/plans.js';
 import type { ThemeName } from 'src/utils/theme.js';
+import { t, tf } from 'src/i18n/t.js';
 import type { Output } from './ExitPlanModeV2Tool.js';
 
 export function renderToolUseMessage(): React.ReactNode {
@@ -32,7 +33,7 @@ export function renderToolResultMessage(
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="row">
           <Text color={getModeColor('plan')}>{BLACK_CIRCLE}</Text>
-          <Text> Exited plan mode</Text>
+          <Text> {t('Exited plan mode')}</Text>
         </Box>
       </Box>
     );
@@ -44,12 +45,12 @@ export function renderToolResultMessage(
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="row">
           <Text color={getModeColor('plan')}>{BLACK_CIRCLE}</Text>
-          <Text> Plan submitted for team lead approval</Text>
+          <Text> {t('Plan submitted for team lead approval')}</Text>
         </Box>
         <MessageResponse>
           <Box flexDirection="column">
-            {filePath && <Text dimColor>Plan file: {displayPath}</Text>}
-            <Text dimColor>Waiting for team lead to review and approve...</Text>
+            {filePath && <Text dimColor>{tf('Plan file: {displayPath}', { displayPath })}</Text>}
+            <Text dimColor>{t('Waiting for team lead to review and approve...')}</Text>
           </Box>
         </MessageResponse>
       </Box>
@@ -60,11 +61,11 @@ export function renderToolResultMessage(
     <Box flexDirection="column" marginTop={1}>
       <Box flexDirection="row">
         <Text color={getModeColor('plan')}>{BLACK_CIRCLE}</Text>
-        <Text> User approved Claude&apos;s plan</Text>
+        <Text> {t("User approved Claude's plan")}</Text>
       </Box>
       <MessageResponse>
         <Box flexDirection="column">
-          {filePath && <Text dimColor>Plan saved to: {displayPath} · /plan to edit</Text>}
+          {filePath && <Text dimColor>{tf('Plan saved to: {displayPath} · /plan to edit', { displayPath })}</Text>}
           <Markdown>{plan}</Markdown>
         </Box>
       </MessageResponse>
@@ -76,7 +77,7 @@ export function renderToolUseRejectedMessage(
   { plan }: { plan?: string },
   { theme: _theme }: { theme: ThemeName },
 ): React.ReactNode {
-  const planContent = plan ?? getPlan() ?? 'No plan found';
+  const planContent = plan ?? getPlan() ?? t('No plan found');
 
   return (
     <Box flexDirection="column">

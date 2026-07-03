@@ -6,7 +6,7 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink';
-import { tf } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 export type Props = {
   currentValue: boolean;
@@ -72,7 +72,7 @@ export function ThinkingToggle({ currentValue, onSelect, onCancel, isMidConversa
           <Text color="remember" bold>
             Toggle thinking mode
           </Text>
-          <Text dimColor>Enable or disable thinking for this session.</Text>
+          <Text dimColor>{t('Enable or disable thinking for this session.')}</Text>
         </Box>
 
         {confirmationPending !== null ? (

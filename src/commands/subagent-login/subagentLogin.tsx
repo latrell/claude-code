@@ -4,7 +4,7 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
 import { ConsoleOAuthFlow } from '../../components/ConsoleOAuthFlow.js';
 import { SUBAGENT_CREDENTIAL_SCOPE } from '../../utils/model/subagentProvider.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
   return <SubagentLogin onDone={onDone} />;
@@ -14,7 +14,7 @@ function SubagentLogin(props: { onDone: LocalJSXCommandOnDone }): React.ReactNod
   return (
     <Dialog
       title="Subagent Login"
-      onCancel={() => props.onDone('Subagent login interrupted')}
+      onCancel={() => props.onDone(t('Subagent login interrupted'))}
       color="permission"
       inputGuide={exitState =>
         exitState.pending ? (
@@ -26,7 +26,7 @@ function SubagentLogin(props: { onDone: LocalJSXCommandOnDone }): React.ReactNod
     >
       <Box flexDirection="column">
         <ConsoleOAuthFlow
-          onDone={() => props.onDone('Subagent login successful')}
+          onDone={() => props.onDone(t('Subagent login successful'))}
           startingMessage="Configure a provider/account for Agent sub-sessions. The main session login will not be changed."
           scope={SUBAGENT_CREDENTIAL_SCOPE}
         />

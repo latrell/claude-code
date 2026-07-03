@@ -13,6 +13,7 @@ import type { EnvironmentResource } from '../utils/teleport/environments.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint, LoadingState } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 
 const DIALOG_TITLE = 'Select Remote Environment';
 const SETUP_HINT = `Configure environments at: https://claude.ai/code`;
@@ -100,7 +101,7 @@ export function RemoteEnvironmentDialog({ onDone }: Props): React.ReactNode {
   if (!selectedEnvironment) {
     return (
       <Dialog title={DIALOG_TITLE} subtitle={SETUP_HINT} onCancel={onDone}>
-        <Text>No remote environments available.</Text>
+        <Text>{t('No remote environments available.')}</Text>
       </Dialog>
     );
   }

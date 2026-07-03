@@ -1,14 +1,14 @@
 import * as React from 'react';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '@anthropic/ink';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   instructions?: string;
 };
 
 export function AgentNavigationFooter({
-  instructions = 'Press ↑↓ to navigate · Enter to select · Esc to go back',
+  instructions = t('Press ↑↓ to navigate · Enter to select · Esc to go back'),
 }: Props): React.ReactNode {
   const exitState = useExitOnCtrlCDWithKeybindings();
 

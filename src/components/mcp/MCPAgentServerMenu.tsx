@@ -10,7 +10,7 @@ import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { Spinner } from '../Spinner.js';
 import type { AgentMcpServerInfo } from './types.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   agentServer: AgentMcpServerInfo;
@@ -99,7 +99,7 @@ export function MCPAgentServerMenu({ agentServer, onCancel, onComplete }: Props)
         )}
         <Box marginLeft={3}>
           <Text dimColor>
-            Return here after authenticating in your browser.{' '}
+            {t('Return here after authenticating in your browser.')}{' '}
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
           </Text>
         </Box>

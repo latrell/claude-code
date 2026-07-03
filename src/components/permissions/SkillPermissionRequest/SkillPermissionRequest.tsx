@@ -215,7 +215,7 @@ export function SkillPermissionRequest(props: PermissionRequestProps): React.Rea
 
   return (
     <PermissionDialog title={tf('Use skill "{skill}"?', { skill })} workerBadge={workerBadge}>
-      <Text>Claude may use instructions, code, or files from this Skill.</Text>
+      <Text>{t('Claude may use instructions, code, or files from this Skill.')}</Text>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor>{commandObj?.description ? t(commandObj.description) : undefined}</Text>
       </Box>

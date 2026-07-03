@@ -33,6 +33,7 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from './settings/settings.js'
+import { t } from '../i18n/t.js'
 import { createSignal } from './signal.js'
 
 export function isFastModeEnabled(): boolean {
@@ -55,17 +56,19 @@ function getDisabledReasonMessage(
   switch (disabledReason) {
     case 'free':
       return authType === 'oauth'
-        ? 'Fast mode requires a paid subscription'
-        : 'Fast mode unavailable during evaluation. Please purchase credits.'
+        ? t('Fast mode requires a paid subscription')
+        : t('Fast mode unavailable during evaluation. Please purchase credits.')
     case 'preference':
-      return 'Fast mode has been disabled by your organization'
+      return t('Fast mode has been disabled by your organization')
     case 'extra_usage_disabled':
       // Only OAuth users can have extra_usage_disabled; console users don't have this concept
-      return 'Fast mode requires extra usage billing · /extra-usage to enable'
+      return t(
+        'Fast mode requires extra usage billing · /extra-usage to enable',
+      )
     case 'network_error':
-      return 'Fast mode unavailable due to network connectivity issues'
+      return t('Fast mode unavailable due to network connectivity issues')
     case 'unknown':
-      return 'Fast mode is currently unavailable'
+      return t('Fast mode is currently unavailable')
   }
 }
 

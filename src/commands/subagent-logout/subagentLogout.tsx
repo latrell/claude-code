@@ -3,6 +3,7 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { SUBAGENT_CREDENTIAL_SCOPE } from '../../utils/model/subagentProvider.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
+import { t } from '../../i18n/t.js';
 
 export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
   const { error } = updateSettingsForSource('userSettings', {
@@ -16,6 +17,6 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
 
   await removeChatGPTAuth(SUBAGENT_CREDENTIAL_SCOPE);
 
-  onDone('Subagent login cleared. Agent sub-sessions will inherit the main login.', { display: 'system' });
+  onDone(t('Subagent login cleared. Agent sub-sessions will inherit the main login.'), { display: 'system' });
   return null;
 }

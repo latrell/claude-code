@@ -15,6 +15,7 @@
 import * as React from 'react';
 import { Box, Text, useInput } from '@anthropic/ink';
 import { saveWorkspaceKey } from '../../services/auth/saveWorkspaceKey.js';
+import { t } from '../../i18n/t.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -171,8 +172,8 @@ export function WorkspaceKeyInput({
       <Box marginTop={1}>
         <Text dimColor>
           {canSubmit
-            ? 'Press Enter to save · Esc to cancel'
-            : 'Esc to cancel' + (value.length === 0 ? ' · start typing your key' : '')}
+            ? t('Press Enter to save · Esc to cancel')
+            : t('Esc to cancel') + (value.length === 0 ? t(' · start typing your key') : '')}
         </Text>
       </Box>
     </Box>

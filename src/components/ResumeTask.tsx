@@ -13,6 +13,7 @@ import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { Spinner } from './Spinner.js';
 import { TeleportError } from './TeleportError.js';
+import { t } from '../i18n/t.js';
 
 type Props = {
   onSelect: (session: CodeSession) => void;
@@ -127,7 +128,7 @@ export function ResumeTask({ onSelect, onCancel, isEmbedded = false }: Props): R
       <Box flexDirection="column" padding={1}>
         <Box flexDirection="row">
           <Spinner />
-          <Text bold>Loading Claude Code sessions…</Text>
+          <Text bold>{t('Loading Claude Code sessions…')}</Text>
         </Box>
         <Text dimColor>{retrying ? 'Retrying…' : 'Fetching your Claude Code sessions…'}</Text>
       </Box>

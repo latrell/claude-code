@@ -79,12 +79,12 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
     {
       label: t('Copy to clipboard'),
       value: 'clipboard',
-      description: 'Copy the conversation to your system clipboard',
+      description: t('Copy the conversation to your system clipboard'),
     },
     {
       label: t('Save to file'),
       value: 'file',
-      description: 'Save the conversation to a file in the current directory',
+      description: t('Save the conversation to a file in the current directory'),
     },
   ];
 
@@ -125,7 +125,7 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
         <Select options={options} onChange={handleSelectOption} onCancel={handleCancel} />
       ) : (
         <Box flexDirection="column">
-          <Text>Enter filename:</Text>
+          <Text>{t('Enter filename:')}</Text>
           <Box flexDirection="row" gap={1} marginTop={1}>
             <Text>&gt;</Text>
             <TextInput

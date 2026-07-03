@@ -8,6 +8,7 @@ import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { hookSourceDescriptionDisplayString, type IndividualHookConfig } from '../../utils/hooks/hooksSettings.js';
 import { Dialog } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   selectedHook: IndividualHookConfig;
@@ -17,7 +18,7 @@ type Props = {
 
 export function ViewHookMode({ selectedHook, eventSupportsMatcher, onCancel }: Props): React.ReactNode {
   return (
-    <Dialog title="Hook details" onCancel={onCancel} inputGuide={() => <Text>Esc to go back</Text>}>
+    <Dialog title="Hook details" onCancel={onCancel} inputGuide={() => <Text>{t('Esc to go back')}</Text>}>
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text>

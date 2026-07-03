@@ -10,6 +10,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { ResumeTask } from './ResumeTask.js';
 import { Spinner } from './Spinner.js';
+import { t } from '../i18n/t.js';
 
 interface TeleportResumeWrapperProps {
   onComplete: (result: TeleportRemoteResponse) => void;
@@ -69,7 +70,7 @@ export function TeleportResumeWrapper({
       <Box flexDirection="column" padding={1}>
         <Box flexDirection="row">
           <Spinner />
-          <Text bold>Resuming session…</Text>
+          <Text bold>{t('Resuming session…')}</Text>
         </Box>
         <Text dimColor>Loading &quot;{selectedSession.title}&quot;…</Text>
       </Box>

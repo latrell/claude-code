@@ -15,6 +15,7 @@ import {
 import { plural } from '../../utils/stringUtils.js';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 
 type MatcherWithSource = {
   matcher: string;
@@ -58,7 +59,7 @@ export function SelectMatcherMode({
         title={`${selectedEvent} - Matchers`}
         subtitle={eventDescription}
         onCancel={onCancel}
-        inputGuide={() => <Text>Esc to go back</Text>}
+        inputGuide={() => <Text>{t('Esc to go back')}</Text>}
       >
         <Box flexDirection="column" gap={1}>
           <Text dimColor>No hooks configured for this event.</Text>

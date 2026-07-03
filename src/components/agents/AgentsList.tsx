@@ -44,7 +44,7 @@ export function AgentsList({ source, agents, onBack, onSelect, onCreateNew, chan
         <Text color={isCreateNewSelected ? 'suggestion' : undefined}>
           {isCreateNewSelected ? `${figures.pointer} ` : '  '}
         </Text>
-        <Text color={isCreateNewSelected ? 'suggestion' : undefined}>Create new agent</Text>
+        <Text color={isCreateNewSelected ? 'suggestion' : undefined}>{t('Create new agent')}</Text>
       </Box>
     );
   };

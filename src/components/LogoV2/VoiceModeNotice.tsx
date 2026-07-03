@@ -7,6 +7,7 @@ import { getInitialSettings } from '../../utils/settings/settings.js';
 import { isVoiceModeEnabled } from '../../voice/voiceModeEnabled.js';
 import { AnimatedAsterisk } from './AnimatedAsterisk.js';
 import { shouldShowOpus1mMergeNotice } from './Opus1mMergeNotice.js';
+import { t } from '../../i18n/t.js';
 
 const MAX_SHOW_COUNT = 3;
 
@@ -45,7 +46,7 @@ function VoiceModeNoticeInner(): React.ReactNode {
   return (
     <Box paddingLeft={2}>
       <AnimatedAsterisk />
-      <Text dimColor> Voice mode is now available · /voice to enable</Text>
+      <Text dimColor> {t('Voice mode is now available · /voice to enable')}</Text>
     </Box>
   );
 }

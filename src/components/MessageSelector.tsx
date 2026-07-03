@@ -28,6 +28,7 @@ import {
   isToolUseResultMessage,
 } from '../utils/messages.js';
 import { type OptionWithDescription, Select } from './CustomSelect/select.js';
+import { t, tf } from '../i18n/t.js';
 import { Spinner } from './Spinner.js';
 
 function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
@@ -51,7 +52,6 @@ import {
 import { count } from '../utils/array.js';
 import { formatRelativeTimeAgo, truncate } from '../utils/format.js';
 import type { Theme } from '../utils/theme.js';
-import { tf } from '../i18n/t.js';
 type RestoreOption = 'both' | 'conversation' | 'code' | 'summarize' | 'summarize_up_to' | 'nevermind';
 
 function isSummarizeOption(option: RestoreOption | null): option is 'summarize' | 'summarize_up_to' {
@@ -397,7 +397,7 @@ export function MessageSelector({
         )}
         {!hasMessagesToSelect && (
           <>
-            <Text>Nothing to rewind to yet.</Text>
+            <Text>{t('Nothing to rewind to yet.')}</Text>
           </>
         )}
         {!error && messageToRestore && hasMessagesToSelect && (
@@ -451,9 +451,9 @@ export function MessageSelector({
         {showPickList && (
           <>
             {isFileHistoryEnabled ? (
-              <Text>Restore the code and/or conversation to the point before…</Text>
+              <Text>{t('Restore the code and/or conversation to the point before…')}</Text>
             ) : (
-              <Text>Restore and fork the conversation to the point before…</Text>
+              <Text>{t('Restore and fork the conversation to the point before…')}</Text>
             )}
             <Box width="100%" flexDirection="column">
               {messageOptions

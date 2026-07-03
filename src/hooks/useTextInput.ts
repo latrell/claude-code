@@ -23,6 +23,7 @@ import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'
 import { isModifierPressed, prewarmModifiers } from '../utils/modifiers.js'
 import { useDoublePress } from './useDoublePress.js'
+import { t } from '../i18n/t.js'
 
 // biome-ignore lint/suspicious/noConfusingVoidType: void is the correct return type for cursor handlers that return nothing
 type MaybeCursor = void | Cursor
@@ -131,7 +132,7 @@ export function useTextInput({
       }
       addNotification({
         key: 'escape-again-to-clear',
-        text: 'Esc again to clear',
+        text: t('Esc again to clear'),
         priority: 'immediate',
         timeoutMs: 1000,
       })

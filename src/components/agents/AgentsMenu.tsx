@@ -261,7 +261,7 @@ export function AgentsMenu({ tools, onExit }: Props): React.ReactNode {
               }
             />
           </Dialog>
-          <AgentNavigationFooter instructions="Press Enter or Esc to go back" />
+          <AgentNavigationFooter instructions={t('Press Enter or Esc to go back')} />
         </>
       );
     }

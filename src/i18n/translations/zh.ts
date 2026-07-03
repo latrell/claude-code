@@ -228,6 +228,7 @@ const zh: Record<string, string> = {
   'Leave empty for default (English)': '留空则使用默认值（英语）',
 
   // ── ModelPicker ────────────────────────────────────────────────
+  'Select mode': '选择模式',
   'Select model': '选择模型',
   'Choose a model for this and future sessions. Use \u2190 \u2192 to adjust effort, Space to toggle 1M context.':
     '为此会话及后续会话选择模型。使用 ← → 调整努力级别，空格键切换 1M 上下文。',
@@ -1970,6 +1971,170 @@ const zh: Record<string, string> = {
   'Network request outside of sandbox': '沙箱外网络请求',
   'Computer Use needs macOS permissions': 'Computer Use 需要 macOS 权限',
   'Computer Use wants to control these apps': 'Computer Use 请求控制以下应用',
+
+  // ── Plan mode UI (EnterPlanModeTool / ExitPlanModeTool) ───────────
+  'Entered plan mode': '已进入计划模式',
+  'Exited plan mode': '已退出计划模式',
+  'Plan submitted for team lead approval': '计划已提交给团队负责人审批',
+  'Waiting for team lead to review and approve...':
+    '等待团队负责人审核和批准...',
+  "User approved Claude's plan": '用户批准了 Claude 的计划',
+  'User declined to enter plan mode': '用户拒绝进入计划模式',
+  'Plan saved!': '计划已保存！',
+
+  // ── Plan mode descriptions ────────────────────────────────────────
+  'Claude is now exploring and designing an implementation approach.':
+    'Claude 正在探索代码库并设计实现方案。',
+  'No plan found': '未找到计划',
+  'Claude wants to enter plan mode to explore and design an implementation approach.':
+    'Claude 想要进入计划模式，探索并设计实现方案。',
+  'In plan mode, Claude will:': '在计划模式下，Claude 将：',
+  '· Explore the codebase thoroughly': '· 全面探索代码库',
+  '· Identify existing patterns': '· 识别现有模式',
+  '· Design an implementation strategy': '· 设计实现策略',
+  '· Present a plan for your approval': '· 提交计划供您审批',
+  'No code changes will be made until you approve the plan.':
+    '在您批准计划之前，不会进行代码更改。',
+  'Yes, enter plan mode': '是，进入计划模式',
+  'No, start implementing now': '否，立即开始实现',
+  'Claude wants to exit plan mode': 'Claude 想要退出计划模式',
+  'Requested permissions:': '请求的权限：',
+  'ctrl-g to edit in ': 'ctrl-g 在 ',
+  'Yes, and use auto mode': '是，并使用自动模式',
+  'Yes, and bypass permissions': '是，并绕过权限检查',
+  'Yes, auto-accept edits': '是，自动接受编辑',
+  'Yes, manually approve edits': '是，手动批准编辑',
+  'No, refine with Ultraplan on Claude Code on the web':
+    '否，在 Claude Code 网页版中使用 Ultraplan 优化',
+  'No, keep planning': '否，继续规划',
+  'Tell Claude what to change': '告诉 Claude 需要修改什么',
+  'shift+tab to approve with this feedback': 'shift+tab 以此反馈进行批准',
+  "Here is Claude's plan:": '以下是 Claude 的计划：',
+
+  // ── Plan mode file messages ───────────────────────────────────────
+  'Plan file: {displayPath}': '计划文件：{displayPath}',
+  'Plan saved to: {displayPath} · /plan to edit':
+    '计划已保存到：{displayPath} · /plan 编辑',
+
+  // ── KAIROS / assistant command ────────────────────────────────────
+  'KAIROS assistant mode activated.': 'KAIROS 助手模式已激活。',
+  'Assistant panel hidden.': '助手面板已隐藏。',
+  'Assistant panel opened.': '助手面板已打开。',
+
+  // ── Mode command ──────────────────────────────────────────────────
+  'Mode selection cancelled.': '模式选择已取消。',
+  'Arrow keys to navigate, Enter to select, Esc to cancel.':
+    '方向键导航，Enter 选择，Esc 取消。',
+  '{icon} Mode switched to: {name} ({slug}) — {description}':
+    '{icon} 模式已切换为：{name}（{slug}）— {description}',
+  'Unknown mode: "{slug}"\n\nAvailable modes:\n{available}':
+    '未知模式："{slug}"\n\n可用模式：\n{available}',
+
+  // ── Mode descriptions (defaults.ts) ───────────────────────────────
+  'Balanced mode for everyday development': '均衡模式，适合日常开发',
+  'Patient explanations, great for learning': '耐心讲解，适合学习',
+  'Strict review, focused on code quality': '严格审查，专注代码质量',
+  'Auto-execute, minimal confirmations': '自动执行，最少确认',
+  'Minimal replies, save tokens': '极简回复，节省词元',
+  'Deep thinking, comprehensive analysis': '深度思考，全面分析',
+
+  // ── Subagent login/logout ─────────────────────────────────────────
+  'Subagent login cleared. Agent sub-sessions will inherit the main login.':
+    '子智能体登录已清除。智能体子会话将继承主登录。',
+  'Subagent login interrupted': '子智能体登录已中断',
+  'Subagent login successful': '子智能体登录成功',
+
+  // ── Remote setup ──────────────────────────────────────────────────
+  'Not signed in to Claude. Run /login first.':
+    '未登录 Claude。请先运行 /login。',
+
+  // ── Remote Control Server ─────────────────────────────────────────
+  'Remote Control Server started. Use /remote-control-server to manage.':
+    '远程控制服务已启动。使用 /remote-control-server 进行管理。',
+  'Remote Control Server stopped.': '远程控制服务已停止。',
+  'Remote Control Server restarted.': '远程控制服务已重启。',
+
+  // ── Install GitHub App ────────────────────────────────────────────
+  'Installation cancelled by user': '用户取消了安装',
+
+  // ── Fast mode notifications ──────────────────────────────────────
+  'Fast mode is now available · /fast to turn on':
+    '快速模式现已可用 · /fast 开启',
+  'Fast mode has been disabled by your organization':
+    '快速模式已被您的组织禁用',
+  'Fast mode requires a paid subscription': '快速模式需要付费订阅',
+  'Fast mode requires extra usage billing · /extra-usage to enable':
+    '快速模式需要额外用量计费 · /extra-usage 启用',
+  'Fast mode unavailable during evaluation. Please purchase credits.':
+    '评估期间快速模式不可用。请购买额度。',
+  'Fast mode unavailable due to network connectivity issues':
+    '快速模式因网络连接问题不可用',
+  'Fast mode is currently unavailable': '快速模式当前不可用',
+
+  // ── Voice mode notice ─────────────────────────────────────────────
+  'Voice mode is now available · /voice to enable':
+    '语音模式现已可用 · /voice 启用',
+
+  // ── Memory notification ───────────────────────────────────────────
+  'Memory updated in {displayPath} · /memory to edit':
+    '记忆已在 {displayPath} 中更新 · /memory 编辑',
+
+  // ── Text input hints ──────────────────────────────────────────────
+  'Esc again to clear': '再按 Esc 清除',
+
+  // ── Export dialog ─────────────────────────────────────────────────
+  'Enter filename:': '输入文件名：',
+  'Copy the conversation to your system clipboard': '将对话复制到系统剪贴板',
+  'Save the conversation to a file in the current directory':
+    '将对话保存到当前目录的文件',
+
+  // ── Workflow dialog ───────────────────────────────────────────────
+  'You must select at least one workflow to continue':
+    '您必须至少选择一个工作流才能继续',
+
+  // ── Message selector (rewind) ─────────────────────────────────────
+  'Nothing to rewind to yet.': '尚无内容可回退。',
+  'Restore the code and/or conversation to the point before…':
+    '将代码和/或对话恢复到之前的节点…',
+  'Restore and fork the conversation to the point before…':
+    '将对话恢复并分叉到之前的节点…',
+
+  // ── Remote environment dialog ─────────────────────────────────────
+  'No remote environments available.': '无可用远程环境。',
+
+  // ── MCP remote server menu ────────────────────────────────────────
+  'Return here after authenticating in your browser. Press Esc to go back.':
+    '在浏览器中认证后返回此处。按 Esc 返回。',
+  'Return here after authenticating in your browser.':
+    '在浏览器中认证后返回此处。',
+
+  // ── Skill permission ──────────────────────────────────────────────
+  'Claude may use instructions, code, or files from this Skill.':
+    'Claude 可能会使用此技能中的指令、代码或文件。',
+
+  // ── Workspace directory ────────────────────────────────────────────
+  'Claude Code will no longer have access to files in this directory.':
+    'Claude Code 将不再能访问此目录中的文件。',
+
+  // ── Agents list ───────────────────────────────────────────────────
+  'Create new agent': '创建新智能体',
+
+  // ── Resume task ───────────────────────────────────────────────────
+  'Loading Claude Code sessions…': '正在加载 Claude Code 会话…',
+
+  // ── Teleport resume ───────────────────────────────────────────────
+  'Resuming session…': '正在恢复会话…',
+
+  // ── Thinking toggle ───────────────────────────────────────────────
+  'Enable or disable thinking for this session.': '为此会话启用或禁用思考。',
+
+  // ── Navigation hints ──────────────────────────────────────────────
+  'Press Enter or Esc to go back': '按回车或 Esc 返回',
+  'Esc to go back': 'Esc 返回',
+  'Press ↑↓ to navigate · Enter to select · Esc to go back':
+    '↑↓ 导航 · Enter 选择 · Esc 返回',
+  'Press Enter to save · Esc to cancel': '按回车保存 · Esc 取消',
+  ' · start typing your key': ' · 开始输入您的密钥',
 }
 
 export default zh

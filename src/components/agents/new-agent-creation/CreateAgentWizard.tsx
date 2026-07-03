@@ -5,6 +5,7 @@ import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/Agen
 import { WizardProvider } from '../../wizard/index.js';
 import type { WizardStepComponent } from '../../wizard/types.js';
 import type { AgentWizardData } from './types.js';
+import { t } from '../../../i18n/t.js';
 import { ColorStep } from './wizard-steps/ColorStep.js';
 import { ConfirmStepWrapper } from './wizard-steps/ConfirmStepWrapper.js';
 import { DescriptionStep } from './wizard-steps/DescriptionStep.js';
@@ -50,7 +51,7 @@ export function CreateAgentWizard({ tools, existingAgents, onComplete, onCancel 
         // which calls onComplete with the appropriate message
       }}
       onCancel={onCancel}
-      title="Create new agent"
+      title={t('Create new agent')}
       showStepCounter={false}
     />
   );

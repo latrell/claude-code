@@ -8,6 +8,7 @@ import { useRegisterOverlay } from '../../context/overlayContext.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { findGitRoot } from '../../utils/git.js';
 import { buildCliLaunch, spawnCli } from '../../utils/cliLaunch.js';
+import { t } from '../../i18n/t.js';
 import { getKairosActive, setKairosActive } from '../../bootstrap/state.js';
 import type { LocalJSXCommandContext } from '../../commands.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
@@ -143,7 +144,7 @@ export async function call(
           assistantPanelVisible: true,
         }) as AppState,
     );
-    onDone('KAIROS assistant mode activated.', { display: 'system' });
+    onDone(t('KAIROS assistant mode activated.'), { display: 'system' });
     return null;
   }
 
@@ -159,7 +160,7 @@ export async function call(
           assistantPanelVisible: false,
         }) as AppState,
     );
-    onDone('Assistant panel hidden.', { display: 'system' });
+    onDone(t('Assistant panel hidden.'), { display: 'system' });
   } else {
     setAppState(
       (prev: AppState) =>
@@ -168,7 +169,7 @@ export async function call(
           assistantPanelVisible: true,
         }) as AppState,
     );
-    onDone('Assistant panel opened.', { display: 'system' });
+    onDone(t('Assistant panel opened.'), { display: 'system' });
   }
 
   return null;

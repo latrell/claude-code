@@ -10,6 +10,7 @@ import {
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { openBrowser } from '../../utils/browser.js';
 import { getGhAuthStatus } from '../../utils/github/ghAuthStatus.js';
+import { t } from '../../i18n/t.js';
 import {
   createDefaultEnvironment,
   getCodeWebUrl,
@@ -79,7 +80,7 @@ function Web({ onDone }: { onDone: LocalJSXCommandOnDone }) {
           logEvent('tengu_remote_setup_result', {
             result: 'not_signed_in' as SafeString,
           });
-          onDone('Not signed in to Claude. Run /login first.');
+          onDone(t('Not signed in to Claude. Run /login first.'));
           return;
         case 'gh_not_installed':
         case 'gh_not_authenticated': {

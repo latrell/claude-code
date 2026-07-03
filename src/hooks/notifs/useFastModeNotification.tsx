@@ -11,6 +11,7 @@ import {
 } from 'src/utils/fastMode.js';
 import { formatDuration } from 'src/utils/format.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
+import { t } from '../../i18n/t.js';
 
 const COOLDOWN_STARTED_KEY = 'fast-mode-cooldown-started';
 const COOLDOWN_EXPIRED_KEY = 'fast-mode-cooldown-expired';
@@ -35,7 +36,7 @@ export function useFastModeNotification(): void {
           key: ORG_CHANGED_KEY,
           color: 'fastMode',
           priority: 'immediate',
-          text: 'Fast mode is now available · /fast to turn on',
+          text: t('Fast mode is now available · /fast to turn on'),
         });
       } else if (isFastMode) {
         // Org disabled fast mode — permanently turn off fast mode
@@ -44,7 +45,7 @@ export function useFastModeNotification(): void {
           key: ORG_CHANGED_KEY,
           color: 'warning',
           priority: 'immediate',
-          text: 'Fast mode has been disabled by your organization',
+          text: t('Fast mode has been disabled by your organization'),
         });
       }
     });
