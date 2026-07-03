@@ -70,6 +70,8 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // Static import of the subject — must happen after mock.module registrations.
 // ---------------------------------------------------------------------------
 import {
+  clearAllCCBProviderAuth,
+  clearCCBProviderAuthEnv,
   readCCBProviderAuthData,
   readCCBProviderAuthEnv,
   writeCCBProviderAuthEnv,
@@ -267,6 +269,107 @@ describe('ccbProviderAuth storage', () => {
       injectCCBProviderAuthEnv('grok')
 
       expect(envGet('GROK_API_KEY')).toBe('grok-from-ccb')
+    })
+  })
+
+  describe('clearCCBProviderAuthEnv', () => {
+    test('removes a single provider entry while keeping others', () => {
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'sk-openai' })
+      writeCCBProviderAuthEnv('gemini', { GEMINI_API_KEY: 'gem-key' })
+      writeCCBProviderAuthEnv('grok', { GROK_API_KEY: 'grok-key' })
+
+      clearCCBProviderAuthEnv('openai')
+
+      expect(readCCBProviderAuthEnv('openai')).toEqual({})
+      expect(readCCBProviderAuthEnv('gemini')).toEqual({
+        GEMINI_API_KEY: 'gem-key',
+      })
+      expect(readCCBProviderAuthEnv('grok')).toEqual({
+        GROK_API_KEY: 'grok-key',
+      })
+    })
+
+    test('is idempotent when provider entry does not exist', () => {
+      clearCCBProviderAuthEnv('openai') // no-op on empty file
+      expect(readCCBProviderAuthEnv('openai')).toEqual({})
+    })
+
+    test('clearing the last entry leaves an empty file', () => {
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'sk-test' })
+      clearCCBProviderAuthEnv('openai')
+      expect(readCCBProviderAuthData()).toEqual({})
+    })
+  })
+
+  describe('clearAllCCBProviderAuth', () => {
+    test('removes all provider entries at once', () => {
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'sk-openai' })
+      writeCCBProviderAuthEnv('gemini', { GEMINI_API_KEY: 'gem-key' })
+
+      clearAllCCBProviderAuth()
+
+      expect(readCCBProviderAuthData()).toEqual({})
+    })
+
+    test('is idempotent on empty file', () => {
+      clearAllCCBProviderAuth()
+      expect(readCCBProviderAuthData()).toEqual({})
+    })
+  })
+
+  describe('cross-provider isolation', () => {
+    test('writing openai does not clobber gemini or grok entries', () => {
+      // Simulate: user first sets up Gemini
+      writeCCBProviderAuthEnv('gemini', { GEMINI_API_KEY: 'gemini-key-1' })
+
+      // Then switches to OpenAI (should NOT remove Gemini)
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'openai-key-1' })
+
+      expect(readCCBProviderAuthEnv('gemini')).toEqual({
+        GEMINI_API_KEY: 'gemini-key-1',
+      })
+      expect(readCCBProviderAuthEnv('openai')).toEqual({
+        OPENAI_API_KEY: 'openai-key-1',
+      })
+    })
+
+    test('switching back to a provider preserves previously saved credentials', () => {
+      // User sets up OpenAI, then Gemini, then switches back to OpenAI
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'sk-first-openai' })
+      writeCCBProviderAuthEnv('gemini', { GEMINI_API_KEY: 'gem-key' })
+      // Switch back to OpenAI — re-read should still have the first key
+      expect(readCCBProviderAuthEnv('openai')).toEqual({
+        OPENAI_API_KEY: 'sk-first-openai',
+      })
+      expect(readCCBProviderAuthEnv('gemini')).toEqual({
+        GEMINI_API_KEY: 'gem-key',
+      })
+    })
+
+    test('clearing one provider does not affect others', () => {
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'sk-openai' })
+      writeCCBProviderAuthEnv('grok', { GROK_API_KEY: 'grok-key' })
+
+      // "Log out" only from OpenAI
+      clearCCBProviderAuthEnv('openai')
+
+      expect(readCCBProviderAuthEnv('openai')).toEqual({})
+      // Grok should be unaffected
+      expect(readCCBProviderAuthEnv('grok')).toEqual({
+        GROK_API_KEY: 'grok-key',
+      })
+    })
+
+    test('clearAllCCBProviderAuth is equivalent to global logout', () => {
+      writeCCBProviderAuthEnv('openai', { OPENAI_API_KEY: 'x' })
+      writeCCBProviderAuthEnv('gemini', { GEMINI_API_KEY: 'y' })
+      writeCCBProviderAuthEnv('grok', { GROK_API_KEY: 'z' })
+
+      clearAllCCBProviderAuth()
+
+      expect(readCCBProviderAuthEnv('openai')).toEqual({})
+      expect(readCCBProviderAuthEnv('gemini')).toEqual({})
+      expect(readCCBProviderAuthEnv('grok')).toEqual({})
     })
   })
 })

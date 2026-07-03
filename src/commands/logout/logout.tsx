@@ -7,6 +7,7 @@ import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 import { t } from '../../i18n/t.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
+import { clearAllCCBProviderAuth, clearCCBProviderAuthEnv } from '../../utils/ccbProviderAuth.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth.js';
 import { clearBetasCaches } from '../../utils/betas.js';
@@ -25,6 +26,9 @@ export async function performLogout({ clearOnboarding = false }): Promise<void> 
   await removeApiKey();
   await removeChatGPTAuth();
   clearChatGPTSettingsAuthMode();
+
+  // Wipe CCB-isolated third-party provider credentials (OpenAI / Gemini / Grok)
+  clearAllCCBProviderAuth();
 
   // Wipe all secure storage data on logout
   const secureStorage = getSecureStorage();

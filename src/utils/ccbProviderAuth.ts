@@ -82,8 +82,9 @@ function _readAuthData(): CCBProviderAuthData {
 }
 
 /**
- * Write (replace) the full auth data atomically via a temp-file rename so a
- * partial write never corrupts the creds.
+ * Write (replace) the full auth data synchronously.  Uses write-through flush
+ * to reduce the window for data loss on crash.  The file is chmod 0o600 so
+ * only the owner can read it (best-effort on non-POSIX platforms).
  */
 function _writeAuthData(data: CCBProviderAuthData): void {
   ensureConfigDir()
@@ -147,6 +148,28 @@ export function writeCCBProviderAuthEnv(
     delete data[provider]
   }
   _writeAuthData(data)
+}
+
+/**
+ * Remove all stored env vars for a single provider from the CCB auth file.
+ * Idempotent — does nothing if the provider has no stored entry or the file
+ * does not exist.
+ */
+export function clearCCBProviderAuthEnv(provider: CCBProvider): void {
+  const data = _readAuthData()
+  if (!(provider in data)) return
+  delete data[provider]
+  _writeAuthData(data)
+}
+
+/**
+ * Remove ALL third-party provider entries from the CCB auth file.
+ * Idempotent — does nothing if the file has no entries or does not exist.
+ */
+export function clearAllCCBProviderAuth(): void {
+  const data = _readAuthData()
+  if (Object.keys(data).length === 0) return
+  _writeAuthData({})
 }
 
 /**

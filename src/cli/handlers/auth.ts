@@ -25,9 +25,11 @@ import {
   clearOAuthTokenCache,
   getAnthropicApiKeyWithSource,
   getAuthTokenSource,
+  getClaudeAIOAuthTokens,
   getOauthAccountInfo,
   getSubscriptionType,
   isUsing3PServices,
+  removeApiKey,
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
 } from '../../utils/auth.js'
@@ -37,6 +39,7 @@ import { isRunningOnHomespace } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
+import { getSecureStorage } from '../../utils/secureStorage/index.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
@@ -48,9 +51,53 @@ import {
  * Shared post-token-acquisition logic. Saves tokens, fetches profile/roles,
  * and sets up the local auth state.
  */
+/**
+ * Clear only Anthropic/Claude-specific credentials (OAuth tokens, API key,
+ * oauthAccount in global config), leaving third-party provider credentials
+ * (OpenAI / Gemini / Grok in CCB auth file + ChatGPT tokens) untouched.
+ *
+ * This is the targeted version of performLogout() — used when switching
+ * between Claude accounts without disturbing non-Anthropic provider state.
+ */
+async function clearAnthropicCredentials(): Promise<void> {
+  // Flush telemetry BEFORE clearing credentials to prevent org data leakage
+  const { flushTelemetry } = await import(
+    '../../utils/telemetry/instrumentation.js'
+  )
+  await flushTelemetry()
+
+  // Remove Anthropic Console API key from macOS Keychain / ~/.claude.json
+  await removeApiKey()
+
+  // Remove ONLY claudeAiOauth from secure storage, preserving other keys
+  try {
+    const secureStorage = getSecureStorage()
+    const data = (secureStorage.read() as Record<string, unknown> | null) || {}
+    delete data['claudeAiOauth']
+    secureStorage.update(data as never)
+  } catch {
+    // Non-fatal — secureStorage may already be empty
+  }
+
+  // Clear oauthAccount from global config (but keep primaryApiKey / workspaceApiKey
+  // intact so Console API key users aren't logged out)
+  saveGlobalConfig(current => {
+    const updated = { ...current }
+    updated.oauthAccount = undefined
+    return updated
+  })
+
+  // Clear auth-related caches (same as performLogout)
+  getClaudeAIOAuthTokens.cache?.clear?.()
+
+  await clearAuthRelatedCaches()
+}
+
 export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
-  // Clear old state before saving new credentials
-  await performLogout({ clearOnboarding: false })
+  // Clear only Anthropic-specific credentials — leave third-party provider
+  // auth (OpenAI / Gemini / Grok) intact so switching between Claude and
+  // other providers does not clobber cross-provider login state.
+  await clearAnthropicCredentials()
 
   // Reuse pre-fetched profile if available, otherwise fetch fresh
   const profile =
