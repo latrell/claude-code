@@ -119,6 +119,7 @@ export function isAnthropicAuthEnabled(): boolean {
     isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
     settings.modelType === 'openai' ||
     settings.modelType === 'gemini' ||
+    settings.modelType === 'grok' ||
     !!process.env.OPENAI_BASE_URL ||
     !!process.env.GEMINI_BASE_URL
   const apiKeyHelper = settings.apiKeyHelper

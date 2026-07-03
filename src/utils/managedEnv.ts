@@ -13,6 +13,7 @@ import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from './settings/settings.js'
+import { injectCCBProviderAuthEnv } from './ccbProviderAuth.js'
 
 /**
  * `claude ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
@@ -188,6 +189,12 @@ export function applyConfigEnvironmentVariables(): void {
   Object.assign(process.env, filterSettingsEnv(getGlobalConfig().env))
 
   Object.assign(process.env, filterSettingsEnv(getSettings_DEPRECATED()?.env))
+
+  // Inject CCB-isolated provider auth env (OpenAI / Gemini / Grok) that is
+  // stored outside of settings.env so it doesn't clobber official Claude Code.
+  // Only sets keys that are NOT already present in process.env — explicit env
+  // vars and settings.env take priority.
+  injectCCBProviderAuthEnv(getSettings_DEPRECATED()?.modelType)
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()

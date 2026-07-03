@@ -24,6 +24,7 @@ import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settin
 import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
 import { SUBAGENT_CREDENTIAL_SCOPE } from '../utils/model/subagentProvider.js';
 import type { ProviderLoginConfig } from '../utils/settings/types.js';
+import { writeCCBProviderAuthEnv, type CCBProvider } from '../utils/ccbProviderAuth.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
@@ -143,6 +144,21 @@ export function ConsoleOAuthFlow({
           )
         : undefined;
       const env = sanitizedEnv && Object.keys(sanitizedEnv).length > 0 ? sanitizedEnv : undefined;
+
+      // Redirect third-party provider env to isolated CCB auth file rather
+      // than writing into settings.env (which is shared with official Claude Code).
+      const isThirdParty =
+        config.modelType === 'openai' || config.modelType === 'gemini' || config.modelType === 'grok';
+
+      if (isThirdParty && scope !== SUBAGENT_CREDENTIAL_SCOPE) {
+        writeCCBProviderAuthEnv(config.modelType as CCBProvider, config.env ?? {});
+        // Still persist modelType in settings.json so getAPIProvider() picks
+        // the right provider on next start — just don't leak env into settings.
+        return updateSettingsForSource('userSettings', {
+          modelType: config.modelType,
+        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+      }
+
       if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
         return updateSettingsForSource('userSettings', {
           subagentProvider: {
