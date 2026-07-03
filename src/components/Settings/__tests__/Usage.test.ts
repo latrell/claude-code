@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test'
+import { describe, test, expect, beforeAll, beforeEach } from 'bun:test'
 import {
   bucketToLimitBar,
   codexBucketToLimitBar,
@@ -240,5 +240,115 @@ describe('bucketToLimitBar with Codex-style buckets', () => {
     const result = bucketToLimitBar(bucket)
     expect(result.label).toBe('gpt-4.1')
     expect(result.limit.utilization).toBe(30)
+  })
+})
+
+describe('providerUsage store → bucketToLimitBar pipeline', () => {
+  // These tests verify the end-to-end data flow from the provider-usage store
+  // through the display helpers used by the Usage component's fallback branch.
+  // They do NOT render Ink; they test the pure data transformation pipeline.
+
+  // Dynamic imports so the real store is used (not mocked).
+  let getProviderUsage: () => import('src/services/providerUsage/types.js').ProviderUsage
+  let updateProviderBuckets: (
+    pid: string,
+    buckets: import('src/services/providerUsage/types.js').ProviderUsageBucket[],
+  ) => void
+  let resetProviderUsage: () => void
+
+  beforeAll(async () => {
+    const store = await import('../../../services/providerUsage/store.js')
+    getProviderUsage = store.getProviderUsage
+    updateProviderBuckets = store.updateProviderBuckets
+    resetProviderUsage = store.resetProviderUsage
+  })
+
+  beforeEach(() => {
+    resetProviderUsage()
+  })
+
+  test('full pipeline: update → get → bucketToLimitBar with single bucket', () => {
+    updateProviderBuckets('openai', [
+      { kind: 'tokens', label: 'TPM', utilization: 0.42, resetsAt: 1800000000 },
+    ])
+
+    const usage = getProviderUsage()
+    expect(usage.buckets).toHaveLength(1)
+
+    const result = bucketToLimitBar(usage.buckets[0]!)
+    expect(result.label).toBe('TPM')
+    expect(result.limit.utilization).toBe(42) // 0.42 * 100 = 42
+    expect(result.limit.resets_at).toBe(
+      new Date(1800000000 * 1000).toISOString(),
+    )
+  })
+
+  test('full pipeline: empty store → empty buckets → no display data', () => {
+    const usage = getProviderUsage()
+    expect(usage.buckets).toEqual([])
+  })
+
+  test('full pipeline: multiple Codex-mapped buckets from store', () => {
+    // Simulate what mapCodexLimitsToProviderBuckets writes to the store
+    updateProviderBuckets('openai', [
+      {
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.15,
+        resetsAt: 1700000000,
+      },
+      {
+        kind: 'weekly',
+        label: 'Daily limit',
+        utilization: 0.8,
+        resetsAt: 1700086400,
+      },
+      { kind: 'custom', label: 'gpt-4.1', utilization: 0.3 },
+    ])
+
+    const usage = getProviderUsage()
+    expect(usage.buckets).toHaveLength(3)
+
+    // Verify each bucket maps correctly through bucketToLimitBar
+    const results = usage.buckets.map(b => bucketToLimitBar(b))
+
+    expect(results[0]!.label).toBe('Primary rate limit')
+    expect(results[0]!.limit.utilization).toBe(15)
+
+    expect(results[1]!.label).toBe('Daily limit')
+    expect(results[1]!.limit.utilization).toBe(80)
+
+    expect(results[2]!.label).toBe('gpt-4.1')
+    expect(results[2]!.limit.utilization).toBe(30)
+    expect(results[2]!.limit.resets_at).toBeNull() // no resetsAt → null
+  })
+
+  test('full pipeline: utilization=0 bucket still produces valid LimitBar props', () => {
+    updateProviderBuckets('openai', [
+      { kind: 'tokens', label: 'TPM', utilization: 0 },
+    ])
+
+    const usage = getProviderUsage()
+    const result = bucketToLimitBar(usage.buckets[0]!)
+    // utilization=0 → Math.round(0 * 100) = 0, which is valid (not null)
+    expect(result.limit.utilization).toBe(0)
+    // A utilization of 0 is NOT null, so the LimitBar component would render it
+    expect(result.limit.utilization).not.toBeNull()
+  })
+
+  test('provider switch invalidates previous buckets', () => {
+    updateProviderBuckets('openai', [
+      { kind: 'tokens', label: 'TPM', utilization: 0.5 },
+    ])
+
+    // Switch to another provider — buckets should be replaced
+    updateProviderBuckets('gemini', [
+      { kind: 'requests', label: 'RPM', utilization: 0.3 },
+    ])
+
+    const usage = getProviderUsage()
+    expect(usage.providerId).toBe('gemini')
+    expect(usage.buckets).toHaveLength(1)
+    expect(usage.buckets[0]!.kind).toBe('requests')
   })
 })

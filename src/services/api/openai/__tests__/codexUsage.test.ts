@@ -18,6 +18,28 @@ mock.module('src/services/api/openai/chatgptAuth.js', () => ({
   }) as () => Promise<{ accessToken: string; accountId?: string }>,
 }))
 
+// =============================================================================
+// Provider usage store mock — tracks updateProviderBuckets calls so we can
+// verify fetchCodexUsage() side-effects without touching the real store.
+// =============================================================================
+
+interface StoreCall {
+  providerId: string
+  buckets: unknown[]
+}
+
+let storeUpdateCalls: StoreCall[] = []
+
+mock.module('src/services/providerUsage/store.js', () => ({
+  getProviderUsage: () => ({ providerId: 'unknown', buckets: [] }),
+  updateProviderBuckets: (providerId: string, buckets: unknown[]) => {
+    storeUpdateCalls.push({ providerId, buckets })
+  },
+  subscribeProviderUsage: (() => () => {}) as unknown,
+  resetProviderUsage: () => {},
+  setProviderBalance: () => {},
+}))
+
 // We'll replace fetch per-test below.
 
 import {
@@ -25,6 +47,7 @@ import {
   mapCodexLimitsToProviderBuckets,
 } from '../codexUsage.js'
 import type { CodexRateLimitBucket } from '../codexUsage.js'
+import type { ProviderUsageBucket } from 'src/services/providerUsage/types.js'
 
 // =============================================================================
 // Helpers
@@ -42,6 +65,7 @@ function resetState(): void {
   authThrows = false
   authToken = 'test-token'
   authAccountId = 'acc-123'
+  storeUpdateCalls = []
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -730,6 +754,176 @@ describe('fetchCodexUsage', () => {
     expect(result).not.toBeNull()
     expect(result!.tokenUsage).toBeUndefined()
     expect(result!.rateLimits).toHaveLength(1)
+  })
+})
+
+// =============================================================================
+// fetchCodexUsage → providerUsage store side-effect tests
+// =============================================================================
+
+describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetState()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  test('calls updateProviderBuckets with mapped buckets when rateLimits are present', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url === `${BASE}/wham/usage`) {
+        return Promise.resolve(
+          jsonResponse({
+            plan_type: 'plus',
+            rate_limit: {
+              primary_window: {
+                used_percent: 42,
+                window_minutes: 180,
+                resets_at: 1700000000,
+              },
+            },
+          }),
+        )
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage()
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    expect(storeUpdateCalls[0]!.providerId).toBe('openai')
+    expect(storeUpdateCalls[0]!.buckets).toHaveLength(1)
+
+    const bucket = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
+    expect(bucket.kind).toBe('session')
+    expect(bucket.label).toBe('Primary rate limit')
+    expect(bucket.utilization).toBeCloseTo(0.42, 5)
+    expect(bucket.resetsAt).toBe(1700000000)
+  })
+
+  test('does NOT call updateProviderBuckets when rateLimits is empty array', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url === `${BASE}/wham/usage`) {
+        return Promise.resolve(jsonResponse({ plan_type: 'team' }))
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await fetchCodexUsage()
+    expect(result).not.toBeNull()
+    expect(storeUpdateCalls).toHaveLength(0)
+  })
+
+  test('does NOT call updateProviderBuckets when usage endpoint fails', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, _init?: RequestInit) => {
+        return Promise.resolve(new Response('Unauthorized', { status: 401 }))
+      },
+    ) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage()
+    expect(storeUpdateCalls).toHaveLength(0)
+  })
+
+  test('does NOT call updateProviderBuckets when auth is disabled', async () => {
+    authEnabled = false
+
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, _init?: RequestInit) => {
+        return Promise.resolve(jsonResponse({}))
+      },
+    ) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage()
+    expect(storeUpdateCalls).toHaveLength(0)
+  })
+
+  test('does NOT call updateProviderBuckets when only tokenUsage is returned (no rateLimits)', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url === `${BASE}/wham/usage`) {
+        return Promise.resolve(
+          new Response('Service Unavailable', { status: 503 }),
+        )
+      }
+      if (url === `${BASE}/wham/profiles/me`) {
+        return Promise.resolve(
+          jsonResponse({
+            daily_usage_buckets: [{ start_date: '2025-07-01', tokens: 500 }],
+          }),
+        )
+      }
+      return Promise.resolve(new Response('Not found', { status: 404 }))
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await fetchCodexUsage()
+    expect(result).not.toBeNull()
+    expect(result!.tokenUsage?.tokensUsed).toBe(500)
+    expect(storeUpdateCalls).toHaveLength(0)
+  })
+
+  test('calls updateProviderBuckets with multiple mapped buckets from live API shape', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url === `${BASE}/wham/usage`) {
+        return Promise.resolve(
+          jsonResponse({
+            plan_type: 'pro',
+            rate_limit: {
+              primary_window: {
+                used_percent: 55,
+                limit_window_seconds: 10800,
+                reset_at: 1719000000,
+              },
+            },
+            additional_rate_limits: [
+              {
+                limit_name: 'o3',
+                rate_limit: {
+                  primary_window: {
+                    used_percent: 80,
+                    limit_window_seconds: 43200,
+                    reset_at: 1719086400,
+                  },
+                },
+              },
+            ],
+          }),
+        )
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage()
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    expect(storeUpdateCalls[0]!.providerId).toBe('openai')
+    expect(storeUpdateCalls[0]!.buckets).toHaveLength(2)
+
+    const b0 = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
+    expect(b0.label).toBe('Primary rate limit')
+    expect(b0.kind).toBe('session')
+
+    const b1 = storeUpdateCalls[0]!.buckets[1] as ProviderUsageBucket
+    expect(b1.label).toBe('o3')
+    expect(b1.kind).toBe('custom')
+    expect(b1.utilization).toBeCloseTo(0.8, 5)
   })
 })
 
