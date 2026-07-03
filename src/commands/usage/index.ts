@@ -4,9 +4,8 @@ import { t } from '../../i18n/t.js'
 export default {
   type: 'local-jsx',
   name: 'usage',
-  aliases: ['cost', 'stats'],
   get description() {
-    return t('Show session cost, plan usage, and activity stats')
+    return t('Show subscription plan usage and rate limits')
   },
   load: () => import('./usage.js'),
 } satisfies Command

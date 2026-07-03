@@ -1,10 +1,8 @@
 /**
- * Regression tests for /usage command — v2.1.118 upstream alignment.
- * Verifies:
- *   - /usage is primary command with aliases ["cost", "stats"]
- *   - description covers cost + stats
- *   - availability restriction removed (not claude-ai only)
- *   - cost/stats index files emit commands with matching name
+ * Tests for /usage command — subscription usage panel.
+ *
+ * /usage shows the Settings → Usage tab for subscription plan data.
+ * /cost and /stats are now independent commands (no longer aliases of /usage).
  */
 
 import { mock, describe, test, expect } from 'bun:test'
@@ -52,34 +50,20 @@ describe('usage command — metadata', () => {
     expect(cmd.name).toBe('usage')
   })
 
-  test('has aliases containing "cost"', async () => {
+  test('has no aliases (cost and stats are now independent commands)', async () => {
     const cmd = await loadUsageCommand()
-    expect(cmd.aliases?.includes('cost')).toBe(true)
+    expect((cmd as { aliases?: string[] }).aliases).toBeUndefined()
   })
 
-  test('has aliases containing "stats"', async () => {
+  test('type is local-jsx', async () => {
     const cmd = await loadUsageCommand()
-    expect(cmd.aliases?.includes('stats')).toBe(true)
+    expect(cmd.type).toBe('local-jsx')
   })
 
-  test('has exactly two aliases', async () => {
+  test('description mentions usage or plan', async () => {
     const cmd = await loadUsageCommand()
-    expect(cmd.aliases?.length).toBe(2)
-  })
-
-  test('aliases are ["cost", "stats"] in that order', async () => {
-    const cmd = await loadUsageCommand()
-    expect(cmd.aliases).toEqual(['cost', 'stats'])
-  })
-
-  test('description mentions cost', async () => {
-    const cmd = await loadUsageCommand()
-    expect(cmd.description.toLowerCase()).toContain('cost')
-  })
-
-  test('description mentions stat', async () => {
-    const cmd = await loadUsageCommand()
-    expect(cmd.description.toLowerCase()).toContain('stat')
+    const desc = cmd.description.toLowerCase()
+    expect(desc.includes('usage') || desc.includes('plan')).toBe(true)
   })
 
   test('is NOT restricted exclusively to claude-ai subscribers', async () => {
@@ -88,33 +72,5 @@ describe('usage command — metadata', () => {
     const isExclusivelyClaudeAi =
       Array.isArray(avail) && avail.length === 1 && avail[0] === 'claude-ai'
     expect(isExclusivelyClaudeAi).toBe(false)
-  })
-
-  test('description mentions usage or plan', async () => {
-    const cmd = await loadUsageCommand()
-    const desc = cmd.description.toLowerCase()
-    expect(desc.includes('usage') || desc.includes('plan')).toBe(true)
-  })
-})
-
-describe('usage command — cost index is no longer standalone', () => {
-  test('cost/index default name is "usage" (delegated) OR it has aliases', async () => {
-    const mod = await import('../../cost/index.js')
-    const cmd = mod.default
-    // After the fix: cost/index either exports name='usage' with aliases,
-    // or the cost command has aliases set (it's been demoted to alias)
-    const isUnifiedOrAliased =
-      cmd.name === 'usage' || (cmd.aliases?.includes('cost') ?? false)
-    expect(isUnifiedOrAliased).toBe(true)
-  })
-})
-
-describe('usage command — stats index is no longer standalone', () => {
-  test('stats/index default name is "usage" (delegated) OR it has aliases', async () => {
-    const mod = await import('../../stats/index.js')
-    const cmd = mod.default
-    const isUnifiedOrAliased =
-      cmd.name === 'usage' || (cmd.aliases?.includes('stats') ?? false)
-    expect(isUnifiedOrAliased).toBe(true)
   })
 })

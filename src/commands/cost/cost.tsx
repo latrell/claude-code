@@ -2,10 +2,10 @@ import { StatsPanel } from '../../components/StatsPanel.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 
 /**
- * /stats — show session-level API usage statistics.
+ * /cost — show session-level API usage statistics.
  *
- * Same panel as /cost: total cost, token breakdown, duration,
- * code changes, and per-model usage.
+ * Displays total cost, token breakdown, duration, code changes,
+ * and per-model usage. Works for both API and subscription users.
  */
 export const call: LocalJSXCommandCall = async onDone => {
   return <StatsPanel onClose={onDone} />;

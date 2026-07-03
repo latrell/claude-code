@@ -15,7 +15,8 @@ import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
-// cost/index.ts re-exports usage — /cost is now an alias of /usage
+import costCmd from './commands/cost/index.js'
+import statsCmd from './commands/stats/index.js'
 import diff from './commands/diff/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
@@ -242,7 +243,6 @@ import {
 import rateLimitOptions from './commands/rate-limit-options/index.js'
 import statusline from './commands/statusline.js'
 import effort from './commands/effort/index.js'
-// stats/index.ts re-exports usage — /stats is now an alias of /usage
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
 // shim defers the heavy module until /insights is actually invoked.
 const usageReport: Command = {
@@ -366,6 +366,8 @@ const COMMANDS = memoize((): Command[] => [
   extraUsage,
   extraUsageNonInteractive,
   rateLimitOptions,
+  costCmd,
+  statsCmd,
   usage,
   usageReport,
   vim,
@@ -716,7 +718,9 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   theme, // Change terminal theme
   color, // Change agent color
   vim, // Toggle vim mode
-  usage, // Show session cost, plan usage, and activity stats (/cost and /stats are aliases)
+  costCmd, // Show session API cost and usage stats (/cost)
+  statsCmd, // Show session API usage and activity stats (/stats)
+  usage, // Show subscription plan usage and rate limits
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
@@ -744,7 +748,7 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
   [
     compact, // Shrink context — useful mid-session from a phone
     clear, // Wipe transcript
-    usage, // Show session cost (/cost alias)
+    usage, // Show subscription plan usage
     summary, // Summarize conversation
     releaseNotes, // Show changelog
     files, // List tracked files

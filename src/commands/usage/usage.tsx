@@ -2,14 +2,14 @@ import { Settings } from '../../components/Settings/Settings.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 
 /**
- * /usage — unified command replacing /cost and /stats (v2.1.118 upstream alignment).
+ * /usage — shows the subscription usage panel (Settings → Usage tab).
  *
- * Routing:
- *   - claude.ai subscriber → Settings panel → Usage tab (plan limits + overages)
- *   - API / non-subscriber  → Stats panel (session cost, token counts, activity)
+ * For subscription plan users, this displays rate limits, utilization,
+ * and ChatGPT Codex usage data. For non-subscriber / API users,
+ * the Usage component shows an appropriate message.
  *
- * Both /cost and /stats are registered as aliases of this command so that
- * existing muscle-memory still works.
+ * /cost and /stats are independent commands that show session-level
+ * API usage statistics (see commands/cost/ and commands/stats/).
  */
 export const call: LocalJSXCommandCall = async (onDone, context) => {
   return <Settings onClose={onDone} context={context} defaultTab="usage" />;
