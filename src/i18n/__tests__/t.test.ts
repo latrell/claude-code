@@ -61,6 +61,13 @@ describe('t', () => {
     mockSystemLocale = 'en'
     expect(t('Change the theme')).toBe('更改主题')
     expect(t('Add a new working directory')).toBe('添加新的工作目录')
+    expect(
+      t(
+        'Switch or check the subagent API provider (anthropic/openai/gemini/grok/unset)',
+      ),
+    ).toBe(
+      '切换或查看子智能体 API 提供商（anthropic/openai/gemini/grok/unset）',
+    )
   })
 
   test('translates common UI labels', () => {
@@ -70,6 +77,25 @@ describe('t', () => {
     expect(t('Cancel')).toBe('Cancel') // not in dict
     expect(t('Save to file')).toBe('保存到文件')
     expect(t('Unknown error')).toBe('未知错误')
+  })
+
+  test('translates CLI option descriptions', () => {
+    mockPreferredLanguage = 'zh'
+    mockSystemLocale = 'en'
+    expect(
+      t(
+        'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+      ),
+    ).toBe(
+      '此进程的 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset）。进程级生效，不持久化。',
+    )
+    expect(
+      t(
+        'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.',
+      ),
+    ).toBe(
+      '此进程的子智能体 API 提供商（anthropic/openai/gemini/grok/unset）。进程级生效，不持久化。',
+    )
   })
 
   test('translates startup/REPL first-screen strings', () => {

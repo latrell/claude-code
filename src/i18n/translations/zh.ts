@@ -1624,6 +1624,8 @@ const zh: Record<string, string> = {
     '切换穷鬼模式 \u2014 禁用 extract_memories 和 prompt_suggestion 以节省词元',
   'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)':
     '切换 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry）',
+  'Switch or check the subagent API provider (anthropic/openai/gemini/grok/unset)':
+    '切换或查看子智能体 API 提供商（anthropic/openai/gemini/grok/unset）',
   'Manage scheduled remote agent triggers (cloud cron). Requires Claude Pro/Max/Team subscription.':
     '管理定时远程智能体触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
   'Show Claude Code status including version, model, account, API connectivity, and tool statuses':
@@ -2209,6 +2211,12 @@ const zh: Record<string, string> = {
   "{'Press {key} again to exit'}": '再按 {key} 退出',
   '↑↓/Tab to switch · Enter on last field to save · Esc to go back':
     '↑↓/Tab 切换 · 在最后字段按 Enter 保存 · Esc 返回',
+
+  // ── CLI option descriptions ───────────────────────────────────
+  'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.':
+    '此进程的 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset）。进程级生效，不持久化。',
+  'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.':
+    '此进程的子智能体 API 提供商（anthropic/openai/gemini/grok/unset）。进程级生效，不持久化。',
 }
 
 export default zh

@@ -1452,11 +1452,13 @@ async function run(): Promise<CommanderCommand> {
     )
     .option(
       '--provider <provider>',
-      'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+      t(
+        'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+      ),
     )
     .option(
       '--subagent-provider <provider>',
-      'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.',
+      t('Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.'),
     )
     .option('--disable-slash-commands', 'Disable all skills', () => true)
     .option('--chrome', 'Enable Claude in Chrome integration')
