@@ -1,72 +1,64 @@
 import { describe, test, expect, mock } from 'bun:test'
 
-// Mock dependencies before importing the module under test
-let mockPreferredLanguage: string | undefined
-let mockSystemLocale: string | undefined
+// Control variables for mock injection
+let mockLanguage: string | undefined
+let mockSettingsThrows: boolean = false
 
-mock.module('src/utils/config.js', () => ({
-  getGlobalConfig: () => ({
-    preferredLanguage: mockPreferredLanguage,
-  }),
+// Mock settings.js with a controllable getInitialSettings.
+// All test files in this suite mock settings.js (never language.js) to avoid
+// cross-test mock pollution (see CLAUDE.md "跨文件 mock 污染").
+mock.module('src/utils/settings/settings.js', () => ({
+  getInitialSettings: () => {
+    if (mockSettingsThrows) throw new Error('Config accessed before allowed.')
+    return { language: mockLanguage }
+  },
 }))
 
-mock.module('src/utils/intl.js', () => ({
-  getSystemLocaleLanguage: () => mockSystemLocale,
-}))
-
+// Dynamically import language.js — the real module will see our mocked
+// getInitialSettings above.
 const { getResolvedLanguage, getLanguageDisplayName } = await import(
   'src/utils/language.js'
 )
 
 describe('getResolvedLanguage', () => {
-  test('returns en when config is explicitly en', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'zh'
-    expect(getResolvedLanguage()).toBe('en')
-  })
-
-  test('returns zh when config is explicitly zh', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+  test('returns zh when settings.language is 简体中文', () => {
+    mockLanguage = '简体中文'
     expect(getResolvedLanguage()).toBe('zh')
   })
 
-  test('falls back to system locale zh when config is auto', () => {
-    mockPreferredLanguage = 'auto'
-    mockSystemLocale = 'zh'
-    expect(getResolvedLanguage()).toBe('zh')
-  })
-
-  test('falls back to en when config is auto and system locale is not zh', () => {
-    mockPreferredLanguage = 'auto'
-    mockSystemLocale = 'en'
+  test('returns en when settings.language is English', () => {
+    mockLanguage = 'English'
     expect(getResolvedLanguage()).toBe('en')
   })
 
-  test('falls back to en when config is auto and system locale is undefined', () => {
-    mockPreferredLanguage = 'auto'
-    mockSystemLocale = undefined
+  test('returns en when settings.language is Japanese', () => {
+    mockLanguage = 'Japanese'
     expect(getResolvedLanguage()).toBe('en')
   })
 
-  test('falls back to auto behavior when config preferredLanguage is undefined', () => {
-    mockPreferredLanguage = undefined
-    mockSystemLocale = 'zh'
-    expect(getResolvedLanguage()).toBe('zh')
+  test('returns en when settings.language is undefined', () => {
+    mockLanguage = undefined
+    expect(getResolvedLanguage()).toBe('en')
   })
 
-  test('defaults to en when both config and locale are undefined', () => {
-    mockPreferredLanguage = undefined
-    mockSystemLocale = undefined
+  test('returns en when settings.language is an arbitrary custom string', () => {
+    mockLanguage = 'Français'
     expect(getResolvedLanguage()).toBe('en')
+  })
+
+  test('returns en when settings.language is an empty string', () => {
+    mockLanguage = ''
+    expect(getResolvedLanguage()).toBe('en')
+  })
+
+  test('falls back to en when settings read throws', () => {
+    mockSettingsThrows = true
+    expect(getResolvedLanguage()).toBe('en')
+    mockSettingsThrows = false
   })
 })
 
 describe('getLanguageDisplayName', () => {
-  test('returns Auto (follow system) for auto', () => {
-    expect(getLanguageDisplayName('auto')).toBe('Auto (follow system)')
-  })
-
   test('returns English for en', () => {
     expect(getLanguageDisplayName('en')).toBe('English')
   })

@@ -88,8 +88,10 @@ describe('/coordinator', () => {
     expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
       '1',
     )
-    // Message should indicate mode was enabled
-    expect(onDoneText).toContain('enabled')
+    // Message should indicate mode was enabled (either English or Chinese)
+    const isEnglish = onDoneText.includes('enabled')
+    const isChinese = onDoneText.includes('启用')
+    expect(isEnglish || isChinese).toBe(true)
     // System reminder should be present in metaMessages
     expect(
       metaMessages?.some(m => m.includes('Coordinator mode is now enabled')),
@@ -105,8 +107,10 @@ describe('/coordinator', () => {
     expect(
       process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
     ).toBeUndefined()
-    // Message should indicate mode was disabled
-    expect(onDoneText).toContain('disabled')
+    // Message should indicate mode was disabled (either English or Chinese)
+    const isEnglish = onDoneText.includes('disabled')
+    const isChinese = onDoneText.includes('禁用')
+    expect(isEnglish || isChinese).toBe(true)
     // System reminder should be present in metaMessages
     expect(
       metaMessages?.some(m => m.includes('Coordinator mode is now disabled')),

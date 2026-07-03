@@ -1831,25 +1831,10 @@ export function Config({
               setShowSubmenu(null);
               setTabsHidden(false);
 
-              // Determine preferredLanguage from the choice:
-              //   undefined  → English (preferredLanguage = 'en')
-              //   '简体中文' → Chinese (preferredLanguage = 'zh')
-              //   other      → custom (keep current preferredLanguage)
-              const pref: 'en' | 'zh' | undefined =
-                language === undefined ? 'en' : language === '简体中文' ? 'zh' : undefined;
-
-              // Save to user settings (response language)
+              // Save to user settings (response language / UI language)
               updateSettingsForSource('userSettings', {
                 language,
               });
-
-              // Save UI language preference
-              if (pref !== undefined) {
-                saveGlobalConfig(current => ({
-                  ...current,
-                  preferredLanguage: pref,
-                }));
-              }
 
               void logEvent('tengu_language_changed', {
                 language: (language ?? 'default') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

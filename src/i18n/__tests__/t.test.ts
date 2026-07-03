@@ -1,64 +1,50 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-// Control variables for mock injection
-let mockPreferredLanguage: string | undefined
-let mockSystemLocale: string | undefined
+// Control variable for mock injection — controlling settings.language
+let mockLanguage: string | undefined
 
-mock.module('src/utils/config.js', () => ({
-  getGlobalConfig: () => ({
-    preferredLanguage: mockPreferredLanguage,
-  }),
-}))
-
-mock.module('src/utils/intl.js', () => ({
-  getSystemLocaleLanguage: () => mockSystemLocale,
+mock.module('src/utils/settings/settings.js', () => ({
+  getInitialSettings: () => ({ language: mockLanguage }),
 }))
 
 const { t, tf } = await import('../t.js')
 
 describe('t', () => {
   test('returns key as-is when language is en', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'en'
+    mockLanguage = undefined
     expect(t('Change the theme')).toBe('Change the theme')
     expect(t('Shortcuts')).toBe('Shortcuts')
   })
 
   test('returns Chinese translation when language is zh', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('Change the theme')).toBe('更改主题')
     expect(t('Getting started')).toBe('入门指南')
   })
 
   test('returns Chinese translation when system locale is zh and config is auto', () => {
-    mockPreferredLanguage = 'auto'
-    mockSystemLocale = 'zh'
+    mockLanguage = '简体中文'
     expect(t('Theme')).toBe('主题')
   })
 
   test('returns key as-is when key is not in dictionary (zh fallback)', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('SomeUnknownString1234XYZ')).toBe('SomeUnknownString1234XYZ')
   })
 
   test('returns key as-is when key is empty string', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('')).toBe('')
   })
 
   test('returns English for known key when language is en', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'en'
+    mockLanguage = 'English'
     expect(t('Getting started')).toBe('Getting started')
     expect(t('Shortcuts')).toBe('Shortcuts')
   })
 
   test('translates command descriptions', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('Change the theme')).toBe('更改主题')
     expect(t('Add a new working directory')).toBe('添加新的工作目录')
     expect(
@@ -71,8 +57,7 @@ describe('t', () => {
   })
 
   test('translates common UI labels', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('Copy to clipboard')).toBe('复制到剪贴板')
     expect(t('Cancel')).toBe('Cancel') // not in dict
     expect(t('Save to file')).toBe('保存到文件')
@@ -80,8 +65,7 @@ describe('t', () => {
   })
 
   test('translates CLI option descriptions', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(
       t(
         'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
@@ -99,8 +83,7 @@ describe('t', () => {
   })
 
   test('translates startup/REPL first-screen strings', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('Welcome back!')).toBe('欢迎回来！')
     expect(t('Inherit from parent')).toBe('继承自父智能体')
     expect(t('Subagent:')).toBe('子智能体：')
@@ -117,8 +100,7 @@ describe('t', () => {
   })
 
   test('translates footer action strings', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(t('show tasks')).toBe('显示任务')
     expect(t('hide tasks')).toBe('隐藏任务')
     expect(t('show teammates')).toBe('显示队友')
@@ -132,8 +114,7 @@ describe('t', () => {
   })
 
   test('translates spinner tip strings', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(
       t('/mobile to use Claude Code from the Claude app on your phone'),
     ).toBe('/mobile 通过手机上的 Claude 应用使用 Claude Code')
@@ -149,8 +130,7 @@ describe('t', () => {
   })
 
   test('translates template strings', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(tf('Welcome back, {username}!', { username: 'Alice' })).toBe(
       '欢迎回来，Alice！',
     )
@@ -165,8 +145,7 @@ describe('t', () => {
   })
 
   test('returns key as-is in en mode for new keys', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'en'
+    mockLanguage = undefined
     expect(t('Subagent:')).toBe('Subagent:')
     expect(t('Welcome back!')).toBe('Welcome back!')
     expect(t('cycle')).toBe('cycle')
@@ -176,15 +155,13 @@ describe('t', () => {
 
 describe('tf', () => {
   test('translates template then substitutes placeholders', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf('Welcome back, {username}!', { username: '中文用户' })
     expect(result).toBe('欢迎回来，中文用户！')
   })
 
   test('handles multiple placeholders', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf(
       'Current model: {session} (session override from plan mode)\nBase model: {base}',
       { session: 'sonnet', base: 'opus' },
@@ -197,15 +174,13 @@ describe('tf', () => {
   })
 
   test('returns template as-is in en mode with substitutions', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'en'
+    mockLanguage = 'English'
     const result = tf('No sessions found.', {})
     expect(result).toBe('No sessions found.')
   })
 
   test('handles numeric and boolean values in placeholders', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf('Conversation exported to: {path}', {
       path: '/tmp/chat.txt',
     })
@@ -213,8 +188,7 @@ describe('tf', () => {
   })
 
   test('handles null and undefined values by keeping placeholder', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf('Welcome back, {username}!', {
       username: null,
     })
@@ -222,8 +196,7 @@ describe('tf', () => {
   })
 
   test('handles template not in dictionary with placeholders', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf('Hello {name}, welcome to {place}!', {
       name: 'Alice',
       place: 'Beijing',
@@ -232,14 +205,12 @@ describe('tf', () => {
   })
 
   test('does not mutate string with no placeholders', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     expect(tf('Change the theme', {})).toBe('更改主题')
   })
 
   test('preserves placeholder when value is undefined', () => {
-    mockPreferredLanguage = 'zh'
-    mockSystemLocale = 'en'
+    mockLanguage = '简体中文'
     const result = tf('Welcome back, {username}!', {
       username: undefined,
     })
@@ -247,8 +218,7 @@ describe('tf', () => {
   })
 
   test('substitutes boolean values as strings', () => {
-    mockPreferredLanguage = 'en'
-    mockSystemLocale = 'en'
+    mockLanguage = undefined
     const result = tf('Enabled: {status}', { status: true })
     expect(result).toBe('Enabled: true')
   })
