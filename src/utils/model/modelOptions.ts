@@ -36,6 +36,7 @@ import { getGlobalConfig } from '../config.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
+  getChatGPTCodexModelDisplayName,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
 import { t, tf } from '../../i18n/t.js'
@@ -484,18 +485,26 @@ function getChatGPTCodexModelOptions(): ModelOption[] {
       label: t('Default (recommended)'),
       description: tf(
         'Use the default ChatGPT Codex model (currently {model})',
-        { model: CHATGPT_CODEX_DEFAULT_MODEL },
+        {
+          model:
+            getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
+            CHATGPT_CODEX_DEFAULT_MODEL,
+        },
       ),
       descriptionForModel: tf(
         'Default ChatGPT Codex model (currently {model})',
-        { model: CHATGPT_CODEX_DEFAULT_MODEL },
+        {
+          model:
+            getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
+            CHATGPT_CODEX_DEFAULT_MODEL,
+        },
       ),
     },
     ...CHATGPT_CODEX_MODEL_OPTIONS.map(model => ({
       value: model.value,
       label: model.label,
       description: t(model.description),
-      descriptionForModel: `${t(model.description)} (${model.value})`,
+      descriptionForModel: `${t(model.description)} (${model.label})`,
     })),
   ]
 }
