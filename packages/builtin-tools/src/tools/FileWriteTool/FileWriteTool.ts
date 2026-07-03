@@ -167,8 +167,7 @@ export const FileWriteTool = buildTool({
     if (denyRule !== null) {
       return {
         result: false,
-        message:
-          'File is in a directory that is denied by your permission settings.',
+        message: '文件位于权限设置中拒绝访问的目录中。',
         errorCode: 1,
       }
     }
@@ -202,7 +201,7 @@ export const FileWriteTool = buildTool({
         return {
           result: false,
           message:
-            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+            '文件自读取以来已被修改（用户或 linter）。请在尝试写入前重新读取。',
           errorCode: 3,
         }
       }

@@ -21,77 +21,77 @@ const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
   {
     pattern:
       /(?:^|[|;&\n({])\s*(Remove-Item|rm|del|rd|rmdir|ri)\b[^|;&\n}]*-Recurse\b[^|;&\n}]*-Force\b/i,
-    warning: 'Note: may recursively force-remove files',
+    warning: '注意：可能递归强制删除文件',
   },
   {
     pattern:
       /(?:^|[|;&\n({])\s*(Remove-Item|rm|del|rd|rmdir|ri)\b[^|;&\n}]*-Force\b[^|;&\n}]*-Recurse\b/i,
-    warning: 'Note: may recursively force-remove files',
+    warning: '注意：可能递归强制删除文件',
   },
   {
     pattern:
       /(?:^|[|;&\n({])\s*(Remove-Item|rm|del|rd|rmdir|ri)\b[^|;&\n}]*-Recurse\b/i,
-    warning: 'Note: may recursively remove files',
+    warning: '注意：可能递归删除文件',
   },
   {
     pattern:
       /(?:^|[|;&\n({])\s*(Remove-Item|rm|del|rd|rmdir|ri)\b[^|;&\n}]*-Force\b/i,
-    warning: 'Note: may force-remove files',
+    warning: '注意：可能强制删除文件',
   },
 
   // Clear-Content on broad paths
   {
     pattern: /\bClear-Content\b[^|;&\n]*\*/i,
-    warning: 'Note: may clear content of multiple files',
+    warning: '注意：可能清除多个文件的内容',
   },
 
   // Format-Volume and Clear-Disk
   {
     pattern: /\bFormat-Volume\b/i,
-    warning: 'Note: may format a disk volume',
+    warning: '注意：可能格式化磁盘卷',
   },
   {
     pattern: /\bClear-Disk\b/i,
-    warning: 'Note: may clear a disk',
+    warning: '注意：可能清除磁盘',
   },
 
   // Git destructive operations (same as BashTool)
   {
     pattern: /\bgit\s+reset\s+--hard\b/i,
-    warning: 'Note: may discard uncommitted changes',
+    warning: '注意：可能丢弃未提交的更改',
   },
   {
     pattern: /\bgit\s+push\b[^|;&\n]*\s+(--force|--force-with-lease|-f)\b/i,
-    warning: 'Note: may overwrite remote history',
+    warning: '注意：可能覆盖远程历史',
   },
   {
     pattern:
       /\bgit\s+clean\b(?![^|;&\n]*(?:-[a-zA-Z]*n|--dry-run))[^|;&\n]*-[a-zA-Z]*f/i,
-    warning: 'Note: may permanently delete untracked files',
+    warning: '注意：可能永久删除未跟踪的文件',
   },
   {
     pattern: /\bgit\s+stash\s+(drop|clear)\b/i,
-    warning: 'Note: may permanently remove stashed changes',
+    warning: '注意：可能永久删除暂存的更改',
   },
 
   // Database operations
   {
     pattern: /\b(DROP|TRUNCATE)\s+(TABLE|DATABASE|SCHEMA)\b/i,
-    warning: 'Note: may drop or truncate database objects',
+    warning: '注意：可能删除或清空数据库对象',
   },
 
   // System operations
   {
     pattern: /\bStop-Computer\b/i,
-    warning: 'Note: will shut down the computer',
+    warning: '注意：将关闭计算机',
   },
   {
     pattern: /\bRestart-Computer\b/i,
-    warning: 'Note: will restart the computer',
+    warning: '注意：将重启计算机',
   },
   {
     pattern: /\bClear-RecycleBin\b/i,
-    warning: 'Note: permanently deletes recycled files',
+    warning: '注意：永久删除回收站文件',
   },
 ]
 

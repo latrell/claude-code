@@ -156,7 +156,7 @@ function createRetryProgressMessage(
     timestamp: new Date().toISOString(),
     message: {
       role: 'user',
-      content: `[${provider}] Retry ${attempt}/${maxRetries} in ${Math.round(delayMs / 1000)}s: ${msg}`,
+      content: `[${provider}] 第 ${attempt}/${maxRetries} 次重试，${Math.round(delayMs / 1000)}s 后重试：${msg}`,
     },
     retryInMs: delayMs,
     retryAttempt: attempt,
@@ -222,7 +222,7 @@ export async function* withCompatRetry<T>(
       const delayMs = getRetryDelay(attempt + 1)
 
       logForDebugging(
-        `[${options.provider}] Retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${maxRetries})`,
+        `[${options.provider}] 第 ${attempt + 1}/${maxRetries} 次重试，${Math.round(delayMs / 1000)}s 后重试`,
       )
 
       yield createRetryProgressMessage(

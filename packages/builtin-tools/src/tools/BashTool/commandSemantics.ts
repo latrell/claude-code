@@ -21,8 +21,7 @@ export type CommandSemantic = (
  */
 const DEFAULT_SEMANTIC: CommandSemantic = (exitCode, _stdout, _stderr) => ({
   isError: exitCode !== 0,
-  message:
-    exitCode !== 0 ? `Command failed with exit code ${exitCode}` : undefined,
+  message: exitCode !== 0 ? `命令失败，退出码 ${exitCode}` : undefined,
 })
 
 /**
@@ -34,7 +33,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     'grep',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message: exitCode === 1 ? 'No matches found' : undefined,
+      message: exitCode === 1 ? '未找到匹配项' : undefined,
     }),
   ],
 
@@ -43,7 +42,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     'rg',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message: exitCode === 1 ? 'No matches found' : undefined,
+      message: exitCode === 1 ? '未找到匹配项' : undefined,
     }),
   ],
 
@@ -52,8 +51,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     'find',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message:
-        exitCode === 1 ? 'Some directories were inaccessible' : undefined,
+      message: exitCode === 1 ? '某些目录无法访问' : undefined,
     }),
   ],
 
@@ -62,7 +60,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     'diff',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message: exitCode === 1 ? 'Files differ' : undefined,
+      message: exitCode === 1 ? '文件存在差异' : undefined,
     }),
   ],
 
@@ -71,7 +69,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     'test',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message: exitCode === 1 ? 'Condition is false' : undefined,
+      message: exitCode === 1 ? '条件为假' : undefined,
     }),
   ],
 
@@ -80,7 +78,7 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     '[',
     (exitCode, _stdout, _stderr) => ({
       isError: exitCode >= 2,
-      message: exitCode === 1 ? 'Condition is false' : undefined,
+      message: exitCode === 1 ? '条件为假' : undefined,
     }),
   ],
 

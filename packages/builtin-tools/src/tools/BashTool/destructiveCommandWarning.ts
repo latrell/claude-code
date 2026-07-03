@@ -13,78 +13,78 @@ const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
   // Git — data loss / hard to reverse
   {
     pattern: /\bgit\s+reset\s+--hard\b/,
-    warning: 'Note: may discard uncommitted changes',
+    warning: '注意：可能丢弃未提交的更改',
   },
   {
     pattern: /\bgit\s+push\b[^;&|\n]*[ \t](--force|--force-with-lease|-f)\b/,
-    warning: 'Note: may overwrite remote history',
+    warning: '注意：可能覆盖远程历史',
   },
   {
     pattern:
       /\bgit\s+clean\b(?![^;&|\n]*(?:-[a-zA-Z]*n|--dry-run))[^;&|\n]*-[a-zA-Z]*f/,
-    warning: 'Note: may permanently delete untracked files',
+    warning: '注意：可能永久删除未跟踪的文件',
   },
   {
     pattern: /\bgit\s+checkout\s+(--\s+)?\.[ \t]*($|[;&|\n])/,
-    warning: 'Note: may discard all working tree changes',
+    warning: '注意：可能丢弃所有工作树更改',
   },
   {
     pattern: /\bgit\s+restore\s+(--\s+)?\.[ \t]*($|[;&|\n])/,
-    warning: 'Note: may discard all working tree changes',
+    warning: '注意：可能丢弃所有工作树更改',
   },
   {
     pattern: /\bgit\s+stash[ \t]+(drop|clear)\b/,
-    warning: 'Note: may permanently remove stashed changes',
+    warning: '注意：可能永久删除暂存的更改',
   },
   {
     pattern:
       /\bgit\s+branch\s+(-D[ \t]|--delete\s+--force|--force\s+--delete)\b/,
-    warning: 'Note: may force-delete a branch',
+    warning: '注意：可能强制删除分支',
   },
 
   // Git — safety bypass
   {
     pattern: /\bgit\s+(commit|push|merge)\b[^;&|\n]*--no-verify\b/,
-    warning: 'Note: may skip safety hooks',
+    warning: '注意：可能跳过安全钩子',
   },
   {
     pattern: /\bgit\s+commit\b[^;&|\n]*--amend\b/,
-    warning: 'Note: may rewrite the last commit',
+    warning: '注意：可能重写最后一次提交',
   },
 
   // File deletion (dangerous paths already handled by checkDangerousRemovalPaths)
   {
     pattern:
       /(^|[;&|\n]\s*)rm\s+-[a-zA-Z]*[rR][a-zA-Z]*f|(^|[;&|\n]\s*)rm\s+-[a-zA-Z]*f[a-zA-Z]*[rR]/,
-    warning: 'Note: may recursively force-remove files',
+    warning: '注意：可能递归强制删除文件',
   },
   {
     pattern: /(^|[;&|\n]\s*)rm\s+-[a-zA-Z]*[rR]/,
-    warning: 'Note: may recursively remove files',
+    warning: '注意：可能递归删除文件',
   },
   {
     pattern: /(^|[;&|\n]\s*)rm\s+-[a-zA-Z]*f/,
-    warning: 'Note: may force-remove files',
+    warning: '注意：可能强制删除文件',
   },
 
   // Database
   {
     pattern: /\b(DROP|TRUNCATE)\s+(TABLE|DATABASE|SCHEMA)\b/i,
-    warning: 'Note: may drop or truncate database objects',
+    warning: '注意：可能删除或清空数据库对象',
   },
   {
     pattern: /\bDELETE\s+FROM\s+\w+[ \t]*(;|"|'|\n|$)/i,
-    warning: 'Note: may delete all rows from a database table',
+    warning: '注意：可能删除数据库表中的所有行',
   },
 
   // Infrastructure
   {
     pattern: /\bkubectl\s+delete\b/,
-    warning: 'Note: may delete Kubernetes resources',
+    warning: '注意：可能删除 Kubernetes 资源',
   },
   {
     pattern: /\bterraform\s+destroy\b/,
-    warning: 'Note: may destroy Terraform infrastructure',
+    warning: '注意：可能销毁 Terraform 基础设施',
   },
 ]
 

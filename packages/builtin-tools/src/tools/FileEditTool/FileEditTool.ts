@@ -145,8 +145,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message:
-          'No changes to make: old_string and new_string are exactly the same.',
+        message: '无需更改：old_string 和 new_string 完全相同。',
         errorCode: 1,
       }
     }
@@ -163,8 +162,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message:
-          'File is in a directory that is denied by your permission settings.',
+        message: '文件位于权限设置中拒绝访问的目录中。',
         errorCode: 2,
       }
     }
@@ -248,7 +246,7 @@ export const FileEditTool = buildTool({
         return {
           result: false,
           behavior: 'ask',
-          message: 'Cannot create new file - file already exists.',
+          message: '无法创建新文件 - 文件已存在。',
           errorCode: 3,
         }
       }
@@ -287,7 +285,7 @@ export const FileEditTool = buildTool({
             result: false,
             behavior: 'ask',
             message:
-              'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+              '文件自读取以来已被修改（用户或 linter）。请在尝试写入前重新读取。',
             errorCode: 7,
           }
         }
@@ -302,7 +300,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: `String to replace not found in file.\nString: ${old_string}`,
+        message: `在文件中未找到要替换的字符串。\n字符串：${old_string}`,
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
@@ -317,7 +315,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: `Found ${matches} matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance.\nString: ${old_string}`,
+        message: `找到 ${matches} 处匹配的要替换的字符串，但 replace_all 为 false。要替换所有匹配项，请将 replace_all 设为 true。要仅替换一处，请提供更多上下文以唯一标识该实例。\n字符串：${old_string}`,
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
           actualOldString,

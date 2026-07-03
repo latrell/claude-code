@@ -31,8 +31,7 @@ export type CommandSemantic = (
  */
 const DEFAULT_SEMANTIC: CommandSemantic = (exitCode, _stdout, _stderr) => ({
   isError: exitCode !== 0,
-  message:
-    exitCode !== 0 ? `Command failed with exit code ${exitCode}` : undefined,
+  message: exitCode !== 0 ? `命令失败，退出码 ${exitCode}` : undefined,
 })
 
 /**
@@ -40,7 +39,7 @@ const DEFAULT_SEMANTIC: CommandSemantic = (exitCode, _stdout, _stderr) => ({
  */
 const GREP_SEMANTIC: CommandSemantic = (exitCode, _stdout, _stderr) => ({
   isError: exitCode >= 2,
-  message: exitCode === 1 ? 'No matches found' : undefined,
+  message: exitCode === 1 ? '未找到匹配项' : undefined,
 })
 
 /**

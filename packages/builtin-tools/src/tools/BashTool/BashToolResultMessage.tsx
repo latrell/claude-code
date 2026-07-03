@@ -83,7 +83,7 @@ export default function BashToolResultMessage({
   if (isImage) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>[Image data detected and sent to Claude]</Text>
+        <Text dimColor>[检测到图像数据，已发送至 Claude]</Text>
       </MessageResponse>
     );
   }
@@ -102,10 +102,10 @@ export default function BashToolResultMessage({
           <Text dimColor>
             {backgroundTaskId ? (
               <>
-                Running in the background <KeyboardShortcutHint shortcut="↓" action="manage" parens />
+                后台运行中 <KeyboardShortcutHint shortcut="↓" action="管理" parens />
               </>
             ) : (
-              returnCodeInterpretation || (noOutputExpected ? 'Done' : '(No output)')
+              returnCodeInterpretation || (noOutputExpected ? '完成' : '(无输出)')
             )}
           </Text>
         </MessageResponse>

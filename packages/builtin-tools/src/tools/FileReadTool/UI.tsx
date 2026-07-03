@@ -84,19 +84,19 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
 
       return (
         <MessageResponse height={1}>
-          <Text>Read image ({formattedSize})</Text>
+          <Text>已读取图片（{formattedSize}）</Text>
         </MessageResponse>
       );
     }
     case 'notebook': {
       const { cells } = output.file;
       if (!cells || cells.length < 1) {
-        return <Text color="error">No cells found in notebook</Text>;
+        return <Text color="error">Notebook 中未找到单元格</Text>;
       }
       return (
         <MessageResponse height={1}>
           <Text>
-            Read <Text bold>{cells.length}</Text> cells
+            已读取 <Text bold>{cells.length}</Text> 个单元格
           </Text>
         </MessageResponse>
       );
@@ -107,7 +107,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
 
       return (
         <MessageResponse height={1}>
-          <Text>Read PDF ({formattedSize})</Text>
+          <Text>已读取 PDF（{formattedSize}）</Text>
         </MessageResponse>
       );
     }
@@ -115,7 +115,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
       return (
         <MessageResponse height={1}>
           <Text>
-            Read <Text bold>{output.file.count}</Text> {output.file.count === 1 ? 'page' : 'pages'} (
+            Read <Text bold>{output.file.count}</Text> {output.file.count === 1 ? '页' : '页'} (
             {formatFileSize(output.file.originalSize)})
           </Text>
         </MessageResponse>
@@ -127,7 +127,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
       return (
         <MessageResponse height={1}>
           <Text>
-            Read <Text bold>{numLines}</Text> {numLines === 1 ? 'line' : 'lines'}
+            Read <Text bold>{numLines}</Text> {numLines === 1 ? '行' : '行'}
           </Text>
         </MessageResponse>
       );
@@ -135,7 +135,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
     case 'file_unchanged': {
       return (
         <MessageResponse height={1}>
-          <Text dimColor>Unchanged since last read</Text>
+          <Text dimColor>自上次读取以来未更改</Text>
         </MessageResponse>
       );
     }
@@ -152,14 +152,14 @@ export function renderToolUseErrorMessage(
     if (result.includes(FILE_NOT_FOUND_CWD_NOTE)) {
       return (
         <MessageResponse>
-          <Text color="error">File not found</Text>
+          <Text color="error">文件未找到</Text>
         </MessageResponse>
       );
     }
     if (extractTag(result, 'tool_use_error')) {
       return (
         <MessageResponse>
-          <Text color="error">Error reading file</Text>
+          <Text color="error">读取文件时出错</Text>
         </MessageResponse>
       );
     }

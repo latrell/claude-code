@@ -6,36 +6,36 @@ describe('getDestructiveCommandWarning', () => {
     test('Remove-Item -Recurse -Force', () => {
       expect(
         getDestructiveCommandWarning('Remove-Item ./x -Recurse -Force'),
-      ).toBe('Note: may recursively force-remove files')
+      ).toBe('注意：可能递归强制删除文件')
     })
 
     test('rm -Recurse -Force alias', () => {
       expect(getDestructiveCommandWarning('rm ./x -Recurse -Force')).toBe(
-        'Note: may recursively force-remove files',
+        '注意：可能递归强制删除文件',
       )
     })
 
     test('ri -Recurse -Force alias', () => {
       expect(getDestructiveCommandWarning('ri ./x -Recurse -Force')).toBe(
-        'Note: may recursively force-remove files',
+        '注意：可能递归强制删除文件',
       )
     })
 
     test('Remove-Item -Force -Recurse (reversed order)', () => {
       expect(
         getDestructiveCommandWarning('Remove-Item ./x -Force -Recurse'),
-      ).toBe('Note: may recursively force-remove files')
+      ).toBe('注意：可能递归强制删除文件')
     })
 
     test('Remove-Item -Recurse only', () => {
       expect(getDestructiveCommandWarning('Remove-Item ./x -Recurse')).toBe(
-        'Note: may recursively remove files',
+        '注意：可能递归删除文件',
       )
     })
 
     test('Remove-Item -Force only', () => {
       expect(getDestructiveCommandWarning('Remove-Item ./x -Force')).toBe(
-        'Note: may force-remove files',
+        '注意：可能强制删除文件',
       )
     })
   })
@@ -53,13 +53,13 @@ describe('getDestructiveCommandWarning', () => {
   describe('disk operations', () => {
     test('Format-Volume is destructive', () => {
       expect(getDestructiveCommandWarning('Format-Volume -DriveLetter C')).toBe(
-        'Note: may format a disk volume',
+        '注意：可能格式化磁盘卷',
       )
     })
 
     test('Clear-Disk is destructive', () => {
       expect(getDestructiveCommandWarning('Clear-Disk -Number 0')).toBe(
-        'Note: may clear a disk',
+        '注意：可能清除磁盘',
       )
     })
   })
@@ -67,49 +67,49 @@ describe('getDestructiveCommandWarning', () => {
   describe('git destructive operations', () => {
     test('git reset --hard', () => {
       expect(getDestructiveCommandWarning('git reset --hard HEAD~1')).toBe(
-        'Note: may discard uncommitted changes',
+        '注意：可能丢弃未提交的更改',
       )
     })
 
     test('git push --force', () => {
       expect(getDestructiveCommandWarning('git push --force origin main')).toBe(
-        'Note: may overwrite remote history',
+        '注意：可能覆盖远程历史',
       )
     })
 
     test('git push -f', () => {
       expect(getDestructiveCommandWarning('git push -f')).toBe(
-        'Note: may overwrite remote history',
+        '注意：可能覆盖远程历史',
       )
     })
 
     test('git push --force-with-lease', () => {
       expect(getDestructiveCommandWarning('git push --force-with-lease')).toBe(
-        'Note: may overwrite remote history',
+        '注意：可能覆盖远程历史',
       )
     })
 
     test('git clean -fd', () => {
       expect(getDestructiveCommandWarning('git clean -fd')).toBe(
-        'Note: may permanently delete untracked files',
+        '注意：可能永久删除未跟踪的文件',
       )
     })
 
     test('git clean -fdx', () => {
       expect(getDestructiveCommandWarning('git clean -fdx')).toBe(
-        'Note: may permanently delete untracked files',
+        '注意：可能永久删除未跟踪的文件',
       )
     })
 
     test('git stash drop', () => {
       expect(getDestructiveCommandWarning('git stash drop')).toBe(
-        'Note: may permanently remove stashed changes',
+        '注意：可能永久删除暂存的更改',
       )
     })
 
     test('git stash clear', () => {
       expect(getDestructiveCommandWarning('git stash clear')).toBe(
-        'Note: may permanently remove stashed changes',
+        '注意：可能永久删除暂存的更改',
       )
     })
 
@@ -129,19 +129,19 @@ describe('getDestructiveCommandWarning', () => {
   describe('database operations', () => {
     test('DROP TABLE', () => {
       expect(getDestructiveCommandWarning('DROP TABLE users')).toBe(
-        'Note: may drop or truncate database objects',
+        '注意：可能删除或清空数据库对象',
       )
     })
 
     test('TRUNCATE TABLE', () => {
       expect(getDestructiveCommandWarning('TRUNCATE TABLE users')).toBe(
-        'Note: may drop or truncate database objects',
+        '注意：可能删除或清空数据库对象',
       )
     })
 
     test('DROP DATABASE', () => {
       expect(getDestructiveCommandWarning('DROP DATABASE production')).toBe(
-        'Note: may drop or truncate database objects',
+        '注意：可能删除或清空数据库对象',
       )
     })
   })
@@ -149,19 +149,19 @@ describe('getDestructiveCommandWarning', () => {
   describe('system operations', () => {
     test('Stop-Computer', () => {
       expect(getDestructiveCommandWarning('Stop-Computer')).toBe(
-        'Note: will shut down the computer',
+        '注意：将关闭计算机',
       )
     })
 
     test('Restart-Computer', () => {
       expect(getDestructiveCommandWarning('Restart-Computer')).toBe(
-        'Note: will restart the computer',
+        '注意：将重启计算机',
       )
     })
 
     test('Clear-RecycleBin', () => {
       expect(getDestructiveCommandWarning('Clear-RecycleBin')).toBe(
-        'Note: permanently deletes recycled files',
+        '注意：永久删除回收站文件',
       )
     })
   })
@@ -190,7 +190,7 @@ describe('getDestructiveCommandWarning', () => {
         getDestructiveCommandWarning(
           'Get-ChildItem | Remove-Item -Recurse -Force',
         ),
-      ).toBe('Note: may recursively force-remove files')
+      ).toBe('注意：可能递归强制删除文件')
     })
   })
 
@@ -198,12 +198,12 @@ describe('getDestructiveCommandWarning', () => {
     test('REMOVE-ITEM -RECURSE -FORCE', () => {
       expect(
         getDestructiveCommandWarning('REMOVE-ITEM ./x -RECURSE -FORCE'),
-      ).toBe('Note: may recursively force-remove files')
+      ).toBe('注意：可能递归强制删除文件')
     })
 
     test('format-volume mixed case', () => {
       expect(getDestructiveCommandWarning('Format-volume')).toBe(
-        'Note: may format a disk volume',
+        '注意：可能格式化磁盘卷',
       )
     })
   })

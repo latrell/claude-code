@@ -263,7 +263,7 @@ export const GrepTool = buildTool({
   ) {
     if (mode === 'content') {
       const limitInfo = formatLimitInfo(appliedLimit, appliedOffset)
-      const resultContent = content || 'No matches found'
+      const resultContent = content || '未找到匹配项'
       const finalContent = limitInfo
         ? `${resultContent}\n\n[Showing results with pagination = ${limitInfo}]`
         : resultContent
@@ -276,7 +276,7 @@ export const GrepTool = buildTool({
 
     if (mode === 'count') {
       const limitInfo = formatLimitInfo(appliedLimit, appliedOffset)
-      const rawContent = content || 'No matches found'
+      const rawContent = content || '未找到匹配项'
       const matches = numMatches ?? 0
       const files = numFiles ?? 0
       const summary = `\n\nFound ${matches} total ${matches === 1 ? 'occurrence' : 'occurrences'} across ${files} ${files === 1 ? 'file' : 'files'}.${limitInfo ? ` with pagination = ${limitInfo}` : ''}`

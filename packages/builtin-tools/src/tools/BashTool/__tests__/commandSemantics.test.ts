@@ -12,7 +12,7 @@ describe('interpretCommandResult', () => {
   test('non-zero exit is an error for unknown commands', () => {
     const result = interpretCommandResult('echo hello', 1, '', 'fail')
     expect(result.isError).toBe(true)
-    expect(result.message).toContain('exit code 1')
+    expect(result.message).toContain('退出码 1')
   })
 
   // ─── grep semantics ──────────────────────────────────────────────
@@ -24,7 +24,7 @@ describe('interpretCommandResult', () => {
   test('grep exit 1 means no matches (not error)', () => {
     const result = interpretCommandResult('grep pattern file', 1, '', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('No matches found')
+    expect(result.message).toBe('未找到匹配项')
   })
 
   test('grep exit 2 is an error', () => {
@@ -36,7 +36,7 @@ describe('interpretCommandResult', () => {
   test('diff exit 1 means files differ (not error)', () => {
     const result = interpretCommandResult('diff a.txt b.txt', 1, 'diff', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('Files differ')
+    expect(result.message).toBe('文件存在差异')
   })
 
   test('diff exit 2 is an error', () => {
@@ -48,7 +48,7 @@ describe('interpretCommandResult', () => {
   test('test exit 1 means condition false (not error)', () => {
     const result = interpretCommandResult('test -f nofile', 1, '', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('Condition is false')
+    expect(result.message).toBe('条件为假')
   })
 
   // ─── piped commands ──────────────────────────────────────────────
@@ -56,20 +56,20 @@ describe('interpretCommandResult', () => {
     // "cat file | grep pattern" → last command is "grep pattern"
     const result = interpretCommandResult('cat file | grep pattern', 1, '', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('No matches found')
+    expect(result.message).toBe('未找到匹配项')
   })
 
   // ─── rg (ripgrep) semantics ──────────────────────────────────────
   test('rg exit 1 means no matches (not error)', () => {
     const result = interpretCommandResult('rg pattern', 1, '', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('No matches found')
+    expect(result.message).toBe('未找到匹配项')
   })
 
   // ─── find semantics ──────────────────────────────────────────────
   test('find exit 1 is partial success', () => {
     const result = interpretCommandResult("find . -name '*.ts'", 1, '', '')
     expect(result.isError).toBe(false)
-    expect(result.message).toBe('Some directories were inaccessible')
+    expect(result.message).toBe('某些目录无法访问')
   })
 })

@@ -450,8 +450,7 @@ export const FileReadTool = buildTool({
     if (denyRule !== null) {
       return {
         result: false,
-        message:
-          'File is in a directory that is denied by your permission settings.',
+        message: '文件位于权限设置中拒绝访问的目录中。',
         errorCode: 1,
       }
     }

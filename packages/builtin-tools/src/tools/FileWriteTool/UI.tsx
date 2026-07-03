@@ -194,7 +194,7 @@ function WriteRejectionBody({
   if (data.type === 'error') {
     return (
       <MessageResponse>
-        <Text>(No changes)</Text>
+        <Text>（无更改）</Text>
       </MessageResponse>
     );
   }
@@ -245,7 +245,7 @@ export function renderToolUseErrorMessage(
   if (!verbose && typeof result === 'string' && extractTag(result, 'tool_use_error')) {
     return (
       <MessageResponse>
-        <Text color="error">Error writing file</Text>
+        <Text color="error">写入文件时出错</Text>
       </MessageResponse>
     );
   }

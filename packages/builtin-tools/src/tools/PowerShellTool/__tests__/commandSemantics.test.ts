@@ -11,7 +11,7 @@ describe('interpretCommandResult', () => {
     test('grep exit 1 (no match) is not error', () => {
       const result = interpretCommandResult('grep pattern file', 1, '', '')
       expect(result.isError).toBe(false)
-      expect(result.message).toBe('No matches found')
+      expect(result.message).toBe('未找到匹配项')
     })
 
     test('grep exit 2 is error', () => {
@@ -115,7 +115,7 @@ describe('interpretCommandResult', () => {
     test('unknown command exit 1 is error', () => {
       const result = interpretCommandResult('somecmd arg', 1, '', 'fail')
       expect(result.isError).toBe(true)
-      expect(result.message).toBe('Command failed with exit code 1')
+      expect(result.message).toBe('命令失败，退出码 1')
     })
 
     test('unknown command exit 127 is error', () => {

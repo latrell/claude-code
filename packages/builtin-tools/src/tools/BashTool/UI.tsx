@@ -56,7 +56,7 @@ export function BackgroundHint({ onBackground }: { onBackground?: () => void } =
   return (
     <Box paddingLeft={5}>
       <Text dimColor>
-        <KeyboardShortcutHint shortcut={shortcut} action="run in background" parens />
+        <KeyboardShortcutHint shortcut={shortcut} action="在后台运行" parens />
       </Text>
     </Box>
   );
@@ -129,7 +129,7 @@ export function renderToolUseProgressMessage(
   if (!lastProgress || !lastProgress.data) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>Running…</Text>
+        <Text dimColor>运行中…</Text>
       </MessageResponse>
     );
   }
@@ -153,7 +153,7 @@ export function renderToolUseProgressMessage(
 export function renderToolUseQueuedMessage(): React.ReactNode {
   return (
     <MessageResponse height={1}>
-      <Text dimColor>Waiting…</Text>
+      <Text dimColor>等待中…</Text>
     </MessageResponse>
   );
 }
