@@ -131,8 +131,8 @@ function RuleDetails({
           onChange={_ => (_ === 'yes' ? onDelete() : onCancel())}
           onCancel={onCancel}
           options={[
-            { label: 'Yes', value: 'yes' },
-            { label: 'No', value: 'no' },
+            { label: t('Yes'), value: 'yes' },
+            { label: t('No'), value: 'no' },
           ]}
         />
       </Box>

@@ -54,8 +54,8 @@ export function RemoveWorkspaceDirectory({
         onChange={handleSelect}
         onCancel={onCancel}
         options={[
-          { label: 'Yes', value: 'yes' },
-          { label: 'No', value: 'no' },
+          { label: t('Yes'), value: 'yes' },
+          { label: t('No'), value: 'no' },
         ]}
       />
     </Dialog>

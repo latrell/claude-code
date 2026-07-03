@@ -700,8 +700,8 @@ export function ExitPlanModePermissionRequest({
           <Box marginTop={1}>
             <Select
               options={[
-                { label: 'Yes', value: 'yes' as const },
-                { label: 'No', value: 'no' as const },
+                { label: t('Yes'), value: 'yes' as const },
+                { label: t('No'), value: 'no' as const },
               ]}
               onChange={handleEmptyPlanResponse}
               onCancel={() => {

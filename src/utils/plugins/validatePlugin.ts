@@ -141,7 +141,7 @@ export async function validatePluginManifest(
     const code = getErrnoCode(error)
     let message: string
     if (code === 'ENOENT') {
-      message = `File not found: ${absolutePath}`
+      message = `文件未找到：${absolutePath}`
     } else if (code === 'EISDIR') {
       message = `Path is not a file: ${absolutePath}`
     } else {
@@ -322,7 +322,7 @@ export async function validateMarketplaceManifest(
     const code = getErrnoCode(error)
     let message: string
     if (code === 'ENOENT') {
-      message = `File not found: ${absolutePath}`
+      message = `文件未找到：${absolutePath}`
     } else if (code === 'EISDIR') {
       message = `Path is not a file: ${absolutePath}`
     } else {
@@ -885,7 +885,7 @@ export async function validateManifest(
             errors: [
               {
                 path: 'file',
-                message: `File not found: ${absolutePath}`,
+                message: `文件未找到：${absolutePath}`,
               },
             ],
             warnings: [],

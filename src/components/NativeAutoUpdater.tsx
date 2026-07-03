@@ -6,6 +6,7 @@ import { logError } from 'src/utils/log.js';
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { getMaxVersion, getMaxVersionMessage } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
@@ -191,7 +192,7 @@ export function NativeAutoUpdater({
       {isUpdating ? (
         <Box>
           <Text dimColor wrap="truncate">
-            Checking for updates
+            {t('Checking for updates')}
           </Text>
         </Box>
       ) : (

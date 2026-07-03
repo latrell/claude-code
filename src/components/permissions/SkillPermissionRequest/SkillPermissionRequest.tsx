@@ -53,7 +53,7 @@ export function SkillPermissionRequest(props: PermissionRequestProps): React.Rea
   const options = useMemo((): PermissionPromptOption<SkillOptionValue>[] => {
     const baseOptions: PermissionPromptOption<SkillOptionValue>[] = [
       {
-        label: 'Yes',
+        label: t('Yes'),
         value: 'yes',
         feedbackConfig: { type: 'accept' },
       },
@@ -89,7 +89,7 @@ export function SkillPermissionRequest(props: PermissionRequestProps): React.Rea
     }
 
     const noOption: PermissionPromptOption<SkillOptionValue> = {
-      label: 'No',
+      label: t('No'),
       value: 'no',
       feedbackConfig: { type: 'reject' },
     };

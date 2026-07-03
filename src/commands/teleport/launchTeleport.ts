@@ -174,7 +174,7 @@ export const callTeleport: LocalJSXCommandCall = async (
     if (sessions.length === 0) {
       logEvent('tengu_teleport_null', {})
       onDone(
-        'No active sessions found on claude.ai/code.\nStart a new session at https://claude.ai/code',
+        '未在 claude.ai/code 上找到活跃会话。\n请在 https://claude.ai/code 开始新会话',
         { display: 'system' },
       )
       return null

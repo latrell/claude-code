@@ -2143,6 +2143,7 @@ const zh: Record<string, string> = {
     '已将 {type} MCP 服务器 {name} 添加到 {scope} 配置',
   'Avg/session': '平均/会话',
   'Checking for updates...': '正在检查更新…',
+  'Checking for updates': '正在检查更新',
   Connected: '已连接',
   'Connection error': '连接错误',
   'Current streak': '当前连续天数',
@@ -2182,6 +2183,7 @@ const zh: Record<string, string> = {
   'No model usage data available': '无模型使用数据',
   'No, exit': '否，退出',
   'No, go back': '否，返回',
+  'No (requires sudo)': '否（需要 sudo）',
   'Opening browser to sign in…': '正在打开浏览器进行登录…',
   'Removed MCP server {name} from {scope} config':
     '已将 MCP 服务器 {name} 从 {scope} 配置中移除',

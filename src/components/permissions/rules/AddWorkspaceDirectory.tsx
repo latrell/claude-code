@@ -12,7 +12,7 @@ import { ConfigurableShortcutHint } from '../../ConfigurableShortcutHint.js';
 import { Select } from '../../CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { PromptInputFooterSuggestions, type SuggestionItem } from '../../PromptInput/PromptInputFooterSuggestions.js';
-import { tf } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 
 type Props = {
   onAddDirectory: (path: string, remember?: boolean) => void;
@@ -37,7 +37,7 @@ const REMEMBER_DIRECTORY_OPTIONS: Array<{
   },
   {
     value: 'no',
-    label: 'No',
+    label: t('No'),
   },
 ];
 

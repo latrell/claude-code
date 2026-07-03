@@ -295,9 +295,7 @@ export async function updatePluginCli(
   scope: PluginScope,
 ): Promise<void> {
   try {
-    writeToStdout(
-      `Checking for updates for plugin "${plugin}" at ${scope} scope…\n`,
-    )
+    writeToStdout(`正在检查 ${scope} 作用域中插件 "${plugin}" 的更新…\n`)
 
     const result = await updatePluginOp(plugin, scope)
 

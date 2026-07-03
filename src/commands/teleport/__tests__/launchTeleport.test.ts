@@ -190,7 +190,7 @@ describe('callTeleport', () => {
     fetchSessionsMock.mockImplementationOnce(() => Promise.resolve([]))
     await callTeleport(onDone, makeContext(), '')
     const firstArg = onDone.mock.calls[0]?.[0] as string | undefined
-    expect(firstArg).toMatch(/No active sessions/)
+    expect(firstArg).toMatch(/claude\.ai\/code/)
     const events = getLoggedEvents()
     expect(events).toContain('tengu_teleport_null')
   })

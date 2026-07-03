@@ -120,7 +120,7 @@ export function FallbackPermissionRequest({
   const options = useMemo((): PermissionPromptOption<FallbackOptionValue>[] => {
     const result: PermissionPromptOption<FallbackOptionValue>[] = [
       {
-        label: 'Yes',
+        label: t('Yes'),
         value: 'yes',
         feedbackConfig: { type: 'accept' },
       },
@@ -139,7 +139,7 @@ export function FallbackPermissionRequest({
     }
 
     result.push({
-      label: 'No',
+      label: t('No'),
       value: 'no',
       feedbackConfig: { type: 'reject' },
     });

@@ -6,6 +6,7 @@ import { useAppState } from '../../state/AppState.js';
 import { isClaudeAISubscriber } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME, openInChrome } from '../../utils/claudeInChrome/common.js';
+import { t } from '../../i18n/t.js';
 import { isChromeExtensionInstalled } from '../../utils/claudeInChrome/setup.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
@@ -114,7 +115,7 @@ function ClaudeInChromeMenu({
       value: 'reconnect',
     },
     {
-      label: `Enabled by default: ${enabledByDefault ? 'Yes' : 'No'}`,
+      label: `默认启用：${enabledByDefault ? t('Yes') : t('No')}`,
       value: 'toggle-default',
     },
   );

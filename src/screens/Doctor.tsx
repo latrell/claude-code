@@ -308,7 +308,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         {diagnostic.hasUpdatePermissions !== null && (
           <Text>
             {tf('└ Update permissions: {status}', {
-              status: diagnostic.hasUpdatePermissions ? 'Yes' : 'No (requires sudo)',
+              status: diagnostic.hasUpdatePermissions ? t('Yes') : t('No (requires sudo)'),
             })}
           </Text>
         )}

@@ -8,6 +8,7 @@ import { PermissionDialog } from 'src/components/permissions/PermissionDialog.js
 import { PermissionPrompt, type PermissionPromptOption } from 'src/components/permissions/PermissionPrompt.js';
 import type { PermissionRequestProps } from 'src/components/permissions/PermissionRequest.js';
 import { PermissionRuleExplanation } from 'src/components/permissions/PermissionRuleExplanation.js';
+import { t } from '../i18n/t.js';
 
 type OptionValue = 'yes' | 'yes-dont-ask-again' | 'no';
 
@@ -35,7 +36,7 @@ export function WorkflowPermissionRequest({
   const options: PermissionPromptOption<OptionValue>[] = useMemo(() => {
     const opts: PermissionPromptOption<OptionValue>[] = [
       {
-        label: 'Yes',
+        label: t('Yes'),
         value: 'yes',
         feedbackConfig: { type: 'accept' as const },
       },
@@ -51,7 +52,7 @@ export function WorkflowPermissionRequest({
       });
     }
     opts.push({
-      label: 'No',
+      label: t('No'),
       value: 'no',
       feedbackConfig: { type: 'reject' as const },
     });
