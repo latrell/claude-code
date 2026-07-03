@@ -1,8 +1,16 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { useMemo } from 'react'
+import { feature } from 'bun:bundle'
 import type { Tools, ToolPermissionContext } from '../Tool.js'
 import { assembleToolPool } from '../tools.js'
 import { mergeAndFilterTools } from '../utils/toolPool.js'
+
+// Dead code elimination: conditional import for feature-gated module
+/* eslint-disable @typescript-eslint/no-require-imports */
+const coordinatorModeModule = feature('COORDINATOR_MODE')
+  ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
+  : null
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
  * React hook that assembles the full tool pool for the REPL.
@@ -23,6 +31,13 @@ export function useMergedTools(
 ): Tools {
   let replBridgeEnabled = false
   let replBridgeOutboundOnly = false
+  // React can't detect process.env changes — include isCoordinatorMode() in
+  // the useMemo dep list so that /coordinator toggle triggers a tool-list
+  // re-merge/re-filter.
+  const coordinatorEnabled =
+    feature('COORDINATOR_MODE') && coordinatorModeModule
+      ? coordinatorModeModule.isCoordinatorMode()
+      : false
   return useMemo(() => {
     // assembleToolPool is the shared function that both REPL and runAgent use.
     // It handles: getTools() + MCP deny-rule filtering + dedup + MCP CLI exclusion.
@@ -39,5 +54,6 @@ export function useMergedTools(
     toolPermissionContext,
     replBridgeEnabled,
     replBridgeOutboundOnly,
+    coordinatorEnabled,
   ])
 }

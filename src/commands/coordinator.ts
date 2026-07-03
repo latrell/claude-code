@@ -35,10 +35,16 @@ const coordinator = {
       ): Promise<React.ReactNode> {
         const mod =
           require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
+        const { saveMode } =
+          require('../utils/sessionStorage.js') as typeof import('../utils/sessionStorage.js')
+        const { clearAgentDefinitionsCache } =
+          require('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js')
 
         if (mod.isCoordinatorMode()) {
           // Disable: clear the env var
           delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+          saveMode('normal')
+          clearAgentDefinitionsCache()
           onDone(t('Coordinator mode disabled — back to normal mode'), {
             display: 'system',
             metaMessages: [
@@ -48,6 +54,8 @@ const coordinator = {
         } else {
           // Enable: set the env var
           process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+          saveMode('coordinator')
+          clearAgentDefinitionsCache()
           onDone(
             t(
               'Coordinator mode enabled — use Agent(subagent_type: "worker") to dispatch tasks',
