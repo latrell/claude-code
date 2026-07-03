@@ -8,11 +8,7 @@
  */
 const zh: Record<string, string> = {
   // ── /lang command ──────────────────────────────────────────────
-  'Set display language (en/zh/auto)': '设置显示语言 (en/zh/auto)',
-  'Invalid language "{lang}". Use: en, zh, or auto':
-    '无效语言 "{lang}"。请使用：en、zh 或 auto',
-  'Language set to {lang}': '语言已设置为 {lang}',
-  'Language: {lang}': '语言：{lang}',
+  // (Removed — language setting is now unified in /config's Language option)
 
   // ── Common command descriptions (user-visible in /help, typeahead) ──
   'Set the prompt bar color for this session': '设置当前会话的提示栏颜色',
@@ -223,8 +219,9 @@ const zh: Record<string, string> = {
   'Auto (match terminal)': '自动（匹配终端）',
 
   // ── LanguagePicker ─────────────────────────────────────────────
-  'Enter your preferred response and voice language:':
-    '输入您偏好的反馈和语音语言：',
+  'Select your preferred language:': '选择您偏好的语言：',
+  'Enter your preferred response language:': '输入您偏好的回复语言：',
+  'Custom input...': '自定义输入...',
   'Leave empty for default (English)': '留空则使用默认值（英语）',
 
   // ── ModelPicker ────────────────────────────────────────────────

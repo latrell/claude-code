@@ -26,7 +26,6 @@ import ide from './commands/ide/index.js'
 import init from './commands/init.js'
 import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
-import lang from './commands/lang/index.js'
 import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import subagentLogin from './commands/subagent-login/index.js'
@@ -335,7 +334,6 @@ const COMMANDS = memoize((): Command[] => [
   ide,
   init,
   keybindings,
-  lang,
   installGitHubApp,
   installSlackApp,
   mcp,

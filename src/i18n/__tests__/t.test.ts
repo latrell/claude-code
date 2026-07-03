@@ -178,8 +178,8 @@ describe('tf', () => {
   test('translates template then substitutes placeholders', () => {
     mockPreferredLanguage = 'zh'
     mockSystemLocale = 'en'
-    const result = tf('Language set to {lang}', { lang: '中文' })
-    expect(result).toBe('语言已设置为 中文')
+    const result = tf('Welcome back, {username}!', { username: '中文用户' })
+    expect(result).toBe('欢迎回来，中文用户！')
   })
 
   test('handles multiple placeholders', () => {
@@ -215,10 +215,10 @@ describe('tf', () => {
   test('handles null and undefined values by keeping placeholder', () => {
     mockPreferredLanguage = 'zh'
     mockSystemLocale = 'en'
-    const result = tf('Language set to {lang}', {
-      lang: null,
+    const result = tf('Welcome back, {username}!', {
+      username: null,
     })
-    expect(result).toBe('语言已设置为 {lang}')
+    expect(result).toBe('欢迎回来，{username}！')
   })
 
   test('handles template not in dictionary with placeholders', () => {
@@ -240,10 +240,10 @@ describe('tf', () => {
   test('preserves placeholder when value is undefined', () => {
     mockPreferredLanguage = 'zh'
     mockSystemLocale = 'en'
-    const result = tf('Language set to {lang}', {
-      lang: undefined,
+    const result = tf('Welcome back, {username}!', {
+      username: undefined,
     })
-    expect(result).toBe('语言已设置为 {lang}')
+    expect(result).toBe('欢迎回来，{username}！')
   })
 
   test('substitutes boolean values as strings', () => {
