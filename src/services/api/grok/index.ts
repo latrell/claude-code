@@ -38,6 +38,7 @@ import {
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
+import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -90,39 +91,44 @@ export async function* queryModelGrok(
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
 
-    const client = getGrokClient({
-      maxRetries: 0,
-      fetchOverride: options.fetchOverride as typeof fetch | undefined,
-      source: options.querySource,
-      envOverride: providerEnv,
-    })
-
     logForDebugging(
       `[Grok] Calling model=${grokModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}`,
     )
 
-    const stream = await client.chat.completions.create(
-      {
-        model: grokModel,
-        messages: openaiMessages,
-        ...(openaiTools.length > 0 && {
-          tools: openaiTools,
-          ...(openaiToolChoice && { tool_choice: openaiToolChoice }),
-        }),
-        stream: true,
-        stream_options: { include_usage: true },
-        ...(options.temperatureOverride !== undefined && {
-          temperature: options.temperatureOverride,
-        }),
-      } as ChatCompletionCreateParamsStreaming,
-      {
-        signal,
+    // Wrap the API call + stream adaptation in retry for transient errors
+    // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.)
+    const adaptedStream = yield* withCompatRetry(
+      async innerSignal => {
+        const client = getGrokClient({
+          maxRetries: 0,
+          fetchOverride: options.fetchOverride as typeof fetch | undefined,
+          source: options.querySource,
+          envOverride: providerEnv,
+        })
+        const stream = await client.chat.completions.create(
+          {
+            model: grokModel,
+            messages: openaiMessages,
+            ...(openaiTools.length > 0 && {
+              tools: openaiTools,
+              ...(openaiToolChoice && { tool_choice: openaiToolChoice }),
+            }),
+            stream: true,
+            stream_options: { include_usage: true },
+            ...(options.temperatureOverride !== undefined && {
+              temperature: options.temperatureOverride,
+            }),
+          } as ChatCompletionCreateParamsStreaming,
+          {
+            signal: innerSignal,
+          },
+        )
+        return adaptOpenAIStreamToAnthropic(
+          stream as AsyncIterable<ChatCompletionChunk>,
+          grokModel,
+        )
       },
-    )
-
-    const adaptedStream = adaptOpenAIStreamToAnthropic(
-      stream as AsyncIterable<ChatCompletionChunk>,
-      grokModel,
+      { signal, provider: 'grok' },
     )
 
     const contentBlocks: Record<number, Record<string, unknown>> = {}
@@ -266,10 +272,14 @@ export async function* queryModelGrok(
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[Grok] Error: ${errorMessage}`, { level: 'error' })
+    const msg = error instanceof Error ? error.message : String(error)
+    logForDebugging(`[Grok] Error: ${msg}`, { level: 'error' })
+
+    const prefix = isRetryableCompatError(error)
+      ? 'API Error (retries exhausted):'
+      : 'API Error:'
     yield createAssistantAPIErrorMessage({
-      content: `API Error: ${errorMessage}`,
+      content: `${prefix} ${msg}`,
       apiError: 'api_error',
       error: (error instanceof Error
         ? error

@@ -21,6 +21,7 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type { ThinkingConfig } from '../../../utils/thinking.js'
 import type { Options } from '../claude.js'
+import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {
   convertMessagesToLangfuse,
@@ -82,41 +83,47 @@ export async function* queryModelGemini(
     const geminiTools = anthropicToolsToGemini(standardTools)
     const toolChoice = anthropicToolChoiceToGemini(options.toolChoice)
 
-    const stream = streamGeminiGenerateContent({
-      model: geminiModel,
-      signal,
-      fetchOverride: options.fetchOverride as typeof fetch | undefined,
-      envOverride: providerEnv,
-      body: {
-        contents,
-        ...(systemInstruction && { systemInstruction }),
-        ...(geminiTools.length > 0 && { tools: geminiTools }),
-        ...(toolChoice && {
-          toolConfig: {
-            functionCallingConfig: toolChoice,
-          },
-        }),
-        generationConfig: {
-          ...(options.temperatureOverride !== undefined && {
-            temperature: options.temperatureOverride,
-          }),
-          ...(thinkingConfig.type !== 'disabled' && {
-            thinkingConfig: {
-              includeThoughts: true,
-              ...(thinkingConfig.type === 'enabled' && {
-                thinkingBudget: thinkingConfig.budgetTokens,
-              }),
-            },
-          }),
-        },
-      },
-    })
-
     logForDebugging(
       `[Gemini] Calling model=${geminiModel}, messages=${contents.length}, tools=${geminiTools.length}`,
     )
 
-    const adaptedStream = adaptGeminiStreamToAnthropic(stream, geminiModel)
+    // Wrap the API call + stream adaptation in retry for transient errors
+    // (fetch failed, ECONNRESET/EPIPE, 429, 5xx, stream terminated, etc.)
+    const adaptedStream = yield* withCompatRetry(
+      async innerSignal => {
+        const rawStream = streamGeminiGenerateContent({
+          model: geminiModel,
+          signal: innerSignal,
+          fetchOverride: options.fetchOverride as typeof fetch | undefined,
+          envOverride: providerEnv,
+          body: {
+            contents,
+            ...(systemInstruction && { systemInstruction }),
+            ...(geminiTools.length > 0 && { tools: geminiTools }),
+            ...(toolChoice && {
+              toolConfig: {
+                functionCallingConfig: toolChoice,
+              },
+            }),
+            generationConfig: {
+              ...(options.temperatureOverride !== undefined && {
+                temperature: options.temperatureOverride,
+              }),
+              ...(thinkingConfig.type !== 'disabled' && {
+                thinkingConfig: {
+                  includeThoughts: true,
+                  ...(thinkingConfig.type === 'enabled' && {
+                    thinkingBudget: thinkingConfig.budgetTokens,
+                  }),
+                },
+              }),
+            },
+          },
+        })
+        return adaptGeminiStreamToAnthropic(rawStream, geminiModel)
+      },
+      { signal, provider: 'gemini' },
+    )
     const contentBlocks: Record<number, Record<string, unknown>> = {}
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null
@@ -226,10 +233,14 @@ export async function* queryModelGemini(
           : undefined,
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[Gemini] Error: ${errorMessage}`, { level: 'error' })
+    const msg = error instanceof Error ? error.message : String(error)
+    logForDebugging(`[Gemini] Error: ${msg}`, { level: 'error' })
+
+    const prefix = isRetryableCompatError(error)
+      ? 'API Error (retries exhausted):'
+      : 'API Error:'
     yield createAssistantAPIErrorMessage({
-      content: `API Error: ${errorMessage}`,
+      content: `${prefix} ${msg}`,
       apiError: 'api_error',
       error: (error instanceof Error
         ? error

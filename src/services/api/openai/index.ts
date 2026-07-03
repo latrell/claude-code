@@ -49,6 +49,7 @@ import {
   convertOutputToLangfuse,
   convertToolsToLangfuse,
 } from '../../../services/langfuse/convert.js'
+import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -354,26 +355,30 @@ export async function* queryModelOpenAI(
       `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}`,
     )
 
-    // 11. Call OpenAI API with streaming. ChatGPT subscription auth uses the
-    // Codex Responses backend; API-key/OpenAI-compatible auth keeps the
-    // existing Chat Completions adapter.
-    const adaptedStream = isChatGPTAuthEnabled(providerEnv)
-      ? adaptResponsesStreamToAnthropic(
-          await createChatGPTResponsesStream({
-            request: buildResponsesRequest({
-              model: openaiModel,
-              messages: openaiMessages,
-              tools: openaiTools,
-              toolChoice: openaiToolChoice,
-              reasoningEffort,
+    // 11. Call OpenAI API with streaming, wrapped in retry for transient errors
+    // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.).
+    // ChatGPT subscription auth uses the Codex Responses backend;
+    // API-key/OpenAI-compatible auth keeps the existing Chat Completions adapter.
+    const adaptedStream = yield* withCompatRetry(
+      async innerSignal => {
+        if (isChatGPTAuthEnabled(providerEnv)) {
+          return adaptResponsesStreamToAnthropic(
+            await createChatGPTResponsesStream({
+              request: buildResponsesRequest({
+                model: openaiModel,
+                messages: openaiMessages,
+                tools: openaiTools,
+                toolChoice: openaiToolChoice,
+                reasoningEffort,
+              }),
+              signal: innerSignal,
+              fetchOverride: options.fetchOverride as unknown as typeof fetch,
+              credentialScope: options.providerRuntimeConfig?.credentialScope,
             }),
-            signal,
-            fetchOverride: options.fetchOverride as unknown as typeof fetch,
-            credentialScope: options.providerRuntimeConfig?.credentialScope,
-          }),
-          openaiModel,
-        )
-      : adaptOpenAIStreamToAnthropic(
+            openaiModel,
+          )
+        }
+        return adaptOpenAIStreamToAnthropic(
           await getOpenAIClient({
             maxRetries: 0,
             fetchOverride: options.fetchOverride as unknown as typeof fetch,
@@ -389,10 +394,13 @@ export async function* queryModelOpenAI(
               maxTokens,
               temperatureOverride: options.temperatureOverride,
             }),
-            { signal },
+            { signal: innerSignal },
           ),
           openaiModel,
         )
+      },
+      { signal, provider: 'openai' },
+    )
 
     // 12. Convert OpenAI stream to Anthropic events, then process into
     //     AssistantMessage + StreamEvent (matching the Anthropic path behavior)
@@ -554,10 +562,15 @@ export async function* queryModelOpenAI(
       }
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[OpenAI] Error: ${errorMessage}`, { level: 'error' })
+    const msg = error instanceof Error ? error.message : String(error)
+    logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
+
+    // Distinguish "retries exhausted" from truly unretryable errors
+    const prefix = isRetryableCompatError(error)
+      ? 'API Error (retries exhausted):'
+      : 'API Error:'
     yield createAssistantAPIErrorMessage({
-      content: `API Error: ${errorMessage}`,
+      content: `${prefix} ${msg}`,
       apiError: 'api_error',
       error: (error instanceof Error
         ? error
