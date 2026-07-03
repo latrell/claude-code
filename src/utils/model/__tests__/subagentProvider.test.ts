@@ -3,6 +3,7 @@ import { getAgentModel } from '../agent.js'
 import {
   getSubagentProviderFromEnv,
   getSubagentProviderRuntimeConfig,
+  setSubagentProviderCliOverride,
   SUBAGENT_CREDENTIAL_SCOPE,
 } from '../subagentProvider.js'
 
@@ -140,5 +141,80 @@ describe('subagent provider config', () => {
         process.env.CLAUDE_CODE_SUBAGENT_MODEL = originalSubagentModel
       }
     }
+  })
+})
+
+describe('CLI --subagent-provider override', () => {
+  test('overrides settings.subagentProvider', () => {
+    setSubagentProviderCliOverride('openai')
+    try {
+      const config = getSubagentProviderRuntimeConfig(
+        {
+          subagentProvider: { modelType: 'gemini' },
+        },
+        {},
+      )
+      expect(config).toEqual({
+        provider: 'openai',
+        modelType: 'openai',
+        credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+      })
+    } finally {
+      setSubagentProviderCliOverride(undefined)
+    }
+  })
+
+  test('overrides SUBAGENT_ env variables', () => {
+    setSubagentProviderCliOverride('grok')
+    try {
+      const config = getSubagentProviderRuntimeConfig(
+        {},
+        {
+          CLAUDE_CODE_SUBAGENT_PROVIDER: 'openai',
+          SUBAGENT_OPENAI_API_KEY: 'env-key',
+        },
+      )
+      expect(config).toEqual({
+        provider: 'grok',
+        modelType: 'grok',
+        credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+      })
+    } finally {
+      setSubagentProviderCliOverride(undefined)
+    }
+  })
+
+  test('unset forces inherit (returns undefined runtime config)', () => {
+    setSubagentProviderCliOverride('unset')
+    try {
+      const config = getSubagentProviderRuntimeConfig(
+        {
+          subagentProvider: { modelType: 'openai' },
+        },
+        {
+          CLAUDE_CODE_SUBAGENT_PROVIDER: 'gemini',
+          SUBAGENT_GEMINI_API_KEY: 'env-key',
+        },
+      )
+      expect(config).toBeUndefined()
+    } finally {
+      setSubagentProviderCliOverride(undefined)
+    }
+  })
+
+  test('undefined clears the override', () => {
+    setSubagentProviderCliOverride('openai')
+    setSubagentProviderCliOverride(undefined)
+    const config = getSubagentProviderRuntimeConfig(
+      {
+        subagentProvider: { modelType: 'gemini' },
+      },
+      {},
+    )
+    expect(config).toEqual({
+      provider: 'gemini',
+      modelType: 'gemini',
+      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    })
   })
 })

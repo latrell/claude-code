@@ -106,6 +106,8 @@ import { jsonParse, writeFileSync_DEPRECATED } from './utils/slowOperations.js';
 import { computeInitialTeamContext } from './utils/swarm/reconnection.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
+import { setProviderCliOverride } from './utils/model/providers.js';
+import { setSubagentProviderCliOverride } from './utils/model/subagentProvider.js';
 
 // Lazy require to avoid circular dependency: teammate.ts -> AppState.tsx -> ... -> main.tsx
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1448,6 +1450,14 @@ async function run(): Promise<CommanderCommand> {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[],
     )
+    .option(
+      '--provider <provider>',
+      'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+    )
+    .option(
+      '--subagent-provider <provider>',
+      'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.',
+    )
     .option('--disable-slash-commands', 'Disable all skills', () => true)
     .option('--chrome', 'Enable Claude in Chrome integration')
     .option('--no-chrome', 'Disable Claude in Chrome integration')
@@ -1555,6 +1565,45 @@ async function run(): Promise<CommanderCommand> {
         includeHookEvents,
         includePartialMessages,
       } = options;
+
+      // Apply CLI --provider override (process-scoped, not persisted)
+      const cliProvider = (options as Record<string, unknown>)['provider'] as string | undefined;
+      if (cliProvider) {
+        const validMainProviders = ['anthropic', 'openai', 'gemini', 'grok', 'bedrock', 'vertex', 'foundry', 'unset'];
+        if (!validMainProviders.includes(cliProvider)) {
+          console.warn(
+            chalk.yellow(`Invalid --provider value: "${cliProvider}". Valid: ${validMainProviders.join(', ')}`),
+          );
+        } else {
+          // bedrock/vertex/foundry are env-only; set the env var
+          if (['bedrock', 'vertex', 'foundry'].includes(cliProvider)) {
+            const envVar =
+              cliProvider === 'bedrock'
+                ? 'CLAUDE_CODE_USE_BEDROCK'
+                : cliProvider === 'vertex'
+                  ? 'CLAUDE_CODE_USE_VERTEX'
+                  : 'CLAUDE_CODE_USE_FOUNDRY';
+            process.env[envVar] = '1';
+          } else {
+            setProviderCliOverride(cliProvider as Parameters<typeof setProviderCliOverride>[0]);
+          }
+        }
+      }
+
+      // Apply CLI --subagent-provider override (process-scoped, not persisted)
+      const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
+      if (cliSubagentProvider) {
+        const validSubagentProviders = ['anthropic', 'openai', 'gemini', 'grok', 'unset'];
+        if (!validSubagentProviders.includes(cliSubagentProvider)) {
+          console.warn(
+            chalk.yellow(
+              `Invalid --subagent-provider value: "${cliSubagentProvider}". Valid: ${validSubagentProviders.join(', ')}`,
+            ),
+          );
+        } else {
+          setSubagentProviderCliOverride(cliSubagentProvider as Parameters<typeof setSubagentProviderCliOverride>[0]);
+        }
+      }
 
       if (options.prefill) {
         seedEarlyInput(options.prefill);

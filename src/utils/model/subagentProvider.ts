@@ -11,6 +11,38 @@ export type ProviderRuntimeConfig = {
   credentialScope?: string
 }
 
+// Process-level CLI override for --subagent-provider (not persisted to settings)
+let _subagentProviderOverride: ProviderLoginConfig | undefined
+let _subagentClearOverride = false
+
+/**
+ * Apply a CLI --subagent-provider override. The value is process-scoped and
+ * takes precedence over settings.json subagentProvider and environment
+ * variables. Does NOT persist to disk.
+ *
+ * Pass 'unset' to force subagents to inherit the main provider (skip any
+ * staged subagentProvider in settings or env).
+ */
+export function setSubagentProviderCliOverride(
+  value: 'anthropic' | 'openai' | 'gemini' | 'grok' | 'unset' | undefined,
+): void {
+  if (value === undefined) {
+    _subagentProviderOverride = undefined
+    _subagentClearOverride = false
+    return
+  }
+  if (value === 'unset') {
+    _subagentProviderOverride = undefined
+    _subagentClearOverride = true
+    return
+  }
+  _subagentProviderOverride = {
+    modelType: value,
+    credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+  }
+  _subagentClearOverride = false
+}
+
 export function providerFromModelType(
   modelType: ProviderLoginConfig['modelType'] | undefined,
 ): APIProvider | undefined {
@@ -106,6 +138,13 @@ export function getSubagentProviderConfig(
   settings: Pick<SettingsJson, 'subagentProvider'> = getInitialSettings(),
   envSource: Record<string, string | undefined> = process.env,
 ): ProviderLoginConfig | undefined {
+  // 1. CLI --subagent-provider override (highest priority, process-scoped)
+  if (_subagentProviderOverride !== undefined) return _subagentProviderOverride
+
+  // 2. If --subagent-provider unset was passed, force inherit main provider
+  if (_subagentClearOverride) return undefined
+
+  // 3. Environment variables (SUBAGENT_*)
   return getSubagentProviderFromEnv(envSource) ?? settings.subagentProvider
 }
 

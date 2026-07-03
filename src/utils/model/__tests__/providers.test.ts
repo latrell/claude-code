@@ -182,6 +182,71 @@ describe('getAPIProvider', () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = ''
     expect(getAPIProviderTest({})).toBe('firstParty')
   })
+
+  test('CLI --provider override takes precedence over settings.modelType', () => {
+    // Simulates: settings.modelType = 'gemini', but CLI --provider openai
+    // The inline logic does NOT model the CLI override, so test the real module.
+    // We import the real getAPIProvider with explicit args to bypass settings chain.
+    const { getAPIProvider, setProviderCliOverride } =
+      require('../providers.js') as typeof import('../providers.js')
+    setProviderCliOverride('openai')
+    try {
+      const result = getAPIProvider({ modelType: 'gemini' }, {})
+      expect(result).toBe('openai')
+    } finally {
+      setProviderCliOverride(undefined)
+    }
+  })
+
+  test('CLI --provider unset ignores settings.modelType, falls through to env', () => {
+    const { getAPIProvider, setProviderCliOverride } =
+      require('../providers.js') as typeof import('../providers.js')
+    setProviderCliOverride('unset')
+    try {
+      // With modelType='gemini' but CLI unset, and no env vars → default to firstParty
+      const result = getAPIProvider({ modelType: 'gemini' }, {})
+      expect(result).toBe('firstParty')
+    } finally {
+      setProviderCliOverride(undefined)
+    }
+  })
+
+  test('CLI --provider unset still allows env vars to take effect', () => {
+    const { getAPIProvider, setProviderCliOverride } =
+      require('../providers.js') as typeof import('../providers.js')
+    setProviderCliOverride('unset')
+    try {
+      const result = getAPIProvider(
+        { modelType: 'gemini' },
+        { CLAUDE_CODE_USE_OPENAI: '1' },
+      )
+      expect(result).toBe('openai')
+    } finally {
+      setProviderCliOverride(undefined)
+    }
+  })
+
+  test('setProviderCliOverride with undefined clears the override', () => {
+    const { getAPIProvider, setProviderCliOverride } =
+      require('../providers.js') as typeof import('../providers.js')
+    setProviderCliOverride('openai')
+    setProviderCliOverride(undefined)
+    // Back to default: settings.modelType controls
+    const result = getAPIProvider({ modelType: 'gemini' }, {})
+    expect(result).toBe('gemini')
+  })
+
+  test('CLI --provider bedrock sets provider correctly', () => {
+    const { getAPIProvider, setProviderCliOverride } =
+      require('../providers.js') as typeof import('../providers.js')
+    setProviderCliOverride('bedrock')
+    try {
+      const result = getAPIProvider({}, {})
+      expect(result).toBe('bedrock')
+    } finally {
+      setProviderCliOverride(undefined)
+    }
+  })
 })
 
 describe('isFirstPartyAnthropicBaseUrl', () => {
