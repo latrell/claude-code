@@ -1,5 +1,5 @@
 import figures from 'figures';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import TextInput from './TextInput.js';
@@ -17,15 +17,21 @@ type Option = {
   value: string | undefined;
 };
 
-const OPTIONS: Option[] = [
-  { label: 'English', value: undefined },
-  { label: '简体中文', value: '简体中文' },
-  { label: t('Custom input...'), value: '__custom__' },
-];
-
 const CUSTOM_SENTINEL = '__custom__';
 
+/**
+ * Compute option labels at render time so they reflect the current language.
+ */
+function getOptions(): Option[] {
+  return [
+    { label: 'English', value: undefined },
+    { label: '简体中文', value: '简体中文' },
+    { label: t('Custom input...'), value: CUSTOM_SENTINEL },
+  ];
+}
+
 export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props): React.ReactNode {
+  const options = useMemo(() => getOptions(), []);
   const [phase, setPhase] = useState<'select' | 'custom'>('select');
   const [selectedIndex, setSelectedIndex] = useState(() => {
     // Pre-select the option matching the current language
@@ -60,7 +66,7 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
     'confirm:previous',
     () => {
       if (phase === 'select') {
-        setSelectedIndex(i => (i - 1 + OPTIONS.length) % OPTIONS.length);
+        setSelectedIndex(i => (i - 1 + options.length) % options.length);
       }
     },
     { context: 'Settings' },
@@ -70,7 +76,7 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
     'confirm:next',
     () => {
       if (phase === 'select') {
-        setSelectedIndex(i => (i + 1) % OPTIONS.length);
+        setSelectedIndex(i => (i + 1) % options.length);
       }
     },
     { context: 'Settings' },
@@ -81,7 +87,7 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
     'confirm:yes',
     () => {
       if (phase === 'select') {
-        const selected = OPTIONS[selectedIndex];
+        const selected = options[selectedIndex];
         if (selected === undefined) return;
         if (selected.value === CUSTOM_SENTINEL) {
           setPhase('custom');
@@ -109,7 +115,7 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
       <Box flexDirection="column" gap={1}>
         <T>Select your preferred language:</T>
         <Box flexDirection="column" gap={0}>
-          {OPTIONS.map((option, index) => {
+          {options.map((option, index) => {
             const isSelected = index === selectedIndex;
             return (
               <Box key={option.label} flexDirection="row" gap={1}>
