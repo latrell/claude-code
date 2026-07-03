@@ -205,3 +205,40 @@ describe('codexBucketToLimitBar', () => {
     expect(result.title).toBe('Primary rate limit (300min)')
   })
 })
+
+describe('bucketToLimitBar with Codex-style buckets', () => {
+  test('handles session-kind bucket', () => {
+    const bucket: ProviderUsageBucket = {
+      kind: 'session',
+      label: 'Primary rate limit',
+      utilization: 0.42,
+      resetsAt: 1800000000,
+    }
+    const result = bucketToLimitBar(bucket)
+    expect(result.label).toBe('Primary rate limit')
+    expect(result.limit.utilization).toBe(42)
+  })
+
+  test('handles weekly-kind bucket', () => {
+    const bucket: ProviderUsageBucket = {
+      kind: 'weekly',
+      label: 'Daily limit',
+      utilization: 0.75,
+    }
+    const result = bucketToLimitBar(bucket)
+    expect(result.label).toBe('Daily limit')
+    expect(result.limit.utilization).toBe(75)
+  })
+
+  test('handles custom-kind bucket', () => {
+    const bucket: ProviderUsageBucket = {
+      kind: 'custom',
+      label: 'gpt-4.1',
+      utilization: 0.3,
+      resetsAt: 1800100000,
+    }
+    const result = bucketToLimitBar(bucket)
+    expect(result.label).toBe('gpt-4.1')
+    expect(result.limit.utilization).toBe(30)
+  })
+})

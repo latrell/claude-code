@@ -484,12 +484,14 @@ export async function createChatGPTResponsesStream(params: {
     )
   }
   // Feed response headers into the provider usage store so the status-line
-  // can display rate-limit buckets for compatible providers.
+  // can display rate-limit buckets for compatible providers. Only update when
+  // headers carry usable data – the ChatGPT Codex backend does not return
+  // x-ratelimit-* headers; usage data comes from fetchCodexUsage instead.
   try {
-    updateProviderBuckets(
-      'openai',
-      openaiAdapter.parseHeaders(response.headers),
-    )
+    const buckets = openaiAdapter.parseHeaders(response.headers)
+    if (buckets.length > 0) {
+      updateProviderBuckets('openai', buckets)
+    }
   } catch {
     // Ignore — usage tracking must not break the stream.
   }

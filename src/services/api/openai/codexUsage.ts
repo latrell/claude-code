@@ -4,6 +4,11 @@ import { homedir } from 'os'
 import { setChatGPTSubscriptionPlan } from 'src/bootstrap/state.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { getValidChatGPTAuth, isChatGPTAuthEnabled } from './chatgptAuth.js'
+import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
+import type {
+  BucketKind,
+  ProviderUsageBucket,
+} from 'src/services/providerUsage/types.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -470,6 +475,48 @@ async function safeFetchJSON(
 }
 
 // ---------------------------------------------------------------------------
+// Codex → ProviderUsageBucket mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Map ChatGPT Codex rate-limit buckets into the unified ProviderUsageBucket
+ * shape so the status-line can display them alongside Anthropic/OpenAI data.
+ *
+ * Kind heuristic:
+ * - windowMinutes <= 360 (6 h) → `session`
+ * - windowMinutes >= 1440 (1 d) → `weekly`
+ * - otherwise → `custom`
+ *
+ * @param rateLimits Raw Codex rate-limit buckets from the /wham/usage API.
+ * @returns ProviderUsageBucket[] suitable for the provider usage store.
+ */
+export function mapCodexLimitsToProviderBuckets(
+  rateLimits: CodexRateLimitBucket[],
+): ProviderUsageBucket[] {
+  const buckets: ProviderUsageBucket[] = []
+  for (const rl of rateLimits) {
+    const utilization = rl.limit > 0 ? rl.used / rl.limit : 0
+    let kind: BucketKind = 'custom'
+    if (rl.windowMinutes !== undefined && rl.windowMinutes > 0) {
+      if (rl.windowMinutes <= 360) {
+        kind = 'session'
+      } else if (rl.windowMinutes >= 1440) {
+        kind = 'weekly'
+      }
+    }
+    buckets.push({
+      kind,
+      // Prefer the un-concatenated labelKey so the display is cleaner;
+      // if absent, use the pre-formatted label from the API response.
+      label: rl.labelKey ?? rl.label,
+      utilization,
+      ...(rl.resetsAtSeconds > 0 ? { resetsAt: rl.resetsAtSeconds } : {}),
+    })
+  }
+  return buckets
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -479,6 +526,10 @@ async function safeFetchJSON(
  * Calls GET /backend-api/wham/usage and GET /backend-api/wham/profiles/me.
  * Requires OPENAI_AUTH_MODE=chatgpt and a valid ChatGPT access token.
  * Returns null on any failure so that /usage keeps its existing behaviour.
+ *
+ * Side effect: on success, feeds rate-limit buckets into the provider usage
+ * store so the status-line can display them without relying on
+ * x-ratelimit-* response headers (which the Codex backend does not emit).
  */
 export async function fetchCodexUsage(
   signal?: AbortSignal,
@@ -514,6 +565,13 @@ export async function fetchCodexUsage(
   // a different account are not accidentally served from stale cache.
   if (accountId) {
     writePlanCacheSync(accountId, account?.subscriptionPlan)
+  }
+
+  // Feed rate-limit buckets into the provider-usage store for the status-line.
+  // Only update when we have data; do NOT clear existing header-derived buckets
+  // when the Codex API returns no rate-limit data.
+  if (rateLimits && rateLimits.length > 0) {
+    updateProviderBuckets('openai', mapCodexLimitsToProviderBuckets(rateLimits))
   }
 
   if (!account && !rateLimits && !tokenUsage) {

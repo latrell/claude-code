@@ -100,4 +100,33 @@ describe('mapBucketsForDisplay', () => {
     const buckets: ProviderUsageBucket[] = [{ kind: 'tokens', label: 'TPM', utilization: 0.337 }];
     expect(mapBucketsForDisplay(buckets)[0]!.utilizationPct).toBe(34);
   });
+
+  test('maps session-kind (Codex style) bucket', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'session', label: 'Primary rate limit', utilization: 0.42, resetsAt: 1800000000 },
+    ];
+    const display = mapBucketsForDisplay(buckets);
+    expect(display).toHaveLength(1);
+    expect(display[0]!.label).toBe('Primary rate limit');
+    expect(display[0]!.utilizationPct).toBe(42);
+    expect(display[0]!.hasResetsAt).toBe(true);
+  });
+
+  test('maps weekly-kind (Codex style) bucket', () => {
+    const buckets: ProviderUsageBucket[] = [{ kind: 'weekly', label: 'Daily limit', utilization: 0.75 }];
+    const display = mapBucketsForDisplay(buckets);
+    expect(display[0]!.label).toBe('Daily limit');
+    expect(display[0]!.utilizationPct).toBe(75);
+    expect(display[0]!.hasResetsAt).toBe(false);
+  });
+
+  test('maps custom-kind (Codex style) bucket', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'custom', label: 'gpt-4.1', utilization: 0.3, resetsAt: 1800100000 },
+    ];
+    const display = mapBucketsForDisplay(buckets);
+    expect(display[0]!.label).toBe('gpt-4.1');
+    expect(display[0]!.utilizationPct).toBe(30);
+    expect(display[0]!.hasResetsAt).toBe(true);
+  });
 });

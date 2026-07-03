@@ -27,7 +27,13 @@ function wrapFetchForUsage(base: typeof fetch): typeof fetch {
   ): Promise<Response> => {
     const res = await base(...args)
     try {
-      updateProviderBuckets('openai', openaiAdapter.parseHeaders(res.headers))
+      const buckets = openaiAdapter.parseHeaders(res.headers)
+      // Only update when headers carry usable data. The ChatGPT Codex backend
+      // does not return x-ratelimit-* headers – data comes from fetchCodexUsage
+      // instead.  An empty update here would clear Codex-derived buckets.
+      if (buckets.length > 0) {
+        updateProviderBuckets('openai', buckets)
+      }
     } catch {
       // Ignore — usage tracking must not affect the request path.
     }

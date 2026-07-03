@@ -20,7 +20,11 @@ mock.module('src/services/api/openai/chatgptAuth.js', () => ({
 
 // We'll replace fetch per-test below.
 
-import { fetchCodexUsage } from '../codexUsage.js'
+import {
+  fetchCodexUsage,
+  mapCodexLimitsToProviderBuckets,
+} from '../codexUsage.js'
+import type { CodexRateLimitBucket } from '../codexUsage.js'
 
 // =============================================================================
 // Helpers
@@ -726,5 +730,140 @@ describe('fetchCodexUsage', () => {
     expect(result).not.toBeNull()
     expect(result!.tokenUsage).toBeUndefined()
     expect(result!.rateLimits).toHaveLength(1)
+  })
+})
+
+// =============================================================================
+// mapCodexLimitsToProviderBuckets — pure-function tests
+// =============================================================================
+
+describe('mapCodexLimitsToProviderBuckets', () => {
+  test('maps single rate limit bucket with windowMinutes <= 360 to session kind', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'Primary rate limit (300min)',
+        labelKey: 'Primary rate limit',
+        windowMinutes: 300,
+        used: 42,
+        limit: 100,
+        remaining: 58,
+        resetsAtSeconds: 1800000000,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe('session')
+    expect(result[0]!.label).toBe('Primary rate limit')
+    expect(result[0]!.utilization).toBeCloseTo(0.42, 5)
+    expect(result[0]!.resetsAt).toBe(1800000000)
+  })
+
+  test('maps rate limit with windowMinutes >= 1440 to weekly kind', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'Daily limit (1440min)',
+        windowMinutes: 1440,
+        used: 75,
+        limit: 100,
+        remaining: 25,
+        resetsAtSeconds: 1800100000,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe('weekly')
+    expect(result[0]!.utilization).toBeCloseTo(0.75, 5)
+  })
+
+  test('maps windowMinutes between 361-1439 to custom kind', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: '12h window',
+        windowMinutes: 720,
+        used: 10,
+        limit: 100,
+        remaining: 90,
+        resetsAtSeconds: 0,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe('custom')
+  })
+
+  test('handles limit=0 gracefully (utilization=0)', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'Unlimited',
+        used: 500,
+        limit: 0,
+        remaining: 0,
+        resetsAtSeconds: 0,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.utilization).toBe(0)
+    expect(result[0]!.resetsAt).toBeUndefined()
+  })
+
+  test('uses labelKey over label when present', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'gpt-4.1 (60min)',
+        labelKey: 'gpt-4.1',
+        windowMinutes: 60,
+        used: 30,
+        limit: 100,
+        remaining: 70,
+        resetsAtSeconds: 0,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result[0]!.label).toBe('gpt-4.1')
+  })
+
+  test('falls back to label when labelKey is absent', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'Primary rate limit (300min)',
+        used: 30,
+        limit: 100,
+        remaining: 70,
+        resetsAtSeconds: 0,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result[0]!.label).toBe('Primary rate limit (300min)')
+  })
+
+  test('handles multiple buckets with mixed kinds', () => {
+    const input: CodexRateLimitBucket[] = [
+      {
+        label: 'Session (300min)',
+        windowMinutes: 300,
+        used: 25,
+        limit: 100,
+        remaining: 75,
+        resetsAtSeconds: 1,
+      },
+      {
+        label: 'Secondary rate limit',
+        used: 60,
+        limit: 100,
+        remaining: 40,
+        resetsAtSeconds: 1800100000,
+      },
+    ]
+    const result = mapCodexLimitsToProviderBuckets(input)
+    expect(result).toHaveLength(2)
+    expect(result[0]!.kind).toBe('session')
+    expect(result[0]!.resetsAt).toBe(1)
+    // Second bucket has no windowMinutes => custom
+    expect(result[1]!.kind).toBe('custom')
+  })
+
+  test('returns empty array for empty input', () => {
+    expect(mapCodexLimitsToProviderBuckets([])).toEqual([])
   })
 })

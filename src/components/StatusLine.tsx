@@ -27,7 +27,7 @@ import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, Text } from '@anthropic/ink';
 import { getRawUtilization } from '../services/claudeAiLimits.js';
-import { getProviderUsage } from '../services/providerUsage/store.js';
+import { getProviderUsage, subscribeProviderUsage } from '../services/providerUsage/store.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
@@ -373,6 +373,17 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
 
   // True when the next invocation should log its result (first run or after settings reload)
   const logNextResultRef = useRef(true);
+
+  // Tick that increments on every provider-usage store update so the status
+  // line re-reads getProviderUsage() and picks up Codex rate-limit data that
+  // arrives asynchronously after the first render.
+  const [providerUsageTick, setProviderUsageTick] = useState(0);
+  useEffect(() => {
+    return subscribeProviderUsage(() => {
+      setProviderUsageTick(t => t + 1);
+    });
+  }, []);
+  void providerUsageTick;
 
   // Stable update function — reads latest values from refs
   const doUpdate = useCallback(async () => {

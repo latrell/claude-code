@@ -8,6 +8,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { type ExtraUsage, fetchUtilization, type RateLimit, type Utilization } from '../../services/api/usage.js';
 import type { ProviderUsageBucket } from '../../services/providerUsage/types.js';
+import { getProviderUsage } from '../../services/providerUsage/store.js';
 import {
   fetchCodexUsage,
   type CodexRateLimitBucket,
@@ -297,12 +298,28 @@ export function Usage(): React.ReactNode {
   const hasAnthropicLimits = limits.some(({ limit }) => limit);
 
   // When Anthropic utilization is empty (non-subscriber or third-party
-  // provider), try ChatGPT Codex app-server JSON-RPC usage data.
-  // If that is unavailable, keep the existing behaviour — do NOT add a
-  // provider-usage header fallback in the UI.
+  // provider), try ChatGPT Codex usage data first, then fall back to the
+  // provider-usage store (e.g. OpenAI-compatible API key users).
   if (!hasAnthropicLimits) {
     if (codexUsage) {
       return <CodexUsageSection codexUsage={codexUsage} maxWidth={maxWidth} />;
+    }
+
+    const providerUsage = getProviderUsage();
+    if (providerUsage.buckets.length > 0) {
+      return (
+        <Box flexDirection="column" gap={1} width="100%">
+          <Text bold>{t('Provider usage')}</Text>
+          {providerUsage.buckets.map((bucket, i) => {
+            const { label, limit } = bucketToLimitBar(bucket);
+            if (limit.utilization === null) return null;
+            return <LimitBar key={`${bucket.kind}-${i}`} title={label} limit={limit} maxWidth={maxWidth} />;
+          })}
+          <Text dimColor>
+            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
+          </Text>
+        </Box>
+      );
     }
 
     return (
