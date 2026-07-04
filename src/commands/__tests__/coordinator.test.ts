@@ -20,6 +20,13 @@ mock.module('bun:bundle', () => ({
   },
 }))
 
+const appState = {
+  agentDefinitions: {
+    activeAgents: [{ agentType: 'general-purpose' }],
+    allAgents: [{ agentType: 'general-purpose' }],
+  },
+}
+
 // Mock coordinatorMode.js so isCoordinatorMode() reads our env var directly.
 // The real module's feature('COORDINATOR_MODE') check doesn't work in tests
 // (bun:bundle is a virtual build-time module). We replace the whole module.
@@ -40,6 +47,40 @@ mock.module('src/coordinator/coordinatorMode.js', () => {
   }
 })
 
+mock.module(
+  '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js',
+  () => {
+    const normalAgents = [{ agentType: 'general-purpose' }]
+    const workerAgents = [{ agentType: 'worker' }]
+
+    function activeAgents() {
+      return process.env.CLAUDE_CODE_COORDINATOR_MODE === '1'
+        ? workerAgents
+        : normalAgents
+    }
+
+    return {
+      clearAgentDefinitionsCache: mock(() => {}),
+      filterAgentsByMcpRequirements: mock(agents => agents),
+      getActiveAgentsFromList: mock(agents => agents),
+      getAgentDefinitionsWithOverrides: mock(async () => {
+        const agents = activeAgents()
+        return {
+          activeAgents: agents,
+          allAgents: agents,
+        }
+      }),
+      hasRequiredMcpServers: mock(() => true),
+      isBuiltInAgent: mock(() => false),
+      isCustomAgent: mock(() => false),
+      isPluginAgent: mock(() => false),
+      parseAgentFromJson: mock(() => null),
+      parseAgentFromMarkdown: mock(() => null),
+      parseAgentsFromJson: mock(() => []),
+    }
+  },
+)
+
 let tempDir = ''
 
 beforeEach(async () => {
@@ -48,6 +89,10 @@ beforeEach(async () => {
   setOriginalCwd(tempDir)
   setProjectRoot(tempDir)
   delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+  appState.agentDefinitions = {
+    activeAgents: [{ agentType: 'general-purpose' }],
+    allAgents: [{ agentType: 'general-purpose' }],
+  }
 })
 
 afterEach(async () => {
@@ -75,11 +120,17 @@ describe('/coordinator', () => {
       onDoneText = text
       metaMessages = opts?.metaMessages
     }
-    const result = await mod.call(onDone as any, {} as any)
+    const context = {
+      setAppState(updater: (prev: typeof appState) => typeof appState) {
+        const next = updater(appState)
+        appState.agentDefinitions = next.agentDefinitions
+      },
+    }
+    const result = await mod.call(onDone as any, context as any)
     return { result, onDoneText, metaMessages }
   }
 
-  test('enabling coordinator mode sets env var and emits correct message', async () => {
+  test('enabling coordinator mode sets env var, refreshes agents, and emits correct message', async () => {
     delete process.env.CLAUDE_CODE_COORDINATOR_MODE
 
     const { onDoneText, metaMessages } = await callCoordinator()
@@ -88,6 +139,9 @@ describe('/coordinator', () => {
     expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
       '1',
     )
+    expect(appState.agentDefinitions.activeAgents).toEqual([
+      { agentType: 'worker' },
+    ])
     // Message should indicate mode was enabled (either English or Chinese)
     const isEnglish = onDoneText.includes('enabled')
     const isChinese = onDoneText.includes('启用')
@@ -98,8 +152,12 @@ describe('/coordinator', () => {
     ).toBe(true)
   })
 
-  test('disabling coordinator mode clears env var and emits correct message', async () => {
+  test('disabling coordinator mode clears env var, refreshes agents, and emits correct message', async () => {
     process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+    appState.agentDefinitions = {
+      activeAgents: [{ agentType: 'worker' }],
+      allAgents: [{ agentType: 'worker' }],
+    }
 
     const { onDoneText, metaMessages } = await callCoordinator()
 
@@ -107,6 +165,9 @@ describe('/coordinator', () => {
     expect(
       process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
     ).toBeUndefined()
+    expect(appState.agentDefinitions.activeAgents).toEqual([
+      { agentType: 'general-purpose' },
+    ])
     // Message should indicate mode was disabled (either English or Chinese)
     const isEnglish = onDoneText.includes('disabled')
     const isChinese = onDoneText.includes('禁用')

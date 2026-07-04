@@ -31,20 +31,41 @@ const coordinator = {
     Promise.resolve({
       async call(
         onDone: LocalJSXCommandOnDone,
-        _context: ToolUseContext & LocalJSXCommandContext,
+        context: ToolUseContext & LocalJSXCommandContext,
       ): Promise<React.ReactNode> {
         const mod =
           require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
+        const { getOriginalCwd } =
+          require('../bootstrap/state.js') as typeof import('../bootstrap/state.js')
         const { saveMode } =
           require('../utils/sessionStorage.js') as typeof import('../utils/sessionStorage.js')
-        const { clearAgentDefinitionsCache } =
+        const {
+          clearAgentDefinitionsCache,
+          getActiveAgentsFromList,
+          getAgentDefinitionsWithOverrides,
+        } =
           require('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js')
+
+        const refreshAgentDefinitions = async () => {
+          clearAgentDefinitionsCache()
+          const freshAgentDefs = await getAgentDefinitionsWithOverrides(
+            getOriginalCwd(),
+          )
+          context.setAppState(prev => ({
+            ...prev,
+            agentDefinitions: {
+              ...freshAgentDefs,
+              allAgents: freshAgentDefs.allAgents,
+              activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
+            },
+          }))
+        }
 
         if (mod.isCoordinatorMode()) {
           // Disable: clear the env var
           delete process.env.CLAUDE_CODE_COORDINATOR_MODE
           saveMode('normal')
-          clearAgentDefinitionsCache()
+          await refreshAgentDefinitions()
           onDone(t('Coordinator mode disabled — back to normal mode'), {
             display: 'system',
             metaMessages: [
@@ -55,7 +76,7 @@ const coordinator = {
           // Enable: set the env var
           process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
           saveMode('coordinator')
-          clearAgentDefinitionsCache()
+          await refreshAgentDefinitions()
           onDone(
             t(
               'Coordinator mode enabled — use Agent(subagent_type: "worker") to dispatch tasks',
