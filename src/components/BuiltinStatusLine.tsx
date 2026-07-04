@@ -31,7 +31,7 @@ type BuiltinStatusLineProps = {
  */
 export function formatCountdown(epochSeconds: number): string {
   const diff = epochSeconds - Date.now() / 1000;
-  if (diff <= 0) return 'now';
+  if (diff <= 0) return t('now');
 
   const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff % 86400) / 3600);
@@ -51,7 +51,7 @@ function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; n
   return (
     <>
       <Separator />
-      <Text dimColor>{bucket.label} </Text>
+      <Text dimColor>{t(bucket.label)} </Text>
       <Text>{pct}%</Text>
       {!narrow && bucket.resetsAt !== undefined && bucket.resetsAt > 0 && (
         <Text dimColor> {formatCountdown(bucket.resetsAt)}</Text>

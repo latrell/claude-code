@@ -491,6 +491,8 @@ const zh: Record<string, string> = {
   'No rate limit data available.': '无速率限制数据。',
   'Primary rate limit': '主要速率限制',
   'Secondary rate limit': '次要速率限制',
+  RPM: '请求/分钟',
+  TPM: '词元/分钟',
   'Rate limit': '速率限制',
   '{label} ({mins}min)': '{label}（{mins} 分钟）',
   'Daily tokens': '每日词元',
@@ -549,6 +551,7 @@ const zh: Record<string, string> = {
   // ── StatusLine Cache pill ──────────────────────────────────────
   ' Cache ': ' 缓存 ',
   ' Cache --% --:--': ' 缓存 --% --:--',
+  now: '现在',
 
   // ── Background task status strings ─────────────────────────────
   'still running': '仍在运行',

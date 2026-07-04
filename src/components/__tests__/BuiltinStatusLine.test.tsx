@@ -1,6 +1,21 @@
-import { describe, expect, test } from 'bun:test';
-import { formatCountdown } from '../BuiltinStatusLine.js';
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import type { ProviderUsageBucket } from '../../services/providerUsage/types.js';
+
+// ---------------------------------------------------------------------------
+// Language mock — mutable so en tests use the default (undefined) and zh
+// tests set to '简体中文' before dynamic import. Bun hoists mock.module to
+// the top of the file; the static formatCountdown import below resolves
+// while mockLanguage is still undefined (en mode).
+// ---------------------------------------------------------------------------
+
+let mockLanguage: string | undefined;
+
+mock.module('src/utils/settings/settings.js', () => ({
+  getInitialSettings: () => ({ language: mockLanguage }),
+}));
+
+// Static import — resolves in en mode (mockLanguage === undefined)
+import { formatCountdown } from '../BuiltinStatusLine.js';
 
 // ---------------------------------------------------------------------------
 // Pure helper: maps ProviderUsageBucket[] to a simplified display shape for
@@ -128,5 +143,63 @@ describe('mapBucketsForDisplay', () => {
     expect(display[0]!.label).toBe('gpt-4.1');
     expect(display[0]!.utilizationPct).toBe(30);
     expect(display[0]!.hasResetsAt).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Chinese locale: formatCountdown + label translations.
+// Uses dynamic import() after setting mockLanguage to '简体中文' so
+// getResolvedLanguage() returns 'zh' and t() returns Chinese translations.
+// ---------------------------------------------------------------------------
+
+describe('Chinese locale', () => {
+  beforeAll(() => {
+    mockLanguage = '简体中文';
+  });
+
+  afterAll(() => {
+    mockLanguage = undefined;
+  });
+
+  test('formatCountdown returns 现在 for past timestamp', async () => {
+    const { formatCountdown: zhFormatCountdown } = await import('../BuiltinStatusLine.js');
+    const past = Math.floor(Date.now() / 1000) - 3600;
+    expect(zhFormatCountdown(past)).toBe('现在');
+  });
+
+  test('formatCountdown returns 现在 for current timestamp', async () => {
+    const { formatCountdown: zhFormatCountdown } = await import('../BuiltinStatusLine.js');
+    const now = Math.floor(Date.now() / 1000);
+    expect(zhFormatCountdown(now)).toBe('现在');
+  });
+
+  test('t() translates Primary rate limit to 主要速率限制', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('Primary rate limit')).toBe('主要速率限制');
+  });
+
+  test('t() translates Secondary rate limit to 次要速率限制', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('Secondary rate limit')).toBe('次要速率限制');
+  });
+
+  test('t() translates RPM to 请求/分钟', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('RPM')).toBe('请求/分钟');
+  });
+
+  test('t() translates TPM to 词元/分钟', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('TPM')).toBe('词元/分钟');
+  });
+
+  test('t() keeps model name unchanged when no translation key exists', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('GPT-5.3-Codex-Spark')).toBe('GPT-5.3-Codex-Spark');
+  });
+
+  test('t() keeps unknown label unchanged (fallback to key)', async () => {
+    const { t } = await import('../../i18n/t.js');
+    expect(t('gpt-4.1')).toBe('gpt-4.1');
   });
 });
