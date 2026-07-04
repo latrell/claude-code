@@ -11,9 +11,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { t, tf } from '../i18n/t.js'
-import { logForDebugging } from '../utils/debug.js'
 import { distRoot } from '../utils/distRoot.js'
-import { execFileNoThrowWithCwd } from '../utils/execFileNoThrow.js'
 import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import { writeToStdout } from '../utils/process.js'
 
@@ -63,19 +61,10 @@ function isBunInstallation(): boolean {
 }
 
 /**
- * Get the latest version from npm registry.
+ * Channel-based package updates are disabled for this fork; source updates are handled separately.
  */
 async function getLatestVersion(): Promise<string | null> {
-  const result = await execFileNoThrowWithCwd(
-    'npm',
-    ['view', `${PACKAGE_NAME}@latest`, 'version', '--prefer-online'],
-    { abortSignal: AbortSignal.timeout(10_000), cwd: homedir() },
-  )
-  if (result.code !== 0) {
-    logForDebugging(`npm view failed: ${result.stderr}`)
-    return null
-  }
-  return result.stdout.trim()
+  return getCurrentVersion()
 }
 
 /**

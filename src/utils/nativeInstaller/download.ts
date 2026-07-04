@@ -28,85 +28,17 @@ export const ARTIFACTORY_REGISTRY_URL =
   'https://artifactory.infra.ant.dev/artifactory/api/npm/npm-all/'
 
 export async function getLatestVersionFromArtifactory(
-  tag: string = 'latest',
+  _tag: string = 'latest',
 ): Promise<string> {
-  const startTime = Date.now()
-  const { stdout, code, stderr } = await execFileNoThrowWithCwd(
-    'npm',
-    [
-      'view',
-      `${MACRO.NATIVE_PACKAGE_URL}@${tag}`,
-      'version',
-      '--prefer-online',
-      '--registry',
-      ARTIFACTORY_REGISTRY_URL,
-    ],
-    {
-      timeout: 30000,
-      preserveOutputOnError: true,
-    },
-  )
-
-  const latencyMs = Date.now() - startTime
-
-  if (code !== 0) {
-    logEvent('tengu_version_check_failure', {
-      latency_ms: latencyMs,
-      source_npm: true,
-      exit_code: code,
-    })
-    const error = new Error(`npm view failed with code ${code}: ${stderr}`)
-    logError(error)
-    throw error
-  }
-
-  logEvent('tengu_version_check_success', {
-    latency_ms: latencyMs,
-    source_npm: true,
-  })
-  logForDebugging(
-    `npm view ${MACRO.NATIVE_PACKAGE_URL}@${tag} version: ${stdout}`,
-  )
-  const latestVersion = stdout.trim()
-  return latestVersion
+  return MACRO.VERSION
 }
 
 export async function getLatestVersionFromBinaryRepo(
-  channel: ReleaseChannel = 'latest',
-  baseUrl: string,
-  authConfig?: { auth: { username: string; password: string } },
+  _channel: ReleaseChannel = 'latest',
+  _baseUrl: string,
+  _authConfig?: { auth: { username: string; password: string } },
 ): Promise<string> {
-  const startTime = Date.now()
-  try {
-    const response = await axios.get(`${baseUrl}/${channel}`, {
-      timeout: 30000,
-      responseType: 'text',
-      ...authConfig,
-    })
-    const latencyMs = Date.now() - startTime
-    logEvent('tengu_version_check_success', {
-      latency_ms: latencyMs,
-    })
-    return response.data.trim()
-  } catch (error) {
-    const latencyMs = Date.now() - startTime
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    let httpStatus: number | undefined
-    if (axios.isAxiosError(error) && error.response) {
-      httpStatus = error.response.status
-    }
-
-    logEvent('tengu_version_check_failure', {
-      latency_ms: latencyMs,
-      http_status: httpStatus,
-      is_timeout: errorMessage.includes('timeout'),
-    })
-    const fetchError = new Error(
-      `Failed to fetch version from ${baseUrl}/${channel}: ${errorMessage}`,
-    )
-    logError(fetchError)
-    throw fetchError
-  }
+  return MACRO.VERSION
 }
 
 export async function getLatestVersion(
