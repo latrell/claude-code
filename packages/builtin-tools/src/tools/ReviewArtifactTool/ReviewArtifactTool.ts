@@ -3,6 +3,7 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import React from 'react'
 import { Box, Text } from '@anthropic/ink'
+import { t, tf } from 'src/i18n/t.js'
 
 const REVIEW_ARTIFACT_TOOL_NAME = 'ReviewArtifact'
 
@@ -62,8 +63,8 @@ export const ReviewArtifactTool = buildTool({
   async description(input) {
     const { title } = input as { title?: string }
     return title
-      ? `Claude wants to review: ${title}`
-      : 'Claude wants to review an artifact'
+      ? tf('Claude wants to review: {title}', { title })
+      : t('Claude wants to review an artifact')
   },
   userFacingName() {
     return 'ReviewArtifact'
@@ -97,10 +98,10 @@ export const ReviewArtifactTool = buildTool({
     input: Partial<z.infer<InputSchema>>,
     { verbose }: { theme?: string; verbose: boolean },
   ): React.ReactNode {
-    const title = input.title ?? 'Untitled artifact'
+    const title = input.title ?? t('Untitled artifact')
     const count = input.annotations?.length ?? 0
     if (verbose) {
-      return `Review: "${title}" (${count} annotation(s))`
+      return tf('Review: "{title}" ({count} annotation(s))', { title, count })
     }
     return title
   },
@@ -116,7 +117,10 @@ export const ReviewArtifactTool = buildTool({
         React.createElement(
           Text,
           null,
-          `Reviewed artifact: ${output.title ?? 'Untitled'} (${output.annotationCount} annotations)`,
+          tf('Reviewed artifact: {title} ({count} annotations)', {
+            title: output.title ?? t('Untitled'),
+            count: output.annotationCount,
+          }),
         ),
         output.summary
           ? React.createElement(Text, { dimColor: true }, output.summary)
@@ -126,7 +130,9 @@ export const ReviewArtifactTool = buildTool({
     return React.createElement(
       Text,
       null,
-      `Review complete: ${output.annotationCount} annotation(s)`,
+      tf('Review complete: {count} annotation(s)', {
+        count: output.annotationCount,
+      }),
     )
   },
   async call({ artifact, title, annotations, summary }, _context) {

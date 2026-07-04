@@ -205,7 +205,6 @@ const zh: Record<string, string> = {
     '仅在您信任的项目中使用 Claude Code',
   'Untrusted code could contain prompt injection attacks.':
     '不受信任的代码可能包含提示注入攻击。',
-
   // ── ThemePicker ────────────────────────────────────────────────
   Theme: '主题',
   'Choose the text style that looks best with your terminal':
@@ -551,6 +550,8 @@ const zh: Record<string, string> = {
 
   // ── Status line / mode indicator ───────────────────────────────
   '{mode} on': '{mode} 已开启',
+  'setting up statusLine': '正在设置状态栏',
+  'statusline skipped · restart to fix': '状态栏已跳过 · 重启以修复',
 
   // ── StatusLine Cache pill ──────────────────────────────────────
   ' Cache ': ' 缓存 ',
@@ -561,6 +562,11 @@ const zh: Record<string, string> = {
   'still running': '仍在运行',
   'still running in background': '仍在后台运行',
   'completed in background': '已在后台完成',
+
+  // ── Package manager auto updater ───────────────────────────────
+  'currentVersion: {version}': '当前版本：{version}',
+  'your package manager update command': '您的包管理器更新命令',
+  'Update available! Run: ': '有可用更新！运行：',
 
   // ── Footer shortcut action strings (first screen) ──────────────
   cycle: '切换',
@@ -842,6 +848,23 @@ const zh: Record<string, string> = {
   'Unknown error': '未知错误',
   'Press {key} again to exit': '再按一次 {key} 退出',
   'Press {key} again to go back': '再按一次 {key} 返回',
+  'Start a long-running background monitor': '启动长期运行的后台监控',
+  'Starting monitor': '正在启动监控',
+  'Monitoring: {description}': '正在监控：{description}',
+  'Monitor command cannot be empty.': '监控命令不能为空。',
+  'Monitor description cannot be empty.': '监控描述不能为空。',
+  'Monitor: {description}': '监控：{description}',
+  'Monitor started (task {taskId}). Output: {outputFile}':
+    '监控已启动（任务 {taskId}）。输出：{outputFile}',
+  'Claude wants to review: {title}': 'Claude 想要审查：{title}',
+  'Claude wants to review an artifact': 'Claude 想要审查一个工件',
+  'Untitled artifact': '未命名工件',
+  'Review: "{title}" ({count} annotation(s))':
+    '审查：“{title}”（{count} 条注释）',
+  Untitled: '未命名',
+  'Reviewed artifact: {title} ({count} annotations)':
+    '已审查工件：{title}（{count} 条注释）',
+  'Review complete: {count} annotation(s)': '审查完成：{count} 条注释',
 
   // ── version command ─────────────────────────────────────────────
   'Print the version this session is running (not what autoupdate downloaded)':
@@ -1990,6 +2013,12 @@ const zh: Record<string, string> = {
   "Don't Ask": '不询问',
   DontAsk: '不询问',
 
+  // ── Auto mode opt-in ──────────────────────────────────────────
+  'Enable auto mode?': '启用自动模式？',
+  "Auto mode lets Claude handle permission prompts automatically — Claude checks each tool call for risky actions and prompt injection before executing. Actions Claude identifies as safe are executed, while actions Claude identifies as risky are blocked and Claude may try a different approach. Ideal for long-running tasks. Sessions are slightly more expensive. Claude can make mistakes that allow harmful commands to run, it's recommended to only use in isolated environments. Shift+Tab to change mode.":
+    '自动模式会让 Claude 自动处理权限提示 — Claude 会在执行前检查每个工具调用是否存在危险操作和提示注入。Claude 判断为安全的操作会被执行；Claude 判断为有风险的操作会被阻止，并且 Claude 可能会尝试其他方法。它适合长时间运行的任务。会话成本会略高。Claude 可能会出错并允许有害命令运行，建议仅在隔离环境中使用。按 Shift+Tab 可切换模式。',
+  'Yes, and make it my default mode': '是，并设为我的默认模式',
+
   // ── Scattered tips ────────────────────────────────────────────
   'Tip: You can launch Claude Code with just `claude`':
     '提示：直接运行 `claude` 即可启动 Claude Code',
@@ -2034,6 +2063,16 @@ const zh: Record<string, string> = {
   'Network request outside of sandbox': '沙箱外网络请求',
   'Computer Use needs macOS permissions': 'Computer Use 需要 macOS 权限',
   'Computer Use wants to control these apps': 'Computer Use 请求控制以下应用',
+  'Loading explanation…': '正在加载说明…',
+  'Explanation unavailable': '说明不可用',
+  'Low risk': '低风险',
+  'Med risk': '中风险',
+  'High risk': '高风险',
+  'Waiting for team lead approval': '正在等待团队负责人批准',
+  'Tool: ': '工具：',
+  'Action: ': '操作：',
+  'Permission request sent to team "{teamName}" leader':
+    '权限请求已发送给团队“{teamName}”的负责人',
 
   // ── Plan mode UI (EnterPlanModeTool / ExitPlanModeTool) ───────────
   'Entered plan mode': '已进入计划模式',
@@ -2092,6 +2131,30 @@ const zh: Record<string, string> = {
     '{icon} 模式已切换为：{name}（{slug}）— {description}',
   'Unknown mode: "{slug}"\n\nAvailable modes:\n{available}':
     '未知模式："{slug}"\n\n可用模式：\n{available}',
+
+  // ── CLI validation errors / warnings ─────────────────────────────
+  'Error: headless (-p/--print) mode is not supported with claude ssh\n':
+    '错误：claude ssh 不支持 headless（-p/--print）模式\n',
+  'Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n':
+    '警告：3 秒内未收到 stdin 数据，将在没有输入的情况下继续。如果正在从慢速命令管道输入，请显式重定向 stdin：使用 < /dev/null 跳过，或等待更久。\n',
+  'Invalid --provider value: "{provider}". Valid: {values}':
+    '无效的 --provider 值："{provider}"。有效值：{values}',
+  'Invalid --subagent-provider value: "{provider}". Valid: {values}':
+    '无效的 --subagent-provider 值："{provider}"。有效值：{values}',
+  'Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n':
+    '错误：Fallback 模型不能与主模型相同。请为 --fallback-model 指定不同的模型。\n',
+  'Error: Invalid input format "{format}".':
+    '错误：无效的输入格式 "{format}"。',
+  'Error: --input-format=stream-json requires output-format=stream-json.':
+    '错误：--input-format=stream-json 需要 output-format=stream-json。',
+  'Error: --sdk-url requires both --input-format=stream-json and --output-format=stream-json.':
+    '错误：--sdk-url 需要同时设置 --input-format=stream-json 和 --output-format=stream-json。',
+  'Error: --replay-user-messages requires both --input-format=stream-json and --output-format=stream-json.':
+    '错误：--replay-user-messages 需要同时设置 --input-format=stream-json 和 --output-format=stream-json。',
+  'Error: --include-partial-messages requires --print and --output-format=stream-json.':
+    '错误：--include-partial-messages 需要 --print 和 --output-format=stream-json。',
+  'Error: --no-session-persistence can only be used with --print mode.':
+    '错误：--no-session-persistence 只能与 --print 模式一起使用。',
 
   // ── Mode descriptions (defaults.ts) ───────────────────────────────
   'Balanced mode for everyday development': '均衡模式，适合日常开发',

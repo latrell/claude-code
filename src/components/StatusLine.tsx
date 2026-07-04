@@ -514,7 +514,7 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
       if (!checkHasTrustDialogAccepted()) {
         addNotification({
           key: 'statusline-trust-blocked',
-          text: 'statusline skipped · restart to fix',
+          text: t('statusline skipped · restart to fix'),
           color: 'warning',
           priority: 'low',
         });

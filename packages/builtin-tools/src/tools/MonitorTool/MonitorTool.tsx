@@ -12,6 +12,7 @@ import { truncate } from 'src/utils/format.js';
 import { exec } from 'src/utils/Shell.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { logEvent } from 'src/services/analytics/index.js';
+import { t, tf } from 'src/i18n/t.js';
 
 const MONITOR_TOOL_NAME = 'Monitor';
 
@@ -55,7 +56,7 @@ export const MonitorTool = buildTool({
   },
 
   async description() {
-    return 'Start a long-running background monitor';
+    return t('Start a long-running background monitor');
   },
   async prompt() {
     return `Use Monitor to start a long-running background process that streams output (watching logs, polling APIs, tailing files, etc.). The command runs in the background and you receive a notification when it exits. Use the Read tool with the output file path to check its output at any time.
@@ -98,23 +99,25 @@ Examples:
 
   getActivityDescription(input: MonitorInput) {
     if (!input?.description) {
-      return 'Starting monitor';
+      return t('Starting monitor');
     }
-    return `Monitoring: ${truncate(input.description, TOOL_SUMMARY_MAX_LENGTH)}`;
+    return tf('Monitoring: {description}', {
+      description: truncate(input.description, TOOL_SUMMARY_MAX_LENGTH),
+    });
   },
 
   async validateInput(input: MonitorInput): Promise<ValidationResult> {
     if (!input.command || input.command.trim() === '') {
       return {
         result: false,
-        message: 'Monitor command cannot be empty.',
+        message: t('Monitor command cannot be empty.'),
         errorCode: 1,
       };
     }
     if (!input.description || input.description.trim() === '') {
       return {
         result: false,
-        message: 'Monitor description cannot be empty.',
+        message: t('Monitor description cannot be empty.'),
         errorCode: 2,
       };
     }
@@ -159,7 +162,7 @@ Examples:
 
   renderToolUseMessage(input: MonitorInput, { verbose }) {
     const desc = truncate(input.description || input.command, 80);
-    return `Monitor: ${desc}`;
+    return tf('Monitor: {description}', { description: desc });
   },
 
   mapToolResultToToolResultBlockParam(content: MonitorOutput, toolUseId: string): ToolResultBlockParam {
@@ -173,7 +176,10 @@ Examples:
   renderToolResultMessage(output: MonitorOutput) {
     return (
       <Text>
-        Monitor started (task {output.taskId}). Output: {output.outputFile}
+        {tf('Monitor started (task {taskId}). Output: {outputFile}', {
+          taskId: output.taskId,
+          outputFile: output.outputFile,
+        })}
       </Text>
     );
   },

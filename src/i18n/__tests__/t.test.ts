@@ -113,6 +113,58 @@ describe('t', () => {
     expect(t('native select')).toBe('原生选择')
   })
 
+  test('translates newly localized UI strings', () => {
+    mockLanguage = '简体中文'
+    expect(t("Use Claude Code's terminal setup?")).toBe(
+      '使用 Claude Code 的终端设置？',
+    )
+    expect(t('Update available! Run: ')).toBe('有可用更新！运行：')
+    expect(t('setting up statusLine')).toBe('正在设置状态栏')
+    expect(t('statusline skipped · restart to fix')).toBe(
+      '状态栏已跳过 · 重启以修复',
+    )
+    expect(t('Loading explanation…')).toBe('正在加载说明…')
+    expect(t('High risk')).toBe('高风险')
+    expect(t('Waiting for team lead approval')).toBe('正在等待团队负责人批准')
+    expect(
+      tf('Permission request sent to team "{teamName}" leader', {
+        teamName: 'core',
+      }),
+    ).toBe('权限请求已发送给团队“core”的负责人')
+    expect(
+      tf('Monitor started (task {taskId}). Output: {outputFile}', {
+        taskId: 'task-1',
+        outputFile: '/tmp/out',
+      }),
+    ).toBe('监控已启动（任务 task-1）。输出：/tmp/out')
+    expect(tf('Review complete: {count} annotation(s)', { count: 2 })).toBe(
+      '审查完成：2 条注释',
+    )
+  })
+
+  test('translates auto mode opt-in copy', () => {
+    mockLanguage = '简体中文'
+    expect(t('Enable auto mode?')).toBe('启用自动模式？')
+    expect(
+      t(
+        "Auto mode lets Claude handle permission prompts automatically — Claude checks each tool call for risky actions and prompt injection before executing. Actions Claude identifies as safe are executed, while actions Claude identifies as risky are blocked and Claude may try a different approach. Ideal for long-running tasks. Sessions are slightly more expensive. Claude can make mistakes that allow harmful commands to run, it's recommended to only use in isolated environments. Shift+Tab to change mode.",
+      ),
+    ).toContain('自动模式会让 Claude 自动处理权限提示')
+  })
+
+  test('translates CLI validation strings', () => {
+    mockLanguage = '简体中文'
+    expect(
+      tf('Invalid --provider value: "{provider}". Valid: {values}', {
+        provider: 'bad',
+        values: 'anthropic, openai',
+      }),
+    ).toBe('无效的 --provider 值："bad"。有效值：anthropic, openai')
+    expect(
+      t('Error: --no-session-persistence can only be used with --print mode.'),
+    ).toBe('错误：--no-session-persistence 只能与 --print 模式一起使用。')
+  })
+
   test('translates spinner tip strings', () => {
     mockLanguage = '简体中文'
     expect(
@@ -138,6 +190,9 @@ describe('t', () => {
       '试试 "write a test"',
     )
     expect(tf('{mode} on', { mode: 'bypass' })).toBe('bypass 已开启')
+    expect(t('Bypass')).toBe('绕过权限')
+    expect(t('Accept edits')).toBe('接受编辑')
+    expect(t('Plan Mode')).toBe('计划模式')
     expect(tf('hold {key} to speak', { key: 'Space' })).toBe('长按 Space 说话')
     expect(tf('Logging to: {path}', { path: 'stderr' })).toBe(
       '日志输出至：stderr',

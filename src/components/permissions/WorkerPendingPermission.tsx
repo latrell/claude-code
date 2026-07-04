@@ -3,6 +3,7 @@ import { Box, Text } from '@anthropic/ink';
 import { getAgentName, getTeammateColor, getTeamName } from '../../utils/teammate.js';
 import { Spinner } from '../Spinner.js';
 import { WorkerBadge } from './WorkerBadge.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   toolName: string;
@@ -24,7 +25,7 @@ export function WorkerPendingPermission({ toolName, description }: Props): React
         <Spinner />
         <Text color="warning" bold>
           {' '}
-          Waiting for team lead approval
+          {t('Waiting for team lead approval')}
         </Text>
       </Box>
 
@@ -35,22 +36,18 @@ export function WorkerPendingPermission({ toolName, description }: Props): React
       )}
 
       <Box>
-        <Text dimColor>Tool: </Text>
+        <Text dimColor>{t('Tool: ')}</Text>
         <Text>{toolName}</Text>
       </Box>
 
       <Box>
-        <Text dimColor>Action: </Text>
+        <Text dimColor>{t('Action: ')}</Text>
         <Text>{description}</Text>
       </Box>
 
       {teamName && (
         <Box marginTop={1}>
-          <Text dimColor>
-            Permission request sent to team {'"'}
-            {teamName}
-            {'"'} leader
-          </Text>
+          <Text dimColor>{tf('Permission request sent to team "{teamName}" leader', { teamName })}</Text>
         </Box>
       )}
     </Box>

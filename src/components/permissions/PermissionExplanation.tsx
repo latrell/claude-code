@@ -11,16 +11,18 @@ import {
 } from '../../utils/permissions/permissionExplainer.js';
 import { ShimmerChar } from '../Spinner/ShimmerChar.js';
 import { useShimmerAnimation } from '../Spinner/useShimmerAnimation.js';
+import { t } from '../../i18n/t.js';
 
 const LOADING_MESSAGE = 'Loading explanation…';
 
 function ShimmerLoadingText(): React.ReactNode {
-  const [ref, glimmerIndex] = useShimmerAnimation('responding', LOADING_MESSAGE, false);
+  const loadingMessage = t(LOADING_MESSAGE);
+  const [ref, glimmerIndex] = useShimmerAnimation('responding', loadingMessage, false);
 
   return (
     <Box ref={ref}>
       <Text>
-        {LOADING_MESSAGE.split('').map((char, index) => (
+        {loadingMessage.split('').map((char, index) => (
           <ShimmerChar
             key={index}
             char={char}
@@ -49,11 +51,11 @@ function getRiskColor(riskLevel: RiskLevel): 'success' | 'warning' | 'error' {
 function getRiskLabel(riskLevel: RiskLevel): string {
   switch (riskLevel) {
     case 'LOW':
-      return 'Low risk';
+      return t('Low risk');
     case 'MEDIUM':
-      return 'Med risk';
+      return t('Med risk');
     case 'HIGH':
-      return 'High risk';
+      return t('High risk');
   }
 }
 
@@ -123,7 +125,7 @@ function ExplanationResult({ promise }: { promise: Promise<PermissionExplanation
   if (!explanation) {
     return (
       <Box marginTop={1}>
-        <Text dimColor>Explanation unavailable</Text>
+        <Text dimColor>{t('Explanation unavailable')}</Text>
       </Box>
     );
   }

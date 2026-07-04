@@ -13,6 +13,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { getPackageManager, type PackageManager } from '../utils/nativeInstaller/packageManagers.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
+import { t, tf } from '../i18n/t.js';
 
 type Props = {
   isUpdating: boolean;
@@ -92,17 +93,18 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
         ? 'winget upgrade Anthropic.ClaudeCode'
         : packageManager === 'apk'
           ? 'apk upgrade claude-code'
-          : 'your package manager update command';
+          : t('your package manager update command');
 
   return (
     <>
       {verbose && (
         <Text dimColor wrap="truncate">
-          currentVersion: {MACRO.VERSION}
+          {tf('currentVersion: {version}', { version: MACRO.VERSION })}
         </Text>
       )}
       <Text color="warning" wrap="truncate">
-        Update available! Run: <Text bold>{updateCommand}</Text>
+        {t('Update available! Run: ')}
+        <Text bold>{updateCommand}</Text>
       </Text>
     </>
   );

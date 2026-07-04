@@ -11,7 +11,9 @@ const statusline = {
   contentLength: 0, // Dynamic content
   aliases: [],
   name: 'statusline',
-  progressMessage: 'setting up statusLine',
+  get progressMessage() {
+    return t('setting up statusLine');
+  },
   allowedTools: [AGENT_TOOL_NAME, 'Read(~/**)', 'Edit(~/.claude/settings.json)'],
   source: 'builtin',
   disableNonInteractive: true,

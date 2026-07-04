@@ -24,7 +24,7 @@ startKeychainPrefetch();
 import { feature } from 'bun:bundle';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
-import { t } from './i18n/t.js';
+import { t, tf } from './i18n/t.js';
 import { readFileSync } from 'fs';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
@@ -971,7 +971,7 @@ export async function main() {
       // Headless (-p) mode is not supported with SSH in v1 — reject early
       // so the flag doesn't silently cause local execution.
       if (rest.includes('-p') || rest.includes('--print')) {
-        process.stderr.write('Error: headless (-p/--print) mode is not supported with claude ssh\n');
+        process.stderr.write(t('Error: headless (-p/--print) mode is not supported with claude ssh\n'));
         gracefulShutdownSync(1);
         return;
       }
@@ -1080,8 +1080,9 @@ async function getInputPrompt(
     process.stdin.off('data', onData);
     if (timedOut) {
       process.stderr.write(
-        'Warning: no stdin data received in 3s, proceeding without it. ' +
-          'If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n',
+        t(
+          'Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n',
+        ),
       );
     }
     return [prompt, data].filter(Boolean).join('\n');
@@ -1574,7 +1575,12 @@ async function run(): Promise<CommanderCommand> {
         const validMainProviders = ['anthropic', 'openai', 'gemini', 'grok', 'bedrock', 'vertex', 'foundry', 'unset'];
         if (!validMainProviders.includes(cliProvider)) {
           console.warn(
-            chalk.yellow(`Invalid --provider value: "${cliProvider}". Valid: ${validMainProviders.join(', ')}`),
+            chalk.yellow(
+              tf('Invalid --provider value: "{provider}". Valid: {values}', {
+                provider: cliProvider,
+                values: validMainProviders.join(', '),
+              }),
+            ),
           );
         } else {
           // bedrock/vertex/foundry are env-only; set the env var
@@ -1599,7 +1605,10 @@ async function run(): Promise<CommanderCommand> {
         if (!validSubagentProviders.includes(cliSubagentProvider)) {
           console.warn(
             chalk.yellow(
-              `Invalid --subagent-provider value: "${cliSubagentProvider}". Valid: ${validSubagentProviders.join(', ')}`,
+              tf('Invalid --subagent-provider value: "{provider}". Valid: {values}', {
+                provider: cliSubagentProvider,
+                values: validSubagentProviders.join(', '),
+              }),
             ),
           );
         } else {
@@ -1843,7 +1852,9 @@ async function run(): Promise<CommanderCommand> {
       if (fallbackModel && options.model && fallbackModel === options.model) {
         process.stderr.write(
           chalk.red(
-            'Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n',
+            t(
+              'Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n',
+            ),
           ),
         );
         process.exit(1);
@@ -2362,18 +2373,20 @@ async function run(): Promise<CommanderCommand> {
       // NOTE: We do NOT call prefetchAllMcpResources here - that's deferred until after trust dialog
 
       if (inputFormat && inputFormat !== 'text' && inputFormat !== 'stream-json') {
-        console.error(`Error: Invalid input format "${inputFormat}".`);
+        console.error(tf('Error: Invalid input format "{format}".', { format: inputFormat }));
         process.exit(1);
       }
       if (inputFormat === 'stream-json' && outputFormat !== 'stream-json') {
-        console.error(`Error: --input-format=stream-json requires output-format=stream-json.`);
+        console.error(t('Error: --input-format=stream-json requires output-format=stream-json.'));
         process.exit(1);
       }
 
       // Validate sdkUrl is only used with appropriate formats (formats are auto-set above)
       if (sdkUrl) {
         if (inputFormat !== 'stream-json' || outputFormat !== 'stream-json') {
-          console.error(`Error: --sdk-url requires both --input-format=stream-json and --output-format=stream-json.`);
+          console.error(
+            t('Error: --sdk-url requires both --input-format=stream-json and --output-format=stream-json.'),
+          );
           process.exit(1);
         }
       }
@@ -2382,7 +2395,9 @@ async function run(): Promise<CommanderCommand> {
       if (options.replayUserMessages) {
         if (inputFormat !== 'stream-json' || outputFormat !== 'stream-json') {
           console.error(
-            `Error: --replay-user-messages requires both --input-format=stream-json and --output-format=stream-json.`,
+            t(
+              'Error: --replay-user-messages requires both --input-format=stream-json and --output-format=stream-json.',
+            ),
           );
           process.exit(1);
         }
@@ -2391,14 +2406,14 @@ async function run(): Promise<CommanderCommand> {
       // Validate includePartialMessages is only used with print mode and stream-json output
       if (effectiveIncludePartialMessages) {
         if (!isNonInteractiveSession || outputFormat !== 'stream-json') {
-          writeToStderr(`Error: --include-partial-messages requires --print and --output-format=stream-json.`);
+          writeToStderr(t('Error: --include-partial-messages requires --print and --output-format=stream-json.'));
           process.exit(1);
         }
       }
 
       // Validate --no-session-persistence is only used with print mode
       if (options.sessionPersistence === false && !isNonInteractiveSession) {
-        writeToStderr(`Error: --no-session-persistence can only be used with --print mode.`);
+        writeToStderr(t('Error: --no-session-persistence can only be used with --print mode.'));
         process.exit(1);
       }
 
