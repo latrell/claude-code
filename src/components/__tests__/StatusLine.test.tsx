@@ -9,6 +9,8 @@
 
 import { describe, test, expect } from 'bun:test';
 import { computeHitRate } from '../../utils/cacheStats.js';
+import { selectStatusLineProviderBuckets } from '../StatusLine.js';
+import type { ProviderUsageBucket } from '../../services/providerUsage/types.js';
 
 // ---------------------------------------------------------------------------
 // Re-export helpers that mirror CachePill internal logic for unit testing
@@ -39,6 +41,41 @@ function timerColor(elapsedMin: number | null, isExpired: boolean): TimerThemeKe
 function hitRateColor(rate: number | null): 'success' | 'inactive' {
   return rate !== null && rate >= 50 ? 'success' : 'inactive';
 }
+
+// ---------------------------------------------------------------------------
+// selectStatusLineProviderBuckets
+// ---------------------------------------------------------------------------
+
+describe('selectStatusLineProviderBuckets', () => {
+  test('keeps only primary and secondary ChatGPT limits when present', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'session', label: 'Primary rate limit', utilization: 0.42 },
+      { kind: 'weekly', label: 'Secondary rate limit', utilization: 0.15 },
+      { kind: 'custom', label: 'GPT-5.3-Codex-Spark0', utilization: 0.8 },
+      { kind: 'custom', label: 'GPT-5.3-Codex-Spark0', utilization: 0.2 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0], buckets[1]]);
+  });
+
+  test('keeps all OpenAI buckets when primary and secondary limits are absent', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'requests', label: 'RPM', utilization: 0.5 },
+      { kind: 'tokens', label: 'TPM', utilization: 0.25 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toBe(buckets);
+  });
+
+  test('keeps all buckets for non-OpenAI providers', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'session', label: 'Primary rate limit', utilization: 0.42 },
+      { kind: 'custom', label: 'GPT-5.3-Codex-Spark0', utilization: 0.8 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('gemini', buckets)).toBe(buckets);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // formatCountdown

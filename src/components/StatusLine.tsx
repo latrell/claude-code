@@ -28,6 +28,7 @@ import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, Text } from '@anthropic/ink';
 import { getRawUtilization } from '../services/claudeAiLimits.js';
 import { getProviderUsage, subscribeProviderUsage } from '../services/providerUsage/store.js';
+import type { ProviderUsageBucket } from '../services/providerUsage/types.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
@@ -69,6 +70,18 @@ function formatCountdown(remainingMs: number): string {
 type CachePillProps = {
   messages: Message[];
 };
+
+const CHATGPT_STATUS_LINE_LIMIT_LABELS = new Set(['Primary rate limit', 'Secondary rate limit']);
+
+export function selectStatusLineProviderBuckets(
+  providerId: string,
+  buckets: ProviderUsageBucket[],
+): ProviderUsageBucket[] {
+  if (providerId !== 'openai') return buckets;
+
+  const primarySecondaryBuckets = buckets.filter(bucket => CHATGPT_STATUS_LINE_LIMIT_LABELS.has(bucket.label));
+  return primarySecondaryBuckets.length > 0 ? primarySecondaryBuckets : buckets;
+}
 
 function CachePill({ messages }: CachePillProps): React.ReactNode {
   const [now, setNow] = useState(() => Date.now());
@@ -563,7 +576,11 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
   // fall back to the provider usage store for non-Anthropic bucket display.
   const hasAnthropicLimits = builtinRawUtil.five_hour !== undefined || builtinRawUtil.seven_day !== undefined;
   const providerUsage = !hasAnthropicLimits ? getProviderUsage() : null;
-  const builtinProviderBuckets = providerUsage && providerUsage.buckets.length > 0 ? providerUsage.buckets : undefined;
+  const statusLineProviderBuckets = providerUsage
+    ? selectStatusLineProviderBuckets(providerUsage.providerId, providerUsage.buckets)
+    : undefined;
+  const builtinProviderBuckets =
+    statusLineProviderBuckets && statusLineProviderBuckets.length > 0 ? statusLineProviderBuckets : undefined;
 
   // BuiltinStatusLine + CachePill: only when statusLineEnabled is explicitly true.
   // Shell command output: only when a statusLine.command is configured.
