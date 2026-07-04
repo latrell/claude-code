@@ -19,11 +19,11 @@ type Props = {
 const WORKFLOWS: WorkflowOption[] = [
   {
     value: 'claude' as const,
-    label: '@Claude Code - Tag @claude in issues and PR comments',
+    label: t('@Claude Code - Tag @claude in issues and PR comments'),
   },
   {
     value: 'claude-review' as const,
-    label: 'Claude Code Review - Automated code review on new PRs',
+    label: t('Claude Code Review - Automated code review on new PRs'),
   },
 ];
 
@@ -33,10 +33,10 @@ function renderInputGuide(exitState: ExitState): React.ReactNode {
   }
   return (
     <Byline>
-      <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-      <KeyboardShortcutHint shortcut="Space" action="toggle" />
-      <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+      <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+      <KeyboardShortcutHint shortcut="Space" action={t('toggle')} />
+      <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('cancel')} />
     </Byline>
   );
 }
@@ -67,14 +67,14 @@ export function WorkflowMultiselectDialog({ onSubmit, defaultSelections }: Props
 
   return (
     <Dialog
-      title="Select GitHub workflows to install"
-      subtitle="We'll create a workflow file in your repository for each one you select."
+      title={t('Select GitHub workflows to install')}
+      subtitle={t("We'll create a workflow file in your repository for each one you select.")}
       onCancel={handleCancel}
       inputGuide={renderInputGuide}
     >
       <Box>
         <Text dimColor>
-          More workflow examples (issue triage, CI fixes, etc.) at:{' '}
+          {t('More workflow examples (issue triage, CI fixes, etc.) at:')}{' '}
           <Link url="https://github.com/anthropics/claude-code-action/blob/main/examples/">
             https://github.com/anthropics/claude-code-action/blob/main/examples/
           </Link>

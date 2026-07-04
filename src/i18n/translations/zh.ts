@@ -1540,6 +1540,63 @@ const zh: Record<string, string> = {
   '+{n} more tool {unit}': '+{n} 更多工具 {unit}',
 
   // ── Dialog / misc ───────────────────────────────────────────────
+  'Tool Recommendation': '工具推荐',
+  'Select GitHub workflows to install': '选择要安装的 GitHub workflow',
+  "We'll create a workflow file in your repository for each one you select.":
+    '将为您选择的每一项在仓库中创建一个 workflow 文件。',
+  '@Claude Code - Tag @claude in issues and PR comments':
+    '@Claude Code - 在 issue 和 PR 评论中标记 @claude',
+  'Claude Code Review - Automated code review on new PRs':
+    'Claude Code Review - 对新 PR 进行自动代码审查',
+  'More workflow examples (issue triage, CI fixes, etc.) at:':
+    '更多 workflow 示例（issue 分流、CI 修复等）见：',
+  Space: '空格',
+  'Worktree removed (no changes)': 'Worktree 已移除（无更改）',
+  'Worktree cleanup failed, exiting anyway': 'Worktree 清理失败，仍将退出',
+  'No active worktree session found': '未找到活跃的 worktree 会话',
+  'Worktree kept. Your work is saved at {path} on branch {branch}. Reattach to tmux session with: {command}':
+    'Worktree 已保留。您的工作已保存在 {path} 的 {branch} 分支上。可使用以下命令重新连接 tmux 会话：{command}',
+  'Worktree kept. Your work is saved at {path} on branch {branch}':
+    'Worktree 已保留。您的工作已保存在 {path} 的 {branch} 分支上',
+  'Worktree kept at {path} on branch {branch}. Tmux session terminated.':
+    'Worktree 已保留在 {path} 的 {branch} 分支上。Tmux 会话已终止。',
+  ' Tmux session terminated.': ' Tmux 会话已终止。',
+  'Worktree removed. {count} {commitNoun} and uncommitted changes were discarded.{tmuxNote}':
+    'Worktree 已移除。已丢弃 {count} 个{commitNoun}和未提交的更改。{tmuxNote}',
+  'Worktree removed. {count} {commitNoun} on {branch} {verb} discarded.{tmuxNote}':
+    'Worktree 已移除。已丢弃 {branch} 上的 {count} 个{commitNoun}。{tmuxNote}',
+  'Worktree removed. Uncommitted changes were discarded.{tmuxNote}':
+    'Worktree 已移除。未提交的更改已丢弃。{tmuxNote}',
+  'Worktree removed.{tmuxNote}': 'Worktree 已移除。{tmuxNote}',
+  commit: '提交',
+  commits: '提交',
+  was: '已被',
+  were: '已被',
+  file: '文件',
+  files: '文件',
+  'Keeping worktree…': '正在保留 worktree…',
+  'Removing worktree…': '正在移除 worktree…',
+  'You have {fileCount} uncommitted {fileNoun} and {commitCount} {commitNoun} on {branch}. All will be lost if you remove.':
+    '您在 {branch} 上有 {fileCount} 个未提交{fileNoun}和 {commitCount} 个{commitNoun}。如果移除，所有内容都将丢失。',
+  'You have {count} uncommitted {fileNoun}. These will be lost if you remove the worktree.':
+    '您有 {count} 个未提交{fileNoun}。如果移除 worktree，这些内容将丢失。',
+  'You have {count} {commitNoun} on {branch}. The branch will be deleted if you remove the worktree.':
+    '您在 {branch} 上有 {count} 个{commitNoun}。如果移除 worktree，该分支将被删除。',
+  'You are working in a worktree. Keep it to continue working there, or remove it to clean up.':
+    '您正在 worktree 中工作。保留它可继续在其中工作，或移除它以完成清理。',
+  'All changes and commits will be lost.': '所有更改和提交都将丢失。',
+  'Clean up the worktree directory.': '清理 worktree 目录。',
+  'Keep worktree and tmux session': '保留 worktree 和 tmux 会话',
+  'Stays at {path}. Reattach with: {command}':
+    '保留在 {path}。使用以下命令重新连接：{command}',
+  'Keep worktree, kill tmux session': '保留 worktree，终止 tmux 会话',
+  'Keeps worktree at {path}, terminates tmux session.':
+    '将 worktree 保留在 {path}，并终止 tmux 会话。',
+  'Remove worktree and tmux session': '移除 worktree 和 tmux 会话',
+  'Keep worktree': '保留 worktree',
+  'Stays at {path}': '保留在 {path}',
+  'Remove worktree': '移除 worktree',
+  'Exiting worktree session': '正在退出 worktree 会话',
   'Enter to confirm · Esc to cancel': '回车确认 · Esc 取消',
   'Feedback / bug report cancelled': '反馈/错误报告已取消',
   'Feedback cancelled': '反馈已取消',
