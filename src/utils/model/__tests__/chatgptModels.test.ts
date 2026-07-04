@@ -241,6 +241,12 @@ describe('getChatGPTCodexModelDisplayName', () => {
     )
   })
 
+  test('gpt-5.3-codex-spark[1m] returns GPT-5.3-Codex-Spark (1M context)', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark[1m]')).toBe(
+      'GPT-5.3-Codex-Spark (1M context)',
+    )
+  })
+
   test('unknown model returns null', () => {
     expect(getChatGPTCodexModelDisplayName('gpt-4')).toBeNull()
     expect(getChatGPTCodexModelDisplayName('gpt-4o')).toBeNull()

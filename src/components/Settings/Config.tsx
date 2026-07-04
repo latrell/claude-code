@@ -36,7 +36,12 @@ import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
-import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import {
+  getDefaultMainLoopModelSetting,
+  isOpus1mMergeEnabled,
+  renderDefaultModelSetting,
+  renderModelSetting,
+} from '../../utils/model/model.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
@@ -268,7 +273,7 @@ export function Config({
     }));
     setChanges(prev => {
       const valStr =
-        modelDisplayString(value) +
+        configModelDisplayString(value) +
         (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled()) ? ` \u00b7 ${t('Billed as extra usage')}` : '');
       if ('model' in prev) {
         const { model, ...rest } = prev;
@@ -1243,7 +1248,11 @@ export function Config({
         key: key as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
-      return `Set ${key} to ${chalk.bold(value)}`;
+      const enabled = getConfigEnabledValue(value);
+      if (enabled !== null) {
+        return formatBooleanConfigChange(key, enabled);
+      }
+      return formatConfigChange(key, value);
     });
     // Check for API key changes
     // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
@@ -1258,72 +1267,74 @@ export function Config({
         globalConfig.customApiKeyResponses?.approved?.includes(normalizeApiKeyForConfig(effectiveApiKey)),
     );
     if (initialUsingCustomKey !== currentUsingCustomKey) {
-      formattedChanges.push(`${currentUsingCustomKey ? 'Enabled' : 'Disabled'} custom API key`);
+      formattedChanges.push(formatBooleanConfigChange('custom API key', currentUsingCustomKey));
       logEvent('tengu_config_changed', {
         key: 'env.ANTHROPIC_API_KEY' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: currentUsingCustomKey as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
     }
     if (globalConfig.theme !== initialConfig.current.theme) {
-      formattedChanges.push(`Set theme to ${chalk.bold(globalConfig.theme)}`);
+      formattedChanges.push(formatConfigChange('theme', globalConfig.theme));
     }
     if (globalConfig.preferredNotifChannel !== initialConfig.current.preferredNotifChannel) {
-      formattedChanges.push(`Set notifications to ${chalk.bold(globalConfig.preferredNotifChannel)}`);
+      formattedChanges.push(formatConfigChange('notifications', globalConfig.preferredNotifChannel));
     }
     if (currentOutputStyle !== initialOutputStyle.current) {
-      formattedChanges.push(`Set output style to ${chalk.bold(currentOutputStyle)}`);
+      formattedChanges.push(formatConfigChange('output style', currentOutputStyle));
     }
     if (currentLanguage !== initialLanguage.current) {
-      formattedChanges.push(`Set response language to ${chalk.bold(currentLanguage ?? 'English')}`);
+      formattedChanges.push(formatConfigChange('response language', currentLanguage ?? 'English'));
     }
     if (globalConfig.editorMode !== initialConfig.current.editorMode) {
-      formattedChanges.push(`Set editor mode to ${chalk.bold(globalConfig.editorMode || 'emacs')}`);
+      formattedChanges.push(formatConfigChange('editor mode', globalConfig.editorMode || 'emacs'));
     }
     if (globalConfig.diffTool !== initialConfig.current.diffTool) {
-      formattedChanges.push(`Set diff tool to ${chalk.bold(globalConfig.diffTool)}`);
+      formattedChanges.push(formatConfigChange('diff tool', globalConfig.diffTool));
     }
     if (globalConfig.autoConnectIde !== initialConfig.current.autoConnectIde) {
-      formattedChanges.push(`${globalConfig.autoConnectIde ? 'Enabled' : 'Disabled'} auto-connect to IDE`);
+      formattedChanges.push(formatBooleanConfigChange('auto-connect to IDE', globalConfig.autoConnectIde ?? false));
     }
     if (globalConfig.autoInstallIdeExtension !== initialConfig.current.autoInstallIdeExtension) {
       formattedChanges.push(
-        `${globalConfig.autoInstallIdeExtension ? 'Enabled' : 'Disabled'} auto-install IDE extension`,
+        formatBooleanConfigChange('auto-install IDE extension', globalConfig.autoInstallIdeExtension ?? true),
       );
     }
     if (globalConfig.autoCompactEnabled !== initialConfig.current.autoCompactEnabled) {
-      formattedChanges.push(`${globalConfig.autoCompactEnabled ? 'Enabled' : 'Disabled'} auto-compact`);
+      formattedChanges.push(formatBooleanConfigChange('auto-compact', globalConfig.autoCompactEnabled));
     }
     if (globalConfig.respectGitignore !== initialConfig.current.respectGitignore) {
       formattedChanges.push(
-        `${globalConfig.respectGitignore ? 'Enabled' : 'Disabled'} respect .gitignore in file picker`,
+        formatBooleanConfigChange('respect .gitignore in file picker', globalConfig.respectGitignore),
       );
     }
     if (globalConfig.copyFullResponse !== initialConfig.current.copyFullResponse) {
-      formattedChanges.push(`${globalConfig.copyFullResponse ? 'Enabled' : 'Disabled'} always copy full response`);
+      formattedChanges.push(formatBooleanConfigChange('always copy full response', globalConfig.copyFullResponse));
     }
     if (globalConfig.copyOnSelect !== initialConfig.current.copyOnSelect) {
-      formattedChanges.push(`${globalConfig.copyOnSelect ? 'Enabled' : 'Disabled'} copy on select`);
+      formattedChanges.push(formatBooleanConfigChange('copy on select', globalConfig.copyOnSelect ?? true));
     }
     if (globalConfig.terminalProgressBarEnabled !== initialConfig.current.terminalProgressBarEnabled) {
       formattedChanges.push(
-        `${globalConfig.terminalProgressBarEnabled ? 'Enabled' : 'Disabled'} terminal progress bar`,
+        formatBooleanConfigChange('terminal progress bar', globalConfig.terminalProgressBarEnabled),
       );
     }
     if (globalConfig.showStatusInTerminalTab !== initialConfig.current.showStatusInTerminalTab) {
-      formattedChanges.push(`${globalConfig.showStatusInTerminalTab ? 'Enabled' : 'Disabled'} terminal tab status`);
+      formattedChanges.push(
+        formatBooleanConfigChange('terminal tab status', globalConfig.showStatusInTerminalTab ?? false),
+      );
     }
     if (globalConfig.showTurnDuration !== initialConfig.current.showTurnDuration) {
-      formattedChanges.push(`${globalConfig.showTurnDuration ? 'Enabled' : 'Disabled'} turn duration`);
+      formattedChanges.push(formatBooleanConfigChange('turn duration', globalConfig.showTurnDuration));
     }
     if (globalConfig.remoteControlAtStartup !== initialConfig.current.remoteControlAtStartup) {
       const remoteLabel =
         globalConfig.remoteControlAtStartup === undefined
-          ? 'Reset Remote Control to default'
-          : `${globalConfig.remoteControlAtStartup ? 'Enabled' : 'Disabled'} Remote Control for all sessions`;
+          ? t('Reset Remote Control to default')
+          : formatBooleanConfigChange('Remote Control for all sessions', globalConfig.remoteControlAtStartup);
       formattedChanges.push(remoteLabel);
     }
     if (settingsData?.autoUpdatesChannel !== initialSettingsData.current?.autoUpdatesChannel) {
-      formattedChanges.push(`Set auto-update channel to ${chalk.bold(settingsData?.autoUpdatesChannel ?? 'latest')}`);
+      formattedChanges.push(formatConfigChange('auto-update channel', settingsData?.autoUpdatesChannel ?? 'latest'));
     }
     if (formattedChanges.length > 0) {
       onClose(formattedChanges.join('\n'));
@@ -2110,12 +2121,69 @@ export function Config({
   );
 }
 
+function formatConfigChange(setting: string, value: unknown): string {
+  return tf('Set {setting} to {value}', {
+    setting: getConfigChangeLabel(setting),
+    value: chalk.bold(String(value)),
+  });
+}
+
+function formatBooleanConfigChange(setting: string, enabled: boolean): string {
+  return tf(enabled ? 'Enabled {setting}' : 'Disabled {setting}', {
+    setting: getConfigChangeLabel(setting),
+  });
+}
+
+function getConfigEnabledValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (value === 'ON') return true;
+  if (value === 'OFF') return false;
+  return null;
+}
+
+function getConfigChangeLabel(setting: string): string {
+  const labels: Record<string, string> = {
+    model: t('Model'),
+    teammateDefaultModel: t('Default teammate model'),
+    defaultPermissionMode: t('Default permission mode'),
+    verbose: t('Verbose output'),
+    'Fast mode': tf('Fast mode ({model} only)', { model: FAST_MODE_MODEL_DISPLAY }),
+    'Default view': t('Default view'),
+    theme: t('Theme'),
+    notifications: t('Notifications'),
+    'output style': t('Output style'),
+    'response language': t('Language'),
+    'editor mode': t('Editor mode'),
+    'diff tool': t('Diff tool'),
+    'custom API key': t('Use custom API key'),
+    'auto-connect to IDE': t('Auto-connect to IDE (external terminal)'),
+    'auto-install IDE extension': t('Auto-install IDE extension'),
+    'auto-compact': t('Auto-compact'),
+    'respect .gitignore in file picker': t('Respect .gitignore in file picker'),
+    'always copy full response': t('Always copy full response (skip /copy picker)'),
+    'copy on select': t('Copy on select'),
+    'terminal progress bar': t('Terminal progress bar'),
+    'terminal tab status': t('Show status in terminal tab'),
+    'turn duration': t('Show turn duration'),
+    'Remote Control for all sessions': t('Enable Remote Control for all sessions'),
+    'auto-update channel': t('Auto-update channel'),
+  };
+  return labels[setting] ?? t(setting);
+}
+
+function configModelDisplayString(value: string | null): string {
+  if (value === null) {
+    return `${renderDefaultModelSetting(getDefaultMainLoopModelSetting())} ${t('(default)')}`;
+  }
+  return renderModelSetting(value);
+}
+
 function teammateModelDisplayString(value: string | null | undefined): string {
   if (value === undefined) {
-    return modelDisplayString(getHardcodedTeammateModelFallback());
+    return renderModelSetting(getHardcodedTeammateModelFallback());
   }
   if (value === null) return t("Default (leader's model)");
-  return modelDisplayString(value);
+  return renderModelSetting(value);
 }
 
 function getThemeLabel(key: string): string {
