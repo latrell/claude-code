@@ -126,6 +126,68 @@ describe('subagent provider config', () => {
     }
   })
 
+  test('maps providerModels subagentModel into runtime config', () => {
+    const config = getSubagentProviderRuntimeConfig(
+      {
+        modelType: 'openai',
+        providerModels: {
+          openai: { subagentModel: 'gpt-5.5-subagent' },
+        },
+      },
+      {},
+    )
+
+    expect(config).toEqual({
+      provider: 'openai',
+      env: { OPENAI_MODEL: 'gpt-5.5-subagent' },
+      model: 'gpt-5.5-subagent',
+      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    })
+    expect(
+      getAgentModel(undefined, 'parent-model', undefined, 'default', config),
+    ).toBe('gpt-5.5-subagent')
+  })
+
+  test('subagentProvider model overrides inherited providerModels subagentModel', () => {
+    const config = getSubagentProviderRuntimeConfig(
+      {
+        modelType: 'openai',
+        providerModels: {
+          openai: { subagentModel: 'main-openai-subagent' },
+        },
+        subagentProvider: {
+          modelType: 'gemini',
+          model: 'gemini-subagent',
+        },
+      },
+      {},
+    )
+
+    expect(config).toEqual({
+      provider: 'gemini',
+      modelType: 'gemini',
+      env: { GEMINI_MODEL: 'gemini-subagent' },
+      model: 'gemini-subagent',
+      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    })
+  })
+
+  test('provider-scoped subagent default does not override explicit tool model', () => {
+    const config = getSubagentProviderRuntimeConfig(
+      {
+        modelType: 'openai',
+        providerModels: {
+          openai: { subagentModel: 'gpt-5.5-subagent' },
+        },
+      },
+      {},
+    )
+
+    expect(
+      getAgentModel(undefined, 'parent-model', 'haiku', 'default', config),
+    ).not.toBe('gpt-5.5-subagent')
+  })
+
   test('uses CLAUDE_CODE_SUBAGENT_MODEL when provider runtime config is absent', () => {
     const originalSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
     process.env.CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-v4-flash'

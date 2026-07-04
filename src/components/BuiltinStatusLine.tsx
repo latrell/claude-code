@@ -4,6 +4,7 @@ import { Box, Text } from '@anthropic/ink';
 import { formatTokens } from '../utils/format.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { t } from '../i18n/t.js';
+import { getResolvedLanguage } from '../utils/language.js';
 import type { ProviderUsageBucket } from '../services/providerUsage/types.js';
 
 type RateLimitBucket = {
@@ -37,9 +38,23 @@ export function formatCountdown(epochSeconds: number): string {
   const hours = Math.floor((diff % 86400) / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
 
+  if (getResolvedLanguage() === 'zh') {
+    if (days >= 1) return `${days}天${hours}时`;
+    if (hours >= 1) return `${hours}时${minutes}分`;
+    return `${minutes}分`;
+  }
+
   if (days >= 1) return `${days}d${hours}h`;
   if (hours >= 1) return `${hours}h${minutes}m`;
   return `${minutes}m`;
+}
+
+export function formatProviderBucketLabel(label: string): string {
+  if (getResolvedLanguage() === 'zh') {
+    if (label === 'Primary rate limit') return '主限';
+    if (label === 'Secondary rate limit') return '副限';
+  }
+  return t(label);
 }
 
 function Separator() {
@@ -51,7 +66,7 @@ function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; n
   return (
     <>
       <Separator />
-      <Text dimColor>{t(bucket.label)} </Text>
+      <Text dimColor>{formatProviderBucketLabel(bucket.label)} </Text>
       <Text>{pct}%</Text>
       {!narrow && bucket.resetsAt !== undefined && bucket.resetsAt > 0 && (
         <Text dimColor> {formatCountdown(bucket.resetsAt)}</Text>

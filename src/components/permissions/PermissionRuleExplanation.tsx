@@ -6,6 +6,7 @@ import ThemedText from '../design-system/ThemedText.js';
 import { useAppState } from '../../state/AppState.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
 import { permissionRuleValueToString } from '../../utils/permissions/permissionRuleParser.js';
+import { tf } from '../../i18n/t.js';
 import type { Theme } from '../../utils/theme.js';
 
 export type PermissionRuleExplanationProps = {
@@ -30,13 +31,20 @@ function stringsForDecisionReason(
   if ((feature('BASH_CLASSIFIER') || feature('TRANSCRIPT_CLASSIFIER')) && reason.type === 'classifier') {
     if (reason.classifier === 'auto-mode') {
       return {
-        reasonString: `Auto mode classifier requires confirmation for this ${toolType}.\n${reason.reason}`,
+        reasonString: tf('Auto mode classifier requires confirmation for this {toolType}.\n{reason}', {
+          toolType,
+          reason: reason.reason,
+        }),
         configString: undefined,
         themeColor: 'error',
       };
     }
     return {
-      reasonString: `Classifier ${chalk.bold(reason.classifier)} requires confirmation for this ${toolType}.\n${reason.reason}`,
+      reasonString: tf('Classifier {classifier} requires confirmation for this {toolType}.\n{reason}', {
+        classifier: chalk.bold(reason.classifier),
+        toolType,
+        reason: reason.reason,
+      }),
       configString: undefined,
     };
   }

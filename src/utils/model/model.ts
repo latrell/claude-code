@@ -22,7 +22,11 @@ import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+  type APIProvider,
+} from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
@@ -66,6 +70,46 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
   )
 }
 
+export type SettingsProviderKey = 'anthropic' | 'openai' | 'gemini' | 'grok'
+
+export function apiProviderToSettingsProviderKey(
+  provider: APIProvider,
+): SettingsProviderKey | undefined {
+  if (provider === 'firstParty') return 'anthropic'
+  if (provider === 'openai') return 'openai'
+  if (provider === 'gemini') return 'gemini'
+  if (provider === 'grok') return 'grok'
+  return undefined
+}
+
+function getProviderModelEnv(
+  provider: APIProvider,
+  env: Record<string, string | undefined> = process.env,
+): ModelSetting | undefined {
+  if (provider === 'firstParty') return env.ANTHROPIC_MODEL
+  if (provider === 'openai') return env.OPENAI_MODEL
+  if (provider === 'gemini') return env.GEMINI_MODEL
+  if (provider === 'grok') return env.GROK_MODEL
+  return undefined
+}
+
+export function getProviderScopedModelSetting(
+  settings: Pick<
+    NonNullable<ReturnType<typeof getSettings_DEPRECATED>>,
+    'model' | 'providerModels'
+  >,
+  provider: APIProvider,
+  env: Record<string, string | undefined> = process.env,
+): ModelSetting | undefined {
+  const providerKey = apiProviderToSettingsProviderKey(provider)
+  return (
+    getProviderModelEnv(provider, env) ??
+    (providerKey ? settings.providerModels?.[providerKey]?.model : undefined) ??
+    (providerKey === 'anthropic' ? settings.model : undefined) ??
+    undefined
+  )
+}
+
 /**
  * Helper to get the model from /model (including via /config), the --model flag, environment variable,
  * or the saved settings. The returned value can be a model alias if that's what the user specified.
@@ -75,8 +119,9 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
  * Priority order within this function:
  * 1. Model override during session (from /model command) - highest priority
  * 2. Model override at startup (from --model flag)
- * 3. ANTHROPIC_MODEL environment variable
- * 4. Settings (from user's saved settings)
+ * 3. Provider-specific model environment variable
+ * 4. Provider-specific settings model
+ * 5. Legacy settings.model, only for Anthropic
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
@@ -86,7 +131,8 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    const provider = getAPIProvider(settings)
+    specifiedModel = getProviderScopedModelSetting(settings, provider)
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.

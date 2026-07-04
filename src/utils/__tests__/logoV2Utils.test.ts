@@ -8,6 +8,10 @@ mock.module('src/utils/auth.js', () => ({
   getSubscriptionName: () => 'Claude Max',
 }))
 
+mock.module('src/utils/settings/settings.js', () => ({
+  getInitialSettings: () => ({ language: 'English', agent: undefined }),
+}))
+
 import { setChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
 import type { ProviderRuntimeConfig } from '../model/subagentProvider.js'
 import {

@@ -7,6 +7,53 @@
  * protocol/config keys, and no test assertions.
  */
 const zh: Record<string, string> = {
+  // ── Product/UI shell ────────────────────────────────────────────
+  'Claude Code': 'Claude Code',
+
+  // ── Permission and auth notices ─────────────────────────────────
+  '{classifierModel} is temporarily unavailable, so auto mode cannot determine the safety of {toolName} right now. Wait briefly and then try this action again. If it keeps failing, continue with other tasks that do not require this action and come back to it later. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.':
+    '{classifierModel} 暂时不可用，自动模式现在无法判断 {toolName} 是否安全。请稍等片刻后重试此操作。如果仍然失败，请继续处理不依赖此操作的其他任务，稍后再回来重试。注意：读取文件、搜索代码和其他只读操作不需要分类器，仍可继续使用。',
+  'Auto mode classifier requires confirmation for this {toolType}.\n{reason}':
+    '自动模式分类器要求确认此{toolType}。\n{reason}',
+  'Classifier {classifier} requires confirmation for this {toolType}.\n{reason}':
+    '分类器 {classifier} 要求确认此{toolType}。\n{reason}',
+  'Auth conflict: Using {source} instead of Claude account subscription token. Either unset {source}, or run `claude /logout`.':
+    '鉴权冲突：正在使用 {source}，而不是 Claude 账户订阅 token。请取消设置 {source}，或运行 `claude /logout`。',
+  'Auth conflict: Using {source} instead of Anthropic Console key. Either unset {source}, or run `claude /logout`.':
+    '鉴权冲突：正在使用 {source}，而不是 Anthropic Console key。请取消设置 {source}，或运行 `claude /logout`。',
+  'Auth conflict: Both a token ({tokenSource}) and an API key ({apiKeySource}) are set. This may lead to unexpected behavior.':
+    '鉴权冲突：同时设置了 token（{tokenSource}）和 API key（{apiKeySource}）。这可能导致行为不可预期。',
+  '· Trying to use {source}? {action}': '· 想使用 {source}？{action}',
+  'Unset the ANTHROPIC_API_KEY environment variable, or claude /logout then say "No" to the API key approval before login.':
+    '请取消设置 ANTHROPIC_API_KEY 环境变量，或运行 claude /logout 后在登录前的 API key 确认中选择“否”。',
+  'Unset the apiKeyHelper setting.': '请取消设置 apiKeyHelper。',
+  'claude /logout to sign out of claude.ai.':
+    '运行 claude /logout 退出 claude.ai。',
+  'Unset the {source} environment variable.': '请取消设置 {source} 环境变量。',
+  'Current API provider: {provider}': '当前 API 提供者：{provider}',
+  'API provider cleared (will use environment variables).':
+    '已清除 API 提供者配置（将使用环境变量）。',
+  'Invalid provider: {provider}\nValid: {validProviders}':
+    '无效提供者：{provider}\n可用：{validProviders}',
+  'Switched to OpenAI provider.\nWarning: Missing env vars: {missing}\nConfigure them via /login or set manually.':
+    '已切换到 OpenAI 提供者。\n警告：缺少环境变量：{missing}\n请通过 /login 配置，或手动设置。',
+  'Switched to Grok provider.\nWarning: Missing env var: GROK_API_KEY (or XAI_API_KEY)\nConfigure it via settings.json env or set manually.':
+    '已切换到 Grok 提供者。\n警告：缺少环境变量：GROK_API_KEY（或 XAI_API_KEY）\n请通过 settings.json env 配置，或手动设置。',
+  'Switched to Gemini provider.\nWarning: Missing env var: GEMINI_API_KEY\nConfigure it via /login or set manually.':
+    '已切换到 Gemini 提供者。\n警告：缺少环境变量：GEMINI_API_KEY\n请通过 /login 配置，或手动设置。',
+  'API provider set to {provider}.': 'API 提供者已设置为 {provider}。',
+  'API provider set to {provider} (via environment variable).':
+    'API 提供者已设置为 {provider}（通过环境变量）。',
+  'Current subagent provider: {provider}{source}':
+    '当前子 agent 提供者：{provider}{source}',
+  ' (from settings: {provider})': '（来自设置：{provider}）',
+  'Subagent provider cleared. Subagents will now inherit the main provider.':
+    '已清除子 agent 提供者。子 agent 现在将继承主提供者。',
+  'Subagent provider "{provider}" is not supported. Subagents only support: {validProviders}':
+    '不支持子 agent 提供者“{provider}”。子 agent 仅支持：{validProviders}',
+  'Subagent provider set to {provider}.':
+    '子 agent 提供者已设置为 {provider}。',
+
   // ── /lang command ──────────────────────────────────────────────
   // (Removed — language setting is now unified in /config's Language option)
 

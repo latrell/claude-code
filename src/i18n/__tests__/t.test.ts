@@ -115,6 +115,46 @@ describe('t', () => {
 
   test('translates newly localized UI strings', () => {
     mockLanguage = '简体中文'
+    expect(t('Claude Code')).toBe('Claude Code')
+    expect(
+      tf(
+        '{classifierModel} is temporarily unavailable, so auto mode cannot determine the safety of {toolName} right now. Wait briefly and then try this action again. If it keeps failing, continue with other tasks that do not require this action and come back to it later. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.',
+        { classifierModel: 'Haiku', toolName: 'Bash' },
+      ),
+    ).toContain('Haiku 暂时不可用')
+    expect(
+      tf(
+        'Auth conflict: Both a token ({tokenSource}) and an API key ({apiKeySource}) are set. This may lead to unexpected behavior.',
+        {
+          tokenSource: 'ANTHROPIC_AUTH_TOKEN',
+          apiKeySource: 'ANTHROPIC_API_KEY',
+        },
+      ),
+    ).toBe(
+      '鉴权冲突：同时设置了 token（ANTHROPIC_AUTH_TOKEN）和 API key（ANTHROPIC_API_KEY）。这可能导致行为不可预期。',
+    )
+    expect(
+      tf(
+        'Auto mode classifier requires confirmation for this {toolType}.\n{reason}',
+        {
+          toolType: 'command',
+          reason: 'Classifier unavailable',
+        },
+      ),
+    ).toBe('自动模式分类器要求确认此command。\nClassifier unavailable')
+    expect(
+      tf(
+        'Classifier {classifier} requires confirmation for this {toolType}.\n{reason}',
+        {
+          classifier: 'Haiku',
+          toolType: 'tool',
+          reason: 'Need review',
+        },
+      ),
+    ).toBe('分类器 Haiku 要求确认此tool。\nNeed review')
+    expect(tf('Current API provider: {provider}', { provider: 'openai' })).toBe(
+      '当前 API 提供者：openai',
+    )
     expect(t("Use Claude Code's terminal setup?")).toBe(
       '使用 Claude Code 的终端设置？',
     )

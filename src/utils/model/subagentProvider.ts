@@ -1,5 +1,6 @@
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
+import { apiProviderToSettingsProviderKey } from './model.js'
 import { getAPIProvider, type APIProvider } from './providers.js'
 
 export const SUBAGENT_CREDENTIAL_SCOPE = 'subagent'
@@ -8,6 +9,7 @@ export type ProviderRuntimeConfig = {
   provider: APIProvider
   modelType?: ProviderLoginConfig['modelType']
   env?: Record<string, string | undefined>
+  model?: string | null
   credentialScope?: string
 }
 
@@ -134,6 +136,20 @@ export function getSubagentProviderFromEnv(
   }
 }
 
+function envWithProviderModel(
+  provider: APIProvider,
+  baseEnv: Record<string, string | undefined> | undefined,
+  model: string | null | undefined,
+): Record<string, string | undefined> | undefined {
+  if (!model) return baseEnv
+  const env = { ...(baseEnv ?? {}) }
+  if (provider === 'openai') env.OPENAI_MODEL = model
+  if (provider === 'gemini') env.GEMINI_MODEL = model
+  if (provider === 'grok') env.GROK_MODEL = model
+  if (provider === 'firstParty') env.CLAUDE_CODE_SUBAGENT_MODEL = model
+  return env
+}
+
 export function getSubagentProviderConfig(
   settings: Pick<SettingsJson, 'subagentProvider'> = getInitialSettings(),
   envSource: Record<string, string | undefined> = process.env,
@@ -163,17 +179,26 @@ export function getEffectiveSubagentProvider(
 export function getSubagentProviderRuntimeConfig(
   settings: Pick<
     SettingsJson,
-    'modelType' | 'subagentProvider'
+    'modelType' | 'subagentProvider' | 'providerModels'
   > = getInitialSettings(),
   envSource: Record<string, string | undefined> = process.env,
 ): ProviderRuntimeConfig | undefined {
   const subagentProvider = getSubagentProviderConfig(settings, envSource)
-  if (!subagentProvider) return undefined
+  const provider = getEffectiveSubagentProvider(settings, envSource)
+  const providerKey = apiProviderToSettingsProviderKey(provider)
+  const providerModel = providerKey
+    ? settings.providerModels?.[providerKey]?.subagentModel
+    : undefined
+  const model = subagentProvider?.model ?? providerModel
+
+  if (!subagentProvider && !model) return undefined
+
   return {
-    provider: getEffectiveSubagentProvider(settings, envSource),
-    modelType: subagentProvider.modelType,
-    env: subagentProvider.env,
+    provider,
+    modelType: subagentProvider?.modelType,
+    env: envWithProviderModel(provider, subagentProvider?.env, model),
+    model,
     credentialScope:
-      subagentProvider.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
+      subagentProvider?.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
   }
 }

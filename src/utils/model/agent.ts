@@ -46,19 +46,26 @@ export function getAgentModel(
   const scopedEnv = providerRuntimeConfig?.env
   const provider = getAgentProvider(providerRuntimeConfig)
   const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
-  const providerConfiguredModel = getProviderConfiguredAgentModel(
-    providerRuntimeConfig,
-    toolSpecifiedModel ?? agentModelWithExp,
-    parentModel,
-  )
+  const isDefaultAgentModel = agentModel === undefined && !toolSpecifiedModel
+  const shouldUseProviderConfiguredModel =
+    !toolSpecifiedModel &&
+    (agentModel === undefined || agentModel === 'inherit')
+  const providerConfiguredModel = shouldUseProviderConfiguredModel
+    ? getProviderConfiguredAgentModel(
+        providerRuntimeConfig,
+        agentModelWithExp,
+        parentModel,
+      )
+    : undefined
 
   if (providerConfiguredModel) {
     return providerConfiguredModel
   }
 
-  const subagentModel =
-    scopedEnv?.CLAUDE_CODE_SUBAGENT_MODEL ??
-    process.env.CLAUDE_CODE_SUBAGENT_MODEL
+  const subagentModel = isDefaultAgentModel
+    ? (scopedEnv?.CLAUDE_CODE_SUBAGENT_MODEL ??
+      process.env.CLAUDE_CODE_SUBAGENT_MODEL)
+    : undefined
 
   if (subagentModel) {
     return parseUserSpecifiedModel(subagentModel)

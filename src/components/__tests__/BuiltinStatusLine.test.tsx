@@ -15,7 +15,7 @@ mock.module('src/utils/settings/settings.js', () => ({
 }));
 
 // Static import — resolves in en mode (mockLanguage === undefined)
-import { formatCountdown } from '../BuiltinStatusLine.js';
+import { formatCountdown, formatProviderBucketLabel } from '../BuiltinStatusLine.js';
 
 // ---------------------------------------------------------------------------
 // Pure helper: maps ProviderUsageBucket[] to a simplified display shape for
@@ -171,6 +171,19 @@ describe('Chinese locale', () => {
     const { formatCountdown: zhFormatCountdown } = await import('../BuiltinStatusLine.js');
     const now = Math.floor(Date.now() / 1000);
     expect(zhFormatCountdown(now)).toBe('现在');
+  });
+
+  test('formatCountdown localizes minutes, hours, and days', () => {
+    const now = Math.floor(Date.now() / 1000);
+    expect(formatCountdown(now + 10 * 60 + 2)).toMatch(/^10分$/);
+    expect(formatCountdown(now + 3 * 3600 + 12 * 60 + 2)).toMatch(/^3时12分$/);
+    expect(formatCountdown(now + 2 * 86400 + 17 * 3600 + 2)).toMatch(/^2天17时$/);
+  });
+
+  test('formatProviderBucketLabel uses short Chinese status-line labels', () => {
+    expect(formatProviderBucketLabel('Primary rate limit')).toBe('主限');
+    expect(formatProviderBucketLabel('Secondary rate limit')).toBe('副限');
+    expect(formatProviderBucketLabel('RPM')).toBe('请求/分钟');
   });
 
   test('t() translates Primary rate limit to 主要速率限制', async () => {

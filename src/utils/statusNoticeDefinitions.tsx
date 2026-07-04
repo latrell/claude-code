@@ -17,6 +17,7 @@ import type { AgentDefinitionsResult } from '@claude-code-best/builtin-tools/too
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
 import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
+import { t, tf } from '../i18n/t.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';
@@ -75,10 +76,12 @@ const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
     const authTokenInfo = getAuthTokenSource();
     return (
       <Box flexDirection="row" marginTop={1}>
-        <Text color="warning">{figures.warning}</Text>
+        <Text color="warning">{figures.warning} </Text>
         <Text color="warning">
-          Auth conflict: Using {authTokenInfo.source} instead of Claude account subscription token. Either unset{' '}
-          {authTokenInfo.source}, or run `claude /logout`.
+          {tf(
+            'Auth conflict: Using {source} instead of Claude account subscription token. Either unset {source}, or run `claude /logout`.',
+            { source: authTokenInfo.source },
+          )}
         </Text>
       </Box>
     );
@@ -103,10 +106,14 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
     });
     return (
       <Box flexDirection="row" marginTop={1}>
-        <Text color="warning">{figures.warning}</Text>
+        <Text color="warning">{figures.warning} </Text>
         <Text color="warning">
-          Auth conflict: Using {apiKeySource} instead of Anthropic Console key. Either unset {apiKeySource}, or run
-          `claude /logout`.
+          {tf(
+            'Auth conflict: Using {source} instead of Anthropic Console key. Either unset {source}, or run `claude /logout`.',
+            {
+              source: apiKeySource,
+            },
+          )}
         </Text>
       </Box>
     );
@@ -135,26 +142,41 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
     return (
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="row">
-          <Text color="warning">{figures.warning}</Text>
+          <Text color="warning">{figures.warning} </Text>
           <Text color="warning">
-            Auth conflict: Both a token ({authTokenInfo.source}) and an API key ({apiKeySource}) are set. This may lead
-            to unexpected behavior.
+            {tf(
+              'Auth conflict: Both a token ({tokenSource}) and an API key ({apiKeySource}) are set. This may lead to unexpected behavior.',
+              {
+                tokenSource: authTokenInfo.source,
+                apiKeySource,
+              },
+            )}
           </Text>
         </Box>
         <Box flexDirection="column" marginLeft={3}>
           <Text color="warning">
-            · Trying to use {authTokenInfo.source === 'claude.ai' ? 'claude.ai' : authTokenInfo.source}?{' '}
-            {apiKeySource === 'ANTHROPIC_API_KEY'
-              ? 'Unset the ANTHROPIC_API_KEY environment variable, or claude /logout then say "No" to the API key approval before login.'
-              : apiKeySource === 'apiKeyHelper'
-                ? 'Unset the apiKeyHelper setting.'
-                : 'claude /logout'}
+            {tf('· Trying to use {source}? {action}', {
+              source: authTokenInfo.source === 'claude.ai' ? 'claude.ai' : authTokenInfo.source,
+              action:
+                apiKeySource === 'ANTHROPIC_API_KEY'
+                  ? t(
+                      'Unset the ANTHROPIC_API_KEY environment variable, or claude /logout then say "No" to the API key approval before login.',
+                    )
+                  : apiKeySource === 'apiKeyHelper'
+                    ? t('Unset the apiKeyHelper setting.')
+                    : 'claude /logout',
+            })}
           </Text>
           <Text color="warning">
-            · Trying to use {apiKeySource}?{' '}
-            {authTokenInfo.source === 'claude.ai'
-              ? 'claude /logout to sign out of claude.ai.'
-              : `Unset the ${authTokenInfo.source} environment variable.`}
+            {tf('· Trying to use {source}? {action}', {
+              source: apiKeySource,
+              action:
+                authTokenInfo.source === 'claude.ai'
+                  ? t('claude /logout to sign out of claude.ai.')
+                  : tf('Unset the {source} environment variable.', {
+                      source: authTokenInfo.source,
+                    }),
+            })}
           </Text>
         </Box>
       </Box>

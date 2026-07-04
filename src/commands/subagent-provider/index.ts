@@ -5,6 +5,7 @@ import {
   updateSettingsForSource,
   getSettings_DEPRECATED,
 } from '../../utils/settings/settings.js'
+import { t, tf } from '../../i18n/t.js'
 
 const call: LocalCommandCall = async (args, _context) => {
   const arg = args.trim().toLowerCase()
@@ -15,11 +16,16 @@ const call: LocalCommandCall = async (args, _context) => {
     const settings = getSettings_DEPRECATED()
     const hasSettingsOverride = !!settings?.subagentProvider?.modelType
     const source = hasSettingsOverride
-      ? ` (from settings: ${settings!.subagentProvider!.modelType})`
+      ? tf(' (from settings: {provider})', {
+          provider: settings!.subagentProvider!.modelType,
+        })
       : ''
     return {
       type: 'text',
-      value: `Current subagent provider: ${current}${source}`,
+      value: tf('Current subagent provider: {provider}{source}', {
+        provider: current,
+        source,
+      }),
     }
   }
 
@@ -30,8 +36,9 @@ const call: LocalCommandCall = async (args, _context) => {
     })
     return {
       type: 'text',
-      value:
+      value: t(
         'Subagent provider cleared. Subagents will now inherit the main provider.',
+      ),
     }
   }
 
@@ -41,12 +48,21 @@ const call: LocalCommandCall = async (args, _context) => {
     if (['bedrock', 'vertex', 'foundry'].includes(arg)) {
       return {
         type: 'text',
-        value: `Subagent provider "${arg}" is not supported. Subagents only support: ${validProviders.join(', ')}`,
+        value: tf(
+          'Subagent provider "{provider}" is not supported. Subagents only support: {validProviders}',
+          {
+            provider: arg,
+            validProviders: validProviders.join(', '),
+          },
+        ),
       }
     }
     return {
       type: 'text',
-      value: `Invalid provider: ${arg}\nValid: ${validProviders.join(', ')}`,
+      value: tf('Invalid provider: {provider}\nValid: {validProviders}', {
+        provider: arg,
+        validProviders: validProviders.join(', '),
+      }),
     }
   }
 
@@ -59,11 +75,17 @@ const call: LocalCommandCall = async (args, _context) => {
     subagentProvider: {
       modelType: arg as 'anthropic' | 'openai' | 'gemini' | 'grok',
       ...(existingSubagent?.env && { env: existingSubagent.env }),
+      ...(existingSubagent?.model !== undefined && {
+        model: existingSubagent.model,
+      }),
       credentialScope: existingSubagent?.credentialScope ?? 'subagent',
     },
   })
 
-  return { type: 'text', value: `Subagent provider set to ${arg}.` }
+  return {
+    type: 'text',
+    value: tf('Subagent provider set to {provider}.', { provider: arg }),
+  }
 }
 
 const subagentProvider = {

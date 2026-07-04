@@ -162,6 +162,7 @@ import {
 } from './planModeV2.js'
 import { escapeRegExp } from './stringUtils.js'
 import { isTodoV2Enabled } from './tasks.js'
+import { tf } from '../i18n/t.js'
 
 // Lazy import to avoid circular dependency (teammateMailbox -> teammate -> ... -> messages)
 function getTeammateMailbox(): typeof import('./teammateMailbox.js') {
@@ -290,11 +291,9 @@ export function buildClassifierUnavailableMessage(
   toolName: string,
   classifierModel: string,
 ): string {
-  return (
-    `${classifierModel} is temporarily unavailable, so auto mode cannot determine the safety of ${toolName} right now. ` +
-    `Wait briefly and then try this action again. ` +
-    `If it keeps failing, continue with other tasks that don't require this action and come back to it later. ` +
-    `Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.`
+  return tf(
+    '{classifierModel} is temporarily unavailable, so auto mode cannot determine the safety of {toolName} right now. Wait briefly and then try this action again. If it keeps failing, continue with other tasks that do not require this action and come back to it later. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.',
+    { classifierModel, toolName },
   )
 }
 

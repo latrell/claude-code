@@ -1,5 +1,75 @@
 import { describe, expect, test } from 'bun:test'
-import { firstPartyNameToCanonical } from '../model'
+import {
+  apiProviderToSettingsProviderKey,
+  firstPartyNameToCanonical,
+  getProviderScopedModelSetting,
+} from '../model'
+
+describe('provider-scoped model settings', () => {
+  test('maps API providers to settings provider keys', () => {
+    expect(apiProviderToSettingsProviderKey('firstParty')).toBe('anthropic')
+    expect(apiProviderToSettingsProviderKey('openai')).toBe('openai')
+    expect(apiProviderToSettingsProviderKey('gemini')).toBe('gemini')
+    expect(apiProviderToSettingsProviderKey('grok')).toBe('grok')
+    expect(apiProviderToSettingsProviderKey('bedrock')).toBeUndefined()
+  })
+
+  test('keeps legacy settings.model scoped to Anthropic only', () => {
+    const settings = { model: 'claude-opus-4-8' }
+
+    expect(getProviderScopedModelSetting(settings, 'firstParty', {})).toBe(
+      'claude-opus-4-8',
+    )
+    expect(
+      getProviderScopedModelSetting(settings, 'openai', {}),
+    ).toBeUndefined()
+  })
+
+  test('uses provider-specific model before legacy model', () => {
+    const settings = {
+      model: 'claude-opus-4-8',
+      providerModels: {
+        openai: { model: 'gpt-5.5-codex' },
+        gemini: { model: 'gemini-3-pro' },
+        grok: { model: 'grok-5' },
+      },
+    }
+
+    expect(getProviderScopedModelSetting(settings, 'openai', {})).toBe(
+      'gpt-5.5-codex',
+    )
+    expect(getProviderScopedModelSetting(settings, 'gemini', {})).toBe(
+      'gemini-3-pro',
+    )
+    expect(getProviderScopedModelSetting(settings, 'grok', {})).toBe('grok-5')
+  })
+
+  test('uses provider-specific env before providerModels', () => {
+    const settings = {
+      providerModels: {
+        openai: { model: 'settings-openai' },
+        gemini: { model: 'settings-gemini' },
+        grok: { model: 'settings-grok' },
+      },
+    }
+
+    expect(
+      getProviderScopedModelSetting(settings, 'openai', {
+        OPENAI_MODEL: 'env-openai',
+      }),
+    ).toBe('env-openai')
+    expect(
+      getProviderScopedModelSetting(settings, 'gemini', {
+        GEMINI_MODEL: 'env-gemini',
+      }),
+    ).toBe('env-gemini')
+    expect(
+      getProviderScopedModelSetting(settings, 'grok', {
+        GROK_MODEL: 'env-grok',
+      }),
+    ).toBe('env-grok')
+  })
+})
 
 describe('firstPartyNameToCanonical', () => {
   test('maps opus-4-6 full name to canonical', () => {

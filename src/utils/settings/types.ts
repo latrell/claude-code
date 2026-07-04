@@ -42,10 +42,32 @@ export const ProviderLoginConfigSchema = lazySchema(() =>
       env: EnvironmentVariablesSchema()
         .optional()
         .describe('Provider-specific environment values for scoped requests'),
+      model: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Default model for this scoped provider'),
       credentialScope: z
         .string()
         .optional()
         .describe('Credential/token namespace for scoped provider auth'),
+    })
+    .passthrough(),
+)
+
+const ProviderModelConfigSchema = lazySchema(() =>
+  z
+    .object({
+      model: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Default main-agent model for this provider'),
+      subagentModel: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Default subagent model for this provider'),
     })
     .passthrough(),
 )
@@ -393,6 +415,18 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Provider/account override used only by Agent/subagent sessions. When unset, subagents inherit the global login provider.',
+        ),
+      providerModels: z
+        .object({
+          anthropic: ProviderModelConfigSchema().optional(),
+          openai: ProviderModelConfigSchema().optional(),
+          gemini: ProviderModelConfigSchema().optional(),
+          grok: ProviderModelConfigSchema().optional(),
+        })
+        .partial()
+        .optional()
+        .describe(
+          'Provider-specific model preferences for main and subagent sessions',
         ),
       model: z
         .string()
