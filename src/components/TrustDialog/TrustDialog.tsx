@@ -201,17 +201,17 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
       <Box flexDirection="column" gap={1} paddingTop={1}>
         <Text bold>{getFsImplementation().cwd()}</Text>
 
-        <T>Is this a project you trust? (Your own code, a well-known open source project, or work from your team).</T>
-        <T>Once trusted, Claude Code can read, edit, and run commands in this folder.</T>
+        <T>你信任这个项目吗？（例如你自己的代码、知名开源项目，或来自你团队的工作区。）</T>
+        <T>信任后，Claude Code 可以读取、编辑并在此文件夹中运行命令。</T>
 
         <Text dimColor>
-          <Link url="https://code.claude.com/docs/en/security">{t('Security guide')}</Link>
+          <Link url="https://code.claude.com/docs/en/security">{t('安全指南')}</Link>
         </Text>
 
         <Select
           options={[
-            { label: t('Yes, I trust this folder'), value: 'enable_all' },
-            { label: t('No, exit'), value: 'exit' },
+            { label: t('是，我信任此文件夹'), value: 'enable_all' },
+            { label: t('否，退出'), value: 'exit' },
           ]}
           onChange={value => onChange(value as 'enable_all' | 'exit')}
           onCancel={() => onChange('exit')}

@@ -52,8 +52,8 @@ describe('Onboarding security copy', () => {
 
   test('trust dialog copy is concise', () => {
     const body =
-      'Is this a project you trust? (Your own code, a well-known open source project, or work from your team).'
+      '你信任这个项目吗？（例如你自己的代码、知名开源项目，或来自你团队的工作区。）'
     expect(body.length).toBeLessThan(120)
-    expect(body).toContain('trust')
+    expect(body).toContain('信任')
   })
 })
