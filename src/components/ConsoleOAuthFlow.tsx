@@ -150,8 +150,23 @@ export function ConsoleOAuthFlow({
       const isThirdParty =
         config.modelType === 'openai' || config.modelType === 'gemini' || config.modelType === 'grok';
 
+      // Mirror global-scope logins into the CCB connection registry so
+      // /connect and /models can switch back to these credentials later.
+      // Best-effort: registration must never fail a login.
+      const registerInConnectionRegistry = () => {
+        if (scope !== 'global' || !config.env) return;
+        const modelType = config.modelType;
+        if (modelType !== 'anthropic' && modelType !== 'openai' && modelType !== 'gemini' && modelType !== 'grok') {
+          return;
+        }
+        void import('../services/connections/autoRegister.js')
+          .then(mod => mod.registerConnectionFromProviderLogin(modelType, config.env))
+          .catch(() => {});
+      };
+
       if (isThirdParty && scope !== SUBAGENT_CREDENTIAL_SCOPE) {
         writeCCBProviderAuthEnv(config.modelType as CCBProvider, config.env ?? {});
+        registerInConnectionRegistry();
         // Still persist modelType in settings.json so getAPIProvider() picks
         // the right provider on next start — just don't leak env into settings.
         return updateSettingsForSource('userSettings', {
@@ -168,10 +183,12 @@ export function ConsoleOAuthFlow({
           },
         } as unknown as Parameters<typeof updateSettingsForSource>[1]);
       }
-      return updateSettingsForSource('userSettings', {
+      const result = updateSettingsForSource('userSettings', {
         modelType: config.modelType,
         ...(env ? { env: config.env } : {}),
       } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+      if (!result.error) registerInConnectionRegistry();
+      return result;
     },
     [scope],
   );

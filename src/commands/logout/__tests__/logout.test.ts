@@ -37,6 +37,15 @@ mock.module('src/services/api/openai/chatgptAuth.js', () => ({
   },
 }))
 
+// Connection-registry cleanup touches the real ~/.claude/ccb-connections.json
+// on a dev machine — stub it and record the call instead.
+const connectionsCleanupCalls: number[] = []
+mock.module('src/services/connections/logoutCleanup.js', () => ({
+  clearAllConnectionsOnLogout: async () => {
+    connectionsCleanupCalls.push(1)
+  },
+}))
+
 const saveGlobalConfigCalls: unknown[] = []
 mock.module('src/utils/config.ts', () => ({
   ...realConfig,
@@ -128,6 +137,7 @@ describe('logout call', () => {
     // performLogout side effects went through the stubs.
     expect(removeApiKeyCalls).toHaveLength(1)
     expect(removeChatGPTAuthCalls).toEqual([undefined])
+    expect(connectionsCleanupCalls).toHaveLength(1)
     expect(secureStorageDeleteCalls).toHaveLength(1)
     expect(saveGlobalConfigCalls).toHaveLength(1)
 

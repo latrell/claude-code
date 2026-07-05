@@ -99,4 +99,8 @@ export const DEFAULT_BUILD_FEATURES = [
   // Persistent thread goal command — auto-continuation, JSONL persistence,
   // strict completion/blocked audit. See src/services/goal.
   'GOAL',
+  // Provider connection registry: /connect (manage provider/account
+  // connections) + /models (cross-provider model picker). See
+  // src/services/connections.
+  'PROVIDER_CONNECTIONS',
 ] as const

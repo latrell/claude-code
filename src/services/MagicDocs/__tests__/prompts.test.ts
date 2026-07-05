@@ -264,7 +264,10 @@ const mockReadFile = mock(
 // disk state — without pre-importing the heavy fsOperations module (its
 // transitive deps stall bun:test). Avoid require()ing the real module
 // inside the factory: that re-enters the same mock and infinite-loops.
-import { promises as nodeFs, existsSync as nodeExistsSync } from 'node:fs'
+import nodeFsSync, {
+  promises as nodeFs,
+  existsSync as nodeExistsSync,
+} from 'node:fs'
 
 const realFsAdapter = {
   cwd: () => process.cwd(),
@@ -291,6 +294,38 @@ const realFsAdapter = {
   rename: (oldPath: string, newPath: string) => nodeFs.rename(oldPath, newPath),
   open: (p: string, flags: string | number) => nodeFs.open(p, flags),
   realpath: (p: string) => nodeFs.realpath(p),
+  // Sync surface: cross-file consumers (settings writes, provider auth
+  // files, config) go through getFsImplementation()'s *Sync methods —
+  // without these, every later test file that writes via file.ts fails.
+  statSync: nodeFsSync.statSync,
+  lstatSync: nodeFsSync.lstatSync,
+  readFileSync: (p: string, options?: { encoding?: BufferEncoding }) =>
+    nodeFsSync.readFileSync(p, { encoding: options?.encoding ?? 'utf-8' }),
+  readFileBytesSync: (p: string) => nodeFsSync.readFileSync(p),
+  writeFileSync: nodeFsSync.writeFileSync,
+  appendFileSync: nodeFsSync.appendFileSync,
+  copyFileSync: nodeFsSync.copyFileSync,
+  unlinkSync: nodeFsSync.unlinkSync,
+  renameSync: nodeFsSync.renameSync,
+  linkSync: nodeFsSync.linkSync,
+  symlinkSync: nodeFsSync.symlinkSync,
+  readlinkSync: nodeFsSync.readlinkSync,
+  realpathSync: nodeFsSync.realpathSync,
+  mkdirSync: (p: string, options?: { recursive?: boolean; mode?: number }) =>
+    nodeFsSync.mkdirSync(p, { recursive: true, ...options }),
+  readdirSync: (p: string) =>
+    nodeFsSync.readdirSync(p, { withFileTypes: true }),
+  readdirStringSync: (p: string) => nodeFsSync.readdirSync(p),
+  isDirEmptySync: (p: string) => nodeFsSync.readdirSync(p).length === 0,
+  rmdirSync: nodeFsSync.rmdirSync,
+  rmSync: nodeFsSync.rmSync,
+  openSync: nodeFsSync.openSync,
+  closeSync: nodeFsSync.closeSync,
+  fsyncSync: nodeFsSync.fsyncSync,
+  writeSync: nodeFsSync.writeSync,
+  readSync: nodeFsSync.readSync,
+  chmodSync: nodeFsSync.chmodSync,
+  accessSync: nodeFsSync.accessSync,
 }
 
 mock.module('src/utils/fsOperations.js', () => ({

@@ -20,7 +20,10 @@ mock.module('src/services/tokenEstimation.ts', () => ({
 mock.module('src/utils/slowOperations.ts', () => ({
   jsonStringify: JSON.stringify,
   jsonParse: JSON.parse,
-  slowLogging: { enabled: false },
+  // Real slowLogging is a template-tag returning a Disposable (used with
+  // `using` in fsOperations). A plain object here breaks every later test
+  // file that hits the real fs implementation (process-global mock).
+  slowLogging: () => ({ [Symbol.dispose]: () => {} }),
   clone: (v: any) => structuredClone(v),
   cloneDeep: (v: any) => structuredClone(v),
   callerFrame: () => '',

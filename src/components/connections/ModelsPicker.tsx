@@ -1,0 +1,206 @@
+import * as React from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, FuzzyPicker, Text } from '@anthropic/ink';
+import {
+  activateConnectionForSession,
+  activateConnectionGlobally,
+  getSessionAssignment,
+} from '../../services/connections/activate.js';
+import { importLegacyConnections } from '../../services/connections/migrate.js';
+import {
+  fetchRemoteModelsForConnection,
+  getStaticModelsForConnection,
+  type CatalogModel,
+} from '../../services/connections/modelCatalog.js';
+import { getDefaultAssignment, listConnections } from '../../services/connections/store.js';
+import type { AgentSlot, Connection } from '../../services/connections/types.js';
+import { t, tf } from '../../i18n/t.js';
+import { Spinner } from '../Spinner.js';
+import { kindDisplayName } from './ConnectionsPanel.js';
+
+type ModelPickItem = {
+  key: string;
+  connection: Connection;
+  model: CatalogModel;
+  searchText: string;
+};
+
+type Props = {
+  onDone: (message?: string) => void;
+  onMainModelChange: (model: string | null) => void;
+  onAuthChanged: () => void;
+  initialSlot?: AgentSlot;
+};
+
+function buildItems(connections: Connection[], remoteModels: Record<string, string[]>): ModelPickItem[] {
+  const items: ModelPickItem[] = [];
+  for (const connection of connections) {
+    const models = [...getStaticModelsForConnection(connection)];
+    const seen = new Set(models.map(m => m.value ?? ''));
+    for (const remote of remoteModels[connection.id] ?? []) {
+      if (seen.has(remote)) continue;
+      seen.add(remote);
+      models.push({ value: remote, label: remote });
+    }
+    for (const model of models) {
+      items.push({
+        key: `${connection.id}\u0000${model.value ?? '__default__'}`,
+        connection,
+        model,
+        searchText:
+          `${connection.label} ${kindDisplayName(connection.kind)} ${model.label} ${model.value ?? ''}`.toLowerCase(),
+      });
+    }
+  }
+  return items;
+}
+
+function itemMarkers(item: ModelPickItem, slot: AgentSlot): string {
+  const markers: string[] = [];
+  const session = getSessionAssignment(slot);
+  if (session?.connectionId === item.connection.id && (session.model ?? null) === item.model.value) {
+    markers.push('●');
+  }
+  const globalDefault = getDefaultAssignment(slot);
+  if (globalDefault?.connectionId === item.connection.id && (globalDefault.model ?? null) === item.model.value) {
+    markers.push('★');
+  }
+  return markers.length > 0 ? ` ${markers.join(' ')}` : '';
+}
+
+export function ModelsPicker({
+  onDone,
+  onMainModelChange,
+  onAuthChanged,
+  initialSlot = 'main',
+}: Props): React.ReactNode {
+  const [slot, setSlot] = useState<AgentSlot>(initialSlot);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [remoteModels, setRemoteModels] = useState<Record<string, string[]>>({});
+  const [connections, setConnections] = useState<Connection[]>([]);
+
+  // Import legacy config once, then load the registry
+  useEffect(() => {
+    importLegacyConnections();
+    setConnections(listConnections());
+  }, []);
+
+  // Fetch live model lists for OpenAI-compatible endpoints (best-effort)
+  useEffect(() => {
+    let cancelled = false;
+    for (const connection of connections) {
+      if (connection.kind !== 'openai-compat' && connection.kind !== 'grok') {
+        continue;
+      }
+      void fetchRemoteModelsForConnection(connection).then(models => {
+        if (cancelled || models.length === 0) return;
+        setRemoteModels(prev => ({ ...prev, [connection.id]: models }));
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [connections]);
+
+  const allItems = useMemo(() => buildItems(connections, remoteModels), [connections, remoteModels]);
+
+  const filteredItems = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return allItems;
+    const terms = trimmed.split(/\s+/);
+    return allItems.filter(item => terms.every(term => item.searchText.includes(term)));
+  }, [allItems, query]);
+
+  const doActivate = useCallback(
+    async (item: ModelPickItem, scope: 'session' | 'global') => {
+      setBusy(t('Switching…'));
+      setError(null);
+      const result =
+        scope === 'global'
+          ? await activateConnectionGlobally(item.connection, slot, item.model.value)
+          : await activateConnectionForSession(item.connection, slot, item.model.value);
+      if (!result.success) {
+        setBusy(null);
+        setError(result.error ?? t('Failed to switch model.'));
+        return;
+      }
+      if (slot === 'main') {
+        onMainModelChange(result.mainLoopModel ?? null);
+      }
+      onAuthChanged();
+      const target = `${item.connection.label} / ${item.model.label}`;
+      const message =
+        slot === 'main'
+          ? scope === 'global'
+            ? tf('Global default model set to {target}', { target })
+            : tf('Session model set to {target}', { target })
+          : scope === 'global'
+            ? tf('Global subagent model set to {target}', { target })
+            : tf('Session subagent model set to {target}', { target });
+      onDone(message);
+    },
+    [slot, onDone, onMainModelChange, onAuthChanged],
+  );
+
+  if (busy) {
+    return (
+      <Box>
+        <Spinner />
+        <Text>{busy}</Text>
+      </Box>
+    );
+  }
+
+  if (connections.length === 0) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text>{t('No provider connections configured yet.')}</Text>
+        <Text dimColor>{t('Run /connect to add providers and accounts first.')}</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box flexDirection="column">
+      {error ? <Text color="error">{error}</Text> : null}
+      <FuzzyPicker<ModelPickItem>
+        title={slot === 'main' ? t('Select model — main agent') : t('Select model — subagents')}
+        placeholder={t('Search connections and models…')}
+        items={filteredItems}
+        getKey={item => item.key}
+        renderItem={(item, isFocused) => (
+          <Text color={isFocused ? undefined : undefined}>
+            <Text bold={isFocused}>{item.connection.label}</Text>
+            <Text dimColor> / </Text>
+            <Text bold={isFocused}>{item.model.label}</Text>
+            <Text color="success">{itemMarkers(item, slot)}</Text>
+            {item.model.description ? <Text dimColor> · {item.model.description}</Text> : null}
+          </Text>
+        )}
+        visibleCount={10}
+        onQueryChange={setQuery}
+        onSelect={item => {
+          void doActivate(item, 'session');
+        }}
+        selectAction={t('use for this session')}
+        onTab={{
+          action: slot === 'main' ? t('subagent slot') : t('main slot'),
+          handler: () => {
+            setSlot(current => (current === 'main' ? 'subagent' : 'main'));
+          },
+        }}
+        onShiftTab={{
+          action: t('set global default'),
+          handler: item => {
+            void doActivate(item, 'global');
+          },
+        }}
+        onCancel={() => onDone()}
+        emptyMessage={t('No models match — add connections via /connect')}
+        extraHints={<Text dimColor>{t('● current session · ★ global default')}</Text>}
+      />
+    </Box>
+  );
+}

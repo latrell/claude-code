@@ -226,6 +226,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 连接器: `CONNECTOR_TEXT`, `COMMIT_ATTRIBUTION`, `DIRECT_CONNECT`
 - 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
 - 模式: `POOR`, `SSH_REMOTE`
+- Provider 连接管理: `PROVIDER_CONNECTIONS`（`/connect` + `/models`，见 `docs/features/provider-connections.md`）
 - 已禁用: `CONTEXT_COLLAPSE`, `FORK_SUBAGENT`, `UDS_INBOX`, `LAN_PIPES`, `REVIEW_ARTIFACT`, `TEAMMEM`, `SKILL_LEARNING`
 
 **Dev mode 默认**: 全部启用（见 `scripts/dev.ts`）。
@@ -260,6 +261,12 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - **`src/services/api/grok/`** — client、模型映射
 
 详见各兼容层的 docs 文档。
+
+### Provider 连接管理（/connect + /models）
+
+- **`src/services/connections/`** — 连接注册表（`~/.claude/ccb-connections.json`）：一个"连接" = provider 类型 + 端点 + 一份账号凭据 + 模型目录，同一 provider 可存多个连接（多账号）。`activate.ts` 采用部署式激活：会话级只改进程内状态（env + `setProviderCliOverride` + client 缓存清理），全局写回现有持久层（`ccb-provider-auth.json` / `settings.modelType` / `providerModels` / `subagentProvider`），启动链路零改动。Anthropic OAuth 多账号存于 secure storage 的 `claudeAiOauthAccounts` 槽位（`claudeAiOauth` 保持活跃账号镜像，官方兼容）；ChatGPT 多账号按 scope 分文件。`/login` 成功自动注册连接，`/logout` 清空注册表。
+- **`src/commands/connect/`** — 连接管理面板（增删改、设默认、会话切换）；**`src/commands/models/`** — 跨 provider 模型选择器（Enter 会话切换、Shift+Tab 设全局默认、Tab 切主/子 agent 槽位）。
+- Feature flag：`PROVIDER_CONNECTIONS`。详见 `docs/features/provider-connections.md`。
 
 ### 穷鬼模式（Budget Mode）
 

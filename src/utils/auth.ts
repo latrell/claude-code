@@ -1225,6 +1225,26 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
         tokens.rateLimitTier ?? existingOauth?.rateLimitTier ?? null,
     }
 
+    // Multi-account slots (CCB connection registry): mirror the active
+    // credential into its accountUuid slot so switching accounts later
+    // restores fresh tokens instead of the ones captured at first login.
+    // installOAuthTokens stores account info BEFORE calling this function,
+    // so on both login and refresh oauthAccount identifies these tokens.
+    const activeAccount = getGlobalConfig().oauthAccount
+    if (activeAccount?.accountUuid && tokens.refreshToken) {
+      const accountSlots =
+        storageData.claudeAiOauthAccounts &&
+        typeof storageData.claudeAiOauthAccounts === 'object'
+          ? { ...storageData.claudeAiOauthAccounts }
+          : {}
+      accountSlots[activeAccount.accountUuid] = {
+        tokens: storageData.claudeAiOauth,
+        account: activeAccount,
+        savedAt: new Date().toISOString(),
+      }
+      storageData.claudeAiOauthAccounts = accountSlots
+    }
+
     const updateStatus = secureStorage.update(storageData)
 
     if (updateStatus.success) {

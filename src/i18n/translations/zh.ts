@@ -2523,6 +2523,109 @@ const zh: Record<string, string> = {
     '此进程的 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset）。进程级生效，不持久化。',
   'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.':
     '此进程的子智能体 API 提供商（anthropic/openai/gemini/grok/unset）。进程级生效，不持久化。',
+
+  // ── Provider connections (/connect + /models) ─────────────────
+  'Manage provider connections and accounts (add, switch, remove)':
+    '管理提供者连接与账号（添加、切换、删除）',
+  'Pick the model for the main agent or subagents across all connections':
+    '跨所有连接为主 agent 或子 agent 选择模型',
+  Connections: '连接管理',
+  'Connections closed': '已关闭连接管理',
+  'No connections yet. Add one to manage providers and accounts.':
+    '还没有任何连接。添加一个以管理提供者和账号。',
+  '+ Add connection…': '+ 添加连接…',
+  'Clear subagent default (inherit main)': '清除子 agent 默认（继承主 agent）',
+  Close: '关闭',
+  'Claude account': 'Claude 账号',
+  'Anthropic compatible': 'Anthropic 兼容',
+  'ChatGPT account': 'ChatGPT 账号',
+  'OpenAI compatible': 'OpenAI 兼容',
+  'main default': '主 agent 默认',
+  'subagent default': '子 agent 默认',
+  'in use (main)': '本会话使用中（主）',
+  'in use (subagent)': '本会话使用中（子）',
+  'Use for this session (main agent)': '本会话使用（主 agent）',
+  'Set as global default (main agent)': '设为全局默认（主 agent）',
+  'Use for this session (subagents)': '本会话使用（子 agent）',
+  'Set as global default (subagents)': '设为全局默认（子 agent）',
+  Rename: '重命名',
+  Delete: '删除',
+  'Rename connection': '重命名连接',
+  'Delete connection "{label}"? Stored credentials for it will be removed.':
+    '删除连接“{label}”？其存储的凭据也将被移除。',
+  'Pick a model (main agent)': '选择模型（主 agent）',
+  'Pick a model (subagents)': '选择模型（子 agent）',
+  'Persists across sessions': '跨会话持久生效',
+  'This session only': '仅当前会话',
+  'Custom model…': '自定义模型…',
+  'type a model id, Enter to confirm': '输入模型 ID，回车确认',
+  'Switching…': '切换中…',
+  'Failed to switch connection.': '切换连接失败。',
+  'Failed to switch model.': '切换模型失败。',
+  '{label}{model} is now the global default': '{label}{model} 已设为全局默认',
+  'Using {label}{model} for this session': '本会话使用 {label}{model}',
+  '{label}{model} is now the subagent default':
+    '{label}{model} 已设为子 agent 默认',
+  'Subagents use {label}{model} for this session':
+    '本会话子 agent 使用 {label}{model}',
+  'Add connection': '添加连接',
+  'Pick a provider preset or connection type': '选择提供者预设或连接类型',
+  'OpenAI Compatible (custom endpoint)': 'OpenAI 兼容（自定义端点）',
+  'Any OpenAI Chat Completions endpoint (Ollama, vLLM, …)':
+    '任意 OpenAI Chat Completions 端点（Ollama、vLLM 等）',
+  'Anthropic Compatible (custom endpoint)': 'Anthropic 兼容（自定义端点）',
+  'Anthropic Messages API gateway with base URL + auth token':
+    '使用 Base URL + Auth Token 的 Anthropic Messages API 网关',
+  'Google Gemini Generate Content API': 'Google Gemini Generate Content API',
+  'Grok (xAI)': 'Grok（xAI）',
+  'xAI Grok API (OpenAI compatible)': 'xAI Grok API（OpenAI 兼容）',
+  'Claude account (OAuth)': 'Claude 账号（OAuth）',
+  'Sign in with a claude.ai subscription account':
+    '使用 claude.ai 订阅账号登录',
+  'ChatGPT subscription (OAuth)': 'ChatGPT 订阅（OAuth）',
+  'Sign in with a ChatGPT account via device code':
+    '通过设备码登录 ChatGPT 账号',
+  '{provider} access mode': '{provider} 接入方式',
+  'API (pay per token)': 'API（按量计费）',
+  'Coding plan (subscription)': '编程套餐（订阅）',
+  'Connect {provider}': '连接 {provider}',
+  'Connection details': '连接信息',
+  'Get an API key: {url}': '获取 API Key：{url}',
+  Name: '名称',
+  'Display name, e.g. "DeepSeek personal"': '显示名称，如“DeepSeek 个人”',
+  'optional — default Gemini endpoint': '可选 — 默认 Gemini 端点',
+  'model for fast/background tasks (optional)':
+    '用于快速/后台任务的模型（可选）',
+  'default model (recommended)': '默认模型（推荐填写）',
+  'model for complex tasks (optional)': '用于复杂任务的模型（可选）',
+  'Signing in adds this account as a connection and makes it the active Claude account.':
+    '登录后此账号将作为连接添加，并成为当前活跃的 Claude 账号。',
+  'Login finished but no account information was stored.':
+    '登录已完成，但未能保存账号信息。',
+  'Claude Account': 'Claude 账号',
+  'ChatGPT Subscription': 'ChatGPT 订阅',
+  required: '必填',
+  'Open the URL below and enter the code to sign in:':
+    '打开下方链接并输入验证码登录：',
+  'Code:': '验证码：',
+  'Waiting for you to finish signing in…': '等待你完成登录…',
+  'Connection default model': '连接的默认模型',
+  'Mapped tier': '映射档位',
+  'Select model — main agent': '选择模型 — 主 agent',
+  'Select model — subagents': '选择模型 — 子 agent',
+  'Search connections and models…': '搜索连接与模型…',
+  'use for this session': '本会话使用',
+  'subagent slot': '子 agent 槽位',
+  'main slot': '主 agent 槽位',
+  'set global default': '设为全局默认',
+  'No models match — add connections via /connect':
+    '没有匹配的模型 — 请先通过 /connect 添加连接',
+  '● current session · ★ global default': '● 当前会话 · ★ 全局默认',
+  'No provider connections configured yet.': '尚未配置任何提供者连接。',
+  'Run /connect to add providers and accounts first.':
+    '请先运行 /connect 添加提供者和账号。',
+  'Model picker closed': '已关闭模型选择器',
+  Cancel: '取消',
 }
 
 export default zh

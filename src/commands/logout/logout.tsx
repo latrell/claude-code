@@ -30,6 +30,10 @@ export async function performLogout({ clearOnboarding = false }): Promise<void> 
   // Wipe CCB-isolated third-party provider credentials (OpenAI / Gemini / Grok)
   clearAllCCBProviderAuth();
 
+  // Wipe the CCB connection registry and connection-scoped credentials
+  const { clearAllConnectionsOnLogout } = await import('../../services/connections/logoutCleanup.js');
+  await clearAllConnectionsOnLogout();
+
   // Wipe all secure storage data on logout
   const secureStorage = getSecureStorage();
   secureStorage.delete();

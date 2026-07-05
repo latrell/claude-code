@@ -28,6 +28,14 @@ mock.module('src/utils/slowOperations.ts', () => ({
     v: unknown,
     ...args: Parameters<typeof JSON.stringify>[1][]
   ) => JSON.stringify(v, ...args),
+  // Keep the full export surface for later test files (process-global mock):
+  // slowLogging is a template-tag returning a Disposable used with `using`.
+  slowLogging: () => ({ [Symbol.dispose]: () => {} }),
+  clone: (v: unknown) => structuredClone(v),
+  cloneDeep: (v: unknown) => structuredClone(v),
+  callerFrame: () => '',
+  SLOW_OPERATION_THRESHOLD_MS: 100,
+  writeFileSync_DEPRECATED: () => {},
 }))
 
 import {

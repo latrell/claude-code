@@ -45,6 +45,19 @@ export function setSubagentProviderCliOverride(
   _subagentClearOverride = false
 }
 
+/**
+ * Apply a full session-scoped subagent provider config (connection registry
+ * activation path). Unlike setSubagentProviderCliOverride this carries env
+ * and model so a subagent can run against a different account without any
+ * settings.json write. Pass undefined to clear (falls back to env/settings).
+ */
+export function setSubagentProviderConfigOverride(
+  config: ProviderLoginConfig | undefined,
+): void {
+  _subagentProviderOverride = config
+  _subagentClearOverride = false
+}
+
 export function providerFromModelType(
   modelType: ProviderLoginConfig['modelType'] | undefined,
 ): APIProvider | undefined {

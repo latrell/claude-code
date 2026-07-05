@@ -100,6 +100,25 @@ const workflowsCmd = feature('WORKFLOW_SCRIPTS')
       require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
     ).default
   : null
+// Provider connection registry commands (/connect + /models). Declared as
+// inline literals with lazy load() — an eager require here would run during
+// commands.ts module evaluation, whose timing depends on which test file
+// loads it first (bun:bundle feature mocks are process-global).
+const connectCmd: Command = {
+  type: 'local-jsx',
+  name: 'connect',
+  description: 'Manage provider connections and accounts (add, switch, remove)',
+  aliases: ['connections'],
+  load: () => import('./commands/connect/connect.js'),
+}
+const modelsCmd: Command = {
+  type: 'local-jsx',
+  name: 'models',
+  description:
+    'Pick the model for the main agent or subagents across all connections',
+  argumentHint: '[sub]',
+  load: () => import('./commands/models/models.js'),
+}
 const webCmd = feature('CCR_REMOTE_SETUP')
   ? (
       require('./commands/remote-setup/index.js') as typeof import('./commands/remote-setup/index.js')
@@ -310,6 +329,7 @@ const COMMANDS = memoize((): Command[] => [
   autonomy,
   provider,
   subagentProvider,
+  ...(feature('PROVIDER_CONNECTIONS') ? [connectCmd, modelsCmd] : []),
   artifacts,
   agents,
   branch,

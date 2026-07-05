@@ -1,0 +1,159 @@
+import { describe, expect, mock, test } from 'bun:test'
+import { debugMock } from '../../../../tests/mocks/debug'
+import { logMock } from '../../../../tests/mocks/log'
+
+mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/debug.ts', debugMock)
+
+const { fetchRemoteModelsForConnection, getStaticModelsForConnection } =
+  await import('../modelCatalog.js')
+import type { Connection } from '../types.js'
+
+describe('getStaticModelsForConnection', () => {
+  test('anthropic kinds expose default + alias entries', () => {
+    const conn: Connection = {
+      id: 'acc',
+      label: 'Acc',
+      kind: 'anthropic-oauth',
+      credentialRef: 'u1',
+    }
+    const models = getStaticModelsForConnection(conn)
+    expect(models[0]?.value).toBeNull()
+    expect(models.map(m => m.value)).toEqual(
+      expect.arrayContaining([null, 'opus', 'sonnet', 'haiku']),
+    )
+  })
+
+  test('chatgpt-oauth exposes the Codex option list', () => {
+    const conn: Connection = {
+      id: 'gpt',
+      label: 'ChatGPT',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'default',
+    }
+    const models = getStaticModelsForConnection(conn)
+    expect(models[0]?.value).toBeNull()
+    expect(models.map(m => m.value)).toEqual(
+      expect.arrayContaining(['gpt-5.5', 'gpt-5.4-mini']),
+    )
+  })
+
+  test('preset connections expose the preset catalog with pricing details', () => {
+    const conn: Connection = {
+      id: 'ds',
+      label: 'DeepSeek',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk',
+      presetId: 'deepseek',
+    }
+    const models = getStaticModelsForConnection(conn)
+    const pro = models.find(m => m.value === 'deepseek-v4-pro')
+    expect(pro).toBeDefined()
+    expect(pro?.label).toBe('DeepSeek V4 Pro')
+    expect(pro?.description).toContain('1M')
+  })
+
+  test('merges explicit model list and tier values without duplicates', () => {
+    const conn: Connection = {
+      id: 'custom',
+      label: 'Custom',
+      kind: 'openai-compat',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk',
+      models: ['model-a', 'model-b'],
+      tierModels: { sonnet: 'model-a', haiku: 'model-c' },
+    }
+    const models = getStaticModelsForConnection(conn)
+    const values = models.map(m => m.value)
+    expect(values).toEqual([null, 'model-a', 'model-b', 'model-c'])
+    // Tier annotation only on the tier-sourced entry
+    expect(models.find(m => m.value === 'model-c')?.description).toContain(
+      'haiku',
+    )
+  })
+})
+
+describe('fetchRemoteModelsForConnection', () => {
+  const baseConn: Connection = {
+    id: 'remote',
+    label: 'Remote',
+    kind: 'openai-compat',
+    baseUrl: 'https://api.example.com/v1',
+    apiKey: 'sk-r',
+  }
+
+  test('fetches and sorts model ids from an OpenAI-compatible endpoint', async () => {
+    const calls: Array<{ url: string; auth: string | undefined }> = []
+    const fetchOverride = (async (
+      url: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      calls.push({
+        url: String(url),
+        auth: (init?.headers as Record<string, string>)?.['Authorization'],
+      })
+      return new Response(
+        JSON.stringify({
+          data: [{ id: 'z-model' }, { id: 'a-model' }, { notId: true }],
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+
+    const models = await fetchRemoteModelsForConnection(baseConn, {
+      fetchOverride,
+    })
+    expect(models).toEqual(['a-model', 'z-model'])
+    expect(calls[0]?.url).toBe('https://api.example.com/v1/models')
+    expect(calls[0]?.auth).toBe('Bearer sk-r')
+  })
+
+  test('returns [] on HTTP errors', async () => {
+    const fetchOverride = (async () =>
+      new Response('nope', { status: 401 })) as unknown as typeof fetch
+    const models = await fetchRemoteModelsForConnection(baseConn, {
+      fetchOverride,
+    })
+    expect(models).toEqual([])
+  })
+
+  test('returns [] on network failure', async () => {
+    const fetchOverride = (async () => {
+      throw new Error('ECONNREFUSED')
+    }) as unknown as typeof fetch
+    const models = await fetchRemoteModelsForConnection(baseConn, {
+      fetchOverride,
+    })
+    expect(models).toEqual([])
+  })
+
+  test('skips non-openai-compatible kinds', async () => {
+    const conn: Connection = {
+      id: 'g',
+      label: 'G',
+      kind: 'gemini',
+      apiKey: 'k',
+    }
+    expect(await fetchRemoteModelsForConnection(conn)).toEqual([])
+  })
+
+  test('grok falls back to the default x.ai base url', async () => {
+    const calls: string[] = []
+    const fetchOverride = (async (url: RequestInfo | URL) => {
+      calls.push(String(url))
+      return new Response(JSON.stringify({ data: [{ id: 'grok-4' }] }), {
+        status: 200,
+      })
+    }) as typeof fetch
+    const conn: Connection = {
+      id: 'grok',
+      label: 'Grok',
+      kind: 'grok',
+      apiKey: 'xai-key',
+    }
+    const models = await fetchRemoteModelsForConnection(conn, { fetchOverride })
+    expect(models).toEqual(['grok-4'])
+    expect(calls[0]).toBe('https://api.x.ai/v1/models')
+  })
+})

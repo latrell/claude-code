@@ -42,10 +42,28 @@ type StoredAuthFile = {
 }
 
 function authFilePath(scope?: string): string {
+  if (!scope || scope === 'default') {
+    return join(getClaudeConfigHomeDirLocal(), AUTH_FILE)
+  }
+  if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
+    return join(getClaudeConfigHomeDirLocal(), SUBAGENT_AUTH_FILE)
+  }
+  // Arbitrary connection-scoped credential files (CCB connection registry):
+  // openai-chatgpt-auth.<scope>.json. Scope is sanitized for filename safety.
+  const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, '-')
   return join(
     getClaudeConfigHomeDirLocal(),
-    scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_AUTH_FILE : AUTH_FILE,
+    `openai-chatgpt-auth.${safeScope}.json`,
   )
+}
+
+/**
+ * Resolve the on-disk path of a ChatGPT auth credential file for a scope.
+ * Exposed for the connection registry, which copies credential files
+ * between scopes when activating a connection.
+ */
+export function getChatGPTAuthFilePath(scope?: string): string {
+  return authFilePath(scope)
 }
 
 function getClaudeConfigHomeDirLocal(): string {

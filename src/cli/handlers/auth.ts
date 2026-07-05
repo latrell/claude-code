@@ -144,6 +144,12 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
     await fetchAndStoreClaudeCodeFirstTokenDate().catch(err =>
       logForDebugging(String(err), { level: 'error' }),
     )
+    // Register this account in the CCB connection registry (best-effort)
+    // so /connect and /models can switch back to it later.
+    const { registerConnectionFromOAuthLogin } = await import(
+      '../../services/connections/autoRegister.js'
+    )
+    registerConnectionFromOAuthLogin()
   } else {
     // API key creation is critical for Console users — let it throw.
     const apiKey = await createAndStoreApiKey(tokens.accessToken)

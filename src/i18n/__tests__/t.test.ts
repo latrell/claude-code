@@ -1,9 +1,14 @@
 import { describe, expect, mock, test } from 'bun:test'
+// Spread the real module so this process-global mock does not strip the
+// other settings exports for test files loaded later in the same process
+// (see CLAUDE.md cross-file mock pollution rules).
+import * as realSettings from '../../utils/settings/settings.js'
 
 // Control variable for mock injection — controlling settings.language
 let mockLanguage: string | undefined
 
 mock.module('src/utils/settings/settings.js', () => ({
+  ...realSettings,
   getInitialSettings: () => ({ language: mockLanguage }),
 }))
 
@@ -59,7 +64,7 @@ describe('t', () => {
   test('translates common UI labels', () => {
     mockLanguage = '简体中文'
     expect(t('Copy to clipboard')).toBe('复制到剪贴板')
-    expect(t('Cancel')).toBe('Cancel') // not in dict
+    expect(t('Cancel')).toBe('取消')
     expect(t('Save to file')).toBe('保存到文件')
     expect(t('Unknown error')).toBe('未知错误')
   })
