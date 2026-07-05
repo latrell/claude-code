@@ -151,6 +151,43 @@ describe('importLegacyConnections', () => {
     expect(conn?.credentialRef).toBe('default')
   })
 
+  test('imports ChatGPT subscription from the default auth file', () => {
+    writeFileSync(
+      join(tmpDir, 'openai-chatgpt-auth.json'),
+      JSON.stringify({ auth_mode: 'chatgpt', tokens: {} }),
+    )
+
+    const { imported } = importLegacyConnections()
+    expect(imported).toBe(1)
+    const conn = listConnections()[0]
+    expect(conn?.kind).toBe('chatgpt-oauth')
+    expect(conn?.credentialRef).toBe('default')
+  })
+
+  test('does not re-import the default ChatGPT slot when a ChatGPT connection exists', () => {
+    // Activating a scoped connection deploys its credential file into the
+    // default slot and writes the chatgpt marker into provider auth. Neither
+    // artifact is a legacy login, so nothing should be imported.
+    upsertConnection({
+      id: 'chatgpt',
+      label: 'ChatGPT 订阅',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'chatgpt',
+    })
+    writeFileSync(
+      join(tmpDir, 'openai-chatgpt-auth.json'),
+      JSON.stringify({ auth_mode: 'chatgpt', tokens: {} }),
+    )
+    writeProviderAuth({
+      openai: { env: { OPENAI_AUTH_MODE: 'chatgpt' } },
+    })
+
+    const { imported } = importLegacyConnections()
+    expect(imported).toBe(0)
+    expect(listConnections()).toHaveLength(1)
+    expect(listConnections()[0]?.credentialRef).toBe('chatgpt')
+  })
+
   test('imports gemini and grok entries', () => {
     writeProviderAuth({
       gemini: {

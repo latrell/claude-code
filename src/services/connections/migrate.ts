@@ -123,17 +123,29 @@ function readUserSettingsEnv(): Record<string, string> {
 function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   const candidates: Omit<Connection, 'id'>[] = []
 
+  // ChatGPT legacy candidates describe the *default* credential slot.
+  // Activating a scoped chatgpt-oauth connection deploys (copies) its
+  // credential file into that slot and marks OPENAI_AUTH_MODE=chatgpt in
+  // provider auth, so once any ChatGPT connection is registered the default
+  // slot is registry-managed state, not a legacy login — importing it again
+  // would duplicate the account under a second connection.
+  const hasChatGPTConnection = listConnections().some(
+    c => c.kind === 'chatgpt-oauth',
+  )
+
   // 1. ccb-provider-auth.json slots
   const providerAuth = readCCBProviderAuthData()
 
   const openaiEnv = providerAuth.openai?.env
   if (openaiEnv && Object.keys(openaiEnv).length > 0) {
     if (openaiEnv.OPENAI_AUTH_MODE === 'chatgpt') {
-      candidates.push({
-        label: 'ChatGPT Subscription',
-        kind: 'chatgpt-oauth',
-        credentialRef: 'default',
-      })
+      if (!hasChatGPTConnection) {
+        candidates.push({
+          label: 'ChatGPT Subscription',
+          kind: 'chatgpt-oauth',
+          credentialRef: 'default',
+        })
+      }
     } else if (openaiEnv.OPENAI_API_KEY || openaiEnv.OPENAI_BASE_URL) {
       const tierModels = tierModelsFromEnv(openaiEnv, 'OPENAI')
       candidates.push({
@@ -220,7 +232,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
 
   // 4. ChatGPT default auth file (covers logins predating provider-auth env)
   try {
-    if (existsSync(chatgptAuthFilePath())) {
+    if (!hasChatGPTConnection && existsSync(chatgptAuthFilePath())) {
       candidates.push({
         label: 'ChatGPT Subscription',
         kind: 'chatgpt-oauth',
