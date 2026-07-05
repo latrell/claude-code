@@ -9,7 +9,7 @@
 
 > Which Claude do you like? The open source one is the best.
 
-A reverse-engineered / decompiled source restoration of Anthropic's official [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI tool. The goal is to reproduce most of Claude Code's functionality and engineering capabilities. It's abbreviated as CCB.
+A fork of the open-source [claude-code-best/claude-code](https://github.com/claude-code-best/claude-code) project, focused on restoring and extending Claude Code CLI functionality and engineering capabilities. It's abbreviated as CCB.
 
 [Documentation (Chinese)](https://ccb.agent-aura.top/) — PR contributions welcome.
 

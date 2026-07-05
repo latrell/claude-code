@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) and other AI coding 
 
 ## Project Overview
 
-This is a **reverse-engineered / decompiled** version of Anthropic's official Claude Code CLI tool. The goal is to restore core functionality while trimming secondary capabilities. Many modules are stubbed or feature-flagged off. TypeScript strict mode is enforced — **`bunx tsc --noEmit` must pass with zero errors**.
+This repository is a fork of **claude-code-best/claude-code**, an open-source Claude Code CLI project. The goal is to restore and extend core Claude Code functionality while trimming secondary capabilities where appropriate. Some modules may be stubbed or feature-flagged off. TypeScript strict mode is enforced — **`bunx tsc --noEmit` must pass with zero errors**.
 
 ## Git Commit Message Convention
 
