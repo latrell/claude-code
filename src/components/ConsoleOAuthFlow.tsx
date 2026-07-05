@@ -896,11 +896,11 @@ function OAuthStatusMessage({
         <Box flexDirection="column" gap={1}>
           <Text bold>{t('Anthropic Compatible Setup')}</Text>
           <Box flexDirection="column" gap={1}>
-            {renderRow('base_url', 'Base URL ')}
-            {renderRow('api_key', 'API Key  ', { mask: true })}
-            {renderRow('haiku_model', 'Haiku    ')}
-            {renderRow('sonnet_model', 'Sonnet   ')}
-            {renderRow('opus_model', 'Opus     ')}
+            {renderRow('base_url', t('Base URL '))}
+            {renderRow('api_key', t('API Key  '), { mask: true })}
+            {renderRow('haiku_model', t('Haiku    '))}
+            {renderRow('sonnet_model', t('Sonnet   '))}
+            {renderRow('opus_model', t('Opus     '))}
           </Box>
           <Text dimColor>{t('↑↓/Tab to switch · Enter on last field to save · Esc to go back')}</Text>
         </Box>
@@ -1119,11 +1119,11 @@ function OAuthStatusMessage({
             {t('Configure an OpenAI Chat Completions compatible endpoint (e.g. Ollama, DeepSeek, vLLM).')}
           </Text>
           <Box flexDirection="column" gap={1}>
-            {renderOpenAIRow('base_url', 'Base URL ')}
-            {renderOpenAIRow('api_key', 'API Key  ', { mask: true })}
-            {renderOpenAIRow('haiku_model', 'Haiku    ')}
-            {renderOpenAIRow('sonnet_model', 'Sonnet   ')}
-            {renderOpenAIRow('opus_model', 'Opus     ')}
+            {renderOpenAIRow('base_url', t('Base URL '))}
+            {renderOpenAIRow('api_key', t('API Key  '), { mask: true })}
+            {renderOpenAIRow('haiku_model', t('Haiku    '))}
+            {renderOpenAIRow('sonnet_model', t('Sonnet   '))}
+            {renderOpenAIRow('opus_model', t('Opus     '))}
           </Box>
           <Text dimColor>{t('↑↓/Tab to switch · Enter on last field to save · Esc to go back')}</Text>
         </Box>
@@ -1422,11 +1422,11 @@ function OAuthStatusMessage({
             )}
           </Text>
           <Box flexDirection="column" gap={1}>
-            {renderGeminiRow('base_url', 'Base URL ')}
-            {renderGeminiRow('api_key', 'API Key  ', { mask: true })}
-            {renderGeminiRow('haiku_model', 'Haiku    ')}
-            {renderGeminiRow('sonnet_model', 'Sonnet   ')}
-            {renderGeminiRow('opus_model', 'Opus     ')}
+            {renderGeminiRow('base_url', t('Base URL '))}
+            {renderGeminiRow('api_key', t('API Key  '), { mask: true })}
+            {renderGeminiRow('haiku_model', t('Haiku    '))}
+            {renderGeminiRow('sonnet_model', t('Sonnet   '))}
+            {renderGeminiRow('opus_model', t('Opus     '))}
           </Box>
           <Text dimColor>{t('↑↓/Tab to switch · Enter on last field to save · Esc to go back')}</Text>
         </Box>
@@ -1500,7 +1500,7 @@ function OAuthStatusMessage({
           </Box>
           <Text dimColor>
             {t('No plan? Select "Pay-as-you-go"')}
-            {provider.id === 'zhipu' ? ' · GLM-4.7-Flash is free forever' : ''}
+            {provider.id === 'zhipu' ? t(' · GLM-4.7-Flash is free forever') : ''}
           </Text>
         </Box>
       );

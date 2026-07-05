@@ -1336,6 +1336,73 @@ const zh: Record<string, string> = {
   'API Key: ': 'API 密钥：',
   'Enter to confirm · Esc to go back': '回车确认 · Esc 返回',
   'Enter to continue · Esc to go back': '回车继续 · Esc 返回',
+  'Claude Code can be used with your Claude subscription or billed based on API usage through your Console account.':
+    'Claude Code 可通过 Claude 订阅使用，也可通过 Console 账户按 API 用量计费。',
+  'Select login method:': '选择登录方式：',
+  'Anthropic Compatible · ': 'Anthropic 兼容 · ',
+  'Configure your own API endpoint': '配置你自己的 API 端点',
+  'OpenAI Compatible · ': 'OpenAI 兼容 · ',
+  'Ollama, DeepSeek, vLLM, One API, etc.': 'Ollama、DeepSeek、vLLM、One API 等',
+  'China LLM Providers · ': '国内大模型提供商 · ',
+  'DeepSeek, Zhipu GLM, Qwen, MiMo': 'DeepSeek、智谱 GLM、通义千问、小米 MiMo',
+  'ChatGPT account with subscription · ': 'ChatGPT 订阅账号 · ',
+  'Plus, Pro, Business, Edu, or Enterprise':
+    'Plus、Pro、Business、Edu 或 Enterprise',
+  'Gemini API · ': 'Gemini API · ',
+  'Google Gemini native REST/SSE': 'Google Gemini 原生 REST/SSE',
+  'Claude account with subscription · ': 'Claude 订阅账号 · ',
+  'Pro, Max, Team, or Enterprise': 'Pro、Max、Team 或 Enterprise',
+  'Anthropic Console account · ': 'Anthropic Console 账号 · ',
+  'API usage billing': 'API 用量计费',
+  '3rd-party platform · ': '第三方平台 · ',
+  'Amazon Bedrock, Microsoft Foundry, or Vertex AI':
+    'Amazon Bedrock、Microsoft Foundry 或 Vertex AI',
+  'Invalid base URL: please enter a full URL including protocol (e.g., https://api.example.com)':
+    'Base URL 无效：请输入包含协议的完整 URL（例如 https://api.example.com）',
+  'Base URL ': 'Base URL ',
+  'API Key': 'API 密钥',
+  'API Key  ': 'API 密钥  ',
+  'Haiku    ': 'Haiku    ',
+  'Sonnet   ': 'Sonnet   ',
+  'Opus     ': 'Opus     ',
+  'Anthropic Compatible Setup': 'Anthropic 兼容配置',
+  'OpenAI Compatible API Setup': 'OpenAI 兼容 API 配置',
+  'Configure an OpenAI Chat Completions compatible endpoint (e.g. Ollama, DeepSeek, vLLM).':
+    '配置兼容 OpenAI Chat Completions 的端点（例如 Ollama、DeepSeek、vLLM）。',
+  'ChatGPT Account Setup': 'ChatGPT 账号配置',
+  'Requesting sign-in code…': '正在请求登录代码…',
+  'Open this link and sign in with your ChatGPT account:':
+    '打开此链接并使用你的 ChatGPT 账号登录：',
+  'Enter code:': '输入代码：',
+  'Waiting for ChatGPT authorization…': '正在等待 ChatGPT 授权…',
+  'Esc to go back. Device codes expire after 15 minutes.':
+    'Esc 返回。设备代码将在 15 分钟后过期。',
+  'Gemini API Setup': 'Gemini API 配置',
+  'Gemini setup requires Haiku, Sonnet, and Opus model names.':
+    'Gemini 配置需要填写 Haiku、Sonnet 和 Opus 模型名称。',
+  "Configure a Gemini Generate Content compatible endpoint. Base URL is optional and defaults to Google's v1beta API.":
+    '配置兼容 Gemini Generate Content 的端点。Base URL 可选，默认使用 Google 的 v1beta API。',
+  'Select China LLM Provider': '选择国内大模型提供商',
+  'Direct connection, no proxy needed. All providers are OpenAI-compatible.':
+    '可直连，无需代理。所有提供商均兼容 OpenAI。',
+  '— Select Access Mode': '— 选择接入方式',
+  ' Pay-as-you-go (API)': ' 按量付费（API）',
+  ' Top up freely, pay per use': ' 自由充值，按量使用',
+  ' Coding Plan': ' 编程套餐',
+  ' Fixed monthly fee, high usage': ' 固定月费，高用量',
+  'No plan? Select "Pay-as-you-go"': '没有套餐？请选择“按量付费”',
+  ' · GLM-4.7-Flash is free forever': ' · GLM-4.7-Flash 永久免费',
+  '— Select Model': '— 选择模型',
+  Free: '免费',
+  ' · enter model name manually': ' · 手动输入模型名称',
+  'Please enter a model name': '请输入模型名称',
+  'Please enter an API key': '请输入 API 密钥',
+  'Enter any model ID supported by this provider. Browse models: ':
+    '输入此提供商支持的任意模型 ID。浏览模型：',
+  'Use your Coding Plan credential here': '在此使用你的编程套餐凭据',
+  'Model name: ': '模型名称：',
+  'Matching models:': '匹配的模型：',
+  'Known models:': '已知模型：',
   '— Custom Model': '— 自定义模型',
 
   // Terminal setup tips (shown as spinner hints)
@@ -2397,6 +2464,35 @@ const zh: Record<string, string> = {
   'No, go back': '否，返回',
   'No (requires sudo)': '否（需要 sudo）',
   'Opening browser to sign in…': '正在打开浏览器进行登录…',
+  'Using 3rd-party platforms': '使用第三方平台',
+  'Claude Code supports Amazon Bedrock, Microsoft Foundry, and Vertex AI. Set the required environment variables, then restart Claude Code.':
+    'Claude Code 支持 Amazon Bedrock、Microsoft Foundry 和 Vertex AI。请设置所需环境变量，然后重启 Claude Code。',
+  'If you are part of an enterprise organization, contact your administrator for setup instructions.':
+    '如果你属于企业组织，请联系管理员获取配置说明。',
+  'Documentation:': '文档：',
+  'Creating API key for Claude Code…': '正在为 Claude Code 创建 API 密钥…',
+  'Retrying…': '正在重试…',
+  'Logged in as': '已登录为',
+  'OAuth error: ': 'OAuth 错误：',
+  'Press Enter to retry.': '按回车重试。',
+  'Invalid code. Please make sure the full code was copied':
+    '代码无效。请确认已复制完整代码',
+  'Failed to exchange authorization code for access token. Please try again.':
+    '无法用授权代码换取访问令牌。请重试。',
+  "Browser didn't open? Use the url below to sign in ":
+    '浏览器没有打开？请使用下面的 URL 登录 ',
+  '(Copied!)': '（已复制！）',
+  '✓ Long-lived authentication token created successfully!':
+    '✓ 已成功创建长期认证令牌！',
+  'Your OAuth token (valid for 1 year):': '你的 OAuth 令牌（有效期 1 年）：',
+  "Store this token securely. You won't be able to see it again.":
+    '请安全保存此令牌。之后将无法再次查看。',
+  'Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>':
+    '设置以下环境变量以使用此令牌：export CLAUDE_CODE_OAUTH_TOKEN=<token>',
+  'Login method pre-selected: Subscription Plan (Claude Pro/Max)':
+    '已预选登录方式：订阅套餐（Claude Pro/Max）',
+  'Login method pre-selected: API Usage Billing (Anthropic Console)':
+    '已预选登录方式：API 用量计费（Anthropic Console）',
   'Removed MCP server {name} from {scope} config':
     '已将 MCP 服务器 {name} 从 {scope} 配置中移除',
   'Resuming conversation…': '正在恢复对话…',
