@@ -41,6 +41,13 @@ function textFromContent(content: unknown): string {
     .join('\n')
 }
 
+function textFromResponsesMessageItem(item: unknown): string {
+  if (!item || typeof item !== 'object') return ''
+  const record = item as Record<string, unknown>
+  if (record.type !== 'message') return ''
+  return textFromContent(record.content)
+}
+
 function convertUserContent(content: unknown): unknown {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return textFromContent(content)
@@ -261,10 +268,13 @@ export async function* adaptResponsesStreamToAnthropic(
     number,
     { contentIndex: number; open: boolean; name: string; id: string }
   >()
+  const responseTextByOutputIndex = new Map<number, string>()
+  const emittedTextOutputIndexes = new Set<number>()
   let started = false
   let currentContentIndex = -1
   let textBlockOpen = false
   let thinkingBlockOpen = false
+  let hasTextDelta = false
 
   const ensureStarted = async function* () {
     if (started) return
@@ -310,10 +320,12 @@ export async function* adaptResponsesStreamToAnthropic(
           content_block: { type: 'text', text: '' },
         } as BetaRawMessageStreamEvent
       }
+      const text = String(event.delta ?? '')
+      if (text) hasTextDelta = true
       yield {
         type: 'content_block_delta',
         index: currentContentIndex,
-        delta: { type: 'text_delta', text: String(event.delta ?? '') },
+        delta: { type: 'text_delta', text },
       } as BetaRawMessageStreamEvent
       continue
     }
@@ -376,6 +388,11 @@ export async function* adaptResponsesStreamToAnthropic(
           index: currentContentIndex,
           content_block: { type: 'tool_use', id, name, input: {} },
         } as BetaRawMessageStreamEvent
+      } else if (outputIndex >= 0) {
+        const text = textFromResponsesMessageItem(item)
+        if (text) {
+          responseTextByOutputIndex.set(outputIndex, text)
+        }
       }
       continue
     }
@@ -407,6 +424,41 @@ export async function* adaptResponsesStreamToAnthropic(
           index: block.contentIndex,
         } as BetaRawMessageStreamEvent
         block.open = false
+      }
+      if (
+        outputIndex >= 0 &&
+        !hasTextDelta &&
+        !emittedTextOutputIndexes.has(outputIndex)
+      ) {
+        const text =
+          textFromResponsesMessageItem(event.item) ||
+          responseTextByOutputIndex.get(outputIndex) ||
+          ''
+        if (text) {
+          if (thinkingBlockOpen) {
+            yield {
+              type: 'content_block_stop',
+              index: currentContentIndex,
+            } as BetaRawMessageStreamEvent
+            thinkingBlockOpen = false
+          }
+          currentContentIndex++
+          emittedTextOutputIndexes.add(outputIndex)
+          yield {
+            type: 'content_block_start',
+            index: currentContentIndex,
+            content_block: { type: 'text', text: '' },
+          } as BetaRawMessageStreamEvent
+          yield {
+            type: 'content_block_delta',
+            index: currentContentIndex,
+            delta: { type: 'text_delta', text },
+          } as BetaRawMessageStreamEvent
+          yield {
+            type: 'content_block_stop',
+            index: currentContentIndex,
+          } as BetaRawMessageStreamEvent
+        }
       }
       continue
     }

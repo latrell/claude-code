@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
 import {
   getLastApiCompletionTimestamp,
@@ -35,6 +36,12 @@ import { getAPIProvider } from './model/providers.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 import { getOpenAIClient } from '../services/api/openai/client.js'
 import { getGrokClient } from '../services/api/grok/client.js'
+import { isChatGPTAuthEnabled } from '../services/api/openai/chatgptAuth.js'
+import {
+  adaptResponsesStreamToAnthropic,
+  buildResponsesRequest,
+  createChatGPTResponsesStream,
+} from '../services/api/openai/responsesAdapter.js'
 import {
   anthropicMessagesToOpenAI,
   resolveOpenAIModel,
@@ -390,6 +397,149 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
   return response
 }
 
+type SideQueryContentBlock = Record<string, unknown>
+type SideQueryUsage = {
+  input_tokens: number
+  output_tokens: number
+  cache_creation_input_tokens: number
+  cache_read_input_tokens: number
+}
+type SideQueryUsageDelta = Partial<{
+  input_tokens: number | null
+  output_tokens: number | null
+  cache_creation_input_tokens: number | null
+  cache_read_input_tokens: number | null
+}>
+
+function parseToolInput(input: unknown): unknown {
+  if (typeof input !== 'string') return input ?? {}
+  if (input.trim() === '') return {}
+  try {
+    return JSON.parse(input) as unknown
+  } catch {
+    return {}
+  }
+}
+
+function updateSideQueryUsage(
+  usage: SideQueryUsage,
+  delta: SideQueryUsageDelta,
+): SideQueryUsage {
+  return {
+    input_tokens: delta.input_tokens ?? usage.input_tokens,
+    output_tokens: delta.output_tokens ?? usage.output_tokens,
+    cache_creation_input_tokens:
+      delta.cache_creation_input_tokens ?? usage.cache_creation_input_tokens,
+    cache_read_input_tokens:
+      delta.cache_read_input_tokens ?? usage.cache_read_input_tokens,
+  }
+}
+
+async function collectAnthropicStreamToBetaMessage(
+  stream: AsyncIterable<BetaRawMessageStreamEvent>,
+  fallbackModel: string,
+): Promise<BetaMessage> {
+  const contentBlocks: Record<number, SideQueryContentBlock> = {}
+  let partialMessage: BetaMessage | null = null
+  let stopReason: BetaMessage['stop_reason'] = null
+  let stopSequence: string | null = null
+  let usage: SideQueryUsage = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  }
+
+  for await (const event of stream) {
+    switch (event.type) {
+      case 'message_start': {
+        partialMessage = event.message as BetaMessage
+        usage = updateSideQueryUsage(usage, partialMessage.usage)
+        break
+      }
+      case 'content_block_start': {
+        const block = event.content_block as unknown as SideQueryContentBlock
+        if (block.type === 'tool_use') {
+          contentBlocks[event.index] = { ...block, input: '' }
+        } else if (block.type === 'text') {
+          contentBlocks[event.index] = { ...block, text: '' }
+        } else if (block.type === 'thinking') {
+          contentBlocks[event.index] = {
+            ...block,
+            thinking: '',
+            signature: '',
+          }
+        } else {
+          contentBlocks[event.index] = { ...block }
+        }
+        break
+      }
+      case 'content_block_delta': {
+        const block = contentBlocks[event.index]
+        if (!block) break
+        const delta = event.delta as unknown as Record<string, unknown>
+        if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+          block.text = `${typeof block.text === 'string' ? block.text : ''}${delta.text}`
+        } else if (
+          delta.type === 'input_json_delta' &&
+          typeof delta.partial_json === 'string'
+        ) {
+          block.input = `${typeof block.input === 'string' ? block.input : ''}${delta.partial_json}`
+        } else if (
+          delta.type === 'thinking_delta' &&
+          typeof delta.thinking === 'string'
+        ) {
+          block.thinking = `${typeof block.thinking === 'string' ? block.thinking : ''}${delta.thinking}`
+        } else if (
+          delta.type === 'signature_delta' &&
+          typeof delta.signature === 'string'
+        ) {
+          block.signature = delta.signature
+        }
+        break
+      }
+      case 'message_delta': {
+        if (event.usage) {
+          usage = updateSideQueryUsage(
+            usage,
+            event.usage as SideQueryUsageDelta,
+          )
+        }
+        if (event.delta.stop_reason !== undefined) {
+          stopReason = event.delta.stop_reason as BetaMessage['stop_reason']
+        }
+        if (event.delta.stop_sequence !== undefined) {
+          stopSequence = event.delta.stop_sequence
+        }
+        break
+      }
+      case 'message_stop':
+      case 'content_block_stop':
+        break
+    }
+  }
+
+  const content = Object.entries(contentBlocks)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, block]) => {
+      if (block.type === 'tool_use') {
+        return { ...block, input: parseToolInput(block.input) }
+      }
+      return block
+    }) as unknown as BetaMessage['content']
+
+  return {
+    id: partialMessage?.id ?? `msg_${Date.now()}`,
+    type: 'message',
+    role: 'assistant',
+    content,
+    model: partialMessage?.model ?? fallbackModel,
+    stop_reason: stopReason ?? partialMessage?.stop_reason ?? 'end_turn',
+    stop_sequence: stopSequence ?? partialMessage?.stop_sequence ?? null,
+    usage: usage as BetaMessage['usage'],
+  } as BetaMessage
+}
+
 /**
  * OpenAI-compatible side query for OpenAI and Grok providers.
  * Both use the OpenAI SDK with different base URLs.
@@ -418,17 +568,11 @@ async function sideQueryViaOpenAICompatible(
   const provider = getAPIProvider()
   const normalizedModel = normalizeModelStringForAPI(model)
 
-  // Resolve model name and client per provider
-  let openaiModel: string
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
-  let client: import('openai').default
-  if (provider === 'grok') {
-    openaiModel = resolveGrokModel(normalizedModel)
-    client = getGrokClient({ maxRetries: opts.maxRetries ?? 2 })
-  } else {
-    openaiModel = resolveOpenAIModel(normalizedModel)
-    client = getOpenAIClient({ maxRetries: opts.maxRetries ?? 2 })
-  }
+  // Resolve model name per provider
+  const openaiModel =
+    provider === 'grok'
+      ? resolveGrokModel(normalizedModel)
+      : resolveOpenAIModel(normalizedModel)
 
   // Build system prompt text
   const systemText = extractSystemText(system)
@@ -465,6 +609,50 @@ async function sideQueryViaOpenAICompatible(
     if (openaiToolChoice) requestParams.tool_choice = openaiToolChoice
   }
 
+  if (provider === 'openai' && isChatGPTAuthEnabled()) {
+    const response = await collectAnthropicStreamToBetaMessage(
+      adaptResponsesStreamToAnthropic(
+        await createChatGPTResponsesStream({
+          request: buildResponsesRequest({
+            model: openaiModel,
+            messages: openaiMessages,
+            tools: openaiTools ?? [],
+            toolChoice: openaiToolChoice,
+          }),
+          signal: signal ?? new AbortController().signal,
+        }),
+        openaiModel,
+      ),
+      openaiModel,
+    )
+
+    const now = Date.now()
+    const requestId = response.id
+    const lastCompletion = getLastApiCompletionTimestamp()
+    logEvent('tengu_api_success', {
+      requestId:
+        requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      querySource:
+        opts.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      model:
+        openaiModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cachedInputTokens: response.usage.cache_read_input_tokens ?? 0,
+      uncachedInputTokens: response.usage.input_tokens,
+      durationMsIncludingRetries: now - start,
+      timeSinceLastApiCallMs:
+        lastCompletion !== null ? now - lastCompletion : undefined,
+    })
+    setLastApiCompletionTimestamp(now)
+
+    return response
+  }
+
+  const client =
+    provider === 'grok'
+      ? getGrokClient({ maxRetries: opts.maxRetries ?? 2 })
+      : getOpenAIClient({ maxRetries: opts.maxRetries ?? 2 })
   const response = await client.chat.completions.create(
     requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
     { signal },
