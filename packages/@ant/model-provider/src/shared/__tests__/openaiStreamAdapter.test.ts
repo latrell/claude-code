@@ -439,6 +439,78 @@ describe('thinking support (reasoning_content)', () => {
     expect(blockStarts[1].content_block.type).toBe('tool_use')
   })
 
+  test('converts delta.reasoning (vLLM >= 0.16 renamed field) to thinking block', async () => {
+    // vLLM removed reasoning_content in favor of reasoning (RFC #27755).
+    // Servers like vLLM 0.21 serving DeepSeek V4 stream thinking under the
+    // new field name only.
+    const events = await collectEvents([
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning: 'Analyzing the request...' },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'Here is the answer.' },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      }),
+    ])
+
+    const blockStarts = events.filter(
+      e => e.type === 'content_block_start',
+    ) as any[]
+    expect(blockStarts.length).toBe(2)
+    expect(blockStarts[0].content_block.type).toBe('thinking')
+    expect(blockStarts[1].content_block.type).toBe('text')
+
+    const thinkingDeltas = events.filter(
+      e =>
+        e.type === 'content_block_delta' && e.delta.type === 'thinking_delta',
+    ) as any[]
+    expect(thinkingDeltas.length).toBe(1)
+    expect(thinkingDeltas[0].delta.thinking).toBe('Analyzing the request...')
+  })
+
+  test('prefers reasoning_content over reasoning when both present', async () => {
+    // Some proxies emit both field names; the legacy field wins to preserve
+    // existing DeepSeek official API behavior.
+    const events = await collectEvents([
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              reasoning_content: 'from legacy field',
+              reasoning: 'from new field',
+            },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      }),
+    ])
+
+    const thinkingDeltas = events.filter(
+      e =>
+        e.type === 'content_block_delta' && e.delta.type === 'thinking_delta',
+    ) as any[]
+    expect(thinkingDeltas.length).toBe(1)
+    expect(thinkingDeltas[0].delta.thinking).toBe('from legacy field')
+  })
+
   test('opens thinking block on empty reasoning_content (DeepSeek v4 direct-answer)', async () => {
     // DeepSeek v4 thinking mode sometimes streams reasoning_content: ""
     // before answering directly. We must still open a thinking block so the

@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto'
  * Mapping:
  *   First chunk              → message_start
  *   delta.reasoning_content  → content_block_start(thinking) + thinking_delta + content_block_stop
+ *   delta.reasoning          → same as reasoning_content (vLLM ≥0.16 renamed field)
  *   delta.content            → content_block_start(text) + text_delta + content_block_stop
  *   delta.tool_calls         → content_block_start(tool_use) + input_json_delta + content_block_stop
  *   finish_reason            → message_delta(stop_reason) + message_stop
@@ -24,6 +25,8 @@ import { randomUUID } from 'crypto'
  *
  * Thinking support:
  *   DeepSeek and compatible providers send `delta.reasoning_content` for chain-of-thought.
+ *   vLLM ≥0.16 renamed the field to `delta.reasoning` (RFC vllm-project/vllm#27755)
+ *   and removed the old name; both are accepted here.
  *   This is mapped to Anthropic's `thinking` content blocks:
  *     content_block_start: { type: 'thinking', thinking: '', signature: '' }
  *     content_block_delta: { type: 'thinking_delta', thinking: '...' }
@@ -119,7 +122,10 @@ export async function* adaptOpenAIStreamToAnthropic(
     // returns reasoning_content: "" when the model answers directly. The
     // empty thinking block must round-trip back to the API in subsequent
     // requests, otherwise DeepSeek rejects with 400.
-    const reasoningContent = (delta as any).reasoning_content
+    // vLLM ≥0.16 renamed reasoning_content → reasoning and dropped the old
+    // field, so read both (DeepSeek official API still uses reasoning_content).
+    const reasoningContent =
+      (delta as any).reasoning_content ?? (delta as any).reasoning
     if (reasoningContent != null) {
       if (!thinkingBlockOpen) {
         currentContentIndex++
