@@ -17,6 +17,10 @@ type MockAxiosResponse = {
   statusText: string
 }
 
+type MockAxiosConfig = {
+  headers?: Record<string, string>
+}
+
 type MockAxiosError = Error & {
   isAxiosError: true
   response?: {
@@ -25,10 +29,14 @@ type MockAxiosError = Error & {
   }
 }
 
-let getMock: (url: string) => Promise<MockAxiosResponse>
+let getMock: (
+  url: string,
+  config?: MockAxiosConfig,
+) => Promise<MockAxiosResponse>
 
 const axiosHandle = setupAxiosMock()
-axiosHandle.stubs.get = (url: string) => getMock(url)
+axiosHandle.stubs.get = (url: string, config?: MockAxiosConfig) =>
+  getMock(url, config)
 axiosHandle.stubs.isAxiosError = (error: unknown): boolean =>
   typeof error === 'object' &&
   error !== null &&
@@ -80,6 +88,35 @@ afterAll(() => {
 })
 
 describe('WebFetch response headers', () => {
+  test('uses browser-like request headers for direct fetches', async () => {
+    let capturedHeaders: Record<string, string> | undefined
+    getMock = async (_url, config) => {
+      capturedHeaders = config?.headers
+      return {
+        data: new TextEncoder().encode('hello').buffer,
+        headers: { 'content-type': 'text/plain' },
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+
+    const { clearWebFetchCache, getURLMarkdownContent } = await import(
+      '../utils'
+    )
+    clearWebFetchCache()
+
+    await getURLMarkdownContent(
+      'https://example.com/plain.txt',
+      new AbortController(),
+    )
+
+    expect(capturedHeaders?.['User-Agent']).toContain('Mozilla/5.0')
+    expect(capturedHeaders?.['User-Agent']).toContain('Chrome/')
+    expect(capturedHeaders?.['Accept']).toContain('text/html')
+    expect(capturedHeaders?.['Accept-Language']).toBe('zh-CN,zh;q=0.9,en;q=0.8')
+    expect(capturedHeaders?.['Sec-Fetch-Mode']).toBe('navigate')
+  })
+
   test('reads redirect Location from AxiosHeaders-style get()', async () => {
     getMock = async () => {
       const error = new Error('redirect') as MockAxiosError

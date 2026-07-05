@@ -6,7 +6,6 @@ import {
 } from 'src/services/analytics/index.js'
 import { queryHaiku } from 'src/services/api/claude.js'
 import { AbortError } from 'src/utils/errors.js'
-import { getWebFetchUserAgent } from 'src/utils/http.js'
 import { logError } from 'src/utils/log.js'
 import {
   isBinaryContentType,
@@ -134,6 +133,21 @@ function getFetchTimeoutMs(): number {
 // common client defaults (axios=5, follow-redirects=21, Chrome=20).
 const MAX_REDIRECTS = 10
 
+const WEB_FETCH_BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  Accept:
+    'text/html,application/xhtml+xml,application/xml;q=0.9,text/markdown;q=0.8,*/*;q=0.7',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+} as const
+
 // Truncate to not spend too many tokens
 export const MAX_MARKDOWN_LENGTH = 100_000
 
@@ -251,10 +265,7 @@ export async function getWithPermittedRedirects(
       maxRedirects: 0,
       responseType: 'arraybuffer',
       maxContentLength: MAX_HTTP_CONTENT_LENGTH,
-      headers: {
-        Accept: 'text/markdown, text/html, */*',
-        'User-Agent': getWebFetchUserAgent(),
-      },
+      headers: WEB_FETCH_BROWSER_HEADERS,
     })
   } catch (error) {
     if (
