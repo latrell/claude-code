@@ -2611,6 +2611,11 @@ const zh: Record<string, string> = {
   'Waiting for you to finish signing in…': '等待你完成登录…',
   'Connection default model': '连接的默认模型',
   'Mapped tier': '映射档位',
+  'ChatGPT credential for "{label}" is missing. Run /login and select ChatGPT account with subscription to sign in again.':
+    '连接“{label}”的 ChatGPT 凭据已丢失。请运行 /login 并选择 ChatGPT 订阅账号重新登录。',
+  'ChatGPT credential for "{label}" is missing. Delete this connection and add it again via /connect.':
+    '连接“{label}”的 ChatGPT 凭据已丢失。请在 /connect 中删除此连接后重新添加。',
+  'Failed to deploy ChatGPT credential': '部署 ChatGPT 凭据失败',
   'Select model — main agent': '选择模型 — 主 agent',
   'Select model — subagents': '选择模型 — 子 agent',
   'Search connections and models…': '搜索连接与模型…',

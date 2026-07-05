@@ -30,6 +30,19 @@ import { ConnectionForm } from './ConnectionForm.js';
 
 export type ActivationScope = 'session' | 'global';
 
+/**
+ * Menu option ids for the four activate actions. Select option values must
+ * be plain strings: Select keys its navigation state by value identity, and
+ * object literals recreated on each render strand the focus on a stale
+ * identity (arrow keys stop moving the visible cursor).
+ */
+const ACTIVATION_MENU_ACTIONS: Record<string, { slot: AgentSlot; scope: ActivationScope }> = {
+  'activate:main:session': { slot: 'main', scope: 'session' },
+  'activate:main:global': { slot: 'main', scope: 'global' },
+  'activate:subagent:session': { slot: 'subagent', scope: 'session' },
+  'activate:subagent:global': { slot: 'subagent', scope: 'global' },
+};
+
 type View =
   | { mode: 'list' }
   | { mode: 'menu'; connectionId: string }
@@ -147,7 +160,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   // Fetch live model list when entering the model picker
   useEffect(() => {
     if (view.mode !== 'model-pick') {
-      setRemoteModels([]);
+      // Keep the empty-array identity stable — a fresh [] on every view
+      // change forces a pointless extra re-render of the active view.
+      setRemoteModels(prev => (prev.length === 0 ? prev : []));
       return;
     }
     const connection = listConnections().find(c => c.id === view.connectionId);
@@ -234,31 +249,26 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
     switch (view.mode) {
       case 'list': {
         const hasSubagentDefault = getDefaultAssignment('subagent') !== undefined;
-        type ListValue =
-          | { type: 'connection'; id: string }
-          | { type: 'add' }
-          | { type: 'clear-subagent' }
-          | { type: 'close' };
         const options: Array<{
           label: string;
-          value: ListValue;
+          value: string;
           description?: string;
         }> = [
           ...connections.map(connection => ({
             label: connection.label,
-            value: { type: 'connection', id: connection.id } as ListValue,
+            value: `connection:${connection.id}`,
             description: connectionDetail(connection),
           })),
-          { label: t('+ Add connection…'), value: { type: 'add' } },
+          { label: t('+ Add connection…'), value: 'add' },
           ...(hasSubagentDefault
             ? [
                 {
                   label: t('Clear subagent default (inherit main)'),
-                  value: { type: 'clear-subagent' } as ListValue,
+                  value: 'clear-subagent',
                 },
               ]
             : []),
-          { label: t('Close'), value: { type: 'close' } },
+          { label: t('Close'), value: 'close' },
         ];
         return (
           <Box flexDirection="column" gap={1}>
@@ -270,23 +280,20 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               visibleOptionCount={12}
               onCancel={() => onDone()}
               onChange={value => {
-                switch (value.type) {
-                  case 'connection':
-                    setView({ mode: 'menu', connectionId: value.id });
-                    return;
-                  case 'add':
-                    setView({ mode: 'add' });
-                    return;
-                  case 'clear-subagent': {
-                    clearSubagentDefault();
-                    refresh();
-                    return;
-                  }
-                  case 'close':
-                    onDone();
-                    return;
-                  default:
-                    return;
+                if (value.startsWith('connection:')) {
+                  setView({
+                    mode: 'menu',
+                    connectionId: value.slice('connection:'.length),
+                  });
+                  return;
+                }
+                if (value === 'add') {
+                  setView({ mode: 'add' });
+                } else if (value === 'clear-subagent') {
+                  clearSubagentDefault();
+                  refresh();
+                } else if (value === 'close') {
+                  onDone();
                 }
               }}
             />
@@ -300,11 +307,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           setView({ mode: 'list' });
           return null;
         }
-        type MenuValue =
-          | { type: 'activate'; slot: AgentSlot; scope: ActivationScope }
-          | { type: 'rename' }
-          | { type: 'delete' }
-          | { type: 'back' };
         return (
           <Box flexDirection="column" gap={1}>
             <Text bold>{connection.label}</Text>
@@ -313,47 +315,43 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               options={[
                 {
                   label: t('Use for this session (main agent)'),
-                  value: { type: 'activate', slot: 'main', scope: 'session' } as MenuValue,
+                  value: 'activate:main:session',
                 },
                 {
                   label: t('Set as global default (main agent)'),
-                  value: { type: 'activate', slot: 'main', scope: 'global' } as MenuValue,
+                  value: 'activate:main:global',
                 },
                 {
                   label: t('Use for this session (subagents)'),
-                  value: { type: 'activate', slot: 'subagent', scope: 'session' } as MenuValue,
+                  value: 'activate:subagent:session',
                 },
                 {
                   label: t('Set as global default (subagents)'),
-                  value: { type: 'activate', slot: 'subagent', scope: 'global' } as MenuValue,
+                  value: 'activate:subagent:global',
                 },
-                { label: t('Rename'), value: { type: 'rename' } as MenuValue },
-                { label: t('Delete'), value: { type: 'delete' } as MenuValue },
-                { label: t('Back'), value: { type: 'back' } as MenuValue },
+                { label: t('Rename'), value: 'rename' },
+                { label: t('Delete'), value: 'delete' },
+                { label: t('Back'), value: 'back' },
               ]}
               visibleOptionCount={7}
               onCancel={() => setView({ mode: 'list' })}
               onChange={value => {
-                switch (value.type) {
-                  case 'activate':
-                    setView({
-                      mode: 'model-pick',
-                      connectionId: connection.id,
-                      slot: value.slot,
-                      scope: value.scope,
-                    });
-                    return;
-                  case 'rename':
-                    setView({ mode: 'rename', connectionId: connection.id });
-                    return;
-                  case 'delete':
-                    setView({ mode: 'confirm-delete', connectionId: connection.id });
-                    return;
-                  case 'back':
-                    setView({ mode: 'list' });
-                    return;
-                  default:
-                    return;
+                const activation = ACTIVATION_MENU_ACTIONS[value];
+                if (activation) {
+                  setView({
+                    mode: 'model-pick',
+                    connectionId: connection.id,
+                    slot: activation.slot,
+                    scope: activation.scope,
+                  });
+                  return;
+                }
+                if (value === 'rename') {
+                  setView({ mode: 'rename', connectionId: connection.id });
+                } else if (value === 'delete') {
+                  setView({ mode: 'confirm-delete', connectionId: connection.id });
+                } else {
+                  setView({ mode: 'list' });
                 }
               }}
             />
@@ -506,9 +504,23 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
     }
   })();
 
+  // Remount the active view's subtree whenever the view changes. Adjacent
+  // views can share the same JSX shape (menu → model-pick is Box[Text, Text,
+  // Select]), so without a key React reuses the mounted Select — its overlay
+  // unmount hook (which invalidates the previous frame for a full repaint)
+  // never fires, and rows from the taller previous view linger on screen.
+  const viewKey =
+    view.mode === 'menu' || view.mode === 'rename' || view.mode === 'confirm-delete'
+      ? `${view.mode}:${view.connectionId}`
+      : view.mode === 'model-pick'
+        ? `${view.mode}:${view.connectionId}:${view.slot}:${view.scope}`
+        : view.mode;
+
   return (
     <Dialog title={t('Connections')} onCancel={() => onDone()}>
-      <Box flexDirection="column">{inner}</Box>
+      <Box key={viewKey} flexDirection="column">
+        {inner}
+      </Box>
     </Dialog>
   );
 }

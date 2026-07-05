@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { debugMock } from '../../../../tests/mocks/debug'
@@ -127,6 +127,7 @@ afterAll(() => {
 })
 
 const ENV_KEYS = [
+  'CODEX_HOME',
   'OPENAI_AUTH_MODE',
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
@@ -165,6 +166,9 @@ beforeEach(() => {
     savedEnv[key] = process.env[key]
     delete process.env[key]
   }
+  // Point the Codex CLI fallback at a non-existent dir so a developer's real
+  // ~/.codex/auth.json cannot satisfy the ChatGPT credential checks.
+  process.env['CODEX_HOME'] = join(tmpDir, 'codex-home-missing')
   _useMocks = true
   storageData = null
   setOauthAccount(undefined)
@@ -208,6 +212,30 @@ function openaiConn(overrides: Partial<Connection> = {}): Connection {
     tierModels: { haiku: 'deepseek-chat', sonnet: 'deepseek-chat' },
     ...overrides,
   }
+}
+
+function chatgptConn(credentialRef = 'default'): Connection {
+  return {
+    id: 'gpt-main',
+    label: 'ChatGPT Subscription',
+    kind: 'chatgpt-oauth',
+    credentialRef,
+  }
+}
+
+/** Write a parseable ChatGPT credential file into the test config dir. */
+function writeChatGPTAuthFile(scope?: string): void {
+  const name =
+    !scope || scope === 'default'
+      ? 'openai-chatgpt-auth.json'
+      : `openai-chatgpt-auth.${scope}.json`
+  writeFileSync(
+    join(tmpDir, name),
+    JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: { id_token: 'id', access_token: 'at', refresh_token: 'rt' },
+    }),
+  )
 }
 
 describe('envForConnection', () => {
@@ -369,6 +397,7 @@ describe('activateConnectionForSession (subagent slot)', () => {
   })
 
   test('chatgpt-oauth: routes credentialScope to the connection scope', async () => {
+    writeChatGPTAuthFile('gpt-work')
     const conn: Connection = {
       id: 'gpt-work',
       label: 'ChatGPT Work',
@@ -391,6 +420,74 @@ describe('activateConnectionForSession (subagent slot)', () => {
     await activateConnectionForSession(conn, 'subagent', 'deepseek-chat')
     expect(process.env.OPENAI_API_KEY).toBeUndefined()
     expect(getAPIProvider({}, {})).toBe('firstParty')
+  })
+})
+
+describe('chatgpt-oauth credential validation', () => {
+  test('default-scope session activation fails when no credential exists', async () => {
+    const result = await activateConnectionForSession(chatgptConn(), 'main')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('/login')
+    // Env and provider selection must stay untouched on failure
+    expect(process.env.OPENAI_AUTH_MODE).toBeUndefined()
+    expect(getAPIProvider({}, {})).toBe('firstParty')
+  })
+
+  test('default-scope session activation succeeds when the credential exists', async () => {
+    writeChatGPTAuthFile()
+    const result = await activateConnectionForSession(chatgptConn(), 'main')
+    expect(result.success).toBe(true)
+    expect(process.env.OPENAI_AUTH_MODE).toBe('chatgpt')
+    expect(getAPIProvider({}, process.env)).toBe('openai')
+  })
+
+  test('Codex CLI auth.json satisfies the default-scope check', async () => {
+    const codexDir = join(tmpDir, 'codex-live')
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(
+      join(codexDir, 'auth.json'),
+      JSON.stringify({
+        tokens: { id_token: 'id', access_token: 'at', refresh_token: 'rt' },
+      }),
+    )
+    process.env['CODEX_HOME'] = codexDir
+
+    const result = await activateConnectionForSession(chatgptConn(), 'main')
+    expect(result.success).toBe(true)
+  })
+
+  test('scoped activation fails with /connect guidance when the file is gone', async () => {
+    const result = await activateConnectionForSession(
+      chatgptConn('gpt-work'),
+      'main',
+    )
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('/connect')
+  })
+
+  test('scoped activation deploys the scoped file into the default slot', async () => {
+    writeChatGPTAuthFile('gpt-work')
+    const result = await activateConnectionForSession(
+      chatgptConn('gpt-work'),
+      'main',
+    )
+    expect(result.success).toBe(true)
+    expect(existsSync(join(tmpDir, 'openai-chatgpt-auth.json'))).toBe(true)
+    expect(process.env.OPENAI_AUTH_MODE).toBe('chatgpt')
+  })
+
+  test('subagent session activation fails when no credential exists', async () => {
+    const result = await activateConnectionForSession(chatgptConn(), 'subagent')
+    expect(result.success).toBe(false)
+    expect(getSubagentProviderConfig({}, {})).toBeUndefined()
+  })
+
+  test('global activation fails without persisting anything', async () => {
+    const result = await activateConnectionGlobally(chatgptConn(), 'main')
+    expect(result.success).toBe(false)
+    expect(readUserSettings()['modelType']).toBeUndefined()
+    expect(readCCBProviderAuthData()).toEqual({})
+    expect(getDefaultAssignment('main')).toBeUndefined()
   })
 })
 

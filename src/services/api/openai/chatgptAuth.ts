@@ -365,11 +365,31 @@ export async function removeChatGPTAuth(scope?: string): Promise<void> {
   })
 }
 
+/** The Codex CLI auth.json fallback only applies to the default scope. */
+function isDefaultScope(scope?: string): boolean {
+  return !scope || scope === 'default'
+}
+
+/**
+ * Whether a parseable ChatGPT credential exists for the scope, mirroring
+ * getValidChatGPTAuth's resolution (including the Codex CLI fallback for the
+ * default scope) without refreshing or throwing. Used by the connection
+ * registry to reject activating a connection whose credential file has been
+ * deleted (e.g. by a later /login into an API-key OpenAI endpoint).
+ */
+export async function hasStoredChatGPTAuth(scope?: string): Promise<boolean> {
+  if (await readStoredAuth(authFilePath(scope))) return true
+  if (isDefaultScope(scope)) {
+    return (await readStoredAuth(codexAuthFilePath())) !== null
+  }
+  return false
+}
+
 export async function getValidChatGPTAuth(
   scope?: string,
 ): Promise<ChatGPTAuth> {
   let tokens = await readStoredAuth(authFilePath(scope))
-  if (!tokens && !scope) {
+  if (!tokens && isDefaultScope(scope)) {
     tokens = await readStoredAuth(codexAuthFilePath())
     if (tokens) {
       logForDebugging('[OpenAI] Using ChatGPT auth from Codex auth.json')

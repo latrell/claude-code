@@ -33,12 +33,17 @@ type Props = {
   onCancel: () => void;
 };
 
-type KindChoice =
-  | { type: 'preset'; preset: ProviderPreset }
-  | { type: 'custom'; kind: 'openai-compat' | 'anthropic-api' | 'gemini' | 'grok' }
-  | { type: 'claude-oauth' }
-  | { type: 'chatgpt-oauth' }
-  | { type: 'back' };
+/**
+ * Select option values must be plain strings — object values are recreated
+ * with new identities on each render and break Select's focus tracking
+ * (see ConnectionsPanel). Custom-endpoint option ids map to their kind here.
+ */
+const CUSTOM_KIND_CHOICES: Record<string, 'openai-compat' | 'anthropic-api' | 'gemini' | 'grok'> = {
+  'custom:openai-compat': 'openai-compat',
+  'custom:anthropic-api': 'anthropic-api',
+  'custom:gemini': 'gemini',
+  'custom:grok': 'grok',
+};
 
 /** Pick tier defaults from a preset catalog by tag heuristics. */
 function presetTierModels(preset: ProviderPreset): TierModels | undefined {
@@ -105,46 +110,46 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
   switch (step.step) {
     case 'kind': {
-      const options: Array<{ label: string; value: KindChoice; description?: string }> = [
+      const options: Array<{ label: string; value: string; description?: string }> = [
         ...CHINA_LLM_PROVIDERS.map(preset => ({
           label: `${preset.icon} ${preset.label}`,
-          value: { type: 'preset', preset } as KindChoice,
+          value: `preset:${preset.id}`,
           description: preset.description,
         })),
         {
           label: t('OpenAI Compatible (custom endpoint)'),
-          value: { type: 'custom', kind: 'openai-compat' },
+          value: 'custom:openai-compat',
           description: t('Any OpenAI Chat Completions endpoint (Ollama, vLLM, …)'),
         },
         {
           label: t('Anthropic Compatible (custom endpoint)'),
-          value: { type: 'custom', kind: 'anthropic-api' },
+          value: 'custom:anthropic-api',
           description: t('Anthropic Messages API gateway with base URL + auth token'),
         },
         {
           label: t('Gemini API'),
-          value: { type: 'custom', kind: 'gemini' },
+          value: 'custom:gemini',
           description: t('Google Gemini Generate Content API'),
         },
         {
           label: t('Grok (xAI)'),
-          value: { type: 'custom', kind: 'grok' },
+          value: 'custom:grok',
           description: t('xAI Grok API (OpenAI compatible)'),
         },
         {
           label: t('Claude account (OAuth)'),
-          value: { type: 'claude-oauth' },
+          value: 'claude-oauth',
           description: t('Sign in with a claude.ai subscription account'),
         },
         {
           label: t('ChatGPT subscription (OAuth)'),
-          value: { type: 'chatgpt-oauth' },
+          value: 'chatgpt-oauth',
           description: t('Sign in with a ChatGPT account via device code'),
         },
-        { label: t('Back'), value: { type: 'back' } },
+        { label: t('Back'), value: 'back' },
       ];
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box key="step-kind" flexDirection="column" gap={1}>
           <Text bold>{t('Add connection')}</Text>
           <Text dimColor>{t('Pick a provider preset or connection type')}</Text>
           <Select
@@ -153,30 +158,27 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
             onCancel={onCancel}
             onChange={choice => {
               setSubmitError(null);
-              switch (choice.type) {
-                case 'back':
-                  onCancel();
-                  return;
-                case 'preset':
-                  if (choice.preset.codingPlan) {
-                    setStep({ step: 'preset-mode', preset: choice.preset });
-                  } else {
-                    setStep({ step: 'form', kind: 'openai-compat', preset: choice.preset, presetMode: 'api' });
-                  }
-                  return;
-                case 'custom':
-                  setStep({ step: 'form', kind: choice.kind });
-                  return;
-                case 'claude-oauth':
-                  setStep({ step: 'claude-oauth' });
-                  return;
-                case 'chatgpt-oauth': {
-                  const scope = generateConnectionId('chatgpt');
-                  setStep({ step: 'chatgpt-oauth', scope });
-                  return;
+              if (choice.startsWith('preset:')) {
+                const preset = CHINA_LLM_PROVIDERS.find(p => p.id === choice.slice('preset:'.length));
+                if (!preset) return;
+                if (preset.codingPlan) {
+                  setStep({ step: 'preset-mode', preset });
+                } else {
+                  setStep({ step: 'form', kind: 'openai-compat', preset, presetMode: 'api' });
                 }
-                default:
-                  return;
+                return;
+              }
+              const customKind = CUSTOM_KIND_CHOICES[choice];
+              if (customKind) {
+                setStep({ step: 'form', kind: customKind });
+                return;
+              }
+              if (choice === 'claude-oauth') {
+                setStep({ step: 'claude-oauth' });
+              } else if (choice === 'chatgpt-oauth') {
+                setStep({ step: 'chatgpt-oauth', scope: generateConnectionId('chatgpt') });
+              } else if (choice === 'back') {
+                onCancel();
               }
             }}
           />
@@ -187,7 +189,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
     case 'preset-mode': {
       const preset = step.preset;
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box key="step-preset-mode" flexDirection="column" gap={1}>
           <Text bold>{tf('{provider} access mode', { provider: preset.label })}</Text>
           <Select
             options={[
@@ -280,6 +282,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
       return (
         <ConnectionForm
+          key="step-form"
           title={preset ? tf('Connect {provider}', { provider: preset.label }) : t('Connection details')}
           subtitle={
             preset
@@ -324,7 +327,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
     case 'claude-oauth':
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box key="step-claude-oauth" flexDirection="column" gap={1}>
           <Text dimColor>
             {t('Signing in adds this account as a connection and makes it the active Claude account.')}
           </Text>
@@ -335,6 +338,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
     case 'chatgpt-oauth':
       return (
         <ChatGPTDeviceLogin
+          key="step-chatgpt-oauth"
           scope={step.scope}
           onSuccess={() => {
             const existing = findExisting('chatgpt-oauth', c => c.credentialRef === step.scope);
@@ -355,7 +359,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
     case 'error':
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box key="step-error" flexDirection="column" gap={1}>
           <Text color="error">{step.message}</Text>
           <Select
             options={[

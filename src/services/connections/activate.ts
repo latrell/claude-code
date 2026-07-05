@@ -18,9 +18,11 @@
  *   both          → defaults recorded in ccb-connections.json (UI display)
  */
 
-import { copyFileSync, existsSync } from 'fs'
+import { copyFileSync } from 'fs'
+import { t, tf } from '../../i18n/t.js'
 import {
   getChatGPTAuthFilePath,
+  hasStoredChatGPTAuth,
   removeChatGPTAuth,
 } from '../../services/api/openai/chatgptAuth.js'
 import { clearOAuthTokenCache } from '../../utils/auth.js'
@@ -214,6 +216,37 @@ async function clearProviderClientCaches(): Promise<void> {
 }
 
 /**
+ * Verify the credential backing a chatgpt-oauth connection is still readable.
+ * The registry entry can outlive the credential file: /login into an
+ * OpenAI-compatible endpoint deletes the default openai-chatgpt-auth.json
+ * (so ChatGPT auth cannot leak into API-key mode) but leaves the connection
+ * registered. Failing activation here keeps the switch honest instead of
+ * surfacing "not logged in" on the next API call.
+ */
+async function checkChatGPTCredential(connection: Connection): Promise<{
+  success: boolean
+  error?: string
+}> {
+  const scope = connection.credentialRef ?? 'default'
+  if (await hasStoredChatGPTAuth(scope === 'default' ? undefined : scope)) {
+    return { success: true }
+  }
+  return {
+    success: false,
+    error:
+      scope === 'default'
+        ? tf(
+            'ChatGPT credential for "{label}" is missing. Run /login and select ChatGPT account with subscription to sign in again.',
+            { label: connection.label },
+          )
+        : tf(
+            'ChatGPT credential for "{label}" is missing. Delete this connection and add it again via /connect.',
+            { label: connection.label },
+          ),
+  }
+}
+
+/**
  * Switch the ChatGPT credential in the default slot to the connection's
  * scoped credential file. No-op when the connection already uses 'default'.
  */
@@ -221,23 +254,18 @@ async function deployChatGPTCredential(connection: Connection): Promise<{
   success: boolean
   error?: string
 }> {
+  const checked = await checkChatGPTCredential(connection)
+  if (!checked.success) return checked
   const scope = connection.credentialRef ?? 'default'
   if (scope === 'default') return { success: true }
-  const sourcePath = getChatGPTAuthFilePath(scope)
-  if (!existsSync(sourcePath)) {
-    return {
-      success: false,
-      error: `ChatGPT credential file missing for connection "${connection.label}"`,
-    }
-  }
   try {
     // Replace (not merge) the default credential with the scoped one.
     await removeChatGPTAuth()
-    copyFileSync(sourcePath, getChatGPTAuthFilePath())
+    copyFileSync(getChatGPTAuthFilePath(scope), getChatGPTAuthFilePath())
     return { success: true }
   } catch (err) {
     logError(err)
-    return { success: false, error: 'Failed to deploy ChatGPT credential' }
+    return { success: false, error: t('Failed to deploy ChatGPT credential') }
   }
 }
 
@@ -343,6 +371,8 @@ async function activateSubagentForSession(
       credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
     })
   } else if (connection.kind === 'chatgpt-oauth') {
+    const checked = await checkChatGPTCredential(connection)
+    if (!checked.success) return checked
     setSubagentProviderConfigOverride(chatgptSubagentConfig(connection, model))
   } else {
     setSubagentProviderConfigOverride(subagentLoginConfig(connection, model))
@@ -364,6 +394,14 @@ export async function activateConnectionGlobally(
   slot: AgentSlot,
   model?: string | null,
 ): Promise<ActivationResult> {
+  // Validate OAuth-backed credentials before persisting anything, so a
+  // connection whose credential file has been deleted cannot become the
+  // (broken) global default.
+  if (connection.kind === 'chatgpt-oauth') {
+    const checked = await checkChatGPTCredential(connection)
+    if (!checked.success) return checked
+  }
+
   const modelType = kindToModelType(connection.kind)
   const providerKey = apiProviderToSettingsProviderKey(
     kindToAPIProvider(connection.kind),
