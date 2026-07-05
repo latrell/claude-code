@@ -45,12 +45,12 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
   {
     id: 'deepseek',
     label: 'DeepSeek',
-    description: 'Cheapest pricing, best code, 5M free tokens',
+    description: '价格最低、代码能力强，注册送 500 万 tokens',
     icon: '\u{1F525}',
     baseURL: 'https://api.deepseek.com',
     apiKeyPage: 'https://platform.deepseek.com/api_keys',
     modelsPage: 'https://api-docs.deepseek.com/zh-cn/',
-    freeTier: '5M tokens on signup (30 days), min top-up ¥10',
+    freeTier: '注册送 500 万 tokens（30 天），最低充值 ¥10',
     keyFormat: 'sk-...',
     models: [
       {

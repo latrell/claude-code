@@ -167,20 +167,23 @@ export function Login(props: {
         ) : removeState.phase === 'confirm-remove' || removeState.phase === 'removing' ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text>
-              Remove the saved workspace API key? <Text dimColor>(settings.json only — env var is unaffected)</Text>
+              {t('Remove the saved workspace API key?')}{' '}
+              <Text dimColor>{t('(settings.json only — env var is unaffected)')}</Text>
             </Text>
-            <Text dimColor>{removeState.phase === 'removing' ? 'Removing…' : 'Press Y to confirm, N to cancel'}</Text>
+            <Text dimColor>
+              {removeState.phase === 'removing' ? t('Removing…') : t('Press Y to confirm, N to cancel')}
+            </Text>
           </Box>
         ) : (
           <>
             <Box flexDirection="column" marginBottom={1}>
               {!workspaceKeySet ? (
-                <Text dimColor>Press W to enter workspace API key (saves to settings, no restart needed)</Text>
+                <Text dimColor>{t('Press W to enter workspace API key (saves to settings, no restart needed)')}</Text>
               ) : workspaceKeyFromSettings ? (
-                <Text dimColor>Press W to replace workspace API key · Press D to remove it</Text>
+                <Text dimColor>{t('Press W to replace workspace API key · Press D to remove it')}</Text>
               ) : (
                 <Text dimColor>
-                  Workspace API key from ANTHROPIC_API_KEY env. Press W to override with a settings-saved key.
+                  {t('Workspace API key from ANTHROPIC_API_KEY env. Press W to override with a settings-saved key.')}
                 </Text>
               )}
               {removeState.phase === 'error' && <Text color="error">{removeState.message}</Text>}

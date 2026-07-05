@@ -1299,6 +1299,45 @@ const zh: Record<string, string> = {
   'No, maybe later with /terminal-setup': '否，以后通过 /terminal-setup 设置',
   'Enter to confirm · Esc to skip': '回车确认 · Esc 跳过',
 
+  // ── Login dialog ──────────────────────────────────────────────────
+  'Anthropic auth status:': 'Anthropic 认证状态：',
+  Subscription: '订阅',
+  plan: '套餐',
+  'logged in': '已登录',
+  'not logged in': '未登录',
+  'Workspace API key': 'Workspace API 密钥',
+  'not set': '未设置',
+  'sk-ant-api03-* required': '需要 sk-ant-api03-*',
+  'saved to settings': '已保存到设置',
+  'from ANTHROPIC_API_KEY env': '来自 ANTHROPIC_API_KEY 环境变量',
+  'To enable /vault /agents-platform /memory-stores:':
+    '要启用 /vault /agents-platform /memory-stores：',
+  'Press W to set now (saves to settings.json, no restart needed)':
+    '按 W 立即设置（保存到 settings.json，无需重启）',
+  '  — or —': '  — 或 —',
+  '1. Open https://console.anthropic.com/settings/keys':
+    '1. 打开 https://console.anthropic.com/settings/keys',
+  '2. Create a key (sk-ant-api03-*)': '2. 创建密钥（sk-ant-api03-*）',
+  '3. Set ANTHROPIC_API_KEY=<key> and restart':
+    '3. 设置 ANTHROPIC_API_KEY=<key> 并重启',
+  'Press W to enter workspace API key (saves to settings, no restart needed)':
+    '按 W 输入 Workspace API 密钥（保存到设置，无需重启）',
+  'Press W to replace workspace API key · Press D to remove it':
+    '按 W 替换 Workspace API 密钥 · 按 D 移除',
+  'Workspace API key from ANTHROPIC_API_KEY env. Press W to override with a settings-saved key.':
+    '当前 Workspace API 密钥来自 ANTHROPIC_API_KEY 环境变量。按 W 可用保存到设置的密钥覆盖。',
+  'Remove the saved workspace API key?': '移除已保存的 Workspace API 密钥？',
+  '(settings.json only — env var is unaffected)':
+    '（仅影响 settings.json，不影响环境变量）',
+  'Removing…': '正在移除…',
+  'Press Y to confirm, N to cancel': '按 Y 确认，按 N 取消',
+  'Get your key: ': '获取密钥：',
+  'Key format: ': '密钥格式：',
+  'API Key: ': 'API 密钥：',
+  'Enter to confirm · Esc to go back': '回车确认 · Esc 返回',
+  'Enter to continue · Esc to go back': '回车继续 · Esc 返回',
+  '— Custom Model': '— 自定义模型',
+
   // Terminal setup tips (shown as spinner hints)
   'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more':
     '运行 /terminal-setup 启用便捷终端集成，如 Option+Enter 换行等',
