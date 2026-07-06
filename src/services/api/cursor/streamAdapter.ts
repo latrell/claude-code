@@ -16,6 +16,9 @@
 
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
+import { CALL_MCP_TOOL_NAME, type CursorTool } from './protobufSchema.js'
+import { unwrapCallMcpTool } from './protobufDecoder.js'
+import { normalizeCcbToolArgs, remapBuiltinToolCall } from './toolMapping.js'
 import type { FrameResult } from './streamParser.js'
 
 export class CursorStreamError extends Error {
@@ -46,6 +49,302 @@ const FINAL_MARKERS = ['<｜final｜>', '<|final|>'] as const
 const THINK_CLOSE = '</think>'
 const BOUNDARIES = [...FINAL_MARKERS, THINK_CLOSE] as const
 const MARKER_HOLDBACK = Math.max(...BOUNDARIES.map(m => m.length)) + 12
+
+// ---------------------------------------------------------------------------
+// Inline (DeepSeek-marker) tool calls
+// ---------------------------------------------------------------------------
+// Composer models emit tool calls as DeepSeek-template TEXT rather than
+// Cursor's structured ClientSideToolV2Call frames:
+//
+//   <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
+//   Grep
+//   <｜tool▁sep｜>pattern
+//   DISABLE_TELEMETRY
+//   <｜tool▁sep｜>path
+//   D:\code\ccb
+//   <｜tool▁call▁end｜><｜tool▁calls▁end｜>
+//
+// Without parsing these the "call" renders as literal text and no tool ever
+// executes. Markers use the fullwidth bar (｜, U+FF5C) + ▁ (U+2581); accept an
+// ASCII-bar variant defensively. A block may contain several calls, and the
+// wrapper name can be call_mcp_tool (unwrap) or a Cursor built-in (remap).
+
+interface InlineMarkerSet {
+  callsBegin: string
+  callBegin: string
+  sep: string
+  callEnd: string
+  callsEnd: string
+}
+
+const INLINE_MARKER_SETS: InlineMarkerSet[] = [
+  {
+    callsBegin: '<｜tool▁calls▁begin｜>',
+    callBegin: '<｜tool▁call▁begin｜>',
+    sep: '<｜tool▁sep｜>',
+    callEnd: '<｜tool▁call▁end｜>',
+    callsEnd: '<｜tool▁calls▁end｜>',
+  },
+  {
+    callsBegin: '<|tool▁calls▁begin|>',
+    callBegin: '<|tool▁call▁begin|>',
+    sep: '<|tool▁sep|>',
+    callEnd: '<|tool▁call▁end|>',
+    callsEnd: '<|tool▁calls▁end|>',
+  },
+]
+
+const INLINE_HOLDBACK =
+  Math.max(...INLINE_MARKER_SETS.map(m => m.callsBegin.length)) + 12
+
+type InlineParsedCall = { name: string; argsJson: string }
+
+/** Map tool name → parameter name → JSON-schema type, for value coercion. */
+function buildArgTypeMap(
+  tools: CursorTool[] | undefined,
+): Map<string, Map<string, string>> {
+  const map = new Map<string, Map<string, string>>()
+  for (const tool of tools ?? []) {
+    const name = tool.function?.name || tool.name
+    const params = tool.function?.parameters || tool.input_schema
+    const properties = (params as { properties?: Record<string, unknown> })
+      ?.properties
+    if (!name || !properties) continue
+    const argTypes = new Map<string, string>()
+    for (const [argName, schema] of Object.entries(properties)) {
+      const type = (schema as { type?: unknown })?.type
+      if (typeof type === 'string') argTypes.set(argName, type)
+    }
+    map.set(name, argTypes)
+  }
+  return map
+}
+
+/** Coerce an inline string value according to the declared JSON-schema type. */
+function coerceInlineArgValue(
+  value: string,
+  type: string | undefined,
+): unknown {
+  if (type === 'number' || type === 'integer') {
+    const n = Number(value.trim())
+    return Number.isFinite(n) ? n : value
+  }
+  if (type === 'boolean') {
+    const v = value.trim().toLowerCase()
+    if (v === 'true') return true
+    if (v === 'false') return false
+    return value
+  }
+  if (type === 'object' || type === 'array') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+  return value
+}
+
+/**
+ * Parse one call body (the text between call▁begin and call▁end):
+ * `NAME\n(<sep>ARG\nVALUE)*`. Values keep interior newlines; the single
+ * newline that precedes the next marker is syntax and is stripped. Also
+ * accepts the stock DeepSeek shape `function<sep>NAME\n```json\n{...}\n````.
+ */
+function parseInlineCallBody(
+  body: string,
+  markers: InlineMarkerSet,
+  argTypes: Map<string, Map<string, string>>,
+): InlineParsedCall | null {
+  const segments = body.split(markers.sep)
+  const head = (segments[0] ?? '').trim()
+
+  // Stock DeepSeek template: function<sep>{name}\n```json\n{args}\n```
+  if (head === 'function' && segments.length === 2) {
+    const rest = segments[1] ?? ''
+    const newline = rest.indexOf('\n')
+    const name = (newline === -1 ? rest : rest.slice(0, newline)).trim()
+    if (!name) return null
+    const fenced = rest.slice(newline + 1).trim()
+    const json = fenced.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    try {
+      JSON.parse(json)
+      return { name, argsJson: json }
+    } catch {
+      return { name, argsJson: '{}' }
+    }
+  }
+
+  const name = head
+  if (!name) return null
+  const types = argTypes.get(name)
+  const args: Record<string, unknown> = {}
+  for (const segment of segments.slice(1)) {
+    const newline = segment.indexOf('\n')
+    if (newline === -1) {
+      const argName = segment.trim()
+      if (argName) args[argName] = ''
+      continue
+    }
+    const argName = segment.slice(0, newline).trim()
+    if (!argName) continue
+    // Strip exactly one trailing newline — it belongs to the marker syntax.
+    const value = segment.slice(newline + 1).replace(/\r?\n$/, '')
+    args[argName] = coerceInlineArgValue(value, types?.get(argName))
+  }
+  return { name, argsJson: JSON.stringify(args) }
+}
+
+/** Normalize an inline call the same way the protobuf decoder does. */
+function normalizeInlineCall(call: InlineParsedCall): InlineParsedCall {
+  if (call.name === CALL_MCP_TOOL_NAME) {
+    const unwrapped = unwrapCallMcpTool(call.argsJson)
+    if (unwrapped)
+      return { name: unwrapped.name, argsJson: unwrapped.arguments }
+    return call
+  }
+  // Built-in name (run_terminal_cmd/read_file) → CCB tool + args.
+  const remapped = remapBuiltinToolCall(call.name, call.argsJson)
+  if (remapped) return { name: remapped.name, argsJson: remapped.arguments }
+  // CCB name with possibly built-in-shaped args (hybrid inline calls).
+  const normalizedArgs = normalizeCcbToolArgs(call.name, call.argsJson)
+  if (normalizedArgs !== null)
+    return { name: call.name, argsJson: normalizedArgs }
+  return call
+}
+
+function toInlineToolCallFrame(call: InlineParsedCall): FrameResult {
+  return {
+    type: 'toolCall',
+    toolCall: {
+      id: `toolu_inline_${randomUUID().replace(/-/g, '').slice(0, 20)}`,
+      type: 'function',
+      function: { name: call.name, arguments: call.argsJson },
+      isLast: false,
+    },
+  }
+}
+
+/**
+ * Extract DeepSeek-marker inline tool calls from text/thinking frames and
+ * re-emit them as structured toolCall frames. Content before a calls-block
+ * passes through on its original channel; marker syntax never reaches the
+ * user-visible text. Runs AFTER splitThinkingFinalMarker so Composer's
+ * post-`</think>` output (where the markers live) arrives here as text.
+ * Exported for the live model probe script.
+ */
+export async function* extractInlineToolCalls(
+  frames: AsyncIterable<FrameResult>,
+  tools?: CursorTool[],
+): AsyncGenerator<FrameResult, void> {
+  const argTypes = buildArgTypeMap(tools)
+  let pending = ''
+  let pendingChannel: 'text' | 'thinking' = 'text'
+  let inBlock: InlineMarkerSet | null = null
+
+  function findCallsBegin(
+    haystack: string,
+  ): { index: number; markers: InlineMarkerSet } | null {
+    let best: { index: number; markers: InlineMarkerSet } | null = null
+    for (const markers of INLINE_MARKER_SETS) {
+      const i = haystack.indexOf(markers.callsBegin)
+      if (i !== -1 && (best === null || i < best.index)) {
+        best = { index: i, markers }
+      }
+    }
+    return best
+  }
+
+  /**
+   * Emit the complete calls currently sitting in `pending`. Returns true
+   * once the block's calls▁end marker was consumed (block closed).
+   */
+  function* drainBlock(
+    markers: InlineMarkerSet,
+  ): Generator<FrameResult, boolean> {
+    while (true) {
+      const begin = pending.indexOf(markers.callBegin)
+      const close = pending.indexOf(markers.callsEnd)
+      // A call begins before the block closes → need its end marker.
+      if (begin !== -1 && (close === -1 || begin < close)) {
+        const end = pending.indexOf(markers.callEnd, begin)
+        if (end === -1) return false
+        const body = pending.slice(begin + markers.callBegin.length, end)
+        pending = pending.slice(end + markers.callEnd.length)
+        const parsed = parseInlineCallBody(body, markers, argTypes)
+        if (parsed) yield toInlineToolCallFrame(normalizeInlineCall(parsed))
+        continue
+      }
+      if (close !== -1) {
+        pending = pending.slice(close + markers.callsEnd.length)
+        return true
+      }
+      return false
+    }
+  }
+
+  function* processPending(atStreamEnd: boolean): Generator<FrameResult> {
+    while (pending) {
+      if (inBlock) {
+        const closed = yield* drainBlock(inBlock)
+        if (closed) {
+          inBlock = null
+          continue
+        }
+        // Block still open: wait for more input. At stream end, drop the
+        // remainder — a truncated call is unusable and the raw markers must
+        // never leak into user-visible text.
+        if (atStreamEnd) pending = ''
+        return
+      }
+
+      const found = findCallsBegin(pending)
+      if (found) {
+        // Trailing whitespace right before the block is presentation-only.
+        const before = pending.slice(0, found.index).replace(/\s+$/, '')
+        if (before) {
+          yield { type: pendingChannel, text: before } as FrameResult
+        }
+        pending = pending.slice(found.index + found.markers.callsBegin.length)
+        inBlock = found.markers
+        continue
+      }
+
+      if (atStreamEnd) {
+        yield { type: pendingChannel, text: pending } as FrameResult
+        pending = ''
+        return
+      }
+
+      // Flush all but a tail that could still grow into a begin marker.
+      if (pending.length > INLINE_HOLDBACK) {
+        const flush = pending.slice(0, -INLINE_HOLDBACK)
+        pending = pending.slice(-INLINE_HOLDBACK)
+        if (flush) yield { type: pendingChannel, text: flush } as FrameResult
+      }
+      return
+    }
+  }
+
+  for await (const frame of frames) {
+    if (frame.type !== 'text' && frame.type !== 'thinking') {
+      yield* processPending(true)
+      inBlock = null
+      yield frame
+      continue
+    }
+
+    // Channel switch: settle what we buffered on the previous channel first.
+    if (pending && frame.type !== pendingChannel && !inBlock) {
+      yield* processPending(true)
+    }
+    if (!inBlock) pendingChannel = frame.type
+    pending += frame.text
+    yield* processPending(false)
+  }
+
+  yield* processPending(true)
+}
 
 /**
  * Rewrite thinking frames so content after the reasoning boundary
@@ -179,9 +478,13 @@ export async function* splitThinkingFinalMarker(
 export async function* adaptCursorFramesToAnthropic(
   rawFrames: AsyncIterable<FrameResult>,
   model: string,
+  tools?: CursorTool[],
 ): AsyncGenerator<BetaRawMessageStreamEvent, void> {
   const messageId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
-  const frames = splitThinkingFinalMarker(rawFrames)
+  const frames = extractInlineToolCalls(
+    splitThinkingFinalMarker(rawFrames),
+    tools,
+  )
 
   let started = false
   let contentIndex = -1

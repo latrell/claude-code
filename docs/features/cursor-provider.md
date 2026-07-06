@@ -35,10 +35,11 @@ Cursor 有**两套工具通道**，且不同模型对它们的支持不同（逆
    - 内置工具调用（`run_terminal_cmd` / `read_file`）→ 按 `toolMapping` 反查回 CCB 工具名（`Bash`/`Read`），并把 Cursor 的参数 schema 转回 CCB 的（如 `is_background↔run_in_background`、`target_file↔file_path`、行号↔`offset/limit`）。
 4. **结构化工具结果回传**（关键）：agent 调优模型**只接受与其调用的内置工具匹配的结构化 `ClientSideToolV2Result`**——纯文本结果会让它们**反复重试**同一工具。`translator.ts` 把 assistant 的 tool_use 与其结果配对，对可映射工具在 assistant 回合上产出结构化 `tool_results`（ConversationMessage field 18，含 `result`=对应的 `RunTerminalCommandV2Result`/`ReadFileResult`）；未映射工具仍渲染为 `<tool_result>` 用户文本块（通用模型可接受）。
    - **必须显式标记命令完成**：`RunTerminalCommandV2Result` 的真实 proto 含 `not_interrupted`（field 6，bool）与 `ended_reason`（field 9，enum，`1=EXECUTION_COMPLETED`）。proto3 bool 缺省即 `false`，只发 `output+exit_code` 会让后端把**每条**重放的命令渲染成"被中断"，模型于是反复用更短的命令重试（"命令老被中断"）。`toolMapping.ts` 的 `encodeResult` 固定携带 `not_interrupted=1` + `ended_reason=EXECUTION_COMPLETED`。已用 `scripts/probe-cursor-models.ts --tool-roundtrip=ab` 在全部 15 个策展模型上实测：旧编码模型回答 INTERRUPTED，新编码回答 COMPLETED。
-5. **工具调用后的流结束**：聊天 RPC 是**服务端单向流**（非 bidi），模型以工具调用结束回合时，后端发 `aborted` / `ERROR_USER_ABORTED_REQUEST`（"Tool call ended before result was received"）end-stream trailer。这是**正常的回合结束**，`streamParser.ts` 视为良性流结束（不抛错），CCB 本地执行工具后于下一次请求继续。
-6. **多轮请求压缩**：带工具结果的后续请求通常 ≥3 条消息，会走 gzip 压缩路径；此时必须发送 `connect-content-encoding: gzip` 头，否则后端以 `received compressed envelope, but do not know how to decompress` 拒绝（曾导致工具对话在第二轮整体失败）。
+5. **Composer 的内联（DeepSeek 标记）工具调用**：Composer 系模型不走结构化 `ClientSideToolV2Call` 帧，而是把工具调用以 DeepSeek 模板**文本**流出（`<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\n工具名\n<｜tool▁sep｜>参数名\n参数值…<｜tool▁call▁end｜><｜tool▁calls▁end｜>`，全角 `｜` + `▁`，出现在 thinking 通道 `</think>` 之后）。`streamAdapter.ts` 的 `extractInlineToolCalls` 在流上解析这些标记并转成标准 toolCall 帧：支持跨帧碎片、单块多调用、`call_mcp_tool` 信封拆包、内置名（`run_terminal_cmd`/`read_file`）反查、原版 DeepSeek `function<sep>名\n\`\`\`json` 变体，并按工具 JSON schema 把字符串参数值强转回 number/boolean。**混合形态**（CCB 工具名 + 内置参数名，如 `Read` + `target_file`/`start_line_one_indexed`，实测出现）经 `normalizeCcbToolArgs` 归一化为 CCB 参数。标记语法不会泄漏到用户可见文本；流尾截断的残块直接丢弃。修复前这些"调用"整段以文字形式渲染在回复里，工具从不执行。
+6. **工具调用后的流结束**：聊天 RPC 是**服务端单向流**（非 bidi），模型以工具调用结束回合时，后端发 `aborted` / `ERROR_USER_ABORTED_REQUEST`（"Tool call ended before result was received"）end-stream trailer。这是**正常的回合结束**，`streamParser.ts` 视为良性流结束（不抛错），CCB 本地执行工具后于下一次请求继续。
+7. **多轮请求压缩**：带工具结果的后续请求通常 ≥3 条消息，会走 gzip 压缩路径；此时必须发送 `connect-content-encoding: gzip` 头，否则后端以 `received compressed envelope, but do not know how to decompress` 拒绝（曾导致工具对话在第二轮整体失败）。
 
-> **模型差异小结**：`Bash`/`Read` 在所有 Cursor 模型上都可用（走内置通道）；其余 CCB 工具（`Edit`/`Grep`/`Task`/`WebFetch` 等）仅在通用模型（`claude-4.5-sonnet`、`gpt-5.5`）上作为 MCP 工具可用，agent 调优模型上这些操作由模型经 shell（`Bash`）完成。
+> **模型差异小结**：`Bash`/`Read` 在所有 Cursor 模型上都可用（走内置通道）；其余 CCB 工具（`Edit`/`Grep`/`Task`/`WebFetch` 等）在通用模型（`claude-4.5-sonnet`、`gpt-5.5`）上作为 MCP 工具经结构化 `call_mcp_tool` 调用，在 Composer 上经内联 DeepSeek 标记调用（见第 5 条），其余 agent 调优模型（Fable/Sonnet 5）上这些操作由模型经 shell（`Bash`）完成。
 
 ## 启用
 

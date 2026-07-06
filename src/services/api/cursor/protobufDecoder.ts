@@ -156,8 +156,10 @@ export function parseConnectRPCFrame(buffer: Buffer): {
  * model invokes them through the `call_mcp_tool` wrapper. Its raw_args are a
  * JSON envelope `{ mcpServer, toolName, arguments }` — unwrap it back into the
  * original tool name + argument JSON so downstream code sees the real tool.
+ * Also used by the inline (DeepSeek-marker) tool-call parser in the stream
+ * adapter, which sees the same wrapper name from Composer models.
  */
-function unwrapCallMcpTool(rawArgs: string): {
+export function unwrapCallMcpTool(rawArgs: string): {
   name: string
   arguments: string
 } | null {

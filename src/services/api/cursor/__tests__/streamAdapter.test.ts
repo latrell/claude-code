@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test'
 import {
   adaptCursorFramesToAnthropic,
   CursorStreamError,
+  extractInlineToolCalls,
   splitThinkingFinalMarker,
 } from '../streamAdapter.js'
+import type { CursorTool } from '../protobufSchema.js'
 import type { FrameResult } from '../streamParser.js'
 
 async function* framesFrom(frames: FrameResult[]): AsyncGenerator<FrameResult> {
@@ -32,7 +34,16 @@ describe('adaptCursorFramesToAnthropic', () => {
     const types = events.map(e => e.type)
     expect(types[0]).toBe('message_start')
     expect(types).toContain('content_block_start')
-    expect(types.filter(t => t === 'content_block_delta')).toHaveLength(2)
+    // Marker scanners may merge small chunks (holdback), so assert on the
+    // combined text rather than the delta count.
+    const textDeltas = events
+      .filter(
+        e =>
+          e.type === 'content_block_delta' &&
+          (e.delta as { type: string }).type === 'text_delta',
+      )
+      .map(e => (e.delta as { text: string }).text)
+    expect(textDeltas.join('')).toBe('Hello world')
     expect(types).toContain('content_block_stop')
     expect(types.at(-2)).toBe('message_delta')
     expect(types.at(-1)).toBe('message_stop')
@@ -212,5 +223,220 @@ describe('splitThinkingFinalMarker', () => {
     const frames = await splitAll(['only reasoning</think>'])
     expect(joined(frames, 'thinking')).toBe('only reasoning')
     expect(joined(frames, 'text')).toBe('')
+  })
+})
+
+describe('extractInlineToolCalls', () => {
+  const grepTool: CursorTool = {
+    function: {
+      name: 'Grep',
+      description: 'search',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string' },
+          path: { type: 'string' },
+          head_limit: { type: 'number' },
+          multiline: { type: 'boolean' },
+        },
+      },
+    },
+  }
+
+  async function* textFrames(chunks: string[]): AsyncGenerator<FrameResult> {
+    for (const text of chunks) yield { type: 'text', text }
+  }
+
+  async function extractAll(
+    chunks: string[],
+    tools: CursorTool[] = [grepTool],
+  ): Promise<FrameResult[]> {
+    const out: FrameResult[] = []
+    for await (const frame of extractInlineToolCalls(
+      textFrames(chunks),
+      tools,
+    )) {
+      out.push(frame)
+    }
+    return out
+  }
+
+  function joinedText(frames: FrameResult[]): string {
+    return frames
+      .filter(f => f.type === 'text')
+      .map(f => (f as { text: string }).text)
+      .join('')
+  }
+
+  const SAMPLE =
+    '正在查找 DISABLE_TELEMETRY 的定义位置。\n\n' +
+    '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\n' +
+    'Grep\n' +
+    '<｜tool▁sep｜>pattern\n' +
+    'DISABLE_TELEMETRY\n' +
+    '<｜tool▁sep｜>path\n' +
+    'D:\\code\\ccb\n' +
+    '<｜tool▁call▁end｜><｜tool▁calls▁end｜>'
+
+  test('parses the observed Composer inline call and strips marker text', async () => {
+    const frames = await extractAll([SAMPLE])
+    const calls = frames.filter(f => f.type === 'toolCall')
+    expect(calls).toHaveLength(1)
+    const call = calls[0]!
+    if (call.type === 'toolCall') {
+      expect(call.toolCall.function.name).toBe('Grep')
+      expect(JSON.parse(call.toolCall.function.arguments)).toEqual({
+        pattern: 'DISABLE_TELEMETRY',
+        path: 'D:\\code\\ccb',
+      })
+      expect(call.toolCall.id).toMatch(/^toolu_inline_/)
+    }
+    // Marker syntax must never leak into user-visible text.
+    expect(joinedText(frames)).toBe('正在查找 DISABLE_TELEMETRY 的定义位置。')
+  })
+
+  test('parses calls fragmented across many frames', async () => {
+    const chunks = SAMPLE.match(/.{1,7}/gs) ?? []
+    const frames = await extractAll(chunks)
+    const calls = frames.filter(f => f.type === 'toolCall')
+    expect(calls).toHaveLength(1)
+    expect(joinedText(frames)).toBe('正在查找 DISABLE_TELEMETRY 的定义位置。')
+  })
+
+  test('coerces number/boolean args per the tool schema and keeps value newlines', async () => {
+    const frames = await extractAll([
+      '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\nGrep\n' +
+        '<｜tool▁sep｜>pattern\nline1\nline2\n' +
+        '<｜tool▁sep｜>head_limit\n5\n' +
+        '<｜tool▁sep｜>multiline\ntrue\n' +
+        '<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+    ])
+    const call = frames.find(f => f.type === 'toolCall')!
+    if (call.type === 'toolCall') {
+      expect(JSON.parse(call.toolCall.function.arguments)).toEqual({
+        pattern: 'line1\nline2',
+        head_limit: 5,
+        multiline: true,
+      })
+    }
+  })
+
+  test('emits one frame per call in a multi-call block', async () => {
+    const frames = await extractAll([
+      '<｜tool▁calls▁begin｜>' +
+        '<｜tool▁call▁begin｜>\nGlob\n<｜tool▁sep｜>file_search_pattern\n**/grep*\n<｜tool▁call▁end｜>' +
+        '<｜tool▁call▁begin｜>\nGlob\n<｜tool▁sep｜>file_search_pattern\n**/*Grep*\n<｜tool▁call▁end｜>' +
+        '<｜tool▁calls▁end｜>',
+    ])
+    const calls = frames.filter(f => f.type === 'toolCall')
+    expect(calls).toHaveLength(2)
+    const args = calls.map(c =>
+      c.type === 'toolCall'
+        ? (JSON.parse(c.toolCall.function.arguments) as Record<string, unknown>)
+        : {},
+    )
+    expect(args[0]).toEqual({ file_search_pattern: '**/grep*' })
+    expect(args[1]).toEqual({ file_search_pattern: '**/*Grep*' })
+  })
+
+  test('unwraps call_mcp_tool and remaps built-in names', async () => {
+    const frames = await extractAll([
+      '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\ncall_mcp_tool\n' +
+        '<｜tool▁sep｜>mcpServer\ncustom\n' +
+        '<｜tool▁sep｜>toolName\nWebFetch\n' +
+        '<｜tool▁sep｜>arguments\n{"url":"https://example.com"}\n' +
+        '<｜tool▁call▁end｜><｜tool▁calls▁end｜>' +
+        '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\nrun_terminal_cmd\n' +
+        '<｜tool▁sep｜>command\ngit status\n' +
+        '<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+    ])
+    const calls = frames.filter(f => f.type === 'toolCall')
+    expect(calls).toHaveLength(2)
+    if (calls[0]!.type === 'toolCall') {
+      expect(calls[0]!.toolCall.function.name).toBe('WebFetch')
+      expect(JSON.parse(calls[0]!.toolCall.function.arguments)).toEqual({
+        url: 'https://example.com',
+      })
+    }
+    if (calls[1]!.type === 'toolCall') {
+      expect(calls[1]!.toolCall.function.name).toBe('Bash')
+      expect(JSON.parse(calls[1]!.toolCall.function.arguments)).toEqual({
+        command: 'git status',
+      })
+    }
+  })
+
+  test('normalizes hybrid calls (CCB name + built-in arg names)', async () => {
+    // Observed live: composer calls `Read` (CCB name) with read_file's arg
+    // shape. Without normalization the CCB schema rejects it and the model
+    // burns a turn retrying.
+    const frames = await extractAll([
+      '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\nRead\n' +
+        '<｜tool▁sep｜>target_file\nD:\\code\\ccb\\package.json\n' +
+        '<｜tool▁sep｜>start_line_one_indexed\n1\n' +
+        '<｜tool▁sep｜>end_line_one_indexed_inclusive\n5\n' +
+        '<｜tool▁sep｜>should_read_entire_file\nfalse\n' +
+        '<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+    ])
+    const call = frames.find(f => f.type === 'toolCall')!
+    if (call.type === 'toolCall') {
+      expect(call.toolCall.function.name).toBe('Read')
+      expect(JSON.parse(call.toolCall.function.arguments)).toEqual({
+        file_path: 'D:\\code\\ccb\\package.json',
+        offset: 0,
+        limit: 5,
+      })
+    }
+  })
+
+  test('parses the stock DeepSeek function-json variant', async () => {
+    const frames = await extractAll([
+      '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>Grep\n' +
+        '```json\n{"pattern":"foo","head_limit":3}\n```' +
+        '<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+    ])
+    const call = frames.find(f => f.type === 'toolCall')!
+    if (call.type === 'toolCall') {
+      expect(call.toolCall.function.name).toBe('Grep')
+      expect(JSON.parse(call.toolCall.function.arguments)).toEqual({
+        pattern: 'foo',
+        head_limit: 3,
+      })
+    }
+  })
+
+  test('passes plain text through untouched', async () => {
+    const frames = await extractAll(['hello ', 'world <tag> not a marker'])
+    expect(frames.filter(f => f.type === 'toolCall')).toHaveLength(0)
+    expect(joinedText(frames)).toBe('hello world <tag> not a marker')
+  })
+
+  test('extracts calls arriving on the thinking channel too', async () => {
+    async function* mixed(): AsyncGenerator<FrameResult> {
+      yield { type: 'thinking', text: 'planning…' }
+      yield {
+        type: 'thinking',
+        text: '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\nGrep\n<｜tool▁sep｜>pattern\nfoo\n<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+      }
+    }
+    const out: FrameResult[] = []
+    for await (const frame of extractInlineToolCalls(mixed(), [grepTool])) {
+      out.push(frame)
+    }
+    expect(out.filter(f => f.type === 'toolCall')).toHaveLength(1)
+    const thinkingText = out
+      .filter(f => f.type === 'thinking')
+      .map(f => (f as { text: string }).text)
+      .join('')
+    expect(thinkingText).toBe('planning…')
+  })
+
+  test('drops a truncated block at stream end instead of leaking markers', async () => {
+    const frames = await extractAll([
+      'before ',
+      '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>\nGrep\n<｜tool▁sep｜>pattern\nfoo',
+    ])
+    expect(frames.filter(f => f.type === 'toolCall')).toHaveLength(0)
+    expect(joinedText(frames)).toBe('before')
   })
 })

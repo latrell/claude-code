@@ -48,6 +48,12 @@ interface BuiltinToolMapping {
   builtinEnum: number
   /** Wire name the model emits / expects (ClientSideToolV2Call.name). */
   builtinName: string
+  /**
+   * Arg names that only exist in the built-in shape. Used to detect hybrid
+   * inline calls (CCB tool name + built-in arg names) and excluded from
+   * carryover when normalizing them.
+   */
+  builtinOnlyArgKeys: string[]
   /** Translate the model's built-in call args → CCB tool input. */
   toCcbArgs: (args: JsonObject) => JsonObject
   /** Translate CCB tool input → the built-in call args (for history echo). */
@@ -85,14 +91,19 @@ const BUILTIN_TOOL_MAPPINGS: BuiltinToolMapping[] = [
     ccbToolName: CCB_TOOL.BASH,
     builtinEnum: CLIENT_SIDE_TOOL.RUN_TERMINAL_COMMAND_V2,
     builtinName: 'run_terminal_cmd',
+    builtinOnlyArgKeys: ['is_background', 'explanation'],
     // Cursor run_terminal_cmd { command, explanation, is_background } ↔ CCB Bash
-    // { command, run_in_background }. `command` lines up 1:1.
+    // { command, run_in_background }. `command` lines up 1:1. Also accepts
+    // already-CCB-shaped args (run_in_background) so inline (DeepSeek-marker)
+    // calls that mix shapes normalize losslessly.
     toCcbArgs: args => {
       const out: JsonObject = {}
       const command = str(args.command)
       if (command !== undefined) out.command = command
       if (typeof args.is_background === 'boolean') {
         out.run_in_background = args.is_background
+      } else if (typeof args.run_in_background === 'boolean') {
+        out.run_in_background = args.run_in_background
       }
       return out
     },
@@ -139,9 +150,17 @@ const BUILTIN_TOOL_MAPPINGS: BuiltinToolMapping[] = [
     ccbToolName: CCB_TOOL.READ,
     builtinEnum: CLIENT_SIDE_TOOL.READ_FILE,
     builtinName: 'read_file',
+    builtinOnlyArgKeys: [
+      'target_file',
+      'path',
+      'should_read_entire_file',
+      'start_line_one_indexed',
+      'end_line_one_indexed_inclusive',
+    ],
     // Cursor read_file { target_file, should_read_entire_file,
     // start_line_one_indexed, end_line_one_indexed_inclusive } ↔ CCB Read
-    // { file_path, offset, limit }.
+    // { file_path, offset, limit }. Also accepts already-CCB-shaped args
+    // (offset/limit) so inline (DeepSeek-marker) calls normalize losslessly.
     toCcbArgs: args => {
       const out: JsonObject = {}
       const filePath =
@@ -153,7 +172,12 @@ const BUILTIN_TOOL_MAPPINGS: BuiltinToolMapping[] = [
       if (start !== undefined && start > 0) {
         out.offset = start - 1
         if (end !== undefined && end >= start) out.limit = end - start + 1
+        return out
       }
+      const offset = toPositiveInt(args.offset)
+      const limit = toPositiveInt(args.limit)
+      if (offset !== undefined) out.offset = offset
+      if (limit !== undefined) out.limit = limit
       return out
     },
     toBuiltinArgs: args => {
@@ -235,6 +259,33 @@ export function remapBuiltinToolCall(
     name: mapping.ccbToolName,
     arguments: JSON.stringify(mapping.toCcbArgs(parseArgs(rawArgs))),
   }
+}
+
+/**
+ * Normalize the argument shape for a CCB tool that has a built-in mapping.
+ * Inline (DeepSeek-marker) calls sometimes mix shapes — the CCB tool NAME
+ * (`Read`) with the built-in's ARG names (`target_file`,
+ * `start_line_one_indexed`) — which fails the CCB schema on first try.
+ * Only rewrites when a built-in-only arg name is present; already-CCB-shaped
+ * args (and unmapped tools) return null and pass through untouched. Extra
+ * CCB-side args the model included (e.g. Bash `description`) are carried
+ * over.
+ */
+export function normalizeCcbToolArgs(
+  ccbToolName: string,
+  rawArgs: string,
+): string | null {
+  const mapping = MAPPING_BY_CCB_NAME.get(ccbToolName)
+  if (!mapping) return null
+  const args = parseArgs(rawArgs)
+  if (!mapping.builtinOnlyArgKeys.some(key => key in args)) return null
+  const converted = mapping.toCcbArgs(args)
+  for (const [key, value] of Object.entries(args)) {
+    if (mapping.builtinOnlyArgKeys.includes(key)) continue
+    if (key in converted) continue
+    converted[key] = value
+  }
+  return JSON.stringify(converted)
 }
 
 /**
