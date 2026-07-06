@@ -75,6 +75,88 @@ describe('selectStatusLineProviderBuckets', () => {
 
     expect(selectStatusLineProviderBuckets('gemini', buckets)).toBe(buckets);
   });
+
+  describe('cursor buckets', () => {
+    const cursorBuckets = (overrides: {
+      total?: number;
+      api?: number;
+      auto?: number;
+      onDemand?: { utilization: number; usedCents?: number; limitCents?: number };
+    }): ProviderUsageBucket[] => {
+      const buckets: ProviderUsageBucket[] = [];
+      if (overrides.total !== undefined) {
+        buckets.push({ kind: 'custom', label: 'Included usage', utilization: overrides.total });
+      }
+      if (overrides.api !== undefined) {
+        buckets.push({ kind: 'custom', label: 'Included API usage', utilization: overrides.api });
+      }
+      if (overrides.auto !== undefined) {
+        buckets.push({ kind: 'custom', label: 'Included Auto usage', utilization: overrides.auto });
+      }
+      if (overrides.onDemand !== undefined) {
+        buckets.push({ kind: 'custom', label: 'On-demand usage', ...overrides.onDemand });
+      }
+      return buckets;
+    };
+
+    test('surfaces the included dimension closest to its limit, not just the total', () => {
+      const buckets = cursorBuckets({ total: 0.34, api: 0.95, auto: 0.01 });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected.map(b => b.label)).toEqual(['Included API usage']);
+    });
+
+    test('shows only the headline total when it is the most used dimension', () => {
+      const buckets = cursorBuckets({ total: 0.5, api: 0.3, auto: 0.1 });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected.map(b => b.label)).toEqual(['Included usage']);
+    });
+
+    test('hides zero-spend on-demand while no quota is exhausted', () => {
+      const buckets = cursorBuckets({
+        total: 0.34,
+        api: 0.95,
+        auto: 0.01,
+        onDemand: { utilization: 0, usedCents: 0, limitCents: 300000 },
+      });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected.map(b => b.label)).toEqual(['Included API usage']);
+    });
+
+    test('appends on-demand spend once a quota is exhausted', () => {
+      const buckets = cursorBuckets({
+        total: 0.34,
+        api: 1.0,
+        auto: 0.01,
+        onDemand: { utilization: 0, usedCents: 0, limitCents: 300000 },
+      });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected.map(b => b.label)).toEqual(['Included API usage', 'On-demand usage']);
+    });
+
+    test('appends on-demand once spend has accrued even below 100% quota', () => {
+      const buckets = cursorBuckets({
+        total: 0.34,
+        api: 0.9,
+        auto: 0.01,
+        onDemand: { utilization: 1625 / 300000, usedCents: 1625, limitCents: 300000 },
+      });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected.map(b => b.label)).toEqual(['Included API usage', 'On-demand usage']);
+      expect(selected[1]?.usedCents).toBe(1625);
+    });
+
+    test('keeps over-100% utilization visible for overage display', () => {
+      const buckets = cursorBuckets({ total: 0.4, api: 1.375, auto: 0.02 });
+      const selected = selectStatusLineProviderBuckets('cursor', buckets);
+      expect(selected[0]?.label).toBe('Included API usage');
+      expect(selected[0]?.utilization).toBeCloseTo(1.375, 4);
+    });
+
+    test('falls back to the first bucket when only unknown labels are present', () => {
+      const buckets: ProviderUsageBucket[] = [{ kind: 'custom', label: 'Mystery', utilization: 0.5 }];
+      expect(selectStatusLineProviderBuckets('cursor', buckets)).toEqual([buckets[0]!]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

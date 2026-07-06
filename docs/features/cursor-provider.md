@@ -171,9 +171,19 @@ Cursor 是当前 provider 时，`/usage` 会显示订阅计划的额度使用情
 - `GET /auth/usage-summary` —— 计费周期、`membershipType`、plan 与 on-demand 用量（金额单位为**美分**）
 - `GET /auth/full_stripe_profile` —— `subscriptionStatus`（active / trialing…）
 
-展示的指标：Included usage（计划内总用量）、Included API / Auto usage（分项百分比）、On-demand usage（按量付费，附 `$used / $limit`），并以计费周期结束时间作为重置时间。用量同时写入统一的 provider-usage store。实现见 `src/services/api/cursor/cursorUsage.ts`。
+面板布局对齐 Cursor 客户端的用量页，分两个区块：
 
-**状态栏**：启动时（`main.tsx` / `interactiveHelpers.tsx`，与 Codex 同一处）调用 `fetchCursorUsage()` 填充 provider-usage store，状态栏据此显示 Cursor 额度。状态栏空间有限，只展示 headline 的「Included usage」一项（`selectStatusLineProviderBuckets` 的 cursor 分支，标签压缩为 `额度`/`Usage`）。
+- **Included in \<plan\>**（计划内额度）——「Total」总用量条（副文本为客户端同款摘要「1% Auto and 100% API used」+ 计费周期重置时间）、「Auto + Composer」、「API」（副文本显示计划内含的 API 额度美元数与赠送额度，来自 `plan.limit` / `plan.breakdown.bonus`）。
+- **On-Demand Usage**（按量付费）——进度条 + `$used / $limit spent`；每月限额为 unlimited（`limit: null`）时显示 `$used spent · 无每月限额`。
+
+百分比**不再截断到 100%**：超配额时按原始值显示（如「137% used」），进度条本身在 100% 处封顶。快照结构为 `CursorUsageSnapshot { plan, onDemand }`（`plan` 含 total/api/auto 百分比与美元额度，`onDemand` 含花费/限额美分），同时映射为 provider-usage store 的四个 bucket（on-demand bucket 携带 `usedCents`/`limitCents`）。实现见 `src/services/api/cursor/cursorUsage.ts`。
+
+**状态栏**：启动时（`main.tsx` / `interactiveHelpers.tsx`，与 Codex 同一处）调用 `startCursorUsagePolling()` 填充 provider-usage store，并每 5 分钟刷新一次（长会话中额度跨过 100%、按量花费开始累计时状态栏能跟上）。状态栏空间有限，`selectStatusLineProviderBuckets` 的 cursor 分支按重要性挑选：
+
+1. 计划内三个维度（Total/API/Auto）中**利用率最高**的一项——API 配额耗尽时不会被 34% 的 headline 掩盖；
+2. 任一配额 ≥100% 或按量花费 >0 时，**追加 On-demand bucket** 显示超配额花费（美元 `$16.25/$3000` 格式，`formatCentsCompact`）。
+
+标签压缩见 `formatProviderBucketLabel`（`额度`/`API 额度`/`Auto 额度`/`按量`，英文 `Usage`/`API`/`Auto`/`On-demand`）；利用率 ≥80% 黄色告警、≥100% 红色，百分比超 100 原样显示。
 
 > `/usage` 面板按**当前激活的 provider**（`getAPIProvider()`）取数：用 `/connect` 切换 agent 后，面板会显示新 agent 的额度，而不是切换前的。
 

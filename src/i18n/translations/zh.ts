@@ -564,6 +564,18 @@ const zh: Record<string, string> = {
   'Included API usage': '计划内 API 用量',
   'Included Auto usage': '计划内 Auto 用量',
   'On-demand usage': '按量付费用量',
+  'Included in {plan}': '{plan} 计划内用量',
+  Total: '总计',
+  'Auto + Composer': 'Auto + Composer',
+  '{auto}% Auto and {api}% API used': '已用 Auto {auto}%、API {api}%',
+  'Plan includes at least {amount} of API usage':
+    '计划内含至少 {amount} 的 API 用量',
+  '{amount} bonus quota': '赠送额度 {amount}',
+  'On-Demand Usage': '按量付费用量',
+  'On-Demand': '按量付费',
+  '{used} spent': '已花费 {used}',
+  'No monthly limit': '无每月限额',
+  'Monthly limit unknown': '每月限额未知',
   'No usage data available.': '暂无用量数据。',
   // OutputStylePicker
   'Preferred output style': '首选输出风格',

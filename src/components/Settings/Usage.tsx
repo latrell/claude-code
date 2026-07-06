@@ -209,47 +209,131 @@ function CursorUsageSection({
   cursorUsage: CursorUsageSnapshot;
   maxWidth: number;
 }): React.ReactNode {
-  const { membershipType, subscriptionStatus, billingCycleEnd, isUnlimited, metrics } = cursorUsage;
+  const { membershipType, subscriptionStatus, billingCycleEnd, isUnlimited, plan, onDemand } = cursorUsage;
 
-  const planLabel = [membershipType, subscriptionStatus && subscriptionStatus !== 'active' ? subscriptionStatus : null]
+  const planName = membershipType ? membershipType.charAt(0).toUpperCase() + membershipType.slice(1) : undefined;
+  const headerLabel = [planName, subscriptionStatus && subscriptionStatus !== 'active' ? subscriptionStatus : null]
     .filter(Boolean)
     .join(' · ');
+
+  // Mirrors the Cursor client's "1% Auto and 100% API used" summary line.
+  const totalSummary =
+    plan?.autoPercent !== undefined && plan?.apiPercent !== undefined
+      ? tf('{auto}% Auto and {api}% API used', {
+          auto: Math.round(plan.autoPercent),
+          api: Math.round(plan.apiPercent),
+        })
+      : undefined;
+
+  // "Your plan includes at least $400 of API usage" (+ bonus quota if any).
+  const allowanceParts: string[] = [];
+  if (plan?.limitCents !== undefined && plan.limitCents > 0) {
+    allowanceParts.push(
+      tf('Plan includes at least {amount} of API usage', { amount: formatCost(plan.limitCents / 100, 2) }),
+    );
+  }
+  if (plan?.bonusCents !== undefined && plan.bonusCents > 0) {
+    allowanceParts.push(tf('{amount} bonus quota', { amount: formatCost(plan.bonusCents / 100, 2) }));
+  }
+  const allowanceNote = allowanceParts.length > 0 ? allowanceParts.join(' · ') : undefined;
+
+  const hasPlanBars =
+    plan !== undefined &&
+    (plan.totalPercent !== undefined || plan.apiPercent !== undefined || plan.autoPercent !== undefined);
+  const showOnDemand = onDemand !== undefined && (onDemand.enabled || (onDemand.usedCents ?? 0) > 0);
+  const onDemandLimited = typeof onDemand?.limitCents === 'number' && onDemand.limitCents > 0;
+  const barWidth = maxWidth - 2;
 
   return (
     <Box flexDirection="column" gap={1} width="100%">
       <Text bold>
         {t('Cursor Usage')}
-        {planLabel ? ` (${planLabel})` : ''}
+        {headerLabel ? ` (${headerLabel})` : ''}
       </Text>
 
-      {isUnlimited ? (
-        <Text dimColor>{t('Unlimited')}</Text>
-      ) : metrics.length > 0 ? (
-        metrics.map(metric => {
-          const subtext =
-            metric.usedCents !== undefined && metric.limitCents !== undefined
-              ? tf('{used} / {limit} spent', {
-                  used: formatCost(metric.usedCents / 100, 2),
-                  limit: formatCost(metric.limitCents / 100, 2),
-                })
-              : undefined;
-          return (
-            <LimitBar
-              key={metric.labelKey}
-              title={t(metric.labelKey)}
-              limit={{
-                utilization: metric.percentUsed,
-                resets_at: billingCycleEnd ?? null,
-              }}
-              showTimeInReset={false}
-              {...(subtext ? { extraSubtext: subtext } : {})}
-              maxWidth={maxWidth}
-            />
-          );
-        })
-      ) : (
-        <Text dimColor>{t('No usage data available.')}</Text>
+      {isUnlimited && <Text dimColor>{t('Unlimited')}</Text>}
+
+      {hasPlanBars && (
+        <Box flexDirection="column" gap={1}>
+          <Text bold color="claude">
+            {planName ? tf('Included in {plan}', { plan: planName }) : t('Included usage')}
+          </Text>
+          {plan.totalPercent !== undefined && (
+            <Box paddingLeft={2}>
+              <LimitBar
+                title={t('Total')}
+                limit={{ utilization: plan.totalPercent, resets_at: billingCycleEnd ?? null }}
+                showTimeInReset={false}
+                {...(totalSummary ? { extraSubtext: totalSummary } : {})}
+                maxWidth={barWidth}
+              />
+            </Box>
+          )}
+          {plan.autoPercent !== undefined && (
+            <Box paddingLeft={2}>
+              <LimitBar
+                title={t('Auto + Composer')}
+                limit={{ utilization: plan.autoPercent, resets_at: null }}
+                showTimeInReset={false}
+                maxWidth={barWidth}
+              />
+            </Box>
+          )}
+          {plan.apiPercent !== undefined && (
+            <Box paddingLeft={2}>
+              <LimitBar
+                title={t('API')}
+                limit={{ utilization: plan.apiPercent, resets_at: null }}
+                showTimeInReset={false}
+                {...(allowanceNote ? { extraSubtext: allowanceNote } : {})}
+                maxWidth={barWidth}
+              />
+            </Box>
+          )}
+          {plan.apiPercent === undefined && allowanceNote && (
+            <Box paddingLeft={2}>
+              <Text dimColor>{allowanceNote}</Text>
+            </Box>
+          )}
+        </Box>
       )}
+
+      {showOnDemand && (
+        <Box flexDirection="column" gap={1}>
+          <Text bold color="claude">
+            {t('On-Demand Usage')}
+          </Text>
+          <Box paddingLeft={2} flexDirection="column">
+            {onDemandLimited ? (
+              <LimitBar
+                title={t('On-Demand')}
+                limit={{
+                  utilization: ((onDemand.usedCents ?? 0) / (onDemand.limitCents as number)) * 100,
+                  resets_at: billingCycleEnd ?? null,
+                }}
+                showTimeInReset={false}
+                extraSubtext={tf('{used} / {limit} spent', {
+                  used: formatCost((onDemand.usedCents ?? 0) / 100, 2),
+                  limit: formatCost((onDemand.limitCents as number) / 100, 2),
+                })}
+                maxWidth={barWidth}
+              />
+            ) : (
+              <>
+                <Text>{tf('{used} spent', { used: formatCost((onDemand.usedCents ?? 0) / 100, 2) })}</Text>
+                <Text dimColor>
+                  {onDemand.limitCents === null ? t('No monthly limit') : t('Monthly limit unknown')}
+                  {billingCycleEnd
+                    ? ` · ${tf('Resets {time}', { time: formatResetText(billingCycleEnd, true, false) })}`
+                    : ''}
+                </Text>
+              </>
+            )}
+          </Box>
+        </Box>
+      )}
+
+      {!isUnlimited && !hasPlanBars && !showOnDemand && <Text dimColor>{t('No usage data available.')}</Text>}
 
       <Text dimColor>
         <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />

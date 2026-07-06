@@ -15,7 +15,7 @@ mock.module('src/utils/settings/settings.js', () => ({
 }));
 
 // Static import — resolves in en mode (mockLanguage === undefined)
-import { formatCountdown, formatProviderBucketLabel } from '../BuiltinStatusLine.js';
+import { formatCentsCompact, formatCountdown, formatProviderBucketLabel } from '../BuiltinStatusLine.js';
 
 // ---------------------------------------------------------------------------
 // Pure helper: maps ProviderUsageBucket[] to a simplified display shape for
@@ -147,6 +147,34 @@ describe('mapBucketsForDisplay', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cursor status-line label compaction + dollar rendering (en mode)
+// ---------------------------------------------------------------------------
+
+describe('formatProviderBucketLabel (en)', () => {
+  test('compacts Cursor bucket labels for the status line', () => {
+    expect(formatProviderBucketLabel('Included usage')).toBe('Usage');
+    expect(formatProviderBucketLabel('Included API usage')).toBe('API');
+    expect(formatProviderBucketLabel('Included Auto usage')).toBe('Auto');
+    expect(formatProviderBucketLabel('On-demand usage')).toBe('On-demand');
+  });
+});
+
+describe('formatCentsCompact', () => {
+  test('renders dollars with cents when non-zero', () => {
+    expect(formatCentsCompact(1625)).toBe('$16.25');
+  });
+
+  test('drops trailing .00 for whole-dollar amounts', () => {
+    expect(formatCentsCompact(300000)).toBe('$3000');
+    expect(formatCentsCompact(40000)).toBe('$400');
+  });
+
+  test('renders zero as $0', () => {
+    expect(formatCentsCompact(0)).toBe('$0');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Chinese locale: formatCountdown + label translations.
 // Uses dynamic import() after setting mockLanguage to '简体中文' so
 // getResolvedLanguage() returns 'zh' and t() returns Chinese translations.
@@ -184,6 +212,13 @@ describe('Chinese locale', () => {
     expect(formatProviderBucketLabel('Primary rate limit')).toBe('主限');
     expect(formatProviderBucketLabel('Secondary rate limit')).toBe('副限');
     expect(formatProviderBucketLabel('RPM')).toBe('请求/分钟');
+  });
+
+  test('formatProviderBucketLabel uses short Chinese Cursor labels', () => {
+    expect(formatProviderBucketLabel('Included usage')).toBe('额度');
+    expect(formatProviderBucketLabel('Included API usage')).toBe('API 额度');
+    expect(formatProviderBucketLabel('Included Auto usage')).toBe('Auto 额度');
+    expect(formatProviderBucketLabel('On-demand usage')).toBe('按量');
   });
 
   test('t() translates Primary rate limit to 主要速率限制', async () => {

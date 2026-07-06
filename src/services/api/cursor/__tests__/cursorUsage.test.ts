@@ -27,101 +27,135 @@ const REAL_SUMMARY = {
       apiPercentUsed: 78.818,
       totalPercentUsed: 26.7773,
     },
-    onDemand: { enabled: true, used: 0, limit: 300000, remaining: 300000 },
+    onDemand: { enabled: true, used: 1625, limit: 300000, remaining: 298375 },
   },
 }
 
 describe('parseCursorUsageSummary', () => {
-  test('extracts membership, billing cycle, and plan metrics', () => {
+  test('extracts membership, billing cycle, and full plan usage', () => {
     const snapshot = parseCursorUsageSummary(REAL_SUMMARY)
     expect(snapshot.membershipType).toBe('ultra')
     expect(snapshot.billingCycleEnd).toBe('2026-08-05T04:38:09.000Z')
     expect(snapshot.isUnlimited).toBe(false)
 
-    // Included-usage percent mirrors totalPercentUsed and carries NO dollar
-    // subtext (the used/limit dollar fields track a different base allowance,
-    // so pairing them with this percent would read as contradictory).
-    const included = snapshot.metrics.find(m => m.labelKey === 'Included usage')
-    expect(included?.percentUsed).toBeCloseTo(26.777, 2)
-    expect(included?.usedCents).toBeUndefined()
-    expect(included?.limitCents).toBeUndefined()
-
-    const api = snapshot.metrics.find(m => m.labelKey === 'Included API usage')
-    expect(api?.percentUsed).toBeCloseTo(78.818, 2)
-
-    const auto = snapshot.metrics.find(
-      m => m.labelKey === 'Included Auto usage',
-    )
-    expect(auto?.percentUsed).toBeCloseTo(0.757, 2)
+    expect(snapshot.plan?.totalPercent).toBeCloseTo(26.777, 2)
+    expect(snapshot.plan?.apiPercent).toBeCloseTo(78.818, 2)
+    expect(snapshot.plan?.autoPercent).toBeCloseTo(0.757, 2)
+    // Plan allowance dollars ("your plan includes $400 of API usage").
+    expect(snapshot.plan?.usedCents).toBe(40000)
+    expect(snapshot.plan?.limitCents).toBe(40000)
+    expect(snapshot.plan?.bonusCents).toBe(166)
   })
 
-  test('includes on-demand only when enabled with a positive limit', () => {
-    const withOnDemand = parseCursorUsageSummary({
-      individualUsage: {
-        plan: { enabled: true, totalPercentUsed: 10 },
-        onDemand: { enabled: true, used: 1500, limit: 30000 },
-      },
-    })
-    const onDemand = withOnDemand.metrics.find(
-      m => m.labelKey === 'On-demand usage',
-    )
-    expect(onDemand?.percentUsed).toBeCloseTo(5, 5)
-    expect(onDemand?.usedCents).toBe(1500)
-    expect(onDemand?.limitCents).toBe(30000)
-
-    // Disabled / zero-limit on-demand is omitted.
-    const withoutOnDemand = parseCursorUsageSummary({
-      individualUsage: {
-        plan: { enabled: true, totalPercentUsed: 10 },
-        onDemand: { enabled: false, used: 0, limit: null },
-      },
-    })
-    expect(
-      withoutOnDemand.metrics.some(m => m.labelKey === 'On-demand usage'),
-    ).toBe(false)
+  test('extracts on-demand spend with its monthly limit', () => {
+    const snapshot = parseCursorUsageSummary(REAL_SUMMARY)
+    expect(snapshot.onDemand?.enabled).toBe(true)
+    expect(snapshot.onDemand?.usedCents).toBe(1625)
+    expect(snapshot.onDemand?.limitCents).toBe(300000)
   })
 
-  test('clamps out-of-range percentages to 0–100', () => {
+  test('keeps on-demand spend when the monthly limit is unlimited (null)', () => {
     const snapshot = parseCursorUsageSummary({
-      individualUsage: { plan: { enabled: true, totalPercentUsed: 137.5 } },
+      individualUsage: {
+        plan: { enabled: true, totalPercentUsed: 10 },
+        onDemand: { enabled: true, used: 1500, limit: null },
+      },
     })
-    expect(snapshot.metrics[0]?.percentUsed).toBe(100)
+    expect(snapshot.onDemand?.enabled).toBe(true)
+    expect(snapshot.onDemand?.usedCents).toBe(1500)
+    expect(snapshot.onDemand?.limitCents).toBeNull()
   })
 
-  test('returns an empty metric list for an unusable payload', () => {
-    expect(parseCursorUsageSummary(null).metrics).toEqual([])
-    expect(parseCursorUsageSummary({}).metrics).toEqual([])
-    expect(parseCursorUsageSummary('nonsense').metrics).toEqual([])
+  test('preserves percentages above 100 so overage stays visible', () => {
+    const snapshot = parseCursorUsageSummary({
+      individualUsage: {
+        plan: {
+          enabled: true,
+          totalPercentUsed: 137.5,
+          apiPercentUsed: 212.4,
+        },
+      },
+    })
+    expect(snapshot.plan?.totalPercent).toBe(137.5)
+    expect(snapshot.plan?.apiPercent).toBe(212.4)
+  })
+
+  test('clamps negative percentages to 0', () => {
+    const snapshot = parseCursorUsageSummary({
+      individualUsage: { plan: { enabled: true, totalPercentUsed: -3 } },
+    })
+    expect(snapshot.plan?.totalPercent).toBe(0)
+  })
+
+  test('omits the plan when it is disabled', () => {
+    const snapshot = parseCursorUsageSummary({
+      individualUsage: {
+        plan: { enabled: false, totalPercentUsed: 50 },
+        onDemand: { enabled: true, used: 100, limit: 3000 },
+      },
+    })
+    expect(snapshot.plan).toBeUndefined()
+    expect(snapshot.onDemand?.usedCents).toBe(100)
+  })
+
+  test('returns an empty snapshot for an unusable payload', () => {
+    expect(parseCursorUsageSummary(null).plan).toBeUndefined()
+    expect(parseCursorUsageSummary(null).onDemand).toBeUndefined()
+    expect(parseCursorUsageSummary({}).plan).toBeUndefined()
+    expect(parseCursorUsageSummary('nonsense').plan).toBeUndefined()
   })
 })
 
 describe('mapCursorUsageToProviderBuckets', () => {
-  test('maps metrics to 0–1 utilization buckets with the billing reset', () => {
-    const snapshot: CursorUsageSnapshot = {
-      membershipType: 'ultra',
-      billingCycleEnd: '2026-08-05T04:38:09.000Z',
-      metrics: [
-        { labelKey: 'Included usage', percentUsed: 26.78 },
-        { labelKey: 'Included API usage', percentUsed: 78.82 },
-      ],
-    }
+  test('maps every plan dimension and on-demand spend to buckets', () => {
+    const snapshot = parseCursorUsageSummary(REAL_SUMMARY)
     const buckets = mapCursorUsageToProviderBuckets(snapshot)
-    expect(buckets).toHaveLength(2)
-    expect(buckets[0]).toMatchObject({
-      kind: 'custom',
-      label: 'Included usage',
-    })
-    expect(buckets[0]?.utilization).toBeCloseTo(0.2678, 4)
+
+    const labels = buckets.map(b => b.label)
+    expect(labels).toEqual([
+      'Included usage',
+      'Included API usage',
+      'Included Auto usage',
+      'On-demand usage',
+    ])
+
+    const total = buckets.find(b => b.label === 'Included usage')
+    expect(total?.utilization).toBeCloseTo(0.2678, 3)
     const expectedResetsAt = Math.floor(
       new Date('2026-08-05T04:38:09.000Z').getTime() / 1000,
     )
-    expect(buckets[0]?.resetsAt).toBe(expectedResetsAt)
+    expect(total?.resetsAt).toBe(expectedResetsAt)
+
+    const onDemand = buckets.find(b => b.label === 'On-demand usage')
+    expect(onDemand?.utilization).toBeCloseTo(1625 / 300000, 6)
+    expect(onDemand?.usedCents).toBe(1625)
+    expect(onDemand?.limitCents).toBe(300000)
+  })
+
+  test('keeps utilization above 1.0 for overage', () => {
+    const buckets = mapCursorUsageToProviderBuckets({
+      plan: { apiPercent: 137.5 },
+    })
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0]?.label).toBe('Included API usage')
+    expect(buckets[0]?.utilization).toBeCloseTo(1.375, 4)
+  })
+
+  test('maps unlimited on-demand spend without a limit', () => {
+    const buckets = mapCursorUsageToProviderBuckets({
+      onDemand: { enabled: true, usedCents: 1625, limitCents: null },
+    })
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0]?.utilization).toBe(0)
+    expect(buckets[0]?.usedCents).toBe(1625)
+    expect(buckets[0]?.limitCents).toBeUndefined()
   })
 
   test('omits resetsAt when there is no billing cycle end', () => {
-    const buckets = mapCursorUsageToProviderBuckets({
-      metrics: [{ labelKey: 'Included usage', percentUsed: 50 }],
-    })
+    const snapshot: CursorUsageSnapshot = {
+      plan: { totalPercent: 50 },
+    }
+    const buckets = mapCursorUsageToProviderBuckets(snapshot)
     expect(buckets[0]?.resetsAt).toBeUndefined()
   })
 })

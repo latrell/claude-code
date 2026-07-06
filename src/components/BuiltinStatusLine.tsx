@@ -54,10 +54,21 @@ export function formatProviderBucketLabel(label: string): string {
     if (label === 'Primary rate limit') return '主限';
     if (label === 'Secondary rate limit') return '副限';
     if (label === 'Included usage') return '额度';
+    if (label === 'Included API usage') return 'API 额度';
+    if (label === 'Included Auto usage') return 'Auto 额度';
+    if (label === 'On-demand usage') return '按量';
   }
-  // Compact the status-line label for the Cursor headline bucket.
+  // Compact status-line labels for the Cursor buckets.
   if (label === 'Included usage') return 'Usage';
+  if (label === 'Included API usage') return 'API';
+  if (label === 'Included Auto usage') return 'Auto';
+  if (label === 'On-demand usage') return 'On-demand';
   return t(label);
+}
+
+/** Compact dollar rendering for the status line: $16.25, $400, $3000. */
+export function formatCentsCompact(cents: number): string {
+  return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
 
 function Separator() {
@@ -66,11 +77,24 @@ function Separator() {
 
 function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; narrow: boolean }): React.ReactNode {
   const pct = Math.round(bucket.utilization * 100);
+  // Escalating color as a quota approaches/exceeds its limit so a critical
+  // bucket stands out (>=100% keeps showing the real overage percentage).
+  const pctColor = bucket.utilization >= 1 ? 'error' : bucket.utilization >= 0.8 ? 'warning' : undefined;
+  const isDollarBucket = bucket.usedCents !== undefined;
   return (
     <>
       <Separator />
       <Text dimColor>{formatProviderBucketLabel(bucket.label)} </Text>
-      <Text>{pct}%</Text>
+      {isDollarBucket ? (
+        <Text color={pctColor}>
+          {formatCentsCompact(bucket.usedCents ?? 0)}
+          {bucket.limitCents !== undefined && bucket.limitCents > 0 && (
+            <Text dimColor>/{formatCentsCompact(bucket.limitCents)}</Text>
+          )}
+        </Text>
+      ) : (
+        <Text color={pctColor}>{pct}%</Text>
+      )}
       {!narrow && bucket.resetsAt !== undefined && bucket.resetsAt > 0 && (
         <Text dimColor> {formatCountdown(bucket.resetsAt)}</Text>
       )}

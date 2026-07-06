@@ -30,16 +30,43 @@ import { cursorTransportOptions } from './client.js'
 const DEFAULT_BASE_URL = 'https://api2.cursor.sh'
 const FETCH_TIMEOUT_MS = 10_000
 
-/** A single usage dimension (plan / api / auto / on-demand). */
-export interface CursorUsageMetric {
-  /** i18n label key for the bar title. */
-  labelKey: string
-  /** Percentage used, 0–100. */
-  percentUsed: number
-  /** Spent amount in USD cents, when the endpoint reports one. */
+/**
+ * Bucket labels pushed into the provider-usage store. The status line
+ * (StatusLine.tsx / BuiltinStatusLine.tsx) matches on these exact strings.
+ */
+const CURSOR_BUCKET_LABELS = {
+  total: 'Included usage',
+  api: 'Included API usage',
+  auto: 'Included Auto usage',
+  onDemand: 'On-demand usage',
+} as const
+
+/** Included-in-plan usage (the Cursor client's "Included in <plan>" panel). */
+export interface CursorPlanUsage {
+  /**
+   * Headline "Total" percentage. Intentionally NOT capped at 100 so overage
+   * stays visible.
+   */
+  totalPercent?: number
+  /** "API" share of the included quota, percent. */
+  apiPercent?: number
+  /** "Auto + Composer" share of the included quota, percent. */
+  autoPercent?: number
+  /** Plan allowance spend in USD cents (Ultra: "$400 of API usage"). */
   usedCents?: number
-  /** Limit in USD cents, when the endpoint reports one. */
+  /** Plan allowance in USD cents. */
   limitCents?: number
+  /** Bonus allowance in USD cents (breakdown.bonus). */
+  bonusCents?: number
+}
+
+/** On-demand (usage-based) spend past the included quota. */
+export interface CursorOnDemandUsage {
+  enabled: boolean
+  /** Spend so far this cycle, USD cents. */
+  usedCents?: number
+  /** Monthly limit in USD cents; null when the user set it to unlimited. */
+  limitCents?: number | null
 }
 
 export interface CursorUsageSnapshot {
@@ -48,7 +75,8 @@ export interface CursorUsageSnapshot {
   /** Billing cycle end as an ISO timestamp (used as the reset time). */
   billingCycleEnd?: string
   isUnlimited?: boolean
-  metrics: CursorUsageMetric[]
+  plan?: CursorPlanUsage
+  onDemand?: CursorOnDemandUsage
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +94,7 @@ interface UsageSummaryShape {
       used?: number
       limit?: number
       remaining?: number
+      breakdown?: { included?: number; bonus?: number; total?: number }
       autoPercentUsed?: number
       apiPercentUsed?: number
       totalPercentUsed?: number
@@ -91,9 +120,14 @@ function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function clampPercent(value: number | undefined): number | undefined {
-  if (value === undefined) return undefined
-  return Math.max(0, Math.min(100, value))
+/**
+ * Sanitize a percentage: negative values clamp to 0, but values above 100 are
+ * preserved so the UI can report quota overage (e.g. "137% used").
+ */
+function pct(value: unknown): number | undefined {
+  const n = num(value)
+  if (n === undefined) return undefined
+  return Math.max(0, n)
 }
 
 /**
@@ -102,41 +136,40 @@ function clampPercent(value: number | undefined): number | undefined {
  */
 export function parseCursorUsageSummary(data: unknown): CursorUsageSnapshot {
   const summary = (isRecord(data) ? data : {}) as UsageSummaryShape
-  const plan = summary.individualUsage?.plan
-  const onDemand = summary.individualUsage?.onDemand
-  const metrics: CursorUsageMetric[] = []
+  const planRaw = summary.individualUsage?.plan
+  const onDemandRaw = summary.individualUsage?.onDemand
 
-  // Included-usage percentages mirror Cursor's own dashboard wording
-  // ("You've used 27% of your included total usage", etc). Their basis is NOT
-  // the plan.used/plan.limit dollar fields (which track only the base
-  // allowance), so these are shown as percentages WITHOUT a dollar subtext —
-  // pairing "27%" with "$400 / $400 spent" reads as contradictory.
-  if (plan?.enabled !== false) {
-    const total = clampPercent(num(plan?.totalPercentUsed))
-    if (total !== undefined) {
-      metrics.push({ labelKey: 'Included usage', percentUsed: total })
+  let plan: CursorPlanUsage | undefined
+  if (planRaw && planRaw.enabled !== false) {
+    const total = pct(planRaw.totalPercentUsed)
+    const api = pct(planRaw.apiPercentUsed)
+    const auto = pct(planRaw.autoPercentUsed)
+    const used = num(planRaw.used)
+    const limit = num(planRaw.limit)
+    const bonus = num(planRaw.breakdown?.bonus)
+    const candidate: CursorPlanUsage = {
+      ...(total !== undefined ? { totalPercent: total } : {}),
+      ...(api !== undefined ? { apiPercent: api } : {}),
+      ...(auto !== undefined ? { autoPercent: auto } : {}),
+      ...(used !== undefined ? { usedCents: used } : {}),
+      ...(limit !== undefined ? { limitCents: limit } : {}),
+      ...(bonus !== undefined && bonus > 0 ? { bonusCents: bonus } : {}),
     }
-    const api = clampPercent(num(plan?.apiPercentUsed))
-    if (api !== undefined) {
-      metrics.push({ labelKey: 'Included API usage', percentUsed: api })
-    }
-    const auto = clampPercent(num(plan?.autoPercentUsed))
-    if (auto !== undefined) {
-      metrics.push({ labelKey: 'Included Auto usage', percentUsed: auto })
-    }
+    if (Object.keys(candidate).length > 0) plan = candidate
   }
 
-  // On-demand (usage-based) spend: only meaningful when enabled with a limit.
-  if (onDemand?.enabled) {
-    const used = num(onDemand.used)
-    const limit = num(onDemand.limit)
-    if (used !== undefined && limit !== undefined && limit > 0) {
-      metrics.push({
-        labelKey: 'On-demand usage',
-        percentUsed: clampPercent((used / limit) * 100) ?? 0,
-        usedCents: used,
-        limitCents: limit,
-      })
+  let onDemand: CursorOnDemandUsage | undefined
+  if (isRecord(onDemandRaw)) {
+    const used = num(onDemandRaw.used)
+    onDemand = {
+      enabled: onDemandRaw.enabled === true,
+      ...(used !== undefined ? { usedCents: used } : {}),
+      // null means "no monthly limit" (unlimited); undefined means unknown.
+      ...(onDemandRaw.limit === null
+        ? { limitCents: null }
+        : num(onDemandRaw.limit) !== undefined
+          ? { limitCents: num(onDemandRaw.limit) }
+          : {}),
     }
   }
 
@@ -150,26 +183,71 @@ export function parseCursorUsageSummary(data: unknown): CursorUsageSnapshot {
     ...(typeof summary.isUnlimited === 'boolean'
       ? { isUnlimited: summary.isUnlimited }
       : {}),
-    metrics,
+    ...(plan ? { plan } : {}),
+    ...(onDemand ? { onDemand } : {}),
   }
 }
 
 /**
- * Map the plan/on-demand metrics into the unified provider-usage store so the
- * status-line can show Cursor quota alongside other providers.
+ * Map the plan/on-demand usage into the unified provider-usage store so the
+ * status-line can show Cursor quota alongside other providers. Utilization is
+ * intentionally allowed to exceed 1.0 so overage stays visible downstream.
  */
 export function mapCursorUsageToProviderBuckets(
   snapshot: CursorUsageSnapshot,
 ): ProviderUsageBucket[] {
-  const resetsAt = snapshot.billingCycleEnd
+  const resetsAtRaw = snapshot.billingCycleEnd
     ? Math.floor(new Date(snapshot.billingCycleEnd).getTime() / 1000)
     : undefined
-  return snapshot.metrics.map(metric => ({
-    kind: 'custom' as const,
-    label: metric.labelKey,
-    utilization: metric.percentUsed / 100,
-    ...(resetsAt && Number.isFinite(resetsAt) ? { resetsAt } : {}),
-  }))
+  const resetsAt =
+    resetsAtRaw !== undefined && Number.isFinite(resetsAtRaw)
+      ? { resetsAt: resetsAtRaw }
+      : {}
+
+  const buckets: ProviderUsageBucket[] = []
+  const plan = snapshot.plan
+  if (plan?.totalPercent !== undefined) {
+    buckets.push({
+      kind: 'custom',
+      label: CURSOR_BUCKET_LABELS.total,
+      utilization: plan.totalPercent / 100,
+      ...resetsAt,
+    })
+  }
+  if (plan?.apiPercent !== undefined) {
+    buckets.push({
+      kind: 'custom',
+      label: CURSOR_BUCKET_LABELS.api,
+      utilization: plan.apiPercent / 100,
+      ...resetsAt,
+    })
+  }
+  if (plan?.autoPercent !== undefined) {
+    buckets.push({
+      kind: 'custom',
+      label: CURSOR_BUCKET_LABELS.auto,
+      utilization: plan.autoPercent / 100,
+      ...resetsAt,
+    })
+  }
+
+  const onDemand = snapshot.onDemand
+  if (onDemand?.enabled && onDemand.usedCents !== undefined) {
+    const hasLimit =
+      typeof onDemand.limitCents === 'number' && onDemand.limitCents > 0
+    buckets.push({
+      kind: 'custom',
+      label: CURSOR_BUCKET_LABELS.onDemand,
+      utilization: hasLimit
+        ? onDemand.usedCents / (onDemand.limitCents as number)
+        : 0,
+      usedCents: onDemand.usedCents,
+      ...(hasLimit ? { limitCents: onDemand.limitCents as number } : {}),
+      ...resetsAt,
+    })
+  }
+
+  return buckets
 }
 
 function baseUrl(env: Record<string, string | undefined>): string {
@@ -254,9 +332,42 @@ export async function fetchCursorUsage(
     snapshot.membershipType = profile.membershipType
   }
 
-  if (snapshot.metrics.length > 0) {
-    updateProviderBuckets('cursor', mapCursorUsageToProviderBuckets(snapshot))
+  const buckets = mapCursorUsageToProviderBuckets(snapshot)
+  if (buckets.length > 0) {
+    updateProviderBuckets('cursor', buckets)
   }
 
   return snapshot
+}
+
+// ---------------------------------------------------------------------------
+// Status-line refresh polling
+// ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 5 * 60_000
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Keep the provider-usage store fresh so the status line reflects quota
+ * changes (e.g. a dimension crossing 100% and on-demand spend starting to
+ * accrue) during long sessions. Idempotent; each tick is a no-op unless
+ * Cursor is the active provider at that moment.
+ */
+export function startCursorUsagePolling(): void {
+  void fetchCursorUsage().catch(() => undefined)
+  if (pollTimer !== null) return
+  pollTimer = setInterval(() => {
+    void fetchCursorUsage().catch(() => undefined)
+  }, POLL_INTERVAL_MS)
+  // Don't keep the event loop alive just for the poller.
+  const timer = pollTimer as unknown as { unref?: () => void }
+  if (typeof timer.unref === 'function') timer.unref()
+}
+
+export function stopCursorUsagePolling(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 }

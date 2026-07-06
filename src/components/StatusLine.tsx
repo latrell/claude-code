@@ -73,6 +73,9 @@ type CachePillProps = {
 
 const CHATGPT_STATUS_LINE_LIMIT_LABELS = new Set(['Primary rate limit', 'Secondary rate limit']);
 
+const CURSOR_INCLUDED_LABELS = new Set(['Included usage', 'Included API usage', 'Included Auto usage']);
+const CURSOR_ON_DEMAND_LABEL = 'On-demand usage';
+
 export function selectStatusLineProviderBuckets(
   providerId: string,
   buckets: ProviderUsageBucket[],
@@ -82,11 +85,26 @@ export function selectStatusLineProviderBuckets(
     return primarySecondaryBuckets.length > 0 ? primarySecondaryBuckets : buckets;
   }
 
-  // Cursor reports several plan/API/auto/on-demand dimensions; the status line
-  // has room for one, so surface the headline "Included usage" total.
+  // Cursor reports several plan/API/auto/on-demand dimensions but the status
+  // line only has room for a couple. Surface the most critical information:
+  //  1. The included-quota dimension closest to (or past) 100%, so an
+  //     exhausted API/Auto quota isn't hidden behind a low headline total.
+  //  2. Once any quota is exhausted (or on-demand spend has started), the
+  //     on-demand bucket too, so the overage spend is visible.
   if (providerId === 'cursor') {
-    const included = buckets.filter(bucket => bucket.label === 'Included usage');
-    return included.length > 0 ? included : buckets.slice(0, 1);
+    const included = buckets.filter(bucket => CURSOR_INCLUDED_LABELS.has(bucket.label));
+    const onDemand = buckets.find(bucket => bucket.label === CURSOR_ON_DEMAND_LABEL);
+
+    const selected: ProviderUsageBucket[] = [];
+    if (included.length > 0) {
+      const mostUsed = included.reduce((max, bucket) => (bucket.utilization > max.utilization ? bucket : max));
+      selected.push(mostUsed);
+    }
+    const anyExhausted = included.some(bucket => bucket.utilization >= 1);
+    if (onDemand && (anyExhausted || (onDemand.usedCents ?? 0) > 0 || onDemand.utilization > 0)) {
+      selected.push(onDemand);
+    }
+    return selected.length > 0 ? selected : buckets.slice(0, 1);
   }
 
   return buckets;
