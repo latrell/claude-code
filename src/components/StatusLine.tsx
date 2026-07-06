@@ -77,10 +77,19 @@ export function selectStatusLineProviderBuckets(
   providerId: string,
   buckets: ProviderUsageBucket[],
 ): ProviderUsageBucket[] {
-  if (providerId !== 'openai') return buckets;
+  if (providerId === 'openai') {
+    const primarySecondaryBuckets = buckets.filter(bucket => CHATGPT_STATUS_LINE_LIMIT_LABELS.has(bucket.label));
+    return primarySecondaryBuckets.length > 0 ? primarySecondaryBuckets : buckets;
+  }
 
-  const primarySecondaryBuckets = buckets.filter(bucket => CHATGPT_STATUS_LINE_LIMIT_LABELS.has(bucket.label));
-  return primarySecondaryBuckets.length > 0 ? primarySecondaryBuckets : buckets;
+  // Cursor reports several plan/API/auto/on-demand dimensions; the status line
+  // has room for one, so surface the headline "Included usage" total.
+  if (providerId === 'cursor') {
+    const included = buckets.filter(bucket => bucket.label === 'Included usage');
+    return included.length > 0 ? included : buckets.slice(0, 1);
+  }
+
+  return buckets;
 }
 
 function CachePill({ messages }: CachePillProps): React.ReactNode {

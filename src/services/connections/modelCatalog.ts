@@ -13,6 +13,7 @@
  */
 
 import { CHATGPT_CODEX_MODEL_OPTIONS } from '../../utils/model/chatgptModels.js'
+import { CURSOR_MODELS } from '../api/cursor/models.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { t } from '../../i18n/t.js'
@@ -43,21 +44,16 @@ const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
 ]
 
 /**
- * Curated list of commonly available Cursor model ids. Cursor's catalog is not
- * reliably enumerable over a stable JSON endpoint, so this is a static hint —
- * the picker's "Custom model…" entry accepts any id the account can use.
+ * Curated Cursor models for the static catalog, derived from the shared
+ * cursor/models.ts list (kept current against Cursor's real AvailableModels).
+ * The live list is merged on top by the picker (see supportsRemoteModelList);
+ * the "Custom model…" entry still accepts any id the account can use.
  */
-const CURSOR_MODELS: CatalogModel[] = [
-  { value: 'auto', label: 'auto', description: 'Cursor auto-selects a model' },
-  { value: 'claude-4.5-sonnet', label: 'claude-4.5-sonnet' },
-  { value: 'claude-4-opus', label: 'claude-4-opus' },
-  { value: 'claude-4-sonnet', label: 'claude-4-sonnet' },
-  { value: 'claude-3.7-sonnet', label: 'claude-3.7-sonnet' },
-  { value: 'gpt-5', label: 'gpt-5' },
-  { value: 'gpt-4.1', label: 'gpt-4.1' },
-  { value: 'o3', label: 'o3' },
-  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
-]
+const CURSOR_CATALOG_MODELS: CatalogModel[] = CURSOR_MODELS.map(m => ({
+  value: m.id,
+  label: m.label,
+  ...(m.id === 'auto' ? { description: 'Cursor auto-selects a model' } : {}),
+}))
 
 function defaultEntry(): CatalogModel {
   return {
@@ -130,7 +126,7 @@ export function getStaticModelsForConnection(
       break
     }
     case 'cursor': {
-      for (const model of CURSOR_MODELS) {
+      for (const model of CURSOR_CATALOG_MODELS) {
         dedupePush(out, seen, {
           value: model.value,
           label: model.label,
@@ -208,7 +204,12 @@ export function getStaticModelsForConnection(
 
 /** Kinds whose live model list can be fetched from the provider. */
 export function supportsRemoteModelList(kind: Connection['kind']): boolean {
-  return kind === 'openai-compat' || kind === 'grok' || kind === 'gemini'
+  return (
+    kind === 'openai-compat' ||
+    kind === 'grok' ||
+    kind === 'gemini' ||
+    kind === 'cursor'
+  )
 }
 
 /**
@@ -313,6 +314,9 @@ export async function fetchRemoteModelsForConnection(
   if (connection.kind === 'gemini') {
     return fetchGeminiModels(connection, options)
   }
+  if (connection.kind === 'cursor') {
+    return fetchCursorModels(connection, options)
+  }
   if (connection.kind !== 'openai-compat' && connection.kind !== 'grok') {
     return []
   }
@@ -355,6 +359,30 @@ export async function fetchRemoteModelsForConnection(
     )
     return []
   }
+}
+
+/**
+ * Cursor live model list via AiService/AvailableModels. Credentials come from
+ * the signed-in Cursor session (env / OAuth file / IDE), not connection.apiKey,
+ * so this ignores the generic auth path and delegates to the Cursor client.
+ */
+async function fetchCursorModels(
+  _connection: Connection,
+  options?: FetchOptions,
+): Promise<RemoteModel[]> {
+  const { fetchCursorAvailableModels } = await import('../api/cursor/models.js')
+  const models = await fetchCursorAvailableModels(process.env, {
+    ...(options?.timeoutMs !== undefined
+      ? { timeoutMs: options.timeoutMs }
+      : {}),
+    ...(options?.fetchOverride ? { fetchOverride: options.fetchOverride } : {}),
+  })
+  return models.map(m => ({
+    id: m.id,
+    ...(m.contextWindow !== undefined
+      ? { contextLength: m.contextWindow }
+      : {}),
+  }))
 }
 
 /**

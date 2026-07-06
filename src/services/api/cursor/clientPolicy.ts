@@ -11,8 +11,15 @@
 import * as crypto from 'crypto'
 import type { CursorApiCredentials } from './protobufSchema.js'
 
-/** Default Cursor client version advertised to the backend. */
-export const DEFAULT_CURSOR_CLIENT_VERSION = '2.6.22'
+/**
+ * Default Cursor client version advertised to the backend. Kept in step with a
+ * recent Cursor release: the backend appends a "This is a very old version of
+ * Cursor. Please update…" notice frame to chat responses when this is too old
+ * (2.6.22 triggers it; 3.x does not), and may eventually hard-reject stale
+ * versions. Bump when Cursor ships a new stable and the notice reappears.
+ * Overridable at runtime via CURSOR_CLIENT_VERSION.
+ */
+export const DEFAULT_CURSOR_CLIENT_VERSION = '3.9.21'
 export const CURSOR_USER_AGENT = 'connect-es/1.6.1'
 
 export function getCursorClientVersion(

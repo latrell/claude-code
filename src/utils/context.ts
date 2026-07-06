@@ -1,6 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { getChatGPTSubscriptionPlan } from '../bootstrap/state.js'
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
+import { getCursorContextWindowForModel } from '../services/api/cursor/models.js'
 import { getConnectionContextWindow } from '../services/connections/contextWindows.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -84,6 +85,17 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // Cursor: resolve from the curated catalog (Max Mode aware), mapping family
+  // aliases (sonnet/opus/fable) through to the Cursor model id. This is the
+  // authoritative source for Cursor models — without it they fall through to
+  // the 200k default even though most support 300k–1M.
+  if (getAPIProvider() === 'cursor') {
+    const cursorWindow = getCursorContextWindowForModel(model)
+    if (cursorWindow !== undefined) {
+      return cursorWindow
+    }
   }
 
   // Connection registry (/connect + /models): context windows auto-detected

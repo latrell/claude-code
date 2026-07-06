@@ -18,6 +18,7 @@ import type {
 } from './protobufSchema.js'
 import { generateCursorBody, wrapConnectRPCFrame } from './protobuf.js'
 import { buildCursorConnectHeaders } from './clientPolicy.js'
+import { isCursorMaxModeEnabled } from './models.js'
 import { StreamingFrameParser, type FrameResult } from './streamParser.js'
 import { clearCursorCredentialsCache } from './auth.js'
 
@@ -121,6 +122,7 @@ export async function* streamCursorChat(
     model,
     tools,
     reasoningEffort,
+    isCursorMaxModeEnabled(env),
   )
   const compress = shouldCompressRequest(messages.length, env)
   const framedBody = wrapConnectRPCFrame(protobufBody, compress)

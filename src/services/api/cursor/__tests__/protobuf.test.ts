@@ -50,6 +50,31 @@ describe('generateCursorBody', () => {
   test('throws on empty messages', () => {
     expect(() => generateCursorBody([], 'm')).toThrow()
   })
+
+  test('sets the LARGE_CONTEXT (Max Mode) field from the largeContext flag', () => {
+    const decodeLargeContext = (body: Uint8Array): number => {
+      const top = decodeMessage(body)
+      const req = top.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array
+      const chat = decodeMessage(req)
+      return chat.get(FIELD.Chat.LARGE_CONTEXT)?.[0]?.value as number
+    }
+    const off = generateCursorBody(
+      [{ role: 'user', content: 'hi' }],
+      'm',
+      [],
+      null,
+      false,
+    )
+    const on = generateCursorBody(
+      [{ role: 'user', content: 'hi' }],
+      'm',
+      [],
+      null,
+      true,
+    )
+    expect(decodeLargeContext(off)).toBe(0)
+    expect(decodeLargeContext(on)).toBe(1)
+  })
 })
 
 describe('wrapConnectRPCFrame', () => {

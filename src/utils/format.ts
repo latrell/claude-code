@@ -1,6 +1,16 @@
 // Pure display formatters — leaf-safe (no Ink). Width-aware truncation lives in ./truncate.ts.
 
 import { getRelativeTimeFormat, getTimeZone } from './intl.js'
+import { getResolvedLanguage } from './language.js'
+
+/**
+ * BCP-47 locale for date/time display, following the app's resolved UI
+ * language. Keeps reset-time labels ("Aug 5" vs "8月5日") in sync with the
+ * rest of the localized UI instead of always rendering US English.
+ */
+function getDisplayDateLocale(): string {
+  return getResolvedLanguage() === 'zh' ? 'zh-CN' : 'en-US'
+}
 
 /**
  * Formats a byte count to a human-readable string (KB, MB, GB).
@@ -239,6 +249,7 @@ export function formatResetTime(
   timestampInSeconds: number | undefined,
   showTimezone: boolean = false,
   showTime: boolean = true,
+  locale: string = getDisplayDateLocale(),
 ): string | undefined {
   if (!timestampInSeconds) return undefined
 
@@ -265,9 +276,10 @@ export function formatResetTime(
       dateOptions.year = 'numeric'
     }
 
-    const dateString = date.toLocaleString('en-US', dateOptions)
+    const dateString = date.toLocaleString(locale, dateOptions)
 
-    // Remove the space before AM/PM and make it lowercase
+    // Remove the space before AM/PM and make it lowercase (English output only;
+    // the regex is a no-op for locales like zh-CN that don't emit " AM"/" PM").
     return (
       dateString.replace(/ ([AP]M)/i, (_match, ampm) => ampm.toLowerCase()) +
       (showTimezone ? ` (${getTimeZone()})` : '')
@@ -275,7 +287,7 @@ export function formatResetTime(
   }
 
   // For resets within 24 hours, show just the time (existing behavior)
-  const timeString = date.toLocaleTimeString('en-US', {
+  const timeString = date.toLocaleTimeString(locale, {
     hour: 'numeric',
     minute: minutes === 0 ? undefined : '2-digit',
     hour12: true,
@@ -292,9 +304,10 @@ export function formatResetText(
   resetsAt: string,
   showTimezone: boolean = false,
   showTime: boolean = true,
+  locale?: string,
 ): string {
   const dt = new Date(resetsAt)
-  return `${formatResetTime(Math.floor(dt.getTime() / 1000), showTimezone, showTime)}`
+  return `${formatResetTime(Math.floor(dt.getTime() / 1000), showTimezone, showTime, locale)}`
 }
 
 // Back-compat: truncate helpers moved to ./truncate.ts (needs ink/stringWidth)

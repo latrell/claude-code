@@ -39,6 +39,7 @@ import {
   getChatGPTCodexModelDisplayName,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
+import { CURSOR_MODELS } from '../../services/api/cursor/models.js'
 import { t, tf } from '../../i18n/t.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
@@ -478,6 +479,35 @@ function getOpusPlanOption(): ModelOption {
   }
 }
 
+function getCursorModelOptions(): ModelOption[] {
+  // Cursor sends the picked value straight through resolveCursorModel(), which
+  // passes non-family ids (composer-2.5, gpt-5.5-medium, …) verbatim. "Default"
+  // maps to the connection/env default (CURSOR_DEFAULT_*), so keep it first.
+  const currentModel = renderDefaultModelSetting(
+    getDefaultMainLoopModelSetting(),
+  )
+  return [
+    {
+      value: null,
+      label: t('Default (recommended)'),
+      description: tf('Use the default Cursor model (currently {model})', {
+        model: currentModel,
+      }),
+      descriptionForModel: tf('Default Cursor model (currently {model})', {
+        model: currentModel,
+      }),
+    },
+    ...CURSOR_MODELS.map(m => ({
+      value: m.id,
+      label: m.label,
+      description: m.contextWindow
+        ? `${m.id} · ctx ${m.contextWindow >= 1_000_000 ? '1M' : `${Math.round(m.contextWindow / 1000)}K`}`
+        : m.id,
+      descriptionForModel: `${m.label} (${m.id})`,
+    })),
+  ]
+}
+
 function getChatGPTCodexModelOptions(): ModelOption[] {
   return [
     {
@@ -533,6 +563,10 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
 
   if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
     return getChatGPTCodexModelOptions()
+  }
+
+  if (getAPIProvider() === 'cursor') {
+    return getCursorModelOptions()
   }
 
   if (isClaudeAISubscriber()) {

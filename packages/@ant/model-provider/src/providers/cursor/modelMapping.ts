@@ -8,24 +8,28 @@
  * override the entire mapping via CURSOR_MODEL_MAP (JSON string), or force a
  * single model for every request via CURSOR_MODEL.
  */
+// Targets are Cursor serverModelName values that currently exist in Cursor's
+// AvailableModels catalog (verified live). Cursor drops old model ids over
+// time, so map retired Anthropic ids to the nearest current Cursor equivalent
+// rather than a name Cursor no longer accepts.
 const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-20250514': 'claude-4-sonnet',
   'claude-sonnet-4-5-20250929': 'claude-4.5-sonnet',
   'claude-sonnet-4-6': 'claude-4.5-sonnet',
-  'claude-opus-4-20250514': 'claude-4-opus',
-  'claude-opus-4-1-20250805': 'claude-4.1-opus',
-  'claude-opus-4-5-20251101': 'claude-4.5-sonnet',
-  'claude-opus-4-6': 'claude-4.5-sonnet',
-  'claude-haiku-4-5-20251001': 'claude-4.5-sonnet',
-  'claude-3-5-haiku-20241022': 'claude-3.5-haiku',
-  'claude-3-7-sonnet-20250219': 'claude-3.7-sonnet',
-  'claude-3-5-sonnet-20241022': 'claude-3.5-sonnet',
+  'claude-opus-4-20250514': 'claude-4.5-opus-high',
+  'claude-opus-4-1-20250805': 'claude-4.5-opus-high',
+  'claude-opus-4-5-20251101': 'claude-4.5-opus-high',
+  'claude-opus-4-6': 'claude-4.6-opus-high',
+  'claude-haiku-4-5-20251001': 'claude-4.5-haiku',
+  'claude-3-5-haiku-20241022': 'claude-4.5-haiku',
+  'claude-3-7-sonnet-20250219': 'claude-4.5-sonnet',
+  'claude-3-5-sonnet-20241022': 'claude-4.5-sonnet',
 }
 
 const DEFAULT_FAMILY_MAP: Record<string, string> = {
-  opus: 'claude-4-opus',
+  opus: 'claude-opus-4-8-thinking-high',
   sonnet: 'claude-4.5-sonnet',
-  haiku: 'claude-4.5-sonnet',
+  haiku: 'claude-4.5-haiku',
 }
 
 function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {

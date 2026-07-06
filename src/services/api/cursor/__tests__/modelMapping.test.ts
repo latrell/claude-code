@@ -16,8 +16,10 @@ describe('resolveCursorModel', () => {
     )
   })
 
-  test('maps by family when the exact id is unknown', () => {
-    expect(resolveCursorModel('claude-opus-4-8', {})).toBe('claude-4-opus')
+  test('maps by family to a current Cursor model when the exact id is unknown', () => {
+    expect(resolveCursorModel('claude-opus-4-8', {})).toBe(
+      'claude-opus-4-8-thinking-high',
+    )
   })
 
   test('maps the fable family to the sonnet slot', () => {

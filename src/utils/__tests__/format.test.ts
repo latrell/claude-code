@@ -8,6 +8,8 @@ import {
   formatRelativeTime,
   formatRelativeTimeAgo,
   formatLogMetadata,
+  formatResetText,
+  formatResetTime,
 } from '../format'
 
 describe('formatFileSize', () => {
@@ -294,5 +296,36 @@ describe('formatLogMetadata', () => {
       gitBranch: 'feat/x',
     })
     expect(result).toContain(' · ')
+  })
+})
+
+describe('formatResetTime / formatResetText locale', () => {
+  // A reset comfortably more than 24h out so the date branch is exercised
+  // regardless of when the test runs.
+  const farFuture = Math.floor((Date.now() + 60 * 86_400_000) / 1000)
+  const farFutureIso = new Date(farFuture * 1000).toISOString()
+
+  test('renders the reset date in Chinese when locale is zh-CN', () => {
+    const zh = formatResetTime(farFuture, false, false, 'zh-CN')
+    expect(zh).toContain('月')
+    expect(zh).toContain('日')
+  })
+
+  test('renders the reset date in English when locale is en-US', () => {
+    const en = formatResetTime(farFuture, false, false, 'en-US')
+    // e.g. "Aug 5" — a 3-letter month abbreviation followed by a day number.
+    expect(en).toMatch(/^[A-Z][a-z]{2}\s+\d+/)
+  })
+
+  test('appends the timezone in parentheses when requested', () => {
+    const withTz = formatResetTime(farFuture, true, false, 'en-US')
+    expect(withTz).toMatch(/\(.+\)$/)
+  })
+
+  test('formatResetText threads the locale through to the date format', () => {
+    expect(formatResetText(farFutureIso, false, false, 'zh-CN')).toContain('月')
+    expect(formatResetText(farFutureIso, false, false, 'en-US')).toMatch(
+      /^[A-Z][a-z]{2}\s+\d+/,
+    )
   })
 })

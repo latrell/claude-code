@@ -53,7 +53,10 @@ export function formatProviderBucketLabel(label: string): string {
   if (getResolvedLanguage() === 'zh') {
     if (label === 'Primary rate limit') return '主限';
     if (label === 'Secondary rate limit') return '副限';
+    if (label === 'Included usage') return '额度';
   }
+  // Compact the status-line label for the Cursor headline bucket.
+  if (label === 'Included usage') return 'Usage';
   return t(label);
 }
 

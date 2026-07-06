@@ -14,6 +14,9 @@ import {
   type CodexRateLimitBucket,
   type CodexUsageSnapshot,
 } from '../../services/api/openai/codexUsage.js';
+import { isChatGPTAuthEnabled } from '../../services/api/openai/chatgptAuth.js';
+import { fetchCursorUsage, type CursorUsageSnapshot } from '../../services/api/cursor/cursorUsage.js';
+import { getAPIProvider } from '../../utils/model/providers.js';
 import { formatResetText } from '../../utils/format.js';
 import { logError } from '../../utils/log.js';
 import { jsonStringify } from '../../utils/slowOperations.js';
@@ -199,33 +202,110 @@ function CodexUsageSection({
   );
 }
 
+function CursorUsageSection({
+  cursorUsage,
+  maxWidth,
+}: {
+  cursorUsage: CursorUsageSnapshot;
+  maxWidth: number;
+}): React.ReactNode {
+  const { membershipType, subscriptionStatus, billingCycleEnd, isUnlimited, metrics } = cursorUsage;
+
+  const planLabel = [membershipType, subscriptionStatus && subscriptionStatus !== 'active' ? subscriptionStatus : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Box flexDirection="column" gap={1} width="100%">
+      <Text bold>
+        {t('Cursor Usage')}
+        {planLabel ? ` (${planLabel})` : ''}
+      </Text>
+
+      {isUnlimited ? (
+        <Text dimColor>{t('Unlimited')}</Text>
+      ) : metrics.length > 0 ? (
+        metrics.map(metric => {
+          const subtext =
+            metric.usedCents !== undefined && metric.limitCents !== undefined
+              ? tf('{used} / {limit} spent', {
+                  used: formatCost(metric.usedCents / 100, 2),
+                  limit: formatCost(metric.limitCents / 100, 2),
+                })
+              : undefined;
+          return (
+            <LimitBar
+              key={metric.labelKey}
+              title={t(metric.labelKey)}
+              limit={{
+                utilization: metric.percentUsed,
+                resets_at: billingCycleEnd ?? null,
+              }}
+              showTimeInReset={false}
+              {...(subtext ? { extraSubtext: subtext } : {})}
+              maxWidth={maxWidth}
+            />
+          );
+        })
+      ) : (
+        <Text dimColor>{t('No usage data available.')}</Text>
+      )}
+
+      <Text dimColor>
+        <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
+      </Text>
+    </Box>
+  );
+}
+
+/** Provider-usage store id that a given API provider writes its buckets under. */
+function providerUsageStoreId(provider: ReturnType<typeof getAPIProvider>): string {
+  return provider === 'firstParty' ? 'anthropic' : provider;
+}
+
 export function Usage(): React.ReactNode {
   const [utilization, setUtilization] = useState<Utilization | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [codexUsage, setCodexUsage] = useState<CodexUsageSnapshot | null>(null);
+  const [cursorUsage, setCursorUsage] = useState<CursorUsageSnapshot | null>(null);
   const { columns } = useTerminalSize();
 
   const availableWidth = columns - 2; // 2 for screen padding
   const maxWidth = Math.min(availableWidth, 80);
 
+  // Drive the panel off the *currently active* provider (recomputed each load),
+  // not whichever credential happens to still be on disk. Otherwise switching
+  // agents via /connect keeps showing the previous agent's quota, because e.g.
+  // fetchUtilization() returns cached Anthropic limits regardless of the switch.
+  const provider = getAPIProvider();
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    // Reset stale sections so a re-load after switching agents can't leave a
+    // previous provider's data on screen.
+    setUtilization(null);
+    setCodexUsage(null);
+    setCursorUsage(null);
     try {
-      const [anthroData, codexData] = await Promise.all([
-        fetchUtilization().catch(() => null),
-        fetchCodexUsage().catch(() => null),
-      ]);
-      setUtilization(anthroData);
-      if (codexData) setCodexUsage(codexData);
+      if (provider === 'cursor') {
+        setCursorUsage(await fetchCursorUsage().catch(() => null));
+      } else if (provider === 'openai' && isChatGPTAuthEnabled()) {
+        setCodexUsage(await fetchCodexUsage().catch(() => null));
+      } else if (provider === 'firstParty') {
+        setUtilization(await fetchUtilization().catch(() => null));
+      }
+      // Other providers (gemini / grok / openai-compat / bedrock / …) have no
+      // dedicated usage endpoint here; the render falls back to whatever the
+      // provider-usage store holds for this provider.
     } catch {
-      // Individual errors are caught inside fetchUtilization / fetchCodexUsage;
-      // this outer catch protects against unexpected synchronous exceptions.
+      // Individual errors are caught inside each fetcher; this outer catch
+      // protects against unexpected synchronous exceptions.
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     void loadData();
@@ -258,7 +338,7 @@ export function Usage(): React.ReactNode {
     );
   }
 
-  if (!utilization) {
+  if (isLoading) {
     return (
       <Box flexDirection="column" gap={1}>
         <Text dimColor>{t('Loading usage data\u2026')}</Text>
@@ -269,62 +349,61 @@ export function Usage(): React.ReactNode {
     );
   }
 
-  // Only Max and Team plans have a Sonnet limit that differs from the weekly
-  // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
-  // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts,
-  // which labels it "Sonnet limit" in that case.
-  const subscriptionType = getSubscriptionType();
-  const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
-
-  const limits = [
-    {
-      title: t('Current session'),
-      limit: utilization.five_hour,
-    },
-    {
-      title: t('Current week (all models)'),
-      limit: utilization.seven_day,
-    },
-    ...(showSonnetBar
-      ? [
-          {
-            title: t('Current week (Sonnet only)'),
-            limit: utilization.seven_day_sonnet,
-          },
-        ]
-      : []),
-  ];
-
-  const hasAnthropicLimits = limits.some(({ limit }) => limit);
-
-  // When Anthropic utilization is empty (non-subscriber or third-party
-  // provider), try ChatGPT Codex usage data first, then fall back to the
-  // provider-usage store (e.g. OpenAI-compatible API key users).
-  if (!hasAnthropicLimits) {
-    if (codexUsage) {
-      return <CodexUsageSection codexUsage={codexUsage} maxWidth={maxWidth} />;
+  // Cursor subscription usage.
+  if (provider === 'cursor') {
+    if (cursorUsage) {
+      return <CursorUsageSection cursorUsage={cursorUsage} maxWidth={maxWidth} />;
     }
+    return <NoUsageData />;
+  }
 
-    const providerUsage = getProviderUsage();
-    if (providerUsage.buckets.length > 0) {
+  // ChatGPT Codex subscription usage.
+  if (provider === 'openai' && codexUsage) {
+    return <CodexUsageSection codexUsage={codexUsage} maxWidth={maxWidth} />;
+  }
+
+  // Anthropic (claude.ai subscription) rate limits.
+  if (provider === 'firstParty' && utilization) {
+    // Only Max and Team plans have a Sonnet limit that differs from the weekly
+    // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
+    // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts.
+    const subscriptionType = getSubscriptionType();
+    const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
+
+    const limits = [
+      { title: t('Current session'), limit: utilization.five_hour },
+      { title: t('Current week (all models)'), limit: utilization.seven_day },
+      ...(showSonnetBar ? [{ title: t('Current week (Sonnet only)'), limit: utilization.seven_day_sonnet }] : []),
+    ];
+
+    if (limits.some(({ limit }) => limit)) {
       return (
         <Box flexDirection="column" gap={1} width="100%">
-          <Text bold>{t('Provider usage')}</Text>
-          {providerUsage.buckets.map((bucket, i) => {
-            const { label, limit } = bucketToLimitBar(bucket);
-            if (limit.utilization === null) return null;
-            return <LimitBar key={`${bucket.kind}-${i}`} title={label} limit={limit} maxWidth={maxWidth} />;
-          })}
+          {limits.map(
+            ({ title, limit }) => limit && <LimitBar key={title} title={title} limit={limit} maxWidth={maxWidth} />,
+          )}
+          {utilization.extra_usage && <ExtraUsageSection extraUsage={utilization.extra_usage} maxWidth={maxWidth} />}
+          {isEligibleForOverageCreditGrant() && <OverageCreditUpsell maxWidth={maxWidth} />}
           <Text dimColor>
             <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
           </Text>
         </Box>
       );
     }
+  }
 
+  // Fallback: provider-usage store buckets, but only when they belong to the
+  // active provider (guards against showing a prior agent's stored buckets).
+  const providerUsage = getProviderUsage();
+  if (providerUsage.providerId === providerUsageStoreId(provider) && providerUsage.buckets.length > 0) {
     return (
       <Box flexDirection="column" gap={1} width="100%">
-        <Text dimColor>{t('/usage is only available for subscription plans.')}</Text>
+        <Text bold>{t('Provider usage')}</Text>
+        {providerUsage.buckets.map((bucket, i) => {
+          const { label, limit } = bucketToLimitBar(bucket);
+          if (limit.utilization === null) return null;
+          return <LimitBar key={`${bucket.kind}-${i}`} title={label} limit={limit} maxWidth={maxWidth} />;
+        })}
         <Text dimColor>
           <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
         </Text>
@@ -332,16 +411,13 @@ export function Usage(): React.ReactNode {
     );
   }
 
+  return <NoUsageData />;
+}
+
+function NoUsageData(): React.ReactNode {
   return (
     <Box flexDirection="column" gap={1} width="100%">
-      {limits.map(
-        ({ title, limit }) => limit && <LimitBar key={title} title={title} limit={limit} maxWidth={maxWidth} />,
-      )}
-
-      {utilization.extra_usage && <ExtraUsageSection extraUsage={utilization.extra_usage} maxWidth={maxWidth} />}
-
-      {isEligibleForOverageCreditGrant() && <OverageCreditUpsell maxWidth={maxWidth} />}
-
+      <Text dimColor>{t('/usage is only available for subscription plans.')}</Text>
       <Text dimColor>
         <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
       </Text>

@@ -39,6 +39,7 @@ export function encodeRequest(
   modelName: string,
   tools: CursorTool[] = [],
   reasoningEffort: string | null = null,
+  largeContext = false,
 ): Uint8Array {
   if (messages.length === 0) {
     throw new Error('Messages array must not be empty')
@@ -126,7 +127,13 @@ export function encodeRequest(
     ...supportedToolsField,
     ...messageIdFields,
     ...toolFields,
-    encodeField(FIELD.Chat.LARGE_CONTEXT, WIRE_TYPE.VARINT, 0),
+    // Field 35 is Cursor's "Max Mode" flag — enables the model's full (up to
+    // 1M) context window. Off by default gives the smaller non-max window.
+    encodeField(
+      FIELD.Chat.LARGE_CONTEXT,
+      WIRE_TYPE.VARINT,
+      largeContext ? 1 : 0,
+    ),
     encodeField(FIELD.Chat.UNKNOWN_38, WIRE_TYPE.VARINT, 0),
     encodeField(
       FIELD.Chat.UNIFIED_MODE,
@@ -160,11 +167,12 @@ export function buildChatRequest(
   modelName: string,
   tools: CursorTool[] = [],
   reasoningEffort: string | null = null,
+  largeContext = false,
 ): Uint8Array {
   return encodeField(
     FIELD.Request.REQUEST,
     WIRE_TYPE.LEN,
-    encodeRequest(messages, modelName, tools, reasoningEffort),
+    encodeRequest(messages, modelName, tools, reasoningEffort, largeContext),
   )
 }
 
@@ -178,8 +186,15 @@ export function generateCursorBody(
   modelName: string,
   tools: CursorTool[] = [],
   reasoningEffort: string | null = null,
+  largeContext = false,
 ): Uint8Array {
-  return buildChatRequest(messages, modelName, tools, reasoningEffort)
+  return buildChatRequest(
+    messages,
+    modelName,
+    tools,
+    reasoningEffort,
+    largeContext,
+  )
 }
 
 export { extractTextFromResponse } from './protobufDecoder.js'

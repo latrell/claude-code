@@ -47,7 +47,12 @@ describe('getStaticModelsForConnection', () => {
     const models = getStaticModelsForConnection(conn)
     expect(models[0]?.value).toBeNull()
     expect(models.map(m => m.value)).toEqual(
-      expect.arrayContaining(['auto', 'claude-4.5-sonnet', 'gpt-5']),
+      expect.arrayContaining([
+        'auto',
+        'composer-2.5',
+        'claude-4.5-sonnet',
+        'gpt-5.5-medium',
+      ]),
     )
   })
 

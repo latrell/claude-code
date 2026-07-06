@@ -105,16 +105,26 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 | `CURSOR_REASONING_EFFORT` | `medium` / `high`，映射为 Cursor thinking level | — |
 | `CURSOR_GHOST_MODE` | `0`/`false` 关闭 ghost mode（默认开启，不留存对话） | `true` |
 | `CURSOR_COMPRESS_REQUESTS` | `1`/`0` 覆盖请求体 gzip 策略（默认 ≥3 条消息时压缩） | 自动 |
-| `CURSOR_HTTP2` | `0`/`false` 关闭对聊天请求强制 HTTP/2（见下「传输」） | 自动开启（Bun） |
+| `CURSOR_HTTP2` | `0`/`false` 关闭对聊天请求强制 HTTP/2（见「传输」） | 自动开启（Bun） |
+| `CURSOR_MAX_MODE` | `0`/`false` 关闭 Max Mode（完整/1M 上下文，按量计费） | 默认开启 |
+
+## 模型列表与选择
+
+- **`/model`（单 agent 选择器）**：Cursor 为当前 provider 时显示 Cursor 的策展模型列表（`Default` + Composer 2.5 / Opus 4.8 / Sonnet 5 / Fable 5 / GPT-5.x / Codex / Gemini / Grok / GLM / Kimi 等），不再错误显示 Claude 列表。实现见 `src/utils/model/modelOptions.ts` 的 `getCursorModelOptions()`。
+- **`/connect` + `/models`（跨 provider 选择器）**：静态策展列表（`src/services/api/cursor/models.ts` 的 `CURSOR_MODELS`）之上，会**实时拉取** Cursor 完整模型目录并合并（`supportsRemoteModelList('cursor')` = true）。
+- **实时目录**：`POST /aiserver.v1.AiService/AvailableModels`（ConnectRPC 的 **JSON** 变体 + h2），返回 150+ 个模型（含 effort 变体 `-low/-high/-thinking-*/-fast`）。`fetchCursorAvailableModels()` 过滤出 agent-capable 模型，并从 tooltip 解析上下文窗口。凭据走签入的 Cursor 会话（env / OAuth 文件 / IDE），非 `connection.apiKey`。
+- 选择器仍保留「Custom model…」，可输入任意 Cursor 接受的模型 id。
 
 ## 模型映射
 
-会话里选用的仍是 Anthropic 家族别名（`sonnet` / `opus` / `haiku` / `fable`）。发请求前 `resolveCursorModel()` 把它映射为 Cursor 模型名：
+会话里选用的若是 Anthropic 家族别名（`sonnet` / `opus` / `haiku` / `fable`），发请求前 `resolveCursorModel()` 把它映射为 Cursor 模型名；直接选 Cursor 原生 id（如 `composer-2.5`、`gpt-5.5-medium`）则原样透传。优先级：
 
 - `CURSOR_MODEL` 最高优先（一刀切）
 - 其次 `CURSOR_MODEL_MAP` / `CURSOR_DEFAULT_{FAMILY}_MODEL`
-- 再次内置默认映射（如 `claude-sonnet-4-5-*` → `claude-4.5-sonnet`）
+- 再次内置默认映射（映射目标为 Cursor 当前存在的模型名，如 `sonnet` → `claude-4.5-sonnet`、`opus` → `claude-opus-4-8-thinking-high`、`haiku` → `claude-4.5-haiku`）
 - 都不匹配则原样透传
+
+> Cursor 会淘汰旧模型 id，映射目标需对齐其 AvailableModels 目录里当前存在的名字，否则用别名默认档会命中已下线的模型。
 
 ## 传输（HTTP/2）
 
@@ -126,9 +136,30 @@ Bun 的 `fetch` 默认走 HTTP/1.1，因此聊天请求通过 per-request 选项
 - 配置了 HTTP 代理时自动跳过（Bun 实验性 h2 客户端暂不支持 CONNECT 隧道），退回 h1；
 - 可用 `CURSOR_HTTP2=0` 关闭。
 
+## 上下文窗口与 Max Mode
+
+Cursor 每个模型有两个上下文窗口：non-max（如 Opus 4.8 = 300k、Sonnet 4.5 = 200k）和 **Max Mode**（多为 1M）。
+
+- **Max Mode 默认开启**：聊天请求置位 protobuf 的 `LARGE_CONTEXT`（field 35）启用模型完整（≤1M）窗口，上下文窗口按 `maxContextWindow` 计算。设 `CURSOR_MAX_MODE=0` 关闭（回到 non-max 窗口）。注意 Max Mode 会产生 Cursor 的按量计费。
+- `getContextWindowForModel()` 对 Cursor 当前 provider 会先经 `getCursorContextWindowForModel()`（`src/services/api/cursor/models.ts`）解析：把家族别名（`sonnet`/`opus`/`fable`）映射为 Cursor 模型 id，再按当前 Max Mode 查策展目录的窗口。**修复了 Cursor 模型一律回退到 200k 默认值的问题**——auto-compact 阈值与状态栏上下文百分比现按真实窗口计算（默认即 1M 级）。
+- `/models` 实时拉取的窗口也随 Max Mode 取 non-max / max tooltip。
+
+## 订阅用量（/usage）
+
+Cursor 是当前 provider 时，`/usage` 会显示订阅计划的额度使用情况。数据来自 Cursor dashboard 用的两个逆向端点（已实测）：
+
+- `GET /auth/usage-summary` —— 计费周期、`membershipType`、plan 与 on-demand 用量（金额单位为**美分**）
+- `GET /auth/full_stripe_profile` —— `subscriptionStatus`（active / trialing…）
+
+展示的指标：Included usage（计划内总用量）、Included API / Auto usage（分项百分比）、On-demand usage（按量付费，附 `$used / $limit`），并以计费周期结束时间作为重置时间。用量同时写入统一的 provider-usage store。实现见 `src/services/api/cursor/cursorUsage.ts`。
+
+**状态栏**：启动时（`main.tsx` / `interactiveHelpers.tsx`，与 Codex 同一处）调用 `fetchCursorUsage()` 填充 provider-usage store，状态栏据此显示 Cursor 额度。状态栏空间有限，只展示 headline 的「Included usage」一项（`selectStatusLineProviderBuckets` 的 cursor 分支，标签压缩为 `额度`/`Usage`）。
+
+> `/usage` 面板按**当前激活的 provider**（`getAPIProvider()`）取数：用 `/connect` 切换 agent 后，面板会显示新 agent 的额度，而不是切换前的。
+
 ## 已知限制
 
-- **无 token 用量**：Cursor 流不返回 token 计数，成本统计恒为 0。
+- **无 token 用量**：Cursor 流不返回 token 计数（对话成本统计恒为 0）；`/usage` 的订阅额度是独立的 dashboard 数据，不受此限制。
 - **side query 走 Anthropic**：压缩摘要、标题生成等后台调用当前不经过 Cursor（会尝试 Anthropic 默认路径）；纯 Cursor 用户这些非关键操作会静默失败，不影响主循环。
 - **协议脆弱**：依赖逆向出的 protobuf 字段与端点，Cursor 更新后端后可能需要同步调整。
 - **仅供学习研究用途**，请遵守 Cursor 的服务条款。

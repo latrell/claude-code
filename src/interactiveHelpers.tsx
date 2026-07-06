@@ -23,6 +23,7 @@ import { initializeGrowthBook, resetGrowthBook } from './services/analytics/grow
 import { isQualifiedForGrove } from './services/api/grove.js';
 import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { fetchCodexUsage, initializeChatGPTPlan } from './services/api/openai/codexUsage.js';
+import { fetchCursorUsage } from './services/api/cursor/cursorUsage.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { ThemeProvider } from '@anthropic/ink';
@@ -134,6 +135,9 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   if (!usedCache) {
     await fetchCodexUsage().catch(() => undefined);
   }
+  // Populate the Cursor subscription-usage buckets so the status line shows
+  // quota on first paint (fetchCursorUsage is a no-op unless Cursor is active).
+  void fetchCursorUsage().catch(() => undefined);
   root.render(element);
   startDeferredPrefetches();
   await root.waitUntilExit();

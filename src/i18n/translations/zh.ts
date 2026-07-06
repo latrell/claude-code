@@ -558,6 +558,13 @@ const zh: Record<string, string> = {
     '超额使用未启用 · 使用 /extra-usage 启用',
   Unlimited: '无限制',
   '{used} / {limit} spent': '已花费 {used} / {limit}',
+  // Cursor usage
+  'Cursor Usage': 'Cursor 用量',
+  'Included usage': '计划内用量',
+  'Included API usage': '计划内 API 用量',
+  'Included Auto usage': '计划内 Auto 用量',
+  'On-demand usage': '按量付费用量',
+  'No usage data available.': '暂无用量数据。',
   // OutputStylePicker
   'Preferred output style': '首选输出风格',
   'This changes how Claude Code communicates with you':

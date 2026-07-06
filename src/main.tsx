@@ -284,6 +284,7 @@ import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdo
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
 import { fetchCodexUsage, initializeChatGPTPlan } from 'src/services/api/openai/codexUsage.js';
+import { fetchCursorUsage } from 'src/services/api/cursor/cursorUsage.js';
 import { isChatGPTAuthEnabled } from 'src/services/api/openai/chatgptAuth.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
 import { setCwd } from 'src/utils/Shell.js';
@@ -592,6 +593,11 @@ export async function startDeferredPrefetches(): Promise<void> {
       await fetchCodexUsage().catch(() => undefined);
     }
   }
+
+  // Cursor subscription usage → provider-usage store, so the status line shows
+  // quota. No-op unless Cursor is the active provider; fire-and-forget so it
+  // never blocks startup.
+  void fetchCursorUsage().catch(() => undefined);
 
   // File change detectors deferred from init() to unblock first render
   void settingsChangeDetector.initialize();
