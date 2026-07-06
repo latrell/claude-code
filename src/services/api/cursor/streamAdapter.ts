@@ -35,66 +35,130 @@ type CurrentBlock =
   | { kind: 'tool'; index: number; toolId: string; name: string; args: string }
 
 // Composer models stream their FINAL answer through the thinking channel,
-// separated by a DeepSeek-style marker: `…reasoning…</think><｜final｜>answer`.
-// Cursor's own client splits on that marker; without doing the same the final
-// answer is swallowed into the thinking block and the assistant turn renders
-// empty. Markers arrive fragmented across frame boundaries, so we hold back a
-// small tail while scanning.
+// terminated by a DeepSeek-style boundary. Two observed shapes:
+//   `…reasoning…</think><｜final｜>answer`
+//   `…reasoning…</think>\nanswer`          (bare close tag, no marker)
+// Cursor's own client splits on that boundary; without doing the same the
+// final answer is swallowed into the thinking block and the assistant turn
+// renders empty. Boundaries arrive fragmented across frame boundaries, so we
+// hold back a small tail while scanning.
 const FINAL_MARKERS = ['<｜final｜>', '<|final|>'] as const
-const THINK_CLOSE_RE = /\s*<\/think>\s*$/
-const MARKER_HOLDBACK = Math.max(...FINAL_MARKERS.map(m => m.length)) + 12
+const THINK_CLOSE = '</think>'
+const BOUNDARIES = [...FINAL_MARKERS, THINK_CLOSE] as const
+const MARKER_HOLDBACK = Math.max(...BOUNDARIES.map(m => m.length)) + 12
 
 /**
- * Rewrite thinking frames so content after a `<｜final｜>` marker flows as
- * text frames. Exported for the live model probe script.
+ * Rewrite thinking frames so content after the reasoning boundary
+ * (`</think>` and/or a `<｜final｜>` marker) flows as text frames. Exported
+ * for the live model probe script.
  */
 export async function* splitThinkingFinalMarker(
   frames: AsyncIterable<FrameResult>,
 ): AsyncGenerator<FrameResult, void> {
+  // thinking → (afterClose) → final
+  //   thinking:   scanning reasoning for a boundary
+  //   afterClose: just crossed a bare `</think>` — swallow whitespace and an
+  //               optional final marker before emitting the answer as text
+  //   final:      everything is answer text
+  let mode: 'thinking' | 'afterClose' | 'final' = 'thinking'
   let pending = ''
-  let inFinal = false
 
-  function findMarker(haystack: string): { index: number; length: number } {
-    let index = -1
-    let length = 0
+  function findBoundary(
+    haystack: string,
+  ): { index: number; length: number; kind: 'marker' | 'close' } | null {
+    let best: {
+      index: number
+      length: number
+      kind: 'marker' | 'close'
+    } | null = null
     for (const marker of FINAL_MARKERS) {
       const i = haystack.indexOf(marker)
-      if (i !== -1 && (index === -1 || i < index)) {
-        index = i
-        length = marker.length
+      if (i !== -1 && (best === null || i < best.index)) {
+        best = { index: i, length: marker.length, kind: 'marker' }
       }
     }
-    return { index, length }
+    const closeIdx = haystack.indexOf(THINK_CLOSE)
+    if (closeIdx !== -1 && (best === null || closeIdx < best.index)) {
+      best = { index: closeIdx, length: THINK_CLOSE.length, kind: 'close' }
+    }
+    return best
+  }
+
+  /**
+   * Resolve the afterClose buffer: strip leading whitespace and an optional
+   * final marker, then hand the rest over to final mode. Returns the text to
+   * emit now (empty string = keep waiting for more input).
+   */
+  function resolveAfterClose(buffer: string, atStreamEnd: boolean): string {
+    const trimmed = buffer.trimStart()
+    if (!trimmed) {
+      pending = buffer
+      return ''
+    }
+    const fullMarker = FINAL_MARKERS.find(m => trimmed.startsWith(m))
+    if (fullMarker) {
+      mode = 'final'
+      pending = ''
+      return trimmed.slice(fullMarker.length)
+    }
+    // Could the buffer still grow into a marker? (fragmented prefix)
+    if (!atStreamEnd && FINAL_MARKERS.some(m => m.startsWith(trimmed))) {
+      pending = buffer
+      return ''
+    }
+    mode = 'final'
+    pending = ''
+    return trimmed
   }
 
   for await (const frame of frames) {
     if (frame.type !== 'thinking') {
+      // Boundary bookkeeping only applies to the thinking channel; flush any
+      // held-back content before passing other frames through.
       if (pending) {
-        yield { type: 'thinking', text: pending }
+        if (mode === 'thinking') {
+          yield { type: 'thinking', text: pending }
+        } else {
+          const text = resolveAfterClose(pending, true)
+          if (text) yield { type: 'text', text }
+        }
         pending = ''
       }
       yield frame
       continue
     }
 
-    if (inFinal) {
+    if (mode === 'final') {
       if (frame.text) yield { type: 'text', text: frame.text }
       continue
     }
 
     pending += frame.text
-    const { index, length } = findMarker(pending)
-    if (index !== -1) {
-      const before = pending.slice(0, index).replace(THINK_CLOSE_RE, '')
-      const after = pending.slice(index + length)
-      pending = ''
-      inFinal = true
-      if (before) yield { type: 'thinking', text: before }
-      if (after) yield { type: 'text', text: after }
+
+    if (mode === 'afterClose') {
+      const text = resolveAfterClose(pending, false)
+      if (text) yield { type: 'text', text }
       continue
     }
 
-    // Flush all but a tail that could still be a fragmented marker prefix.
+    const boundary = findBoundary(pending)
+    if (boundary) {
+      const before = pending.slice(0, boundary.index).replace(/\s+$/, '')
+      const rest = pending.slice(boundary.index + boundary.length)
+      pending = ''
+      if (before) yield { type: 'thinking', text: before }
+      if (boundary.kind === 'marker') {
+        mode = 'final'
+        if (rest) yield { type: 'text', text: rest }
+      } else {
+        mode = 'afterClose'
+        const text = resolveAfterClose(rest, false)
+        if (text) yield { type: 'text', text }
+      }
+      continue
+    }
+
+    // Flush all but a tail that could still be a fragmented boundary prefix.
     if (pending.length > MARKER_HOLDBACK) {
       const flush = pending.slice(0, -MARKER_HOLDBACK)
       pending = pending.slice(-MARKER_HOLDBACK)
@@ -103,7 +167,12 @@ export async function* splitThinkingFinalMarker(
   }
 
   if (pending) {
-    yield { type: 'thinking', text: pending }
+    if (mode === 'thinking') {
+      yield { type: 'thinking', text: pending }
+    } else {
+      const text = resolveAfterClose(pending, true)
+      if (text) yield { type: 'text', text }
+    }
   }
 }
 

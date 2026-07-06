@@ -8,7 +8,15 @@
  * Reference: https://github.com/eisbaw/cursor_api_demo
  */
 
-import { getProxyFetchOptions, getProxyUrl } from 'src/utils/proxy.js'
+import memoize from 'lodash-es/memoize.js'
+import type * as undici from 'undici'
+import { getCACertificates } from 'src/utils/caCerts.js'
+import { getMTLSConfig } from 'src/utils/mtls.js'
+import {
+  getNoProxy,
+  getProxyFetchOptions,
+  getProxyUrl,
+} from 'src/utils/proxy.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import type {
@@ -62,23 +70,76 @@ function mapHttpStatusToError(status: number): {
 }
 
 /**
+ * Node-only undici dispatcher with ALPN h2 enabled. Node's built-in fetch
+ * does NOT negotiate HTTP/2 by default (undici requires `allowH2: true`), so
+ * without this every request from a Node runtime (e.g. `node dist/cli.js`)
+ * hit the ALB as HTTP/1.1 and died with 464. Honors HTTPS_PROXY/NO_PROXY and
+ * mTLS/CA settings like getProxyFetchOptions does. Memoized per proxy URL so
+ * connections pool across requests. Exported for tests.
+ */
+export const getNodeH2Dispatcher = memoize(
+  (proxyUrl: string | undefined): undici.Dispatcher => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const undiciMod = require('undici') as typeof undici
+    const mtlsConfig = getMTLSConfig()
+    const caCerts = getCACertificates()
+    const tlsOpts =
+      mtlsConfig || caCerts
+        ? {
+            ...(mtlsConfig && {
+              cert: mtlsConfig.cert,
+              key: mtlsConfig.key,
+              passphrase: mtlsConfig.passphrase,
+            }),
+            ...(caCerts && { ca: caCerts }),
+          }
+        : undefined
+
+    if (proxyUrl) {
+      return new undiciMod.EnvHttpProxyAgent({
+        httpProxy: proxyUrl,
+        httpsProxy: proxyUrl,
+        noProxy: getNoProxy(),
+        allowH2: true,
+        ...(tlsOpts && { connect: tlsOpts, requestTls: tlsOpts }),
+      } as undici.EnvHttpProxyAgent.Options)
+    }
+    return new undiciMod.Agent({
+      allowH2: true,
+      ...(tlsOpts && { connect: tlsOpts }),
+    })
+  },
+  // memoize keys on the first arg; normalize undefined → '' for a stable key
+  proxyUrl => proxyUrl ?? '',
+)
+
+/**
  * Cursor's api2.cursor.sh backend is a ConnectRPC/gRPC service behind an AWS
  * ALB whose target group only speaks HTTP/2. A plain HTTP/1.1 request is
  * rejected by the load balancer with `464 Incompatible protocol` before it
- * ever reaches the backend. Bun's fetch defaults to HTTP/1.1 unless told
- * otherwise, so we pin the request to h2 (negotiated via TLS ALPN).
+ * ever reaches the backend, so every runtime must force h2 (negotiated via
+ * TLS ALPN):
  *
- * Only applies under Bun (the `protocol` option is Bun-specific; under Node
- * the built-in undici fetch negotiates h2 via ALPN on its own). Skipped when a
- * proxy is configured, since Bun's experimental h2 client does not yet support
- * CONNECT tunneling — pinning h2 there would fail outright. Set CURSOR_HTTP2=0
- * to opt out (e.g. if a future Bun default or a custom endpoint changes this).
+ * - Bun: per-request `{ protocol: 'http2' }` (Bun-specific fetch option).
+ *   Skipped when a proxy is configured — Bun's experimental h2 client can't
+ *   CONNECT-tunnel yet, so proxied requests fall back to h1 (and will 464;
+ *   route around the proxy with NO_PROXY=api2.cursor.sh if possible).
+ * - Node: an undici dispatcher with `allowH2: true`. Node's fetch never
+ *   negotiates h2 on its own — before this every request under
+ *   `node dist/cli.js` failed with `API Error: [464] Cursor upstream error`.
+ *   The dispatcher also carries proxy (CONNECT + ALPN h2 end-to-end works
+ *   under undici) and mTLS/CA config, replacing getProxyFetchOptions for
+ *   cursor requests on Node.
+ *
+ * Set CURSOR_HTTP2=0 to opt out of both (e.g. a custom h1 endpoint).
  */
 export function cursorTransportOptions(
   env: Record<string, string | undefined> = process.env,
-): { protocol?: 'http2' } {
-  if (typeof Bun === 'undefined') return {}
+): { protocol?: 'http2'; dispatcher?: undici.Dispatcher } {
   if (isEnvDefinedFalsy(env.CURSOR_HTTP2)) return {}
+  if (typeof Bun === 'undefined') {
+    return { dispatcher: getNodeH2Dispatcher(getProxyUrl(env)) }
+  }
   // Bun's h2 fetch client can't tunnel through an HTTP proxy yet; let the
   // proxied request fall back to h1 rather than throwing HTTP2Unsupported.
   if (getProxyUrl(env)) return {}
@@ -144,16 +205,28 @@ export async function* streamCursorChat(
     headers,
     body: framedBody as unknown as BodyInit,
     signal,
-    ...cursorTransportOptions(env),
+    // Order matters: cursorTransportOptions must spread last so its h2
+    // dispatcher (Node) overrides the generic proxy/mTLS dispatcher from
+    // getProxyFetchOptions, which has no ALPN h2 and would 464.
     ...getProxyFetchOptions({ forAnthropicAPI: false }),
+    ...cursorTransportOptions(env),
   } as RequestInit)
 
   if (!response.ok || !response.body) {
     const errorText = await safeReadText(response)
     const { errorType } = mapHttpStatusToError(response.status)
+    // 464 = ALB "Incompatible protocol": the request arrived as HTTP/1.1 at
+    // an h2-only target group. Tell the user what to check instead of the
+    // empty body the ALB returns.
+    const message =
+      response.status === 464
+        ? '[464] Incompatible protocol — the request reached Cursor over HTTP/1.1 instead of HTTP/2. ' +
+          'If an HTTP(S) proxy is configured, Bun cannot tunnel h2 through it (try NO_PROXY=api2.cursor.sh); ' +
+          'if CURSOR_HTTP2=0 is set, unset it.'
+        : `[${response.status}] ${errorText || 'Cursor upstream error'}`
     yield {
       type: 'error',
-      message: `[${response.status}] ${errorText || 'Cursor upstream error'}`,
+      message,
       status: response.status,
       errorType,
     }

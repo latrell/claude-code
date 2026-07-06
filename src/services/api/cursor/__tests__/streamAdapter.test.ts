@@ -184,4 +184,33 @@ describe('splitThinkingFinalMarker', () => {
     const frames = await splitAll(['a</think><｜final｜>first', ' second'])
     expect(joined(frames, 'text')).toBe('first second')
   })
+
+  test('splits on a bare </think> close tag with no final marker', async () => {
+    // Composer sometimes ends reasoning with just `</think>\nanswer` — the
+    // answer must still surface as text or the turn renders empty.
+    const frames = await splitAll([
+      'The user wants exactly "OK".',
+      '\n</think>\nOK',
+    ])
+    expect(joined(frames, 'thinking')).toBe('The user wants exactly "OK".')
+    expect(joined(frames, 'text')).toBe('OK')
+  })
+
+  test('splits a fragmented bare close tag across frames', async () => {
+    const frames = await splitAll(['reasoning</th', 'ink>', '\nO', 'K'])
+    expect(joined(frames, 'thinking')).toBe('reasoning')
+    expect(joined(frames, 'text')).toBe('OK')
+  })
+
+  test('post-close text starting with < that is not a marker is preserved', async () => {
+    const frames = await splitAll(['r</think>\n<tag>done</tag>'])
+    expect(joined(frames, 'thinking')).toBe('r')
+    expect(joined(frames, 'text')).toBe('<tag>done</tag>')
+  })
+
+  test('thinking ending at </think> with no answer emits no text', async () => {
+    const frames = await splitAll(['only reasoning</think>'])
+    expect(joined(frames, 'thinking')).toBe('only reasoning')
+    expect(joined(frames, 'text')).toBe('')
+  })
 })

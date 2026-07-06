@@ -151,13 +151,12 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 
 ## 传输（HTTP/2）
 
-`api2.cursor.sh` 是 ConnectRPC/gRPC 服务，部署在只接受 HTTP/2 的 AWS ALB 后面。用 HTTP/1.1 直连会在到达后端前被负载均衡器以 **`464 Incompatible protocol`** 拒绝（`API Error: [464] Cursor upstream error`）。
+`api2.cursor.sh` 是 ConnectRPC/gRPC 服务，部署在只接受 HTTP/2 的 AWS ALB 后面。用 HTTP/1.1 直连会在到达后端前被负载均衡器以 **`464 Incompatible protocol`** 拒绝。两个运行时都必须显式强制 h2（`cursorTransportOptions`，聊天/AvailableModels/usage 三个端点共用）：
 
-Bun 的 `fetch` 默认走 HTTP/1.1，因此聊天请求通过 per-request 选项 `{ protocol: 'http2' }` 强制协商 h2（经 TLS ALPN，无需全局 `--experimental-http2-fetch` 标志）。该逻辑：
-
-- 仅在 Bun 运行时生效（`protocol` 为 Bun 扩展；Node 的 undici 8.x 默认按 ALPN 协商 h2）；
-- 配置了 HTTP 代理时自动跳过（Bun 实验性 h2 客户端暂不支持 CONNECT 隧道），退回 h1；
-- 可用 `CURSOR_HTTP2=0` 关闭。
+- **Bun**：per-request 选项 `{ protocol: 'http2' }`（Bun 扩展，经 TLS ALPN 协商）。配置了 HTTP 代理时自动跳过（Bun 实验性 h2 客户端暂不支持 CONNECT 隧道），退回 h1——此时请求必然 464，建议用 `NO_PROXY=api2.cursor.sh` 绕过代理直连。
+- **Node**：undici dispatcher（`new Agent({ allowH2: true })`）。**Node 的内置 fetch 默认不会协商 h2**——修复前 `node dist/cli.js` 下每个 Cursor 请求都以 `API Error: [464]` 失败。配置代理时用 `EnvHttpProxyAgent({ allowH2: true })`（undici 的 CONNECT 隧道 + 端到端 ALPN h2 可用），并携带 mTLS/CA 配置；该 dispatcher 按代理 URL 记忆化以复用连接池。注意 spread 顺序：`cursorTransportOptions` 必须放在 `getProxyFetchOptions` 之后，否则会被通用代理 dispatcher（无 h2）覆盖。
+- 可用 `CURSOR_HTTP2=0` 一并关闭（如自定义 h1 端点）。
+- 464 的错误消息已改为可行动提示（说明是 h1 到达了 h2-only 端点、指向代理/`CURSOR_HTTP2` 排查），不再是空的「Cursor upstream error」。
 
 ## 瞬态错误重试
 
@@ -169,7 +168,7 @@ Cursor 请求与其他兼容层一样经 `withCompatRetry` 自动重试（429 / 
 
 ## Composer 的 final 标记
 
-Composer 系模型把最终回答也走 **thinking 通道**输出，用 DeepSeek 风格的 `…推理…</think><｜final｜>回答` 标记分隔。`streamAdapter.ts` 的 `splitThinkingFinalMarker` 会在流上切分（标记可能跨帧碎片化，做了尾部滞留处理），把标记后的内容还原为正常 text 块——否则 Composer 的最终回答会被吞进 thinking 块，assistant 消息渲染为空。
+Composer 系模型把最终回答也走 **thinking 通道**输出，用 DeepSeek 风格的边界分隔，实测有两种形态：`…推理…</think><｜final｜>回答` 和 `…推理…</think>\n回答`（裸 close 标签、无 final 标记，出现概率约一半）。`streamAdapter.ts` 的 `splitThinkingFinalMarker` 会在流上切分（边界可能跨帧碎片化，做了尾部滞留处理；`</think>` 后会吞掉空白和可选的 final 标记），把边界后的内容还原为正常 text 块——否则 Composer 的最终回答会被吞进 thinking 块，assistant 消息渲染为空（表现为回复时有时无）。
 
 ## 上下文窗口与 Max Mode
 

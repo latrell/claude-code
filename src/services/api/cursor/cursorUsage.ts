@@ -270,8 +270,10 @@ async function fetchJSON(
       method: 'GET',
       headers,
       signal: controller.signal,
-      ...cursorTransportOptions(env),
+      // cursorTransportOptions last: its Node h2 dispatcher must override
+      // the generic proxy dispatcher (h1-only → ALB 464).
       ...getProxyFetchOptions({ forAnthropicAPI: false }),
+      ...cursorTransportOptions(env),
     } as RequestInit)
     if (!res.ok) {
       logForDebugging(`[cursorUsage] ${url} returned HTTP ${res.status}`)
