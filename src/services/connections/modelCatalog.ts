@@ -52,7 +52,7 @@ const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
 const CURSOR_CATALOG_MODELS: CatalogModel[] = CURSOR_MODELS.map(m => ({
   value: m.id,
   label: m.label,
-  ...(m.id === 'auto' ? { description: 'Cursor auto-selects a model' } : {}),
+  ...(m.id === 'default' ? { description: 'Cursor auto-selects a model' } : {}),
 }))
 
 function defaultEntry(): CatalogModel {

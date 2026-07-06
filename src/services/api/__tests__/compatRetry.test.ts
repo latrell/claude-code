@@ -11,7 +11,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { describe, test, expect } from 'bun:test'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
-import { isRetryableCompatError, withCompatRetry } from '../compatRetry.js'
+import {
+  isRetryableCompatError,
+  prependFirstEvent,
+  withCompatRetry,
+} from '../compatRetry.js'
 
 // ---------------------------------------------------------------------------
 // Mock OpenAI SDK error classes (避免对 openai 包的硬依赖)
@@ -384,5 +388,103 @@ describe('withCompatRetry', () => {
       expect(err).toBeInstanceOf(MockAPIConnectionError)
     }
     expect(callCount).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// prependFirstEvent — 惰性流的请求级错误必须在工厂内抛出（Cursor 路径用法）
+// ---------------------------------------------------------------------------
+
+describe('prependFirstEvent', () => {
+  class FakeStreamError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+    ) {
+      super(message)
+    }
+  }
+
+  /** 模拟惰性流：首个 next() 前不发生任何事情（如 Cursor 的 fetch）。 */
+  async function* lazyStream(
+    events: string[],
+    failFirstWith?: Error,
+  ): AsyncGenerator<string, void> {
+    if (failFirstWith) throw failFirstWith
+    for (const event of events) yield event
+  }
+
+  test('把消费掉的首事件拼回流头，事件不丢失', async () => {
+    const stream = lazyStream(['message_start', 'delta', 'stop'])
+    const reattached = prependFirstEvent(await stream.next(), stream)
+    const out: string[] = []
+    for await (const event of reattached) out.push(event)
+    expect(out).toEqual(['message_start', 'delta', 'stop'])
+  })
+
+  test('首事件为 done 时产出空流', async () => {
+    const stream = lazyStream([])
+    const reattached = prependFirstEvent(await stream.next(), stream)
+    const out: string[] = []
+    for await (const event of reattached) out.push(event)
+    expect(out).toEqual([])
+  })
+
+  test('配合 withCompatRetry：惰性流的瞬态首帧错误在工厂内抛出并重试成功', async () => {
+    const signal = new AbortController().signal
+    let attempt = 0
+    const gen = withCompatRetry(
+      async () => {
+        attempt++
+        const stream = lazyStream(
+          ['message_start', 'delta'],
+          attempt === 1
+            ? new FakeStreamError('Provider Error', 429)
+            : undefined,
+        )
+        // Cursor 工厂的写法：先拉首事件，把请求级错误暴露给重试分类器。
+        return prependFirstEvent(await stream.next(), stream)
+      },
+      { maxRetries: 2, signal, provider: 'test' },
+    )
+
+    // 第一次尝试 429 → yield 重试进度消息
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    expect((progress.value as SystemAPIErrorMessage).type).toBe('system')
+
+    // 第二次尝试成功 → 返回完整的流（含被消费过的首事件）
+    const result = await gen.next()
+    expect(result.done).toBe(true)
+    const out: string[] = []
+    for await (const event of result.value as AsyncGenerator<string, void>) {
+      out.push(event)
+    }
+    expect(out).toEqual(['message_start', 'delta'])
+    expect(attempt).toBe(2)
+  })
+
+  test('配合 withCompatRetry：不可重试的首帧错误（404）立即抛出', async () => {
+    const signal = new AbortController().signal
+    let attempt = 0
+    const gen = withCompatRetry(
+      async () => {
+        attempt++
+        const stream = lazyStream(
+          [],
+          new FakeStreamError('AI Model Not Found', 404),
+        )
+        return prependFirstEvent(await stream.next(), stream)
+      },
+      { maxRetries: 3, signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect((err as Error).message).toBe('AI Model Not Found')
+    }
+    expect(attempt).toBe(1)
   })
 })

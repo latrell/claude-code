@@ -14,9 +14,12 @@ import {
 } from '../models.js'
 
 describe('CURSOR_MODELS', () => {
-  test('leads with auto and covers current model families', () => {
-    expect(CURSOR_MODELS[0]?.id).toBe('auto')
+  test('leads with the Auto tier and covers current model families', () => {
+    // Cursor's Auto tier is serverModelName `default`; the `auto` alias is
+    // rejected by the chat endpoint with "AI Model Not Found".
+    expect(CURSOR_MODELS[0]?.id).toBe('default')
     const ids = CURSOR_MODELS.map(m => m.id)
+    expect(ids).not.toContain('auto')
     // Current families, not the old gpt-5 / o3 / gemini-2.5-pro placeholders.
     expect(ids).toContain('composer-2.5')
     expect(ids).toContain('claude-sonnet-5-thinking-high')

@@ -27,7 +27,11 @@ import {
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
-import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
+import {
+  withCompatRetry,
+  isRetryableCompatError,
+  prependFirstEvent,
+} from '../compatRetry.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -107,7 +111,13 @@ export async function* queryModelCursor(
       envOverride: options.providerRuntimeConfig?.env,
     })
 
+    const start = Date.now()
+
     // Wrap the request + stream adaptation in retry for transient errors.
+    // Both generators are lazy — nothing hits the network until the first
+    // next() — so the factory must eagerly pull the first event. Otherwise
+    // request-level failures (429 rate limit / 5xx, e.g. Auto's transient
+    // "Provider Error") surface outside the retry scope and never retry.
     const adaptedStream = yield* withCompatRetry(
       async innerSignal => {
         const frames = streamCursorChat({
@@ -120,7 +130,8 @@ export async function* queryModelCursor(
           fetchOverride: options.fetchOverride as typeof fetch | undefined,
           envOverride: options.providerRuntimeConfig?.env,
         })
-        return adaptCursorFramesToAnthropic(frames, cursorModel)
+        const adapted = adaptCursorFramesToAnthropic(frames, cursorModel)
+        return prependFirstEvent(await adapted.next(), adapted)
       },
       { signal, provider: 'cursor' },
     )
@@ -129,7 +140,6 @@ export async function* queryModelCursor(
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null
     let ttftMs = 0
-    const start = Date.now()
 
     for await (const event of adaptedStream) {
       switch (event.type) {

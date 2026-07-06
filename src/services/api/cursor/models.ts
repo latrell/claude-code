@@ -44,7 +44,10 @@ export interface CursorModelInfo {
  * (non-max) window; `maxContextWindow` is the Max Mode window (often 1M).
  */
 export const CURSOR_MODELS: CursorModelInfo[] = [
-  { id: 'auto', label: 'Auto (Cursor picks)' },
+  // Cursor's Auto tier. The chat endpoint only accepts the serverModelName
+  // `default` — `auto` is a catalog idAlias that 404s ("AI Model Not Found")
+  // if sent verbatim; resolveCursorModel normalizes it for legacy configs.
+  { id: 'default', label: 'Auto (Cursor picks)' },
   {
     id: 'composer-2.5',
     label: 'Composer 2.5',

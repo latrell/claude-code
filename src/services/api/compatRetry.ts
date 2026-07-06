@@ -170,6 +170,23 @@ function createRetryProgressMessage(
 // ---------------------------------------------------------------------------
 
 /**
+ * Re-attach an eagerly-consumed first event to the rest of its stream.
+ *
+ * 适用场景：完全惰性的流水线（如 Cursor 的 streamCursorChat → 流适配器），
+ * 在 withCompatRetry 的工厂里不会发出任何网络请求，请求级错误（429/5xx）
+ * 会逃逸到重试作用域之外。工厂内先 `await stream.next()` 强制建立请求，
+ * 再用本函数把消费掉的首个事件拼回流头，交还下游正常消费。
+ */
+export async function* prependFirstEvent<T>(
+  first: IteratorResult<T, void>,
+  rest: AsyncGenerator<T, void>,
+): AsyncGenerator<T, void> {
+  if (first.done) return
+  yield first.value
+  yield* rest
+}
+
+/**
  * 对兼容层的一次 API 流式请求进行自动重试。
  *
  * @param createStream - 创建流式响应的异步工厂函数。

@@ -69,7 +69,7 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
      - **Access token**（可选）：留空则激活时自动读取已登录的 Cursor IDE 会话
      - **Machine ID**（可选）：留空则自动探测 / 从 token 派生
      - **Haiku / Sonnet / Opus**（可选）：把家族别名映射到具体 Cursor 模型
-3. 创建后在连接菜单里选择「本会话使用 / 设为全局默认」（主 agent 与子 agent 各自独立），并可用内置模型列表（`auto` / `claude-4.5-sonnet` / `gpt-5` …）或「Custom model…」自定义模型 id。
+3. 创建后在连接菜单里选择「本会话使用 / 设为全局默认」（主 agent 与子 agent 各自独立），并可用内置模型列表（`default`（Auto）/ `claude-4.5-sonnet` / `gpt-5.5-medium` …）或「Custom model…」自定义模型 id。
 
 ### OAuth 浏览器登录
 
@@ -137,14 +137,16 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 
 ## 模型映射
 
-会话里选用的若是 Anthropic 家族别名（`sonnet` / `opus` / `haiku` / `fable`），发请求前 `resolveCursorModel()` 把它映射为 Cursor 模型名；直接选 Cursor 原生 id（如 `composer-2.5`、`gpt-5.5-medium`）则原样透传。优先级：
+会话里选用的若是 Anthropic 家族别名（`sonnet` / `opus` / `haiku` / `fable`）或 Anthropic 模型 id，发请求前 `resolveCursorModel()` 把它映射为 Cursor 模型名；直接选 Cursor 原生 id 则**原样透传**——包括 Claude 系的原生 id（`claude-4.5-sonnet`、`claude-sonnet-5-thinking-high`、`claude-fable-5-max` 等，按「带点版本号 / effort 后缀」的形状识别）。修复前这些 id 会被家族正则误捕获重映射（如在 `/model` 里选 Sonnet 5 实际调用的是 `claude-4.5-sonnet`）。优先级：
 
 - `CURSOR_MODEL` 最高优先（一刀切）
 - 其次 `CURSOR_MODEL_MAP` / `CURSOR_DEFAULT_{FAMILY}_MODEL`
 - 再次内置默认映射（映射目标为 Cursor 当前存在的模型名，如 `sonnet` → `claude-4.5-sonnet`、`opus` → `claude-opus-4-8-thinking-high`、`haiku` → `claude-4.5-haiku`）
 - 都不匹配则原样透传
 
-> Cursor 会淘汰旧模型 id，映射目标需对齐其 AvailableModels 目录里当前存在的名字，否则用别名默认档会命中已下线的模型。
+**别名规范化（最后一步，恒执行）**：聊天端点只接受 `serverModelName`，目录里的 `idAliases` / `legacySlugs`（如 `auto`、`gpt-5.5`、`claude-sonnet-5`、`glm-5.2`）直接发送会报 **`AI Model Not Found`**。无论上面哪一档命中，`resolveCursorModel()` 最后都会把这些别名规范化为当前有效的 serverModelName（`auto` → `default`、`gpt-5.5` → `gpt-5.5-medium`、`claude-sonnet-5` → `claude-sonnet-5-thinking-high` 等，与 Cursor IDE 客户端行为一致）。既是 legacy slug 又是现役模型名的 id（如 `composer-2.5`）不做转换。历史配置中持久化的 `auto` 也因此继续可用。
+
+> Cursor 会淘汰旧模型 id，映射目标需对齐其 AvailableModels 目录里当前存在的名字，否则用别名默认档会命中已下线的模型。策展目录中的 Auto 档 id 即为 `default`（显示名 Auto）。可用 `bun run scripts/probe-cursor-models.ts` 实测策展列表全部模型（对比实时目录 + 逐个调用聊天端点），Cursor 轮换模型目录后跑一遍即可发现失效 id。
 
 ## 传输（HTTP/2）
 
@@ -155,6 +157,10 @@ Bun 的 `fetch` 默认走 HTTP/1.1，因此聊天请求通过 per-request 选项
 - 仅在 Bun 运行时生效（`protocol` 为 Bun 扩展；Node 的 undici 8.x 默认按 ALPN 协商 h2）；
 - 配置了 HTTP 代理时自动跳过（Bun 实验性 h2 客户端暂不支持 CONNECT 隧道），退回 h1；
 - 可用 `CURSOR_HTTP2=0` 关闭。
+
+## 瞬态错误重试
+
+Cursor 请求与其他兼容层一样经 `withCompatRetry` 自动重试（429 / 5xx / 网络错误，指数退避 3 次）。实现细节：`streamCursorChat` / 流适配器都是惰性生成器，重试工厂内会**主动拉取第一个事件**，确保请求级失败（如 Auto 档偶发的 `[429] Provider Error`、HTTP 464/5xx）在重试作用域内抛出——修复前这些错误从不重试，直接以 `API Error` 结束回合。首个事件之后的流中断仍按不可恢复处理（与 OpenAI/Gemini 路径一致）。不可重试错误（如 404 `AI Model Not Found`）依旧立即上抛。
 
 ## 上下文窗口与 Max Mode
 
