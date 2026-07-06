@@ -12,6 +12,7 @@
 import { describe, test, expect } from 'bun:test'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import {
+  hasExhaustedCompatRetries,
   isRetryableCompatError,
   prependFirstEvent,
   withCompatRetry,
@@ -163,6 +164,27 @@ describe('isRetryableCompatError', () => {
     expect(
       isRetryableCompatError(new Error('stream terminated by server')),
     ).toBe(true)
+  })
+
+  test('Bun socket 断连消息可重试（h2 闲置连接被服务端关闭）', () => {
+    expect(
+      isRetryableCompatError(
+        new Error(
+          'The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()',
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  test('Bun fetch error code ConnectionClosed / ConnectionRefused / FailedToOpenSocket 可重试', () => {
+    for (const code of [
+      'ConnectionClosed',
+      'ConnectionRefused',
+      'FailedToOpenSocket',
+    ]) {
+      const err = Object.assign(new Error('fetch() request failed'), { code })
+      expect(isRetryableCompatError(err)).toBe(true)
+    }
   })
 
   test('Gemini HTTP 429 可重试', () => {
@@ -388,6 +410,50 @@ describe('withCompatRetry', () => {
       expect(err).toBeInstanceOf(MockAPIConnectionError)
     }
     expect(callCount).toBe(1)
+  })
+
+  test('重试耗尽后抛出的错误带 exhausted 标记', async () => {
+    const signal = new AbortController().signal
+    const gen = withCompatRetry(
+      async () => {
+        throw new MockAPIConnectionError('fetch failed')
+      },
+      { maxRetries: 0, signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(hasExhaustedCompatRetries(err)).toBe(true)
+    }
+  })
+
+  test('不可重试错误立即抛出且不带 exhausted 标记', async () => {
+    const signal = new AbortController().signal
+    const gen = withCompatRetry(
+      async () => {
+        throw new MockAuthenticationError('invalid key')
+      },
+      { signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(hasExhaustedCompatRetries(err)).toBe(false)
+    }
+  })
+
+  test('重试作用域之外发生的可重试错误不带 exhausted 标记', () => {
+    // 模拟流中途断连：错误从未进入 withCompatRetry，adapter 的 catch
+    // 不应显示 "(retries exhausted)"。
+    const err = new Error(
+      'The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()',
+    )
+    expect(isRetryableCompatError(err)).toBe(true)
+    expect(hasExhaustedCompatRetries(err)).toBe(false)
   })
 })
 

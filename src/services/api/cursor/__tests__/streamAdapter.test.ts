@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   adaptCursorFramesToAnthropic,
   CursorStreamError,
+  splitThinkingFinalMarker,
 } from '../streamAdapter.js'
 import type { FrameResult } from '../streamParser.js'
 
@@ -101,5 +102,86 @@ describe('adaptCursorFramesToAnthropic', () => {
   test('emits nothing for an empty stream', async () => {
     const events = await collect([])
     expect(events).toHaveLength(0)
+  })
+
+  test('routes Composer final-marker content into a text block', async () => {
+    // Composer streams `reasoning</think><｜final｜>answer` entirely through
+    // the thinking channel; the split must surface "answer" as a text block
+    // or the assistant message renders empty.
+    const events = await collect([
+      { type: 'thinking', text: 'pondering the repo state' },
+      { type: 'thinking', text: '</think><｜final｜>**COMPLETED**' },
+    ])
+    const textDeltas = events
+      .filter(
+        e =>
+          e.type === 'content_block_delta' &&
+          (e.delta as { type: string }).type === 'text_delta',
+      )
+      .map(e => (e.delta as { text: string }).text)
+    expect(textDeltas.join('')).toBe('**COMPLETED**')
+
+    const thinkingDeltas = events
+      .filter(
+        e =>
+          e.type === 'content_block_delta' &&
+          (e.delta as { type: string }).type === 'thinking_delta',
+      )
+      .map(e => (e.delta as { thinking: string }).thinking)
+    expect(thinkingDeltas.join('')).toBe('pondering the repo state')
+  })
+})
+
+describe('splitThinkingFinalMarker', () => {
+  async function* thinkingFrames(
+    chunks: string[],
+  ): AsyncGenerator<FrameResult> {
+    for (const text of chunks) yield { type: 'thinking', text }
+  }
+
+  async function splitAll(chunks: string[]): Promise<FrameResult[]> {
+    const out: FrameResult[] = []
+    for await (const frame of splitThinkingFinalMarker(
+      thinkingFrames(chunks),
+    )) {
+      out.push(frame)
+    }
+    return out
+  }
+
+  function joined(frames: FrameResult[], type: 'text' | 'thinking'): string {
+    return frames
+      .filter(f => f.type === type)
+      .map(f => (f as { text: string }).text)
+      .join('')
+  }
+
+  test('passes plain thinking through unchanged', async () => {
+    const frames = await splitAll(['step one', ' step two'])
+    expect(joined(frames, 'thinking')).toBe('step one step two')
+    expect(joined(frames, 'text')).toBe('')
+  })
+
+  test('splits a marker that arrives fragmented across frames', async () => {
+    const frames = await splitAll([
+      'reasoning…',
+      '</th',
+      'ink><｜fin',
+      'al｜>**COMP',
+      'LETED**',
+    ])
+    expect(joined(frames, 'thinking')).toBe('reasoning…')
+    expect(joined(frames, 'text')).toBe('**COMPLETED**')
+  })
+
+  test('supports the ASCII |final| marker variant', async () => {
+    const frames = await splitAll(['thoughts</think><|final|>answer'])
+    expect(joined(frames, 'thinking')).toBe('thoughts')
+    expect(joined(frames, 'text')).toBe('answer')
+  })
+
+  test('keeps streaming post-marker thinking frames as text', async () => {
+    const frames = await splitAll(['a</think><｜final｜>first', ' second'])
+    expect(joined(frames, 'text')).toBe('first second')
   })
 })

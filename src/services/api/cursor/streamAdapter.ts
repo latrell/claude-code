@@ -34,11 +34,85 @@ type CurrentBlock =
   | { kind: 'thinking'; index: number }
   | { kind: 'tool'; index: number; toolId: string; name: string; args: string }
 
-export async function* adaptCursorFramesToAnthropic(
+// Composer models stream their FINAL answer through the thinking channel,
+// separated by a DeepSeek-style marker: `…reasoning…</think><｜final｜>answer`.
+// Cursor's own client splits on that marker; without doing the same the final
+// answer is swallowed into the thinking block and the assistant turn renders
+// empty. Markers arrive fragmented across frame boundaries, so we hold back a
+// small tail while scanning.
+const FINAL_MARKERS = ['<｜final｜>', '<|final|>'] as const
+const THINK_CLOSE_RE = /\s*<\/think>\s*$/
+const MARKER_HOLDBACK = Math.max(...FINAL_MARKERS.map(m => m.length)) + 12
+
+/**
+ * Rewrite thinking frames so content after a `<｜final｜>` marker flows as
+ * text frames. Exported for the live model probe script.
+ */
+export async function* splitThinkingFinalMarker(
   frames: AsyncIterable<FrameResult>,
+): AsyncGenerator<FrameResult, void> {
+  let pending = ''
+  let inFinal = false
+
+  function findMarker(haystack: string): { index: number; length: number } {
+    let index = -1
+    let length = 0
+    for (const marker of FINAL_MARKERS) {
+      const i = haystack.indexOf(marker)
+      if (i !== -1 && (index === -1 || i < index)) {
+        index = i
+        length = marker.length
+      }
+    }
+    return { index, length }
+  }
+
+  for await (const frame of frames) {
+    if (frame.type !== 'thinking') {
+      if (pending) {
+        yield { type: 'thinking', text: pending }
+        pending = ''
+      }
+      yield frame
+      continue
+    }
+
+    if (inFinal) {
+      if (frame.text) yield { type: 'text', text: frame.text }
+      continue
+    }
+
+    pending += frame.text
+    const { index, length } = findMarker(pending)
+    if (index !== -1) {
+      const before = pending.slice(0, index).replace(THINK_CLOSE_RE, '')
+      const after = pending.slice(index + length)
+      pending = ''
+      inFinal = true
+      if (before) yield { type: 'thinking', text: before }
+      if (after) yield { type: 'text', text: after }
+      continue
+    }
+
+    // Flush all but a tail that could still be a fragmented marker prefix.
+    if (pending.length > MARKER_HOLDBACK) {
+      const flush = pending.slice(0, -MARKER_HOLDBACK)
+      pending = pending.slice(-MARKER_HOLDBACK)
+      yield { type: 'thinking', text: flush }
+    }
+  }
+
+  if (pending) {
+    yield { type: 'thinking', text: pending }
+  }
+}
+
+export async function* adaptCursorFramesToAnthropic(
+  rawFrames: AsyncIterable<FrameResult>,
   model: string,
 ): AsyncGenerator<BetaRawMessageStreamEvent, void> {
   const messageId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
+  const frames = splitThinkingFinalMarker(rawFrames)
 
   let started = false
   let contentIndex = -1

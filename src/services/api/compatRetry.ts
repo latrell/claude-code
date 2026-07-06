@@ -54,6 +54,9 @@ function getRetryDelay(attempt: number): number {
  * 5. 原生 fetch() 抛出的 ECONNRESET / EPIPE / ECONNREFUSED / ETIMEDOUT 等
  * 6. undici stream "terminated" TypeError
  * 7. Gemini 客户端的 HTTP 错误（429 / 5xx）
+ * 8. Bun fetch 的 socket 层错误（"The socket connection was closed
+ *    unexpectedly" / error.code ConnectionClosed 等）——HTTP/2 keep-alive
+ *    连接被服务端/LB 闲置关闭后复用时触发，性质同 ECONNRESET
  *
  * 不重试的：
  * - APIUserAbortError（用户中断）/ AbortError
@@ -98,6 +101,16 @@ export function isRetryableCompatError(error: unknown): boolean {
 
     // APIUserAbortError: never retry
     if (ctorName === 'APIUserAbortError') return false
+
+    // Bun fetch socket errors carry a `code` property (not a Node errno).
+    const bunCode = err.code
+    if (
+      bunCode === 'ConnectionClosed' ||
+      bunCode === 'ConnectionRefused' ||
+      bunCode === 'FailedToOpenSocket'
+    ) {
+      return true
+    }
   }
 
   // --- String-based heuristics (fetch / Gemini / undici) ---
@@ -122,6 +135,11 @@ export function isRetryableCompatError(error: unknown): boolean {
     ) {
       return true
     }
+
+    // Bun fetch socket-layer failures ("The socket connection was closed
+    // unexpectedly. For more information, pass `verbose: true` ..."). Seen
+    // when an idle HTTP/2 connection is reused after the server/LB closed it.
+    if (msg.includes('socket connection was closed')) return true
 
     // Gemini HTTP errors with retryable status codes
     if (msg.includes('gemini api request failed')) {
@@ -168,6 +186,25 @@ function createRetryProgressMessage(
 // ---------------------------------------------------------------------------
 // 重试包装器
 // ---------------------------------------------------------------------------
+
+// 记录哪些错误是 withCompatRetry 真正重试耗尽后抛出的。用 WeakSet 而非
+// 在错误对象上挂属性，避免改写（可能被冻结的）第三方错误实例。
+const exhaustedRetryErrors = new WeakSet<object>()
+
+/**
+ * 判断错误是否由 withCompatRetry 重试耗尽后抛出。
+ *
+ * 与 isRetryableCompatError 的区别：可重试类型的错误也可能在重试作用域
+ * 之外发生（如流中途断连，此时从未重试过）。adapter 的 catch 块用本函数
+ * 决定是否给用户显示 "(retries exhausted)"，避免误导。
+ */
+export function hasExhaustedCompatRetries(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    exhaustedRetryErrors.has(error)
+  )
+}
 
 /**
  * Re-attach an eagerly-consumed first event to the rest of its stream.
@@ -256,5 +293,8 @@ export async function* withCompatRetry<T>(
     }
   }
 
+  if (typeof lastError === 'object' && lastError !== null) {
+    exhaustedRetryErrors.add(lastError)
+  }
   throw lastError
 }

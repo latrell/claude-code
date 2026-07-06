@@ -25,7 +25,12 @@
  * Cursor built-in ClientSideToolV2 tools for cross-model agent support).
  */
 
-import { CLIENT_SIDE_TOOL, FIELD, WIRE_TYPE } from './protobufSchema.js'
+import {
+  CLIENT_SIDE_TOOL,
+  FIELD,
+  TERMINAL_ENDED_REASON,
+  WIRE_TYPE,
+} from './protobufSchema.js'
 import { concatArrays, encodeField } from './protobufEncoder.js'
 
 /** CCB tool names (string literals to avoid importing the builtin-tools pkg). */
@@ -111,6 +116,22 @@ const BUILTIN_TOOL_MAPPINGS: BuiltinToolMapping[] = [
             resultText,
           ),
           encodeField(FIELD.RunTerminalResult.EXIT_CODE, WIRE_TYPE.VARINT, 0),
+          // proto3 bools default to false when omitted, so leaving
+          // not_interrupted out marks EVERY replayed command as interrupted.
+          // The backend renders that flag into the model-visible history, so
+          // models kept seeing "command was interrupted" on successful runs
+          // and retried with ever-shorter commands. Explicitly mark the run
+          // as completed + not interrupted.
+          encodeField(
+            FIELD.RunTerminalResult.NOT_INTERRUPTED,
+            WIRE_TYPE.VARINT,
+            1,
+          ),
+          encodeField(
+            FIELD.RunTerminalResult.ENDED_REASON,
+            WIRE_TYPE.VARINT,
+            TERMINAL_ENDED_REASON.EXECUTION_COMPLETED,
+          ),
         ),
       ),
   },

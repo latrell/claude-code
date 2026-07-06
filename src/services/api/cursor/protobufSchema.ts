@@ -36,6 +36,16 @@ export const THINKING_LEVEL = {
 } as const
 
 /**
+ * aiserver.v1.RunTerminalCommandEndedReason (subset). Carried in
+ * RunTerminalCommandV2Result.ended_reason so the backend renders the command
+ * as having finished normally instead of "unspecified".
+ */
+export const TERMINAL_ENDED_REASON = {
+  UNSPECIFIED: 0,
+  EXECUTION_COMPLETED: 1,
+} as const
+
+/**
  * ClientSideToolV2 enum values (subset). Reverse-engineered from Cursor's
  * `workbench.desktop.main.js` (`aiserver.v1.ClientSideToolV2`). Only the values
  * we rely on for agent-mode tool routing are listed here.
@@ -126,7 +136,12 @@ export const FIELD = {
   },
 
   /** RunTerminalCommandV2Result */
-  RunTerminalResult: { OUTPUT: 1, EXIT_CODE: 2 },
+  RunTerminalResult: {
+    OUTPUT: 1,
+    EXIT_CODE: 2,
+    NOT_INTERRUPTED: 6,
+    ENDED_REASON: 9,
+  },
 
   /** ReadFileResult */
   ReadFileResult: { CONTENTS: 1 },

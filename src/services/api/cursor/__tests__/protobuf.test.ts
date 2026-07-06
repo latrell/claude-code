@@ -6,12 +6,14 @@ import {
   FIELD,
   CLIENT_SIDE_TOOL,
   CALL_MCP_TOOL_NAME,
+  TERMINAL_ENDED_REASON,
 } from '../protobufSchema.js'
 import {
   generateCursorBody,
   wrapConnectRPCFrame,
   extractTextFromResponse,
 } from '../protobuf.js'
+import { buildStructuredToolResult } from '../toolMapping.js'
 
 describe('varint encoding', () => {
   test('round-trips small and large values', () => {
@@ -147,6 +149,46 @@ describe('generateCursorBody', () => {
     )
     expect(decodeLargeContext(off)).toBe(0)
     expect(decodeLargeContext(on)).toBe(1)
+  })
+})
+
+describe('buildStructuredToolResult (Bash → RunTerminalCommandV2Result)', () => {
+  const decodeTerminalResult = (resultBytes: Uint8Array) => {
+    // ClientSideToolV2Result envelope: { tool=1, run_terminal_command_v2_result=24 }
+    const envelope = decodeMessage(resultBytes)
+    expect(envelope.get(FIELD.ToolV2Result.TOOL)?.[0]?.value).toBe(
+      CLIENT_SIDE_TOOL.RUN_TERMINAL_COMMAND_V2,
+    )
+    const variant = envelope.get(
+      FIELD.ToolV2Result.RUN_TERMINAL_COMMAND_V2_RESULT,
+    )?.[0]?.value as Uint8Array
+    return decodeMessage(variant)
+  }
+
+  test('marks replayed commands as completed and not interrupted', () => {
+    const built = buildStructuredToolResult(
+      'Bash',
+      '{"command":"git status"}',
+      'On branch main\nnothing to commit',
+    )
+    expect(built).not.toBeNull()
+    const fields = decodeTerminalResult(built!.result)
+
+    expect(
+      new TextDecoder().decode(
+        fields.get(FIELD.RunTerminalResult.OUTPUT)?.[0]?.value as Uint8Array,
+      ),
+    ).toBe('On branch main\nnothing to commit')
+    expect(fields.get(FIELD.RunTerminalResult.EXIT_CODE)?.[0]?.value).toBe(0)
+    // proto3 bools default to false when omitted: without not_interrupted=true
+    // the backend renders every replayed command as interrupted and the model
+    // keeps retrying "interrupted" commands that actually succeeded.
+    expect(
+      fields.get(FIELD.RunTerminalResult.NOT_INTERRUPTED)?.[0]?.value,
+    ).toBe(1)
+    expect(fields.get(FIELD.RunTerminalResult.ENDED_REASON)?.[0]?.value).toBe(
+      TERMINAL_ENDED_REASON.EXECUTION_COMPLETED,
+    )
   })
 })
 

@@ -21,7 +21,7 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type { ThinkingConfig } from '../../../utils/thinking.js'
 import type { Options } from '../claude.js'
-import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
+import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {
   convertMessagesToLangfuse,
@@ -236,7 +236,7 @@ export async function* queryModelGemini(
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Gemini] Error: ${msg}`, { level: 'error' })
 
-    const prefix = isRetryableCompatError(error)
+    const prefix = hasExhaustedCompatRetries(error)
       ? 'API Error (retries exhausted):'
       : 'API Error:'
     yield createAssistantAPIErrorMessage({

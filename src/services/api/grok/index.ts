@@ -38,7 +38,7 @@ import {
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
-import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
+import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -275,7 +275,7 @@ export async function* queryModelGrok(
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Grok] Error: ${msg}`, { level: 'error' })
 
-    const prefix = isRetryableCompatError(error)
+    const prefix = hasExhaustedCompatRetries(error)
       ? 'API Error (retries exhausted):'
       : 'API Error:'
     yield createAssistantAPIErrorMessage({

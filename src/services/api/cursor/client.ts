@@ -176,6 +176,16 @@ export async function* streamCursorChat(
       yield frame
     }
   } finally {
+    // Cancel before releasing: if the generator is abandoned early (error
+    // frame, consumer break/abort), the response body would otherwise stay
+    // half-open on the pooled HTTP/2 connection and poison later requests
+    // ("The socket connection was closed unexpectedly"). Cancelling a fully
+    // consumed stream is a no-op.
+    try {
+      await reader.cancel()
+    } catch {
+      // Already closed/errored — nothing to clean up.
+    }
     reader.releaseLock?.()
   }
 }

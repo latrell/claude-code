@@ -34,6 +34,7 @@ Cursor 有**两套工具通道**，且不同模型对它们的支持不同（逆
    - `call_mcp_tool` 包装器 → `raw_args` 信封 `{ mcpServer, toolName, arguments }`，按 `toolName` 拆回原始工具名 + 参数。
    - 内置工具调用（`run_terminal_cmd` / `read_file`）→ 按 `toolMapping` 反查回 CCB 工具名（`Bash`/`Read`），并把 Cursor 的参数 schema 转回 CCB 的（如 `is_background↔run_in_background`、`target_file↔file_path`、行号↔`offset/limit`）。
 4. **结构化工具结果回传**（关键）：agent 调优模型**只接受与其调用的内置工具匹配的结构化 `ClientSideToolV2Result`**——纯文本结果会让它们**反复重试**同一工具。`translator.ts` 把 assistant 的 tool_use 与其结果配对，对可映射工具在 assistant 回合上产出结构化 `tool_results`（ConversationMessage field 18，含 `result`=对应的 `RunTerminalCommandV2Result`/`ReadFileResult`）；未映射工具仍渲染为 `<tool_result>` 用户文本块（通用模型可接受）。
+   - **必须显式标记命令完成**：`RunTerminalCommandV2Result` 的真实 proto 含 `not_interrupted`（field 6，bool）与 `ended_reason`（field 9，enum，`1=EXECUTION_COMPLETED`）。proto3 bool 缺省即 `false`，只发 `output+exit_code` 会让后端把**每条**重放的命令渲染成"被中断"，模型于是反复用更短的命令重试（"命令老被中断"）。`toolMapping.ts` 的 `encodeResult` 固定携带 `not_interrupted=1` + `ended_reason=EXECUTION_COMPLETED`。已用 `scripts/probe-cursor-models.ts --tool-roundtrip=ab` 在全部 15 个策展模型上实测：旧编码模型回答 INTERRUPTED，新编码回答 COMPLETED。
 5. **工具调用后的流结束**：聊天 RPC 是**服务端单向流**（非 bidi），模型以工具调用结束回合时，后端发 `aborted` / `ERROR_USER_ABORTED_REQUEST`（"Tool call ended before result was received"）end-stream trailer。这是**正常的回合结束**，`streamParser.ts` 视为良性流结束（不抛错），CCB 本地执行工具后于下一次请求继续。
 6. **多轮请求压缩**：带工具结果的后续请求通常 ≥3 条消息，会走 gzip 压缩路径；此时必须发送 `connect-content-encoding: gzip` 头，否则后端以 `received compressed envelope, but do not know how to decompress` 拒绝（曾导致工具对话在第二轮整体失败）。
 
@@ -160,7 +161,15 @@ Bun 的 `fetch` 默认走 HTTP/1.1，因此聊天请求通过 per-request 选项
 
 ## 瞬态错误重试
 
-Cursor 请求与其他兼容层一样经 `withCompatRetry` 自动重试（429 / 5xx / 网络错误，指数退避 3 次）。实现细节：`streamCursorChat` / 流适配器都是惰性生成器，重试工厂内会**主动拉取第一个事件**，确保请求级失败（如 Auto 档偶发的 `[429] Provider Error`、HTTP 464/5xx）在重试作用域内抛出——修复前这些错误从不重试，直接以 `API Error` 结束回合。首个事件之后的流中断仍按不可恢复处理（与 OpenAI/Gemini 路径一致）。不可重试错误（如 404 `AI Model Not Found`）依旧立即上抛。
+Cursor 请求与其他兼容层一样经 `withCompatRetry` 自动重试（429 / 5xx / 网络错误，指数退避 3 次）。实现细节：
+
+- `streamCursorChat` / 流适配器都是惰性生成器，重试工厂内会**主动拉取第一个事件**，确保请求级失败（如 Auto 档偶发的 `[429] Provider Error`、HTTP 464/5xx）在重试作用域内抛出——修复前这些错误从不重试，直接以 `API Error` 结束回合。首个事件之后的流中断仍按不可恢复处理（与 OpenAI/Gemini 路径一致）。不可重试错误（如 404 `AI Model Not Found`）依旧立即上抛。
+- **Bun socket 断连可重试**：Bun fetch 的 `The socket connection was closed unexpectedly`（`error.code = ConnectionClosed` 等）多发生在闲置的 HTTP/2 keep-alive 连接被服务端/ALB 关闭后又被下一次请求复用时（如长命令执行完毕后的下一跳请求）。`isRetryableCompatError` 已把这类错误与 ECONNRESET 同等归类为可重试；`streamCursorChat` 也会在流提前结束时 `reader.cancel()`，避免半开的响应体污染连接池。
+- 错误提示前缀现在**只在真正重试耗尽时**显示 `(retries exhausted)`（`hasExhaustedCompatRetries`），流中途断开等未进入重试作用域的错误只显示 `API Error:`，避免误导（所有兼容层统一）。
+
+## Composer 的 final 标记
+
+Composer 系模型把最终回答也走 **thinking 通道**输出，用 DeepSeek 风格的 `…推理…</think><｜final｜>回答` 标记分隔。`streamAdapter.ts` 的 `splitThinkingFinalMarker` 会在流上切分（标记可能跨帧碎片化，做了尾部滞留处理），把标记后的内容还原为正常 text 块——否则 Composer 的最终回答会被吞进 thinking 块，assistant 消息渲染为空。
 
 ## 上下文窗口与 Max Mode
 

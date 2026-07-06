@@ -29,7 +29,7 @@ import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import {
   withCompatRetry,
-  isRetryableCompatError,
+  hasExhaustedCompatRetries,
   prependFirstEvent,
 } from '../compatRetry.js'
 import {
@@ -236,7 +236,7 @@ export async function* queryModelCursor(
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Cursor] Error: ${msg}`, { level: 'error' })
 
-    const prefix = isRetryableCompatError(error)
+    const prefix = hasExhaustedCompatRetries(error)
       ? 'API Error (retries exhausted):'
       : 'API Error:'
     yield createAssistantAPIErrorMessage({

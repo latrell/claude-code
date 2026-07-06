@@ -49,7 +49,7 @@ import {
   convertOutputToLangfuse,
   convertToolsToLangfuse,
 } from '../../../services/langfuse/convert.js'
-import { withCompatRetry, isRetryableCompatError } from '../compatRetry.js'
+import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -566,7 +566,7 @@ export async function* queryModelOpenAI(
     logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
 
     // Distinguish "retries exhausted" from truly unretryable errors
-    const prefix = isRetryableCompatError(error)
+    const prefix = hasExhaustedCompatRetries(error)
       ? 'API Error (retries exhausted):'
       : 'API Error:'
     yield createAssistantAPIErrorMessage({
