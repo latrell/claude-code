@@ -90,6 +90,12 @@ export function encodeToolResult(toolResult: CursorToolResult): Uint8Array {
     encodeField(FIELD.ToolResult.NAME, WIRE_TYPE.LEN, toolName),
     encodeField(FIELD.ToolResult.INDEX, WIRE_TYPE.VARINT, toolIndex),
     encodeField(FIELD.ToolResult.RAW_ARGS, WIRE_TYPE.LEN, rawArgs),
+    // Structured ClientSideToolV2Result (field 8) for tools mapped to a Cursor
+    // built-in. Cursor's agent-tuned models require this — a plain text result
+    // makes them re-call the tool. Unmapped tools omit it (rendered as text).
+    ...(toolResult.result
+      ? [encodeField(FIELD.ToolResult.RESULT, WIRE_TYPE.LEN, toolResult.result)]
+      : []),
   )
 }
 
@@ -103,6 +109,7 @@ export function encodeMessage(
   isLast: boolean,
   hasTools: boolean,
   toolResults: CursorToolResult[],
+  supportedToolEnums: number[] = [],
 ): Uint8Array {
   return concatArrays(
     encodeField(FIELD.Message.CONTENT, WIRE_TYPE.LEN, content),
@@ -123,14 +130,14 @@ export function encodeMessage(
       WIRE_TYPE.VARINT,
       hasTools ? UNIFIED_MODE.AGENT : UNIFIED_MODE.CHAT,
     ),
+    // Message-level `supported_tools` (field 51): repeated enum, emitted
+    // unpacked (one VARINT per value) on the last message when tools are
+    // present. Mirrors the request-level field 29 (CALL_MCP_TOOL + any mapped
+    // built-in tools) so the model can invoke our tools.
     ...(isLast && hasTools
-      ? [
-          encodeField(
-            FIELD.Message.SUPPORTED_TOOLS,
-            WIRE_TYPE.LEN,
-            encodeVarint(1),
-          ),
-        ]
+      ? supportedToolEnums.map(toolId =>
+          encodeField(FIELD.Message.SUPPORTED_TOOLS, WIRE_TYPE.VARINT, toolId),
+        )
       : []),
   )
 }

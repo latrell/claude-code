@@ -19,6 +19,26 @@ Cursor 后端 `api2.cursor.sh` 使用 **ConnectRPC**（HTTP/2 + 二进制 protob
 
 代码位于 [`src/services/api/cursor/`](../../src/services/api/cursor/)；模型名映射位于 [`packages/@ant/model-provider/src/providers/cursor/modelMapping.ts`](../../packages/@ant/model-provider/src/providers/cursor/modelMapping.ts)。
 
+## 工具调用（Tool Calling）
+
+Cursor 有**两套工具通道**，且不同模型对它们的支持不同（逆向自 `workbench.desktop.main.js` 的 `aiserver.v1` 定义）：
+
+- **MCP 工具**：`mcp_tools`（Chat field 34），模型经 `call_mcp_tool` 包装器调用。**通用模型**（`claude-4.5-sonnet`、`gpt-5.5`）支持；**Cursor 自家的 agent 调优模型**（Fable 5 / Sonnet 5 / Composer）**完全拒绝** MCP 工具，会报「没有可用工具」。
+- **内置工具**：Cursor 的 `ClientSideToolV2` 工具（`run_terminal_cmd`、`read_file` 等），在 `supported_tools` 中按枚举 id 广告，模型直接按内置名调用。**所有模型**都支持。
+
+因此 CCB 采用**双通道**策略（`toolMapping.ts` 集中管理映射）：
+
+1. **可映射工具走内置通道**：`Bash → run_terminal_cmd`、`Read → read_file`。这些工具在 `supported_tools`（Chat field 29 + 最后一条 Message field 51，unpacked repeated enum）中广告内置枚举 id，**不**再注册为 `mcp_tools`。这样 Fable/Sonnet 5 等也能调用。其余操作（编辑、搜索）agent 模型会自然经 `run_terminal_cmd`（→ Bash）走 shell。
+2. **其余工具走 MCP 通道**：注册为 `mcp_tools` + `supported_tools` 含 `CALL_MCP_TOOL`（`ClientSideToolV2 = 49`）+ `has_mcp_descriptors`（Chat field 90）置 `true`。通用模型经 `call_mcp_tool` 调用。
+3. **调用回读**（`protobufDecoder.ts`）：
+   - `call_mcp_tool` 包装器 → `raw_args` 信封 `{ mcpServer, toolName, arguments }`，按 `toolName` 拆回原始工具名 + 参数。
+   - 内置工具调用（`run_terminal_cmd` / `read_file`）→ 按 `toolMapping` 反查回 CCB 工具名（`Bash`/`Read`），并把 Cursor 的参数 schema 转回 CCB 的（如 `is_background↔run_in_background`、`target_file↔file_path`、行号↔`offset/limit`）。
+4. **结构化工具结果回传**（关键）：agent 调优模型**只接受与其调用的内置工具匹配的结构化 `ClientSideToolV2Result`**——纯文本结果会让它们**反复重试**同一工具。`translator.ts` 把 assistant 的 tool_use 与其结果配对，对可映射工具在 assistant 回合上产出结构化 `tool_results`（ConversationMessage field 18，含 `result`=对应的 `RunTerminalCommandV2Result`/`ReadFileResult`）；未映射工具仍渲染为 `<tool_result>` 用户文本块（通用模型可接受）。
+5. **工具调用后的流结束**：聊天 RPC 是**服务端单向流**（非 bidi），模型以工具调用结束回合时，后端发 `aborted` / `ERROR_USER_ABORTED_REQUEST`（"Tool call ended before result was received"）end-stream trailer。这是**正常的回合结束**，`streamParser.ts` 视为良性流结束（不抛错），CCB 本地执行工具后于下一次请求继续。
+6. **多轮请求压缩**：带工具结果的后续请求通常 ≥3 条消息，会走 gzip 压缩路径；此时必须发送 `connect-content-encoding: gzip` 头，否则后端以 `received compressed envelope, but do not know how to decompress` 拒绝（曾导致工具对话在第二轮整体失败）。
+
+> **模型差异小结**：`Bash`/`Read` 在所有 Cursor 模型上都可用（走内置通道）；其余 CCB 工具（`Edit`/`Grep`/`Task`/`WebFetch` 等）仅在通用模型（`claude-4.5-sonnet`、`gpt-5.5`）上作为 MCP 工具可用，agent 调优模型上这些操作由模型经 shell（`Bash`）完成。
+
 ## 启用
 
 任选其一：

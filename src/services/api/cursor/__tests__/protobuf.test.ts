@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { encodeVarint, encodeField } from '../protobufEncoder.js'
 import { decodeVarint, decodeMessage } from '../protobufDecoder.js'
-import { WIRE_TYPE, FIELD } from '../protobufSchema.js'
+import {
+  WIRE_TYPE,
+  FIELD,
+  CLIENT_SIDE_TOOL,
+  CALL_MCP_TOOL_NAME,
+} from '../protobufSchema.js'
 import {
   generateCursorBody,
   wrapConnectRPCFrame,
@@ -49,6 +54,74 @@ describe('generateCursorBody', () => {
 
   test('throws on empty messages', () => {
     expect(() => generateCursorBody([], 'm')).toThrow()
+  })
+
+  const decodeChat = (body: Uint8Array) => {
+    const top = decodeMessage(body)
+    const req = top.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array
+    return decodeMessage(req)
+  }
+
+  test('advertises CALL_MCP_TOOL + has_mcp_descriptors + registers unmapped tools as mcp_tools', () => {
+    const chat = decodeChat(
+      generateCursorBody([{ role: 'user', content: 'do a thing' }], 'gpt-5.5', [
+        {
+          function: {
+            name: 'CustomTool',
+            description: 'A custom tool.',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
+      ]),
+    )
+
+    // supported_tools (field 29) is an unpacked VARINT enum containing
+    // CALL_MCP_TOOL — lets generic models invoke our custom mcp_tools.
+    const supported = chat.get(FIELD.Chat.SUPPORTED_TOOLS)
+    expect(supported?.[0]?.wireType).toBe(WIRE_TYPE.VARINT)
+    expect(supported?.map(e => e.value)).toContain(
+      CLIENT_SIDE_TOOL.CALL_MCP_TOOL,
+    )
+    // has_mcp_descriptors (field 90) must be set.
+    expect(chat.get(FIELD.Chat.HAS_MCP_DESCRIPTORS)?.[0]?.value).toBe(1)
+    // The unmapped tool is registered as an mcp_tool (field 34).
+    expect(chat.has(FIELD.Chat.MCP_TOOLS)).toBe(true)
+  })
+
+  test('advertises the built-in enum for mapped tools and omits them from mcp_tools', () => {
+    const chat = decodeChat(
+      generateCursorBody(
+        [{ role: 'user', content: 'run git' }],
+        'claude-fable-5-thinking-high',
+        [
+          {
+            function: {
+              name: 'Bash',
+              description: 'Run a shell command.',
+              parameters: { type: 'object', properties: {} },
+            },
+          },
+        ],
+      ),
+    )
+
+    // Bash maps to the built-in run_terminal_cmd, advertised in supported_tools.
+    const supported = chat.get(FIELD.Chat.SUPPORTED_TOOLS)?.map(e => e.value)
+    expect(supported).toContain(CLIENT_SIDE_TOOL.RUN_TERMINAL_COMMAND_V2)
+    // ...and is NOT registered as an mcp_tool (it uses the built-in channel).
+    expect(chat.has(FIELD.Chat.MCP_TOOLS)).toBe(false)
+  })
+
+  test('omits agent tool fields when no tools are provided', () => {
+    const top = decodeMessage(
+      generateCursorBody([{ role: 'user', content: 'hi' }], 'm'),
+    )
+    const chat = decodeMessage(
+      top.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array,
+    )
+    expect(chat.has(FIELD.Chat.SUPPORTED_TOOLS)).toBe(false)
+    expect(chat.has(FIELD.Chat.HAS_MCP_DESCRIPTORS)).toBe(false)
+    expect(chat.get(FIELD.Chat.IS_AGENTIC)?.[0]?.value).toBe(0)
   })
 
   test('sets the LARGE_CONTEXT (Max Mode) field from the largeContext flag', () => {
@@ -166,5 +239,82 @@ describe('extractTextFromResponse', () => {
     // field 1, LEN, claims 5 bytes but only 1 follows → decodes to zero fields.
     const result = extractTextFromResponse(new Uint8Array([0x0a, 0x05, 0x01]))
     expect(result.error).toBe('Malformed protobuf response')
+  })
+
+  test('unwraps a call_mcp_tool wrapper into the real tool name + args', () => {
+    // Custom tools are invoked via the call_mcp_tool wrapper, whose raw_args is
+    // a JSON envelope { mcpServer, toolName, arguments }.
+    const rawArgs = JSON.stringify({
+      mcpServer: 'custom',
+      toolName: 'read_file',
+      arguments: { path: 'src/index.ts' },
+    })
+    const toolCallInner = new Uint8Array([
+      ...encodeField(
+        FIELD.ToolCall.TOOL,
+        WIRE_TYPE.VARINT,
+        CLIENT_SIDE_TOOL.CALL_MCP_TOOL,
+      ),
+      ...encodeField(FIELD.ToolCall.ID, WIRE_TYPE.LEN, 'toolu_abc'),
+      ...encodeField(FIELD.ToolCall.NAME, WIRE_TYPE.LEN, CALL_MCP_TOOL_NAME),
+      ...encodeField(FIELD.ToolCall.RAW_ARGS, WIRE_TYPE.LEN, rawArgs),
+    ])
+    const top = encodeField(
+      FIELD.Response.TOOL_CALL,
+      WIRE_TYPE.LEN,
+      toolCallInner,
+    )
+
+    const result = extractTextFromResponse(top)
+    expect(result.toolCall).not.toBeNull()
+    expect(result.toolCall?.id).toBe('toolu_abc')
+    expect(result.toolCall?.function.name).toBe('read_file')
+    expect(result.toolCall?.function.arguments).toBe('{"path":"src/index.ts"}')
+  })
+
+  test('passes through an unmapped tool call unchanged', () => {
+    const toolCallInner = new Uint8Array([
+      ...encodeField(FIELD.ToolCall.ID, WIRE_TYPE.LEN, 'toolu_xyz'),
+      ...encodeField(FIELD.ToolCall.NAME, WIRE_TYPE.LEN, 'CustomTool'),
+      ...encodeField(
+        FIELD.ToolCall.RAW_ARGS,
+        WIRE_TYPE.LEN,
+        '{"path":"a.txt"}',
+      ),
+    ])
+    const top = encodeField(
+      FIELD.Response.TOOL_CALL,
+      WIRE_TYPE.LEN,
+      toolCallInner,
+    )
+
+    const result = extractTextFromResponse(top)
+    expect(result.toolCall?.function.name).toBe('CustomTool')
+    expect(result.toolCall?.function.arguments).toBe('{"path":"a.txt"}')
+  })
+
+  test('remaps a Cursor built-in tool call to the CCB tool name + args', () => {
+    // Agent-tuned models call our tools via Cursor built-ins (run_terminal_cmd,
+    // read_file). The decoder must translate those back to the CCB tool.
+    const toolCallInner = new Uint8Array([
+      ...encodeField(FIELD.ToolCall.ID, WIRE_TYPE.LEN, 'toolu_run'),
+      ...encodeField(FIELD.ToolCall.NAME, WIRE_TYPE.LEN, 'run_terminal_cmd'),
+      ...encodeField(
+        FIELD.ToolCall.RAW_ARGS,
+        WIRE_TYPE.LEN,
+        '{"command":"git status","is_background":false,"explanation":"x"}',
+      ),
+    ])
+    const top = encodeField(
+      FIELD.Response.TOOL_CALL,
+      WIRE_TYPE.LEN,
+      toolCallInner,
+    )
+
+    const result = extractTextFromResponse(top)
+    expect(result.toolCall?.function.name).toBe('Bash')
+    const args = JSON.parse(result.toolCall?.function.arguments ?? '{}')
+    expect(args.command).toBe('git status')
+    expect(args.run_in_background).toBe(false)
   })
 })

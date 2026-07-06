@@ -12,15 +12,16 @@ import {
   THINKING_LEVEL,
   FIELD,
   WIRE_TYPE,
+  CLIENT_SIDE_TOOL,
   type CursorMessage,
   type CursorTool,
   type FormattedMessage,
   type MessageId,
   type ThinkingLevelType,
 } from './protobufSchema.js'
+import { builtinToolEnumsForTools, isBuiltinMappedTool } from './toolMapping.js'
 import {
   encodeField,
-  encodeVarint,
   encodeMessage,
   encodeInstruction,
   encodeModel,
@@ -49,6 +50,19 @@ export function encodeRequest(
   const isAgentic = hasTools
   const formattedMessages: FormattedMessage[] = []
   const messageIds: MessageId[] = []
+
+  // `supported_tools` (field 29 / message field 51) is a repeated enum of
+  // ClientSideToolV2 values. It MUST contain CALL_MCP_TOOL so the backend lets
+  // the model invoke our custom `mcp_tools` (works on generic models). We ALSO
+  // advertise the Cursor built-in tools that map to CCB tools present in this
+  // request, because Cursor's agent-tuned models (Fable/Sonnet-5/Composer) only
+  // call built-in tools and ignore MCP tools entirely.
+  const toolNames = tools
+    .map(tool => tool.function?.name || tool.name || '')
+    .filter(Boolean)
+  const supportedToolEnums = isAgentic
+    ? [CLIENT_SIDE_TOOL.CALL_MCP_TOOL, ...builtinToolEnumsForTools(toolNames)]
+    : []
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]
@@ -84,6 +98,7 @@ export function encodeRequest(
         fm.isLast,
         fm.hasTools,
         fm.toolResults,
+        supportedToolEnums,
       ),
     ),
   )
@@ -96,16 +111,23 @@ export function encodeRequest(
     ),
   )
 
-  const toolFields =
-    tools?.length > 0
-      ? tools.map(tool =>
-          encodeField(FIELD.Chat.MCP_TOOLS, WIRE_TYPE.LEN, encodeMcpTool(tool)),
-        )
-      : []
+  // Register only the UNMAPPED tools as MCP tools. Tools mapped to a Cursor
+  // built-in (Bash, Read) are exposed through the built-in channel instead
+  // (advertised in supported_tools above), so they work on every model.
+  const toolFields = tools
+    .filter(
+      tool => !isBuiltinMappedTool(tool.function?.name || tool.name || ''),
+    )
+    .map(tool =>
+      encodeField(FIELD.Chat.MCP_TOOLS, WIRE_TYPE.LEN, encodeMcpTool(tool)),
+    )
 
-  const supportedToolsField = isAgentic
-    ? [encodeField(FIELD.Chat.SUPPORTED_TOOLS, WIRE_TYPE.LEN, encodeVarint(1))]
-    : []
+  // Emit `supported_tools` (field 29) unpacked (one VARINT per value). The
+  // previous placeholder value (1 = READ_SEMSEARCH_FILES) left the model with
+  // no callable tools, so it always refused to call anything.
+  const supportedToolsField = supportedToolEnums.map(toolId =>
+    encodeField(FIELD.Chat.SUPPORTED_TOOLS, WIRE_TYPE.VARINT, toolId),
+  )
 
   const parts: Uint8Array[] = [
     ...messageFields,
@@ -154,6 +176,12 @@ export function encodeRequest(
       WIRE_TYPE.LEN,
       isAgentic ? 'Agent' : 'Ask',
     ),
+    // Signals that the request carries MCP tool descriptors (our `mcp_tools`).
+    // Required alongside supported_tools=[CALL_MCP_TOOL] for the backend to
+    // expose the tools to the model.
+    ...(isAgentic
+      ? [encodeField(FIELD.Chat.HAS_MCP_DESCRIPTORS, WIRE_TYPE.VARINT, 1)]
+      : []),
   ]
 
   return concatArrays(...parts)

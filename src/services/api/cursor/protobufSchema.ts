@@ -35,6 +35,26 @@ export const THINKING_LEVEL = {
   HIGH: 2,
 } as const
 
+/**
+ * ClientSideToolV2 enum values (subset). Reverse-engineered from Cursor's
+ * `workbench.desktop.main.js` (`aiserver.v1.ClientSideToolV2`). Only the values
+ * we rely on for agent-mode tool routing are listed here.
+ */
+export const CLIENT_SIDE_TOOL = {
+  RIPGREP_SEARCH: 3,
+  READ_FILE: 5,
+  LIST_DIR: 6,
+  EDIT_FILE: 7,
+  RUN_TERMINAL_COMMAND_V2: 15,
+  MCP: 19,
+  GLOB_FILE_SEARCH: 42,
+  CALL_MCP_TOOL: 49,
+  GET_MCP_TOOLS: 63,
+} as const
+
+/** The wrapper tool name Cursor emits for custom (MCP) tool invocations. */
+export const CALL_MCP_TOOL_NAME = 'call_mcp_tool'
+
 /** Field numbers namespaced by protobuf message type */
 export const FIELD = {
   /** StreamUnifiedChatRequestWithTools (top level) */
@@ -66,6 +86,9 @@ export const FIELD = {
     UNKNOWN_51: 51,
     UNKNOWN_53: 53,
     UNIFIED_MODE_NAME: 54,
+    // Must be set (true) for the backend to expose our `mcp_tools` to the
+    // model as callable tools. Without it the model reports "no tools".
+    HAS_MCP_DESCRIPTORS: 90,
   },
 
   /** ConversationMessage */
@@ -85,8 +108,28 @@ export const FIELD = {
     NAME: 2,
     INDEX: 3,
     RAW_ARGS: 5,
+    CONTENT: 7,
     RESULT: 8,
   },
+
+  /**
+   * ClientSideToolV2Result — the structured result carried in
+   * ConversationMessage.ToolResult.result (field 8). `TOOL` is the
+   * ClientSideToolV2 enum; the remaining fields are the per-tool result
+   * variants (oneof). Only the tools we map to built-ins are listed.
+   */
+  ToolV2Result: {
+    TOOL: 1,
+    READ_FILE_RESULT: 6,
+    RUN_TERMINAL_COMMAND_V2_RESULT: 24,
+    MCP_RESULT: 28,
+  },
+
+  /** RunTerminalCommandV2Result */
+  RunTerminalResult: { OUTPUT: 1, EXIT_CODE: 2 },
+
+  /** ReadFileResult */
+  ReadFileResult: { CONTENTS: 1 },
 
   /** Model */
   Model: { NAME: 1, EMPTY: 4 },
@@ -118,7 +161,15 @@ export const FIELD = {
   Response: { TOOL_CALL: 1, RESPONSE: 2 },
 
   /** ClientSideToolV2Call */
-  ToolCall: { ID: 3, NAME: 9, RAW_ARGS: 10, IS_LAST: 11, MCP_PARAMS: 27 },
+  ToolCall: {
+    TOOL: 1,
+    ID: 3,
+    NAME: 9,
+    RAW_ARGS: 10,
+    IS_LAST: 15,
+    MCP_PARAMS: 27,
+    CALL_MCP_TOOL_PARAMS: 62,
+  },
 
   /** MCPParams */
   McpParams: { TOOLS_LIST: 1 },
@@ -165,6 +216,13 @@ export interface CursorToolResult {
   name?: string
   index?: number
   raw_args?: string
+  /**
+   * Pre-encoded `ClientSideToolV2Result` bytes (ConversationMessage.ToolResult
+   * field 8). Set for tools mapped to a Cursor built-in — Cursor's agent-tuned
+   * models only accept a structured result matching the built-in tool they
+   * called (a plain text block makes them re-call the tool in a loop).
+   */
+  result?: Uint8Array
 }
 
 /** Cursor message format */

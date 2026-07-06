@@ -234,6 +234,28 @@ export class StreamingFrameParser {
   }
 }
 
+/**
+ * Cursor's chat RPC is server-streaming (not bidirectional). When the model
+ * finishes its turn by requesting a client-side/MCP tool call, the backend ends
+ * the stream with an `aborted` / `ERROR_USER_ABORTED_REQUEST` trailer
+ * ("Tool call ended before result was received") because we don't stream the
+ * tool result back on the same connection. That is the NORMAL, expected end of
+ * a tool-calling turn — not an error. We surface the tool call to Claude Code,
+ * run the tool locally, and continue in a fresh request. Treat this trailer as
+ * a benign stream end so the turn isn't aborted with a spurious API error.
+ */
+function isBenignToolCallEndTrailer(error?: {
+  code?: string
+  details?: Array<{ debug?: { error?: string } }>
+}): boolean {
+  if (!error) return false
+  const debugError = error.details?.[0]?.debug?.error
+  return (
+    debugError === 'ERROR_USER_ABORTED_REQUEST' ||
+    (error.code?.toLowerCase() === 'aborted' && debugError === undefined)
+  )
+}
+
 /** Parse a ConnectRPC end-stream trailer for an error. Returns null on success. */
 function parseEndStreamError(
   payload: Buffer,
@@ -251,6 +273,10 @@ function parseEndStreamError(
           }
         }>
       }
+    }
+
+    if (isBenignToolCallEndTrailer(json?.error)) {
+      return null
     }
 
     const msg =
@@ -291,6 +317,9 @@ function parseJsonErrorFrame(
             }
           }>
         }
+      }
+      if (isBenignToolCallEndTrailer(json?.error)) {
+        return null
       }
       const msg =
         json?.error?.details?.[0]?.debug?.details?.title ||

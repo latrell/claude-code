@@ -9,7 +9,11 @@
  * Reference: https://github.com/eisbaw/cursor_api_demo
  */
 
-import type { CursorMessage } from './protobufSchema.js'
+import type { CursorMessage, CursorToolResult } from './protobufSchema.js'
+import {
+  buildStructuredToolResult,
+  isBuiltinMappedTool,
+} from './toolMapping.js'
 
 interface OpenAITextPart {
   type: 'text'
@@ -222,6 +226,7 @@ function renderUserContent(
   content: OpenAIMessage['content'],
   toolCallMetaMap: ToolMetaMap,
   messageIndex: number,
+  consumedResultIds: Set<string>,
 ): string {
   if (content == null) return ''
   if (typeof content === 'string') return content
@@ -236,14 +241,18 @@ function renderUserContent(
     }
     if (!isToolResultPart(part)) continue
 
+    const toolCallId =
+      sanitizeToolCallId(part.tool_use_id) ||
+      fallbackToolResultId(messageIndex, partIndex)
+    // Skip results already emitted as a structured tool_result on the
+    // assistant turn (mapped built-in tools).
+    if (consumedResultIds.has(toolCallId)) continue
+
     if (textBuffer) {
       parts.push(textBuffer)
       textBuffer = ''
     }
 
-    const toolCallId =
-      sanitizeToolCallId(part.tool_use_id) ||
-      fallbackToolResultId(messageIndex, partIndex)
     const normalizedId = normalizeToolCallId(toolCallId)
     const toolName =
       toolCallMetaMap.get(toolCallId)?.name ||
@@ -262,18 +271,88 @@ function renderUserContent(
   return parts.join('\n')
 }
 
+interface ExtractedToolCall {
+  id: string
+  name: string
+  argsJson: string
+}
+
+/**
+ * Pre-scan: collect every tool result text keyed by sanitized tool-call id, so
+ * a preceding assistant turn can attach the result structurally (the result
+ * always appears in a later message than the call that produced it).
+ */
+function collectToolResultTexts(
+  messages: OpenAIMessage[],
+): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      const id = sanitizeToolCallId(msg.tool_call_id)
+      if (id) map.set(id, extractTextContent(msg.content, '\n'))
+      continue
+    }
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (!isToolResultPart(part)) continue
+        const id = sanitizeToolCallId(part.tool_use_id)
+        if (id) map.set(id, extractToolResultText(part.content))
+      }
+    }
+  }
+  return map
+}
+
+/** All tool calls on an assistant message (both tool_calls[] and tool_use parts). */
+function extractAssistantToolCalls(
+  msg: OpenAIMessage,
+  messageIndex: number,
+): ExtractedToolCall[] {
+  const calls: ExtractedToolCall[] = []
+  for (const toolCall of msg.tool_calls ?? []) {
+    const id = sanitizeToolCallId(toolCall.id)
+    if (!id) continue
+    calls.push({
+      id,
+      name: toolCall.function?.name || 'tool',
+      argsJson:
+        typeof toolCall.function?.arguments === 'string'
+          ? toolCall.function.arguments
+          : TOOL_USE_ARGUMENTS_FALLBACK,
+    })
+  }
+  if (Array.isArray(msg.content)) {
+    for (let partIndex = 0; partIndex < msg.content.length; partIndex++) {
+      const part = msg.content[partIndex]
+      if (!isToolUsePart(part)) continue
+      calls.push({
+        id: resolveToolUseId(part, messageIndex, partIndex),
+        name: part.name || 'tool',
+        argsJson: stringifyUnknown(
+          part.input ?? {},
+          TOOL_USE_ARGUMENTS_FALLBACK,
+        ),
+      })
+    }
+  }
+  return calls
+}
+
 /**
  * Convert OpenAI-shape messages into Cursor conversation messages.
  * - system → user with a [System Instructions] prefix
- * - tool → flattened into a structured user text block
- * - assistant text is preserved; assistant tool_calls are dropped from the
- *   Cursor payload (Cursor recovers tool context from the following user block)
+ * - assistant tool calls for tools mapped to a Cursor built-in (Bash → Read →)
+ *   are paired with their result and emitted as a structured `tool_results`
+ *   entry on the assistant turn (Cursor's agent-tuned models require this).
+ * - tool results for unmapped tools → flattened into a user text block.
  */
 export function convertOpenAIMessagesToCursor(
   messages: OpenAIMessage[],
 ): CursorMessage[] {
   const result: CursorMessage[] = []
   const toolCallMetaMap: ToolMetaMap = new Map()
+  const toolResultTextById = collectToolResultTexts(messages)
+  const consumedResultIds = new Set<string>()
 
   for (let messageIndex = 0; messageIndex < messages.length; messageIndex++) {
     const msg = messages[messageIndex]
@@ -290,9 +369,11 @@ export function convertOpenAIMessagesToCursor(
     }
 
     if (msg.role === 'tool') {
-      const toolCallId =
-        sanitizeToolCallId(msg.tool_call_id) ||
-        fallbackToolResultId(messageIndex, 0)
+      const sanitizedId = sanitizeToolCallId(msg.tool_call_id)
+      // Already emitted as a structured tool_result on the assistant turn.
+      if (sanitizedId && consumedResultIds.has(sanitizedId)) continue
+
+      const toolCallId = sanitizedId || fallbackToolResultId(messageIndex, 0)
       const normalizedToolCallId = normalizeToolCallId(toolCallId)
       const rememberedToolName =
         toolCallMetaMap.get(toolCallId)?.name ||
@@ -317,8 +398,33 @@ export function convertOpenAIMessagesToCursor(
       rememberToolUseParts(toolCallMetaMap, msg.content, messageIndex)
 
       const content = extractTextContent(msg.content)
-      if (content) {
-        result.push({ role: 'assistant', content })
+      const toolResults: CursorToolResult[] = []
+      const calls = extractAssistantToolCalls(msg, messageIndex)
+      for (let i = 0; i < calls.length; i++) {
+        const call = calls[i]
+        if (!isBuiltinMappedTool(call.name)) continue
+        const resultText = toolResultTextById.get(call.id)
+        if (resultText === undefined) continue
+        const built = buildStructuredToolResult(
+          call.name,
+          call.argsJson,
+          resultText,
+        )
+        if (!built) continue
+        toolResults.push({
+          tool_call_id: call.id,
+          name: built.builtinName,
+          index: i,
+          raw_args: built.rawArgs,
+          result: built.result,
+        })
+        consumedResultIds.add(call.id)
+      }
+
+      if (content || toolResults.length > 0) {
+        const assistantMessage: CursorMessage = { role: 'assistant', content }
+        if (toolResults.length > 0) assistantMessage.tool_results = toolResults
+        result.push(assistantMessage)
       }
       continue
     }
@@ -328,6 +434,7 @@ export function convertOpenAIMessagesToCursor(
         msg.content,
         toolCallMetaMap,
         messageIndex,
+        consumedResultIds,
       )
       if (content) {
         result.push({ role: 'user', content })

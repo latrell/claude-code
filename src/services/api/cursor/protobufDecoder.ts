@@ -9,9 +9,11 @@ import * as zlib from 'zlib'
 import {
   WIRE_TYPE,
   FIELD,
+  CALL_MCP_TOOL_NAME,
   isCompressedConnectFrame,
   type WireType,
 } from './protobufSchema.js'
+import { remapBuiltinToolCall } from './toolMapping.js'
 
 /**
  * Decode a varint from a buffer.
@@ -150,6 +152,43 @@ export function parseConnectRPCFrame(buffer: Buffer): {
 }
 
 /**
+ * Custom (non-built-in) tools are exposed to Cursor as `mcp_tools`, and the
+ * model invokes them through the `call_mcp_tool` wrapper. Its raw_args are a
+ * JSON envelope `{ mcpServer, toolName, arguments }` — unwrap it back into the
+ * original tool name + argument JSON so downstream code sees the real tool.
+ */
+function unwrapCallMcpTool(rawArgs: string): {
+  name: string
+  arguments: string
+} | null {
+  try {
+    const parsed = JSON.parse(rawArgs) as {
+      toolName?: unknown
+      tool_name?: unknown
+      arguments?: unknown
+    }
+    const innerName =
+      typeof parsed.toolName === 'string'
+        ? parsed.toolName
+        : typeof parsed.tool_name === 'string'
+          ? parsed.tool_name
+          : ''
+    if (!innerName) return null
+
+    const innerArgs = parsed.arguments
+    const argsString =
+      typeof innerArgs === 'string'
+        ? innerArgs
+        : innerArgs === undefined
+          ? '{}'
+          : JSON.stringify(innerArgs)
+    return { name: innerName, arguments: argsString }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Extract a tool call from protobuf data.
  */
 function extractToolCall(toolCallData: Uint8Array): {
@@ -186,30 +225,31 @@ function extractToolCall(toolCallData: Uint8Array): {
     }
   }
 
-  // MCP params carry nested real tool info
-  if (toolCall.has(FIELD.ToolCall.MCP_PARAMS)) {
+  // raw_args holds the tool arguments (for call_mcp_tool it's the JSON envelope
+  // { mcpServer, toolName, arguments }).
+  if (toolCall.has(FIELD.ToolCall.RAW_ARGS)) {
+    const rawArgsField = toolCall.get(FIELD.ToolCall.RAW_ARGS)
+    if (rawArgsField?.[0]) {
+      rawArgs = new TextDecoder().decode(rawArgsField[0].value as Uint8Array)
+    }
+  }
+
+  // Legacy MCP params (field 27) carry nested real tool info in older protocol
+  // variants. Kept as a fallback when raw_args is absent.
+  if (!rawArgs && toolCall.has(FIELD.ToolCall.MCP_PARAMS)) {
     try {
       const mcpField = toolCall.get(FIELD.ToolCall.MCP_PARAMS)
-      if (!mcpField?.[0]) return null
-
-      const mcpParams = decodeMessage(mcpField[0].value as Uint8Array)
-
-      if (mcpParams.has(FIELD.McpParams.TOOLS_LIST)) {
+      if (mcpField?.[0]) {
+        const mcpParams = decodeMessage(mcpField[0].value as Uint8Array)
         const toolsList = mcpParams.get(FIELD.McpParams.TOOLS_LIST)
-        if (!toolsList?.[0]) return null
-
-        const tool = decodeMessage(toolsList[0].value as Uint8Array)
-
-        if (tool.has(FIELD.McpNested.NAME)) {
+        if (toolsList?.[0]) {
+          const tool = decodeMessage(toolsList[0].value as Uint8Array)
           const nestedName = tool.get(FIELD.McpNested.NAME)
           if (nestedName?.[0]) {
             toolName = new TextDecoder().decode(
               nestedName[0].value as Uint8Array,
             )
           }
-        }
-
-        if (tool.has(FIELD.McpNested.PARAMS)) {
           const nestedParams = tool.get(FIELD.McpNested.PARAMS)
           if (nestedParams?.[0]) {
             rawArgs = new TextDecoder().decode(
@@ -223,11 +263,21 @@ function extractToolCall(toolCallData: Uint8Array): {
     }
   }
 
-  // Fallback to raw_args
-  if (!rawArgs && toolCall.has(FIELD.ToolCall.RAW_ARGS)) {
-    const rawArgsField = toolCall.get(FIELD.ToolCall.RAW_ARGS)
-    if (rawArgsField?.[0]) {
-      rawArgs = new TextDecoder().decode(rawArgsField[0].value as Uint8Array)
+  // Unwrap the call_mcp_tool envelope into the original tool name + args.
+  if (toolName === CALL_MCP_TOOL_NAME && rawArgs) {
+    const unwrapped = unwrapCallMcpTool(rawArgs)
+    if (unwrapped) {
+      toolName = unwrapped.name
+      rawArgs = unwrapped.arguments
+    }
+  } else if (toolName) {
+    // Cursor's agent-tuned models (Fable/Sonnet-5) call our tools through
+    // Cursor's BUILT-IN tools (run_terminal_cmd, read_file, …) rather than the
+    // MCP wrapper. Translate those back into the CCB tool name + argument shape.
+    const remapped = remapBuiltinToolCall(toolName, rawArgs)
+    if (remapped) {
+      toolName = remapped.name
+      rawArgs = remapped.arguments
     }
   }
 

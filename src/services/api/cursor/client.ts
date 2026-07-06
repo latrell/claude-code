@@ -125,6 +125,14 @@ export async function* streamCursorChat(
     isCursorMaxModeEnabled(env),
   )
   const compress = shouldCompressRequest(messages.length, env)
+  // When we gzip the ConnectRPC envelope we MUST advertise it, or the backend
+  // rejects the request with `received compressed envelope, but do not know how
+  // to decompress`. This path is hit by every multi-turn (≥3 message) request —
+  // i.e. every follow-up after a tool result — so omitting it broke all
+  // tool-calling conversations at the second turn.
+  if (compress) {
+    headers['connect-content-encoding'] = 'gzip'
+  }
   const framedBody = wrapConnectRPCFrame(protobufBody, compress)
 
   logForDebugging(
