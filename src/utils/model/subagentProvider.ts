@@ -26,7 +26,14 @@ let _subagentClearOverride = false
  * staged subagentProvider in settings or env).
  */
 export function setSubagentProviderCliOverride(
-  value: 'anthropic' | 'openai' | 'gemini' | 'grok' | 'unset' | undefined,
+  value:
+    | 'anthropic'
+    | 'openai'
+    | 'gemini'
+    | 'grok'
+    | 'cursor'
+    | 'unset'
+    | undefined,
 ): void {
   if (value === undefined) {
     _subagentProviderOverride = undefined
@@ -65,6 +72,7 @@ export function providerFromModelType(
   if (modelType === 'openai') return 'openai'
   if (modelType === 'gemini') return 'gemini'
   if (modelType === 'grok') return 'grok'
+  if (modelType === 'cursor') return 'cursor'
   return undefined
 }
 
@@ -92,7 +100,8 @@ export function getSubagentProviderFromEnv(
     modelType === 'anthropic' ||
     modelType === 'openai' ||
     modelType === 'gemini' ||
-    modelType === 'grok'
+    modelType === 'grok' ||
+    modelType === 'cursor'
   ) {
     return {
       modelType,
@@ -141,6 +150,18 @@ export function getSubagentProviderFromEnv(
       credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
     }
   }
+  if (
+    env.CLAUDE_CODE_USE_CURSOR ||
+    env.CURSOR_API_KEY ||
+    env.CURSOR_ACCESS_TOKEN ||
+    env.CURSOR_MODEL
+  ) {
+    return {
+      modelType: 'cursor',
+      env,
+      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    }
+  }
 
   return {
     modelType: 'anthropic',
@@ -159,6 +180,7 @@ function envWithProviderModel(
   if (provider === 'openai') env.OPENAI_MODEL = model
   if (provider === 'gemini') env.GEMINI_MODEL = model
   if (provider === 'grok') env.GROK_MODEL = model
+  if (provider === 'cursor') env.CURSOR_MODEL = model
   if (provider === 'firstParty') env.CLAUDE_CODE_SUBAGENT_MODEL = model
   return env
 }

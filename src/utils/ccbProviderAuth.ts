@@ -1,14 +1,16 @@
 /**
  * CCB provider auth storage — isolated credential file for third-party
- * providers (OpenAI / Gemini / Grok), separate from ~/.claude/settings.json
- * so official Claude Code and CCB can coexist without clobbering each other.
+ * providers (OpenAI / Gemini / Grok / Cursor), separate from
+ * ~/.claude/settings.json so official Claude Code and CCB can coexist without
+ * clobbering each other.
  *
  * File: ~/.claude/ccb-provider-auth.json
  * Schema:
  *   {
  *     "openai"?: { "env": Record<string,string> },
  *     "gemini"?: { "env": Record<string,string> },
- *     "grok"?:  { "env": Record<string,string> }
+ *     "grok"?:  { "env": Record<string,string> },
+ *     "cursor"?: { "env": Record<string,string> }
  *   }
  *
  * Only non-empty string values are persisted.  Read failures (missing file,
@@ -29,7 +31,7 @@ import { logError } from './log.js'
 // ---------------------------------------------------------------------------
 
 /** Supported third-party provider keys. */
-export type CCBProvider = 'openai' | 'gemini' | 'grok'
+export type CCBProvider = 'openai' | 'gemini' | 'grok' | 'cursor'
 
 /** Per-provider entry in the auth file. */
 export type CCBProviderEntry = {
@@ -186,7 +188,8 @@ export function injectCCBProviderAuthEnv(settingsModelType?: string): void {
   if (
     modelType !== 'openai' &&
     modelType !== 'gemini' &&
-    modelType !== 'grok'
+    modelType !== 'grok' &&
+    modelType !== 'cursor'
   ) {
     return // Only inject for third-party providers
   }

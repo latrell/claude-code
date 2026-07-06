@@ -1,7 +1,25 @@
 import type { ModelName } from './model.js'
 import type { APIProvider } from './providers.js'
 
-export type ModelConfig = Record<APIProvider, ModelName>
+/**
+ * Providers with static per-model ID mappings. The 'cursor' provider is
+ * excluded because it resolves model names dynamically at request time (see
+ * resolveCursorModel); callers map 'cursor' → 'firstParty' when indexing.
+ */
+export type StaticModelConfigProvider = Exclude<APIProvider, 'cursor'>
+
+export type ModelConfig = Record<StaticModelConfigProvider, ModelName>
+
+/**
+ * Map an APIProvider to the key used to index static ModelConfig objects.
+ * Cursor sends first-party Anthropic model names (later remapped by
+ * resolveCursorModel), so it reuses the firstParty column.
+ */
+export function toStaticModelConfigProvider(
+  provider: APIProvider,
+): StaticModelConfigProvider {
+  return provider === 'cursor' ? 'firstParty' : provider
+}
 
 // @[MODEL LAUNCH]: Add a new CLAUDE_*_CONFIG constant here. Double check the correct model strings
 // here since the pattern may change.

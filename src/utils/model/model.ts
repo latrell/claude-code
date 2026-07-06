@@ -70,7 +70,12 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
   )
 }
 
-export type SettingsProviderKey = 'anthropic' | 'openai' | 'gemini' | 'grok'
+export type SettingsProviderKey =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'grok'
+  | 'cursor'
 
 export function apiProviderToSettingsProviderKey(
   provider: APIProvider,
@@ -79,6 +84,7 @@ export function apiProviderToSettingsProviderKey(
   if (provider === 'openai') return 'openai'
   if (provider === 'gemini') return 'gemini'
   if (provider === 'grok') return 'grok'
+  if (provider === 'cursor') return 'cursor'
   return undefined
 }
 
@@ -90,6 +96,7 @@ function getProviderModelEnv(
   if (provider === 'openai') return env.OPENAI_MODEL
   if (provider === 'gemini') return env.GEMINI_MODEL
   if (provider === 'grok') return env.GROK_MODEL
+  if (provider === 'cursor') return env.CURSOR_MODEL
   return undefined
 }
 
@@ -177,6 +184,7 @@ function getProviderPrimaryModel(): ModelName | undefined {
   if (provider === 'openai') return process.env.OPENAI_MODEL
   if (provider === 'gemini') return process.env.GEMINI_MODEL
   if (provider === 'grok') return process.env.GROK_MODEL
+  if (provider === 'cursor') return process.env.CURSOR_MODEL
   return undefined
 }
 
@@ -197,6 +205,10 @@ export function getDefaultModel(): ModelName {
   // For Grok provider, check GROK_DEFAULT_MODEL
   if (provider === 'grok' && process.env.GROK_DEFAULT_MODEL) {
     return process.env.GROK_DEFAULT_MODEL
+  }
+  // For Cursor provider, check CURSOR_DEFAULT_MODEL
+  if (provider === 'cursor' && process.env.CURSOR_DEFAULT_MODEL) {
+    return process.env.CURSOR_DEFAULT_MODEL
   }
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_MODEL) {
@@ -224,6 +236,10 @@ export function getDefaultOpusModel(): ModelName {
   // For Gemini provider, check GEMINI_DEFAULT_OPUS_MODEL
   if (provider === 'gemini' && process.env.GEMINI_DEFAULT_OPUS_MODEL) {
     return process.env.GEMINI_DEFAULT_OPUS_MODEL
+  }
+  // For Cursor provider, check CURSOR_DEFAULT_OPUS_MODEL
+  if (provider === 'cursor' && process.env.CURSOR_DEFAULT_OPUS_MODEL) {
+    return process.env.CURSOR_DEFAULT_OPUS_MODEL
   }
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
@@ -255,6 +271,10 @@ export function getDefaultSonnetModel(): ModelName {
   if (provider === 'gemini' && process.env.GEMINI_DEFAULT_SONNET_MODEL) {
     return process.env.GEMINI_DEFAULT_SONNET_MODEL
   }
+  // For Cursor provider, check CURSOR_DEFAULT_SONNET_MODEL
+  if (provider === 'cursor' && process.env.CURSOR_DEFAULT_SONNET_MODEL) {
+    return process.env.CURSOR_DEFAULT_SONNET_MODEL
+  }
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
@@ -283,6 +303,10 @@ export function getDefaultHaikuModel(): ModelName {
   // For Gemini provider, check GEMINI_DEFAULT_HAIKU_MODEL
   if (provider === 'gemini' && process.env.GEMINI_DEFAULT_HAIKU_MODEL) {
     return process.env.GEMINI_DEFAULT_HAIKU_MODEL
+  }
+  // For Cursor provider, check CURSOR_DEFAULT_HAIKU_MODEL
+  if (provider === 'cursor' && process.env.CURSOR_DEFAULT_HAIKU_MODEL) {
+    return process.env.CURSOR_DEFAULT_HAIKU_MODEL
   }
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {

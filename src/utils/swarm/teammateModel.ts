@@ -1,4 +1,7 @@
-import { CLAUDE_OPUS_4_6_CONFIG } from '../model/configs.js'
+import {
+  CLAUDE_OPUS_4_6_CONFIG,
+  toStaticModelConfigProvider,
+} from '../model/configs.js'
 import { getAPIProvider } from '../model/providers.js'
 
 // @[MODEL LAUNCH]: Update the fallback model below.
@@ -6,5 +9,5 @@ import { getAPIProvider } from '../model/providers.js'
 // use Opus 4.6. Must be provider-aware so Bedrock/Vertex/Foundry customers get
 // the correct model ID.
 export function getHardcodedTeammateModelFallback(): string {
-  return CLAUDE_OPUS_4_6_CONFIG[getAPIProvider()]
+  return CLAUDE_OPUS_4_6_CONFIG[toStaticModelConfigProvider(getAPIProvider())]
 }

@@ -206,6 +206,8 @@ export function getBillingDisplayName(
       return 'Gemini API'
     case 'grok':
       return 'Grok API'
+    case 'cursor':
+      return 'Cursor API'
     case 'bedrock':
       return 'AWS Bedrock'
     case 'vertex':
@@ -254,7 +256,9 @@ export function getSubagentBillingDisplayName(
         ? ('gemini' as const)
         : provider === 'grok'
           ? ('grok' as const)
-          : undefined)
+          : provider === 'cursor'
+            ? ('cursor' as const)
+            : undefined)
 
   switch (effectiveModelType) {
     case 'openai': {
@@ -269,6 +273,8 @@ export function getSubagentBillingDisplayName(
       return 'Gemini API'
     case 'grok':
       return 'Grok API'
+    case 'cursor':
+      return 'Cursor API'
     default:
       break
   }

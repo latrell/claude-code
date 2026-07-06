@@ -19,12 +19,14 @@ type APIProvider =
   | 'openai'
   | 'gemini'
   | 'grok'
+  | 'cursor'
 
 function getAPIProviderTest(settings: { modelType?: string }): APIProvider {
   const modelType = settings.modelType
   if (modelType === 'openai') return 'openai'
   if (modelType === 'gemini') return 'gemini'
   if (modelType === 'grok') return 'grok'
+  if (modelType === 'cursor') return 'cursor'
 
   if (
     process.env.CLAUDE_CODE_USE_BEDROCK === '1' ||
@@ -57,6 +59,11 @@ function getAPIProviderTest(settings: { modelType?: string }): APIProvider {
     process.env.CLAUDE_CODE_USE_GROK === 'true'
   )
     return 'grok'
+  if (
+    process.env.CLAUDE_CODE_USE_CURSOR === '1' ||
+    process.env.CLAUDE_CODE_USE_CURSOR === 'true'
+  )
+    return 'cursor'
 
   return 'firstParty'
 }
@@ -84,6 +91,7 @@ describe('getAPIProvider', () => {
     'CLAUDE_CODE_USE_FOUNDRY',
     'CLAUDE_CODE_USE_OPENAI',
     'CLAUDE_CODE_USE_GROK',
+    'CLAUDE_CODE_USE_CURSOR',
     'OPENAI_BASE_URL',
     'GEMINI_BASE_URL',
   ] as const
@@ -147,6 +155,15 @@ describe('getAPIProvider', () => {
   test('returns "grok" when CLAUDE_CODE_USE_GROK is set', () => {
     process.env.CLAUDE_CODE_USE_GROK = '1'
     expect(getAPIProviderTest({})).toBe('grok')
+  })
+
+  test('returns "cursor" when modelType is cursor', () => {
+    expect(getAPIProviderTest({ modelType: 'cursor' })).toBe('cursor')
+  })
+
+  test('returns "cursor" when CLAUDE_CODE_USE_CURSOR is set', () => {
+    process.env.CLAUDE_CODE_USE_CURSOR = '1'
+    expect(getAPIProviderTest({})).toBe('cursor')
   })
 
   test('bedrock takes precedence over gemini', () => {

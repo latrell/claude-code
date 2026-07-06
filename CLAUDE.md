@@ -260,6 +260,16 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **`src/services/api/grok/`** — client、模型映射
 
+#### Cursor 提供者
+
+通过 `CLAUDE_CODE_USE_CURSOR=1` 或 `settings.modelType='cursor'`（`/provider cursor`）启用，复用 Cursor IDE 后端 API（`api2.cursor.sh`，**ConnectRPC + protobuf**，非 OpenAI 兼容）。逆向自 [eisbaw/cursor_api_demo](https://github.com/eisbaw/cursor_api_demo) / [kaitranntt/ccs](https://github.com/kaitranntt/ccs)。采用 Gemini 式"原生客户端 + 流适配器"模式：复用 `anthropicMessagesToOpenAI` → `translator.ts`（转 Cursor 对话结构）→ `protobuf*.ts`（编码 `StreamUnifiedChatWithTools` + ConnectRPC 帧 `[flags:1][len:4BE][payload]`）→ `client.ts`（fetch HTTP/2 流式）→ `streamParser.ts`（增量解析）→ `streamAdapter.ts`（帧 → `BetaRawMessageStreamEvent`）。
+
+- **`src/services/api/cursor/`** — `protobufSchema/Encoder/Decoder`、`protobuf`（请求构建）、`streamParser`、`clientPolicy`（headers + `x-cursor-checksum` Jyh cipher）、`auth`（env 优先 + `state.vscdb` 自动读取，`bun:sqlite` 动态导入兜底）、`client`、`translator`、`streamAdapter`、`index`（`queryModelCursor`）
+- 模型映射：`packages/@ant/model-provider/src/providers/cursor/modelMapping.ts`（`resolveCursorModel`）
+- 认证：`CURSOR_API_KEY`/`CURSOR_ACCESS_TOKEN` + `CURSOR_MACHINE_ID`，或自动从已登录的 Cursor IDE `state.vscdb` 读取
+- 关键环境变量：`CLAUDE_CODE_USE_CURSOR`、`CURSOR_API_KEY`、`CURSOR_MODEL`、`CURSOR_BASE_URL`、`CURSOR_CHAT_PATH`、`CURSOR_CLIENT_VERSION`
+- 限制：流无 token 用量（成本恒 0）；side query 暂走 Anthropic 默认路径。详见 `docs/features/cursor-provider.md`
+
 详见各兼容层的 docs 文档。
 
 ### Provider 连接管理（/connect + /models）

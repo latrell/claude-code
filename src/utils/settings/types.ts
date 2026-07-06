@@ -37,7 +37,7 @@ export const ProviderLoginConfigSchema = lazySchema(() =>
   z
     .object({
       modelType: z
-        .enum(['anthropic', 'openai', 'gemini', 'grok'])
+        .enum(['anthropic', 'openai', 'gemini', 'grok', 'cursor'])
         .describe('Provider type for this scoped login configuration'),
       env: EnvironmentVariablesSchema()
         .optional()
@@ -405,11 +405,11 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe('Tool usage permissions configuration'),
       modelType: z
-        .enum(['anthropic', 'openai', 'gemini', 'grok'])
+        .enum(['anthropic', 'openai', 'gemini', 'grok', 'cursor'])
         .optional()
         .describe(
-          'API provider type. "anthropic" uses the Anthropic API (default), "openai" uses the OpenAI Chat Completions API, "gemini" uses the Gemini API, and "grok" uses the xAI Grok API (OpenAI-compatible). ' +
-            'When set to "openai", configure OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL. When set to "gemini", configure GEMINI_API_KEY and optional GEMINI_BASE_URL. When set to "grok", configure GROK_API_KEY (or XAI_API_KEY), optional GROK_BASE_URL, GROK_MODEL, and GROK_MODEL_MAP.',
+          'API provider type. "anthropic" uses the Anthropic API (default), "openai" uses the OpenAI Chat Completions API, "gemini" uses the Gemini API, "grok" uses the xAI Grok API (OpenAI-compatible), and "cursor" uses the Cursor IDE backend API. ' +
+            'When set to "openai", configure OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL. When set to "gemini", configure GEMINI_API_KEY and optional GEMINI_BASE_URL. When set to "grok", configure GROK_API_KEY (or XAI_API_KEY), optional GROK_BASE_URL, GROK_MODEL, and GROK_MODEL_MAP. When set to "cursor", sign in to the Cursor IDE (or set CURSOR_API_KEY + CURSOR_MACHINE_ID) and optionally CURSOR_MODEL / CURSOR_MODEL_MAP.',
         ),
       subagentProvider: ProviderLoginConfigSchema()
         .optional()
@@ -422,6 +422,7 @@ export const SettingsSchema = lazySchema(() =>
           openai: ProviderModelConfigSchema().optional(),
           gemini: ProviderModelConfigSchema().optional(),
           grok: ProviderModelConfigSchema().optional(),
+          cursor: ProviderModelConfigSchema().optional(),
         })
         .partial()
         .optional()

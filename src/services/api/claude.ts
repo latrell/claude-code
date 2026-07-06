@@ -1386,6 +1386,18 @@ async function* queryModel(
     return
   }
 
+  if (scopedProvider === 'cursor') {
+    const { queryModelCursor } = await import('./cursor/index.js')
+    yield* queryModelCursor(
+      messagesForAPI,
+      systemPrompt,
+      filteredTools,
+      signal,
+      options,
+    )
+    return
+  }
+
   // Instrumentation: Track message count after normalization
   logEvent('tengu_api_after_normalize', {
     postNormalizedMessageCount: messagesForAPI.length,

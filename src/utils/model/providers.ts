@@ -11,6 +11,7 @@ export type APIProvider =
   | 'openai'
   | 'gemini'
   | 'grok'
+  | 'cursor'
 
 // Process-level CLI override for --provider (not persisted to settings)
 let _cliProviderOverride: APIProvider | undefined
@@ -29,6 +30,7 @@ export function setProviderCliOverride(
     | 'openai'
     | 'gemini'
     | 'grok'
+    | 'cursor'
     | 'bedrock'
     | 'vertex'
     | 'foundry'
@@ -59,6 +61,8 @@ function providerNameToAPIProvider(name: string): APIProvider {
       return 'gemini'
     case 'grok':
       return 'grok'
+    case 'cursor':
+      return 'cursor'
     case 'bedrock':
       return 'bedrock'
     case 'vertex':
@@ -83,6 +87,7 @@ export function getAPIProvider(
     if (modelType === 'openai') return 'openai'
     if (modelType === 'gemini') return 'gemini'
     if (modelType === 'grok') return 'grok'
+    if (modelType === 'cursor') return 'cursor'
   }
 
   // 3. Environment variables
@@ -93,6 +98,7 @@ export function getAPIProvider(
   if (isEnvTruthy(env.CLAUDE_CODE_USE_OPENAI)) return 'openai'
   if (isEnvTruthy(env.CLAUDE_CODE_USE_GEMINI)) return 'gemini'
   if (isEnvTruthy(env.CLAUDE_CODE_USE_GROK)) return 'grok'
+  if (isEnvTruthy(env.CLAUDE_CODE_USE_CURSOR)) return 'cursor'
 
   // 4. Default
   return 'firstParty'

@@ -18,6 +18,8 @@ function getEnvVarForProvider(provider: string): string {
       return 'CLAUDE_CODE_USE_GEMINI'
     case 'grok':
       return 'CLAUDE_CODE_USE_GROK'
+    case 'cursor':
+      return 'CLAUDE_CODE_USE_CURSOR'
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }
@@ -59,6 +61,7 @@ const call: LocalCommandCall = async (args, _context) => {
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GROK
+    delete process.env.CLAUDE_CODE_USE_CURSOR
     return {
       type: 'text',
       value: t('API provider cleared (will use environment variables).'),
@@ -71,6 +74,7 @@ const call: LocalCommandCall = async (args, _context) => {
     'openai',
     'gemini',
     'grok',
+    'cursor',
     'bedrock',
     'vertex',
     'foundry',
@@ -139,6 +143,23 @@ const call: LocalCommandCall = async (args, _context) => {
     }
   }
 
+  // Check credentials when switching to cursor (including settings.env)
+  if (arg === 'cursor') {
+    const mergedEnv = getMergedEnv()
+    const hasToken = !!(
+      mergedEnv.CURSOR_API_KEY || mergedEnv.CURSOR_ACCESS_TOKEN
+    )
+    if (!hasToken) {
+      updateSettingsForSource('userSettings', { modelType: 'cursor' })
+      return {
+        type: 'text',
+        value: t(
+          'Switched to Cursor provider.\nNo CURSOR_API_KEY set — will try to read the session token from a signed-in Cursor IDE. Set CURSOR_API_KEY + CURSOR_MACHINE_ID to override.',
+        ),
+      }
+    }
+  }
+
   // Handle different provider types
   // - 'anthropic', 'openai', 'gemini' are stored in settings.json (persistent)
   // - 'bedrock', 'vertex', 'foundry' are env-only (do NOT touch settings.json)
@@ -146,7 +167,8 @@ const call: LocalCommandCall = async (args, _context) => {
     arg === 'anthropic' ||
     arg === 'openai' ||
     arg === 'gemini' ||
-    arg === 'grok'
+    arg === 'grok' ||
+    arg === 'cursor'
   ) {
     // Clear any cloud provider env vars to avoid conflicts
     delete process.env.CLAUDE_CODE_USE_BEDROCK
@@ -155,6 +177,7 @@ const call: LocalCommandCall = async (args, _context) => {
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GROK
+    delete process.env.CLAUDE_CODE_USE_CURSOR
     // Update settings.json
     updateSettingsForSource('userSettings', { modelType: arg })
     // Ensure settings.env gets applied to process.env
@@ -170,6 +193,7 @@ const call: LocalCommandCall = async (args, _context) => {
     delete process.env.OPENAI_BASE_URL
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GROK
+    delete process.env.CLAUDE_CODE_USE_CURSOR
     process.env[getEnvVarForProvider(arg)] = '1'
     // Do not modify settings.json - cloud providers controlled solely by env vars
     applyConfigEnvironmentVariables()
@@ -186,9 +210,10 @@ const provider = {
   type: 'local',
   name: 'provider',
   description:
-    'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)',
+    'Switch API provider (anthropic/openai/gemini/grok/cursor/bedrock/vertex/foundry)',
   aliases: ['api'],
-  argumentHint: '[anthropic|openai|gemini|grok|bedrock|vertex|foundry|unset]',
+  argumentHint:
+    '[anthropic|openai|gemini|grok|cursor|bedrock|vertex|foundry|unset]',
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),
 } satisfies Command

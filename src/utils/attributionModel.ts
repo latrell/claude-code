@@ -1,4 +1,5 @@
 import {
+  resolveCursorModel,
   resolveGeminiModel,
   resolveGrokModel,
   resolveOpenAIModel,
@@ -14,6 +15,8 @@ function resolveProviderModel(anthropicModel: string): string {
       return resolveGeminiModel(anthropicModel)
     case 'grok':
       return resolveGrokModel(anthropicModel)
+    case 'cursor':
+      return resolveCursorModel(anthropicModel)
     default:
       return anthropicModel
   }

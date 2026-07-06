@@ -1454,12 +1454,14 @@ async function run(): Promise<CommanderCommand> {
     .option(
       '--provider <provider>',
       t(
-        'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+        'API provider for this process (anthropic/openai/gemini/grok/cursor/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
       ),
     )
     .option(
       '--subagent-provider <provider>',
-      t('Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.'),
+      t(
+        'Subagent API provider for this process (anthropic/openai/gemini/grok/cursor/unset). Process-scoped, not persisted.',
+      ),
     )
     .option('--disable-slash-commands', 'Disable all skills', () => true)
     .option('--chrome', 'Enable Claude in Chrome integration')
@@ -1572,7 +1574,17 @@ async function run(): Promise<CommanderCommand> {
       // Apply CLI --provider override (process-scoped, not persisted)
       const cliProvider = (options as Record<string, unknown>)['provider'] as string | undefined;
       if (cliProvider) {
-        const validMainProviders = ['anthropic', 'openai', 'gemini', 'grok', 'bedrock', 'vertex', 'foundry', 'unset'];
+        const validMainProviders = [
+          'anthropic',
+          'openai',
+          'gemini',
+          'grok',
+          'cursor',
+          'bedrock',
+          'vertex',
+          'foundry',
+          'unset',
+        ];
         if (!validMainProviders.includes(cliProvider)) {
           console.warn(
             chalk.yellow(
@@ -1601,7 +1613,7 @@ async function run(): Promise<CommanderCommand> {
       // Apply CLI --subagent-provider override (process-scoped, not persisted)
       const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
       if (cliSubagentProvider) {
-        const validSubagentProviders = ['anthropic', 'openai', 'gemini', 'grok', 'unset'];
+        const validSubagentProviders = ['anthropic', 'openai', 'gemini', 'grok', 'cursor', 'unset'];
         if (!validSubagentProviders.includes(cliSubagentProvider)) {
           console.warn(
             chalk.yellow(
