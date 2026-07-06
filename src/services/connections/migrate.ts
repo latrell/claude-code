@@ -194,7 +194,21 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   }
 
   const cursorEnv = providerAuth.cursor?.env
-  if (cursorEnv?.CURSOR_API_KEY || cursorEnv?.CURSOR_ACCESS_TOKEN) {
+  if (
+    cursorEnv?.CURSOR_AUTH_MODE === 'oauth' &&
+    cursorEnv.CURSOR_CREDENTIAL_SCOPE
+  ) {
+    // OAuth (browser sign-in) cursor connection: credentials live in the
+    // scoped cursor-auth.<scope>.json file, referenced by credentialRef.
+    const tierModels = tierModelsFromEnv(cursorEnv, 'CURSOR')
+    candidates.push({
+      label: 'Cursor Account',
+      kind: 'cursor',
+      credentialRef: cursorEnv.CURSOR_CREDENTIAL_SCOPE,
+      tierModels,
+      models: modelsFromTiers(tierModels, cursorEnv.CURSOR_MODEL),
+    })
+  } else if (cursorEnv?.CURSOR_API_KEY || cursorEnv?.CURSOR_ACCESS_TOKEN) {
     const tierModels = tierModelsFromEnv(cursorEnv, 'CURSOR')
     candidates.push({
       label: 'Cursor',

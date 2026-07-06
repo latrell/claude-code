@@ -42,12 +42,28 @@ bun run dev --provider cursor
 Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像其它 provider 一样在 `/connect` 面板里增删改、设默认、按会话/全局切换主/子 agent：
 
 1. `/connect` → **+ Add connection…** → **Cursor IDE**
-2. 表单：
-   - **Name**：连接显示名（默认 `Cursor`）
-   - **Access token**（可选）：留空则激活时自动读取已登录的 Cursor IDE 会话
-   - **Machine ID**（可选）：留空则自动探测 / 从 token 派生
-   - **Haiku / Sonnet / Opus**（可选）：把家族别名映射到具体 Cursor 模型
+2. 选择登录方式：
+   - **Sign in with browser (OAuth)**（推荐）：打开 `cursor.com` 授权页，浏览器确认后自动回填凭据，无需手动复制 token。详见下节「OAuth 浏览器登录」。
+   - **Paste token / use signed-in IDE**：进入表单手动配置：
+     - **Name**：连接显示名（默认 `Cursor`）
+     - **Access token**（可选）：留空则激活时自动读取已登录的 Cursor IDE 会话
+     - **Machine ID**（可选）：留空则自动探测 / 从 token 派生
+     - **Haiku / Sonnet / Opus**（可选）：把家族别名映射到具体 Cursor 模型
 3. 创建后在连接菜单里选择「本会话使用 / 设为全局默认」（主 agent 与子 agent 各自独立），并可用内置模型列表（`auto` / `claude-4.5-sonnet` / `gpt-5` …）或「Custom model…」自定义模型 id。
+
+### OAuth 浏览器登录
+
+与 Codex（ChatGPT）订阅登录同构的 **PKCE deep-link 轮询**流程（无本地回调服务器）：
+
+1. 本地生成 PKCE `verifier` + `challenge`（`base64url(sha256(verifier))`）和随机 `uuid`。
+2. 打开 `https://www.cursor.com/loginDeepControl?challenge=…&uuid=…&mode=login`，用户在浏览器确认登录。
+3. CLI 轮询 `GET https://api2.cursor.sh/auth/poll?uuid=…&verifier=…`（404 = 尚未确认），成功后拿到 `{ accessToken, refreshToken, authId }`。
+4. 凭据写入 `~/.claude/cursor-auth.<scope>.json`（权限 `0600`，`scope` = 连接的 `credentialRef`），支持多账号并存。
+5. access JWT 短寿命，临近过期（10 分钟内）时用 `POST https://api2.cursor.sh/oauth/token`（`grant_type=refresh_token`）自动刷新；`shouldLogout=true` 表示需重新登录。
+
+激活 OAuth 连接时注入 `CURSOR_AUTH_MODE=oauth` + `CURSOR_CREDENTIAL_SCOPE=<scope>`，客户端凭据解析（`resolveCursorCredentials`）据此读取对应文件并按需刷新，优先级高于环境变量与 IDE 会话。删除连接或 `/logout` 会清理对应的 `cursor-auth.<scope>.json`。
+
+> ⚠️ `loginDeepControl` / `auth/poll` 为逆向出的非公开端点，Cursor 更新后端后可能失效；轮询需带 Cursor-IDE 的 User-Agent。仅供学习研究用途，请遵守 Cursor 服务条款。
 
 会话级激活只改进程内状态；设为全局默认会把凭据写入 `ccb-provider-auth.json` 的 `cursor` 槽位、把 `settings.modelType` 设为 `cursor`，启动时自动注入。`/connect` 首次打开时也会把已有的 `ccb-provider-auth.json` `cursor` 槽位幂等导入为连接。
 
@@ -55,6 +71,7 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 
 凭据 = 一个 Cursor 访问令牌（JWT）+ 一个 machine id。解析顺序：
 
+0. **OAuth 凭据文件**（`CURSOR_AUTH_MODE=oauth` 时）：读取 `cursor-auth.<scope>.json`，临近过期自动刷新（见上节「OAuth 浏览器登录」）
 1. **环境变量**：`CURSOR_API_KEY`（或 `CURSOR_ACCESS_TOKEN`）+ `CURSOR_MACHINE_ID`
 2. **本地 Cursor IDE 会话**：自动从 `state.vscdb` 读取（需已登录 Cursor IDE，且运行在 Bun 上）
 
@@ -73,6 +90,8 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `CLAUDE_CODE_USE_CURSOR` | 设为 `1` 强制选用 Cursor 提供者 | — |
+| `CURSOR_AUTH_MODE` | 设为 `oauth` 时从 OAuth 凭据文件读取（由 `/connect` OAuth 登录设置） | — |
+| `CURSOR_CREDENTIAL_SCOPE` | OAuth 凭据文件 scope（对应 `cursor-auth.<scope>.json`） | `default` |
 | `CURSOR_API_KEY` / `CURSOR_ACCESS_TOKEN` | Cursor 会话访问令牌（JWT，可含 `userId::` 前缀） | 自动从 IDE 读取 |
 | `CURSOR_MACHINE_ID` | Cursor machine id | 自动读取 / 从 token 派生 |
 | `CURSOR_STATE_DB` | `state.vscdb` 完整路径 | 按平台推断 |
@@ -86,6 +105,7 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 | `CURSOR_REASONING_EFFORT` | `medium` / `high`，映射为 Cursor thinking level | — |
 | `CURSOR_GHOST_MODE` | `0`/`false` 关闭 ghost mode（默认开启，不留存对话） | `true` |
 | `CURSOR_COMPRESS_REQUESTS` | `1`/`0` 覆盖请求体 gzip 策略（默认 ≥3 条消息时压缩） | 自动 |
+| `CURSOR_HTTP2` | `0`/`false` 关闭对聊天请求强制 HTTP/2（见下「传输」） | 自动开启（Bun） |
 
 ## 模型映射
 
@@ -95,6 +115,16 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 - 其次 `CURSOR_MODEL_MAP` / `CURSOR_DEFAULT_{FAMILY}_MODEL`
 - 再次内置默认映射（如 `claude-sonnet-4-5-*` → `claude-4.5-sonnet`）
 - 都不匹配则原样透传
+
+## 传输（HTTP/2）
+
+`api2.cursor.sh` 是 ConnectRPC/gRPC 服务，部署在只接受 HTTP/2 的 AWS ALB 后面。用 HTTP/1.1 直连会在到达后端前被负载均衡器以 **`464 Incompatible protocol`** 拒绝（`API Error: [464] Cursor upstream error`）。
+
+Bun 的 `fetch` 默认走 HTTP/1.1，因此聊天请求通过 per-request 选项 `{ protocol: 'http2' }` 强制协商 h2（经 TLS ALPN，无需全局 `--experimental-http2-fetch` 标志）。该逻辑：
+
+- 仅在 Bun 运行时生效（`protocol` 为 Bun 扩展；Node 的 undici 8.x 默认按 ALPN 协商 h2）；
+- 配置了 HTTP 代理时自动跳过（Bun 实验性 h2 客户端暂不支持 CONNECT 隧道），退回 h1；
+- 可用 `CURSOR_HTTP2=0` 关闭。
 
 ## 已知限制
 

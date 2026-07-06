@@ -3,6 +3,8 @@
  *
  * Credentials = a Cursor access token (JWT) + a machine id. We resolve them in
  * this priority order:
+ *   0. OAuth credential file (CURSOR_AUTH_MODE=oauth) — tokens obtained via the
+ *      browser PKCE deep-link flow (cursorOAuth.ts), refreshed automatically
  *   1. Environment variables (CURSOR_ACCESS_TOKEN / CURSOR_API_KEY, CURSOR_MACHINE_ID)
  *   2. The local Cursor IDE SQLite store (state.vscdb) — auto-detected per-OS
  *
@@ -21,6 +23,7 @@ import { join } from 'path'
 import { logForDebugging } from '../../../utils/debug.js'
 import type { CursorApiCredentials } from './protobufSchema.js'
 import { normalizeCursorAccessToken } from './clientPolicy.js'
+import { getValidCursorOAuth, isCursorOAuthEnabled } from './cursorOAuth.js'
 
 const ACCESS_TOKEN_KEY = 'cursorAuth/accessToken'
 const MACHINE_ID_KEY = 'storage.serviceMachineId'
@@ -156,6 +159,26 @@ export async function resolveCursorCredentials(options?: {
   }
 
   const ghostMode = parseGhostMode(env.CURSOR_GHOST_MODE)
+
+  // 0. OAuth credential file (browser sign-in). Takes priority so an activated
+  // OAuth connection always uses its own refreshed token rather than whatever
+  // token happens to be exported in the environment or stored by the IDE.
+  // Never cached: the access JWT is short-lived, and getValidCursorOAuth reads
+  // the file (and refreshes near expiry) on every call so long sessions don't
+  // pin a stale token.
+  if (isCursorOAuthEnabled(env)) {
+    const scope = env.CURSOR_CREDENTIAL_SCOPE || 'default'
+    const oauth = await getValidCursorOAuth(
+      scope === 'default' ? undefined : scope,
+    )
+    return {
+      accessToken: oauth.userId
+        ? `${oauth.userId}::${oauth.accessToken}`
+        : oauth.accessToken,
+      machineId: oauth.machineId,
+      ghostMode,
+    }
+  }
 
   let accessToken = env.CURSOR_ACCESS_TOKEN || env.CURSOR_API_KEY || ''
   let machineId = env.CURSOR_MACHINE_ID || ''

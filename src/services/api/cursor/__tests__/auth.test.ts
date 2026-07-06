@@ -1,4 +1,6 @@
-import { describe, expect, test, beforeEach, mock } from 'bun:test'
+import { afterEach, describe, expect, test, beforeEach, mock } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { debugMock } from '../../../../../tests/mocks/debug'
@@ -9,10 +11,28 @@ import {
   clearCursorCredentialsCache,
   getCursorStateDbPath,
 } from '../auth.js'
+import { getCursorOAuthFilePath } from '../cursorOAuth.js'
 
 // A path that will never exist so the SQLite fallback is skipped and tests stay
 // hermetic even on a machine with the Cursor IDE installed.
 const NO_DB = join('/', 'definitely', 'no', 'cursor', 'state.vscdb')
+
+function base64url(input: string): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+/** Build a JWT whose exp is `secondsFromNow` seconds in the future. */
+function makeJwt(secondsFromNow: number): string {
+  const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const payload = base64url(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + secondsFromNow }),
+  )
+  return `${header}.${payload}.sig`
+}
 
 describe('getCursorStateDbPath', () => {
   test('honours CURSOR_STATE_DB', () => {
@@ -70,5 +90,66 @@ describe('resolveCursorCredentials', () => {
     await expect(
       resolveCursorCredentials({ envOverride: { CURSOR_STATE_DB: NO_DB } }),
     ).rejects.toThrow(/No Cursor access token/)
+  })
+})
+
+describe('resolveCursorCredentials (OAuth mode)', () => {
+  let tmpDir: string
+  let previousConfigDir: string | undefined
+
+  beforeEach(() => {
+    clearCursorCredentialsCache()
+    tmpDir = mkdtempSync(join(tmpdir(), 'ccb-cursor-auth-'))
+    previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = tmpDir
+  })
+
+  afterEach(() => {
+    if (previousConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+    }
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  test('reads the scoped OAuth file and prefixes the token with userId', async () => {
+    const jwt = makeJwt(3600)
+    writeFileSync(
+      getCursorOAuthFilePath('work'),
+      JSON.stringify({
+        auth_mode: 'cursor-oauth',
+        tokens: {
+          access_token: jwt,
+          refresh_token: 'r1',
+          user_id: 'user_99',
+          machine_id: 'm-oauth',
+        },
+      }),
+    )
+
+    const creds = await resolveCursorCredentials({
+      envOverride: {
+        CURSOR_AUTH_MODE: 'oauth',
+        CURSOR_CREDENTIAL_SCOPE: 'work',
+        // These must be ignored when OAuth mode is active.
+        CURSOR_API_KEY: 'should-be-ignored',
+        CURSOR_STATE_DB: NO_DB,
+      },
+    })
+    expect(creds.accessToken).toBe(`user_99::${jwt}`)
+    expect(creds.machineId).toBe('m-oauth')
+  })
+
+  test('OAuth mode with a missing credential file throws', async () => {
+    await expect(
+      resolveCursorCredentials({
+        envOverride: {
+          CURSOR_AUTH_MODE: 'oauth',
+          CURSOR_CREDENTIAL_SCOPE: 'gone',
+          CURSOR_STATE_DB: NO_DB,
+        },
+      }),
+    ).rejects.toThrow(/not signed in/i)
   })
 })

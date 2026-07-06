@@ -114,4 +114,32 @@ describe('extractTextFromResponse', () => {
     expect(result.error).toBeNull()
     expect(result.text).toBeNull()
   })
+
+  test('treats a structurally valid metadata frame as a no-op, not an error', () => {
+    // Cursor interleaves metadata frames (message ids, usage stats, system
+    // notices) that decode to field 2 with no text/thinking payload. These
+    // must NOT surface as "Malformed protobuf response" or the stream aborts
+    // before the real text frames arrive.
+    const responseInner = encodeField(
+      22, // a non-text sub-field (e.g. an id), not ChatResponse.TEXT/THINKING
+      WIRE_TYPE.LEN,
+      'b8e0f-metadata',
+    )
+    const top = encodeField(
+      FIELD.Response.RESPONSE,
+      WIRE_TYPE.LEN,
+      responseInner,
+    )
+    const result = extractTextFromResponse(top)
+    expect(result.error).toBeNull()
+    expect(result.text).toBeNull()
+    expect(result.thinking).toBeNull()
+    expect(result.toolCall).toBeNull()
+  })
+
+  test('flags a genuinely undecodable payload as malformed', () => {
+    // field 1, LEN, claims 5 bytes but only 1 follows → decodes to zero fields.
+    const result = extractTextFromResponse(new Uint8Array([0x0a, 0x05, 0x01]))
+    expect(result.error).toBe('Malformed protobuf response')
+  })
 })

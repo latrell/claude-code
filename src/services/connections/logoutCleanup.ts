@@ -5,6 +5,7 @@
  */
 
 import { removeChatGPTAuth } from '../api/openai/chatgptAuth.js'
+import { removeCursorOAuth } from '../api/cursor/cursorOAuth.js'
 import { logError } from '../../utils/log.js'
 import { clearAllConnections, listConnections } from './store.js'
 
@@ -17,6 +18,13 @@ export async function clearAllConnectionsOnLogout(): Promise<void> {
         connection.credentialRef !== 'default'
       ) {
         await removeChatGPTAuth(connection.credentialRef).catch(() => {})
+      }
+      if (
+        connection.kind === 'cursor' &&
+        connection.credentialRef &&
+        connection.credentialRef !== 'default'
+      ) {
+        await removeCursorOAuth(connection.credentialRef).catch(() => {})
       }
     }
     clearAllConnections()

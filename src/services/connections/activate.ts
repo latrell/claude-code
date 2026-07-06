@@ -25,6 +25,7 @@ import {
   hasStoredChatGPTAuth,
   removeChatGPTAuth,
 } from '../../services/api/openai/chatgptAuth.js'
+import { hasStoredCursorOAuth } from '../../services/api/cursor/cursorOAuth.js'
 import { clearOAuthTokenCache } from '../../utils/auth.js'
 import {
   writeCCBProviderAuthEnv,
@@ -164,10 +165,22 @@ export function envForConnection(
       break
     }
     case 'cursor': {
-      // Empty token/machineId (undefined) clears any prior connection's values
-      // so auth falls back to reading the signed-in Cursor IDE state store.
-      env.CURSOR_API_KEY = connection.apiKey || undefined
-      env.CURSOR_MACHINE_ID = connection.machineId || undefined
+      // A credentialRef marks an OAuth (browser sign-in) connection: route the
+      // client to the scoped cursor-auth.<scope>.json file and clear any manual
+      // token so it cannot shadow the refreshed OAuth credential. Otherwise the
+      // connection is manual (apiKey/machineId) or IDE-auto (both empty →
+      // undefined, falling back to the signed-in Cursor IDE state store).
+      if (connection.credentialRef) {
+        env.CURSOR_AUTH_MODE = 'oauth'
+        env.CURSOR_CREDENTIAL_SCOPE = connection.credentialRef
+        env.CURSOR_API_KEY = undefined
+        env.CURSOR_MACHINE_ID = undefined
+      } else {
+        env.CURSOR_AUTH_MODE = undefined
+        env.CURSOR_CREDENTIAL_SCOPE = undefined
+        env.CURSOR_API_KEY = connection.apiKey || undefined
+        env.CURSOR_MACHINE_ID = connection.machineId || undefined
+      }
       env.CURSOR_BASE_URL = connection.baseUrl || undefined
       env.CURSOR_MODEL = undefined
       env.CURSOR_DEFAULT_MODEL = connectionDefault
@@ -230,6 +243,14 @@ async function clearProviderClientCaches(): Promise<void> {
   } catch (err) {
     logError(err)
   }
+  try {
+    const { clearCursorClientCache } = await import(
+      '../../services/api/cursor/client.js'
+    )
+    clearCursorClientCache()
+  } catch (err) {
+    logError(err)
+  }
 }
 
 /**
@@ -286,6 +307,31 @@ async function deployChatGPTCredential(connection: Connection): Promise<{
   }
 }
 
+/**
+ * Verify the credential backing a Cursor OAuth connection is still readable.
+ * Only OAuth (browser sign-in) cursor connections carry a credentialRef;
+ * manual/IDE-auto connections resolve credentials at request time and need no
+ * check here. A missing file means the connection was signed out or deleted —
+ * fail activation with guidance instead of hitting a 401 on the first request.
+ */
+async function checkCursorCredential(connection: Connection): Promise<{
+  success: boolean
+  error?: string
+}> {
+  if (!connection.credentialRef) return { success: true }
+  const scope = connection.credentialRef
+  if (await hasStoredCursorOAuth(scope === 'default' ? undefined : scope)) {
+    return { success: true }
+  }
+  return {
+    success: false,
+    error: tf(
+      'Cursor credential for "{label}" is missing. Delete this connection and add it again via /connect.',
+      { label: connection.label },
+    ),
+  }
+}
+
 /** Anthropic credential deployment shared by session + global paths. */
 async function deployAnthropicOAuth(connection: Connection): Promise<{
   success: boolean
@@ -320,6 +366,9 @@ export async function activateConnectionForSession(
   } else if (connection.kind === 'chatgpt-oauth') {
     const deployed = await deployChatGPTCredential(connection)
     if (!deployed.success) return deployed
+  } else if (connection.kind === 'cursor') {
+    const checked = await checkCursorCredential(connection)
+    if (!checked.success) return checked
   }
 
   applyEnvToProcess(envForConnection(connection, model))
@@ -392,6 +441,10 @@ async function activateSubagentForSession(
     if (!checked.success) return checked
     setSubagentProviderConfigOverride(chatgptSubagentConfig(connection, model))
   } else {
+    if (connection.kind === 'cursor') {
+      const checked = await checkCursorCredential(connection)
+      if (!checked.success) return checked
+    }
     setSubagentProviderConfigOverride(subagentLoginConfig(connection, model))
   }
   touchConnectionUsage(connection.id)
@@ -416,6 +469,9 @@ export async function activateConnectionGlobally(
   // (broken) global default.
   if (connection.kind === 'chatgpt-oauth') {
     const checked = await checkChatGPTCredential(connection)
+    if (!checked.success) return checked
+  } else if (connection.kind === 'cursor') {
+    const checked = await checkCursorCredential(connection)
     if (!checked.success) return checked
   }
 

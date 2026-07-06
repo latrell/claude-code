@@ -13,6 +13,7 @@ import { t, tf } from '../../i18n/t.js';
 import { ConsoleOAuthFlow } from '../ConsoleOAuthFlow.js';
 import { Select } from '../CustomSelect/select.js';
 import { ChatGPTDeviceLogin } from './ChatGPTDeviceLogin.js';
+import { CursorDeviceLogin } from './CursorDeviceLogin.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
 
 type WizardStep =
@@ -26,6 +27,8 @@ type WizardStep =
     }
   | { step: 'claude-oauth' }
   | { step: 'chatgpt-oauth'; scope: string }
+  | { step: 'cursor-mode' }
+  | { step: 'cursor-oauth'; scope: string }
   | { step: 'error'; message: string };
 
 type Props = {
@@ -140,7 +143,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
         {
           label: t('Cursor IDE'),
           value: 'custom:cursor',
-          description: t('Use models via the Cursor IDE backend (reads your signed-in Cursor session)'),
+          description: t('Use models via the Cursor backend (browser sign-in, token, or IDE session)'),
         },
         {
           label: t('Claude account (OAuth)'),
@@ -172,6 +175,10 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
                 } else {
                   setStep({ step: 'form', kind: 'openai-compat', preset, presetMode: 'api' });
                 }
+                return;
+              }
+              if (choice === 'custom:cursor') {
+                setStep({ step: 'cursor-mode' });
                 return;
               }
               const customKind = CUSTOM_KIND_CHOICES[choice];
@@ -373,6 +380,61 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           </Text>
           <ConsoleOAuthFlow forceLoginMethod="claudeai" onDone={handleClaudeOAuthDone} />
         </Box>
+      );
+
+    case 'cursor-mode':
+      return (
+        <Box key="step-cursor-mode" flexDirection="column" gap={1}>
+          <Text bold>{t('Connect Cursor')}</Text>
+          <Text dimColor>{t('How do you want to sign in?')}</Text>
+          <Select
+            options={[
+              {
+                label: t('Sign in with browser (OAuth)'),
+                value: 'oauth',
+                description: t('Opens cursor.com to authorize — no token to copy'),
+              },
+              {
+                label: t('Paste token / use signed-in IDE'),
+                value: 'manual',
+                description: t('Enter a session token + machine id, or reuse the Cursor IDE'),
+              },
+              { label: t('Back'), value: 'back' },
+            ]}
+            onCancel={() => setStep({ step: 'kind' })}
+            onChange={value => {
+              if (value === 'oauth') {
+                setStep({ step: 'cursor-oauth', scope: generateConnectionId('cursor') });
+              } else if (value === 'manual') {
+                setStep({ step: 'form', kind: 'cursor' });
+              } else {
+                setStep({ step: 'kind' });
+              }
+            }}
+          />
+        </Box>
+      );
+
+    case 'cursor-oauth':
+      return (
+        <CursorDeviceLogin
+          key="step-cursor-oauth"
+          scope={step.scope}
+          onSuccess={() => {
+            const existing = findExisting('cursor', c => c.credentialRef === step.scope);
+            const label = t('Cursor Account');
+            finishCreate(
+              existing ?? {
+                id: step.scope,
+                label,
+                kind: 'cursor',
+                credentialRef: step.scope,
+                createdAt: new Date().toISOString(),
+              },
+            );
+          }}
+          onError={message => setStep({ step: 'error', message })}
+        />
       );
 
     case 'chatgpt-oauth':

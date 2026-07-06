@@ -233,6 +233,26 @@ describe('importLegacyConnections', () => {
     expect(cursor?.tierModels?.sonnet).toBe('claude-4.5-sonnet')
   })
 
+  test('imports a cursor OAuth entry as a credentialRef connection', () => {
+    writeProviderAuth({
+      cursor: {
+        env: {
+          CURSOR_AUTH_MODE: 'oauth',
+          CURSOR_CREDENTIAL_SCOPE: 'cursor-abc',
+          CURSOR_DEFAULT_SONNET_MODEL: 'claude-4.5-sonnet',
+        },
+      },
+    })
+
+    const { imported } = importLegacyConnections()
+    expect(imported).toBe(1)
+
+    const cursor = listConnections().find(c => c.kind === 'cursor')
+    expect(cursor?.credentialRef).toBe('cursor-abc')
+    expect(cursor?.apiKey).toBeUndefined()
+    expect(cursor?.tierModels?.sonnet).toBe('claude-4.5-sonnet')
+  })
+
   test('imports anthropic-compatible endpoint from userSettings.env', () => {
     writeUserSettings({
       env: {

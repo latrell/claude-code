@@ -147,6 +147,13 @@ const ENV_KEYS = [
   'GROK_API_KEY',
   'GROK_MODEL',
   'GROK_DEFAULT_MODEL',
+  'CURSOR_API_KEY',
+  'CURSOR_MACHINE_ID',
+  'CURSOR_AUTH_MODE',
+  'CURSOR_CREDENTIAL_SCOPE',
+  'CURSOR_BASE_URL',
+  'CURSOR_MODEL',
+  'CURSOR_DEFAULT_MODEL',
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
@@ -239,6 +246,46 @@ function writeChatGPTAuthFile(scope?: string): void {
       tokens: { id_token: 'id', access_token: 'at', refresh_token: 'rt' },
     }),
   )
+}
+
+function base64url(input: string): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+/** Write a Cursor OAuth credential file into the test config dir. */
+function writeCursorAuthFile(scope?: string): void {
+  const name =
+    !scope || scope === 'default'
+      ? 'cursor-auth.json'
+      : `cursor-auth.${scope}.json`
+  const jwt = `${base64url('{}')}.${base64url(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+  )}.sig`
+  writeFileSync(
+    join(tmpDir, name),
+    JSON.stringify({
+      auth_mode: 'cursor-oauth',
+      tokens: {
+        access_token: jwt,
+        refresh_token: 'rt',
+        user_id: 'user_1',
+        machine_id: 'm-1',
+      },
+    }),
+  )
+}
+
+function cursorOAuthConn(credentialRef = 'cur-oauth'): Connection {
+  return {
+    id: credentialRef,
+    label: 'Cursor Account',
+    kind: 'cursor',
+    credentialRef,
+  }
 }
 
 describe('envForConnection', () => {
@@ -342,6 +389,24 @@ describe('envForConnection', () => {
     })
     expect(env).toHaveProperty('CURSOR_API_KEY', undefined)
     expect(env).toHaveProperty('CURSOR_MACHINE_ID', undefined)
+    expect(env).toHaveProperty('CURSOR_AUTH_MODE', undefined)
+  })
+
+  test('cursor OAuth (credentialRef) routes to the scoped credential file', () => {
+    const env = envForConnection({
+      id: 'cur-oauth',
+      label: 'Cursor Account',
+      kind: 'cursor',
+      credentialRef: 'cur-oauth',
+      tierModels: { sonnet: 'claude-4.5-sonnet' },
+    })
+    expect(env.CURSOR_AUTH_MODE).toBe('oauth')
+    expect(env.CURSOR_CREDENTIAL_SCOPE).toBe('cur-oauth')
+    // Manual token/machine id must be cleared so they can't shadow the OAuth
+    // credential.
+    expect(env).toHaveProperty('CURSOR_API_KEY', undefined)
+    expect(env).toHaveProperty('CURSOR_MACHINE_ID', undefined)
+    expect(env.CURSOR_DEFAULT_MODEL).toBe('claude-4.5-sonnet')
   })
 
   test('chatgpt-oauth sets auth mode and clears api key', () => {
@@ -461,6 +526,43 @@ describe('activateConnectionForSession (main slot)', () => {
     const result = await activateConnectionForSession(conn, 'main')
     expect(result.success).toBe(false)
     expect(result.error).toBeDefined()
+  })
+
+  test('cursor OAuth: activates when the credential file exists', async () => {
+    writeCursorAuthFile('cur-oauth')
+    const conn = cursorOAuthConn()
+    upsertConnection(conn)
+
+    const result = await activateConnectionForSession(conn, 'main', 'auto')
+    expect(result.success).toBe(true)
+    expect(process.env.CURSOR_AUTH_MODE).toBe('oauth')
+    expect(process.env.CURSOR_CREDENTIAL_SCOPE).toBe('cur-oauth')
+    expect(getAPIProvider({}, process.env)).toBe('cursor')
+  })
+
+  test('cursor OAuth: fails cleanly when the credential file is missing', async () => {
+    const conn = cursorOAuthConn('gone')
+    const result = await activateConnectionForSession(conn, 'main')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('/connect')
+    // Env + provider selection stay untouched on failure.
+    expect(process.env.CURSOR_AUTH_MODE).toBeUndefined()
+    expect(getAPIProvider({}, {})).toBe('firstParty')
+  })
+
+  test('cursor manual (apiKey) needs no credential file', async () => {
+    const conn: Connection = {
+      id: 'cur-manual',
+      label: 'Cursor Manual',
+      kind: 'cursor',
+      apiKey: 'user::jwt',
+      machineId: 'm-1',
+    }
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'main', 'auto')
+    expect(result.success).toBe(true)
+    expect(process.env.CURSOR_API_KEY).toBe('user::jwt')
+    expect(process.env.CURSOR_AUTH_MODE).toBeUndefined()
   })
 })
 

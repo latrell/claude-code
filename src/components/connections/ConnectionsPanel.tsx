@@ -30,6 +30,7 @@ import {
 } from '../../services/connections/store.js';
 import type { AgentSlot, Connection, ConnectionKind } from '../../services/connections/types.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
+import { removeCursorOAuth } from '../../services/api/cursor/cursorOAuth.js';
 import { t, tf } from '../../i18n/t.js';
 import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
@@ -283,6 +284,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         }
         if (connection.kind === 'chatgpt-oauth' && connection.credentialRef && connection.credentialRef !== 'default') {
           void removeChatGPTAuth(connection.credentialRef).catch(() => {});
+        }
+        if (connection.kind === 'cursor' && connection.credentialRef && connection.credentialRef !== 'default') {
+          void removeCursorOAuth(connection.credentialRef).catch(() => {});
         }
         removeConnection(connection.id);
         refresh();

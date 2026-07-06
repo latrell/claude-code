@@ -8,8 +8,8 @@
  * Reference: https://github.com/eisbaw/cursor_api_demo
  */
 
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
-import { isEnvTruthy } from '../../../utils/envUtils.js'
+import { getProxyFetchOptions, getProxyUrl } from 'src/utils/proxy.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import type {
   CursorApiCredentials,
@@ -58,6 +58,30 @@ function mapHttpStatusToError(status: number): {
   if (status === 401) return { errorType: 'authentication_error' }
   if (status === 403) return { errorType: 'permission_error' }
   return { errorType: status >= 500 ? 'server_error' : 'api_error' }
+}
+
+/**
+ * Cursor's api2.cursor.sh backend is a ConnectRPC/gRPC service behind an AWS
+ * ALB whose target group only speaks HTTP/2. A plain HTTP/1.1 request is
+ * rejected by the load balancer with `464 Incompatible protocol` before it
+ * ever reaches the backend. Bun's fetch defaults to HTTP/1.1 unless told
+ * otherwise, so we pin the request to h2 (negotiated via TLS ALPN).
+ *
+ * Only applies under Bun (the `protocol` option is Bun-specific; under Node
+ * the built-in undici fetch negotiates h2 via ALPN on its own). Skipped when a
+ * proxy is configured, since Bun's experimental h2 client does not yet support
+ * CONNECT tunneling — pinning h2 there would fail outright. Set CURSOR_HTTP2=0
+ * to opt out (e.g. if a future Bun default or a custom endpoint changes this).
+ */
+export function cursorTransportOptions(
+  env: Record<string, string | undefined> = process.env,
+): { protocol?: 'http2' } {
+  if (typeof Bun === 'undefined') return {}
+  if (isEnvDefinedFalsy(env.CURSOR_HTTP2)) return {}
+  // Bun's h2 fetch client can't tunnel through an HTTP proxy yet; let the
+  // proxied request fall back to h1 rather than throwing HTTP2Unsupported.
+  if (getProxyUrl(env)) return {}
+  return { protocol: 'http2' }
 }
 
 export interface StreamCursorChatParams {
@@ -110,8 +134,9 @@ export async function* streamCursorChat(
     headers,
     body: framedBody as unknown as BodyInit,
     signal,
+    ...cursorTransportOptions(env),
     ...getProxyFetchOptions({ forAnthropicAPI: false }),
-  })
+  } as RequestInit)
 
   if (!response.ok || !response.body) {
     const errorText = await safeReadText(response)

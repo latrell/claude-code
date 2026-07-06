@@ -328,7 +328,14 @@ export function extractTextFromResponse(payload: Uint8Array): {
       }
     }
 
-    if (payload.length > 0) {
+    // A structurally valid frame that carries no text/thinking/tool-call is a
+    // metadata frame, not an error. Cursor interleaves many of these around the
+    // actual content: message/conversation ids (RESPONSE sub-field 22), usage
+    // stats (sub-field 30), system notices like the "old version" banner
+    // (sub-field 20), and tool-call frames still being assembled. Treat them as
+    // no-ops so the stream keeps flowing to the real text frames. Only a
+    // non-empty payload that decoded into zero protobuf fields is malformed.
+    if (fields.size === 0 && payload.length > 0) {
       return {
         text: null,
         error: 'Malformed protobuf response',

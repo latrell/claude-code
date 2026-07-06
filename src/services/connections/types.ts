@@ -12,7 +12,11 @@ import { z } from 'zod'
  * - gemini:          Google Gemini Generate Content API
  * - grok:            xAI Grok API (OpenAI-compatible)
  * - cursor:          Cursor IDE backend API (ConnectRPC/protobuf). Credential
- *   is a session token + machine id, or auto-read from a signed-in Cursor IDE.
+ *   is one of three sources, distinguished by which fields are set:
+ *     * OAuth browser sign-in — `credentialRef` = scope suffix of
+ *       cursor-auth.<scope>.json (tokens from the PKCE deep-link flow)
+ *     * manual — `apiKey` session token (+ optional `machineId`)
+ *     * IDE auto-read — none set; read from a signed-in Cursor IDE's state DB
  */
 export const ConnectionKindSchema = z.enum([
   'anthropic-oauth',
@@ -72,6 +76,8 @@ export const ConnectionSchema = z.object({
    * Credential slot reference for OAuth kinds:
    * - anthropic-oauth: accountUuid of the secure-storage account slot
    * - chatgpt-oauth: scope suffix of openai-chatgpt-auth.<scope>.json
+   *   ('default' refers to the unsuffixed default file)
+   * - cursor (OAuth sign-in): scope suffix of cursor-auth.<scope>.json
    *   ('default' refers to the unsuffixed default file)
    */
   credentialRef: z.string().optional(),
