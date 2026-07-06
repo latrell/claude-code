@@ -30,10 +30,30 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
 ### `/models` — 跨 provider 模型选择器
 
-- 扁平列出 `连接 / 模型`，支持模糊搜索；OpenAI 兼容端点会异步拉取 `GET /v1/models` 补充模型列表。
+- 扁平列出 `连接 / 模型`，支持模糊搜索；OpenAI 兼容端点（含 Grok）异步拉取 `GET {baseUrl}/models`、Gemini 拉取 ListModels API 补充模型列表。
 - `Enter` = 本会话切换；`Shift+Tab` = 设为全局默认；`Tab` = 在主 agent / 子 agent 槽位间切换。
 - `/models sub` 直接打开子 agent 槽位。
-- 标记：`●` 当前会话使用中，`★` 全局默认。
+- 标记：`●` 当前会话使用中，`★` 全局默认；条目附带已知的上下文窗口（`ctx 1M` 等）。
+
+## 模型上下文窗口
+
+第三方模型的上下文窗口不再一律按 200k 硬编码处理，`getContextWindowForModel()` 会读取连接注册表中的配置（`Connection.modelContextWindows`），使自动压缩阈值（auto-compact）、状态栏上下文百分比等按真实窗口计算。
+
+三个来源（优先级从高到低）：
+
+1. **manual** — 用户在 `/connect` 中手动设置，永远不会被自动识别覆盖。
+2. **auto** — 打开 `/models` 或 `/connect` 模型选择器时，从提供者的模型列表端点自动识别并持久化：
+   - OpenAI 兼容 / Grok：`GET {baseUrl}/models` 条目上的 `context_length`（OpenRouter/Together）、`max_model_len`（vLLM）、`max_context_length`（LM Studio）、`context_window`、`max_input_tokens` 等字段（官方 OpenAI 响应不含这些字段，识别不到就留空）
+   - Gemini：ListModels 的 `inputTokenLimit`
+3. **preset** — 中国厂商预设目录（`CHINA_LLM_PROVIDERS`）中的 `contextWindow` 展示字符串（如 `"1M"`、`"203K"`），运行时解析兜底。
+
+交互入口：
+
+- `/connect` → 连接菜单 → **Model context windows…**：选择模型后输入窗口大小（支持 `200000` / `128K` / `1M` 格式，留空清除手动值）。
+- `/connect` 激活路径选中一个**窗口未知**的第三方模型时，自动插入一步可跳过的窗口输入（识别到的模型不打断）。
+- 切换成功消息会附带生效的窗口（`ctx 1M`）或未知提示，便于确认识别结果。
+
+运行时查找顺序（`getConnectionContextWindow(model)`，按 model id 匹配）：会话激活连接（主 → 子）→ 全局默认连接 → 注册表其余连接。均未命中时维持原有解析链（Anthropic 能力缓存、1M beta、ChatGPT plan 窗口、200k 默认）。
 
 ## 激活（部署式）语义
 
@@ -64,14 +84,16 @@ tier 映射（`tierModels.haiku/sonnet/opus`）写成 `*_DEFAULT_{HAIKU,SONNET,O
 
 ```
 src/services/connections/
-  types.ts          # Zod schema：Connection / ConnectionsFile / SlotAssignment
-  store.ts          # 注册表读写（原子写 + 进程内缓存 + chmod 600）
-  oauthAccounts.ts  # Anthropic OAuth 多账号槽位（secure storage）
-  migrate.ts        # 旧存储幂等导入
-  activate.ts       # 会话级/全局激活引擎 + 会话槽位记录
-  modelCatalog.ts   # 每连接模型目录（静态 + /v1/models 动态拉取）
-  autoRegister.ts   # /login 成功后的自动注册
-  logoutCleanup.ts  # /logout 清理
+  types.ts               # Zod schema：Connection / ConnectionsFile / SlotAssignment
+  store.ts               # 注册表读写（原子写 + 进程内缓存 + chmod 600）
+  oauthAccounts.ts       # Anthropic OAuth 多账号槽位（secure storage）
+  migrate.ts             # 旧存储幂等导入
+  sessionAssignments.ts  # 会话槽位记录（轻量模块，供底层查找使用）
+  activate.ts            # 会话级/全局激活引擎
+  modelCatalog.ts        # 每连接模型目录（静态 + /v1/models、Gemini ListModels 动态拉取）
+  contextWindows.ts      # 模型上下文窗口：解析/格式化/查找/持久化
+  autoRegister.ts        # /login 成功后的自动注册
+  logoutCleanup.ts       # /logout 清理
 src/components/connections/
   ConnectionsPanel.tsx / AddConnectionWizard.tsx / ConnectionForm.tsx
   ChatGPTDeviceLogin.tsx / ModelsPicker.tsx

@@ -72,6 +72,42 @@ describe('getStaticModelsForConnection', () => {
       'haiku',
     )
   })
+
+  test('annotates entries with recorded context windows', () => {
+    const conn: Connection = {
+      id: 'custom',
+      label: 'Custom',
+      kind: 'openai-compat',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk',
+      models: ['model-a', 'model-b'],
+      modelContextWindows: {
+        'model-a': { tokens: 1_000_000, source: 'auto' },
+      },
+    }
+    const models = getStaticModelsForConnection(conn)
+    expect(models.find(m => m.value === 'model-a')?.description).toContain(
+      'ctx 1M',
+    )
+    expect(models.find(m => m.value === 'model-b')?.description).toBeUndefined()
+  })
+
+  test('recorded window supersedes the preset context string', () => {
+    const conn: Connection = {
+      id: 'ds',
+      label: 'DeepSeek',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk',
+      presetId: 'deepseek',
+      modelContextWindows: {
+        'deepseek-v4-pro': { tokens: 131_072, source: 'manual' },
+      },
+    }
+    const models = getStaticModelsForConnection(conn)
+    const pro = models.find(m => m.value === 'deepseek-v4-pro')
+    expect(pro?.description).toContain('ctx 131K')
+  })
 })
 
 describe('fetchRemoteModelsForConnection', () => {
@@ -104,9 +140,42 @@ describe('fetchRemoteModelsForConnection', () => {
     const models = await fetchRemoteModelsForConnection(baseConn, {
       fetchOverride,
     })
-    expect(models).toEqual(['a-model', 'z-model'])
+    expect(models).toEqual([{ id: 'a-model' }, { id: 'z-model' }])
     expect(calls[0]?.url).toBe('https://api.example.com/v1/models')
     expect(calls[0]?.auth).toBe('Bearer sk-r')
+  })
+
+  test('extracts context window fields across ecosystem variants', async () => {
+    const fetchOverride = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: 'openrouter-style', context_length: 1_048_576 },
+            { id: 'vllm-style', max_model_len: 131072 },
+            { id: 'lmstudio-style', max_context_length: 200_000 },
+            { id: 'gateway-style', context_window: 256_000 },
+            { id: 'gateway-input', max_input_tokens: 400_000 },
+            { id: 'no-context' },
+            { id: 'bogus-small', context_length: 42 },
+            { id: 'bogus-string', context_length: '128000' },
+          ],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    const models = await fetchRemoteModelsForConnection(baseConn, {
+      fetchOverride,
+    })
+    const byId = new Map(models.map(m => [m.id, m.contextLength]))
+    expect(byId.get('openrouter-style')).toBe(1_048_576)
+    expect(byId.get('vllm-style')).toBe(131_072)
+    expect(byId.get('lmstudio-style')).toBe(200_000)
+    expect(byId.get('gateway-style')).toBe(256_000)
+    expect(byId.get('gateway-input')).toBe(400_000)
+    expect(byId.get('no-context')).toBeUndefined()
+    // Values that are implausibly small or not numbers are ignored
+    expect(byId.get('bogus-small')).toBeUndefined()
+    expect(byId.get('bogus-string')).toBeUndefined()
   })
 
   test('returns [] on HTTP errors', async () => {
@@ -128,12 +197,12 @@ describe('fetchRemoteModelsForConnection', () => {
     expect(models).toEqual([])
   })
 
-  test('skips non-openai-compatible kinds', async () => {
+  test('skips kinds without a model list endpoint', async () => {
     const conn: Connection = {
-      id: 'g',
-      label: 'G',
-      kind: 'gemini',
-      apiKey: 'k',
+      id: 'acc',
+      label: 'Acc',
+      kind: 'anthropic-oauth',
+      credentialRef: 'u1',
     }
     expect(await fetchRemoteModelsForConnection(conn)).toEqual([])
   })
@@ -153,7 +222,80 @@ describe('fetchRemoteModelsForConnection', () => {
       apiKey: 'xai-key',
     }
     const models = await fetchRemoteModelsForConnection(conn, { fetchOverride })
-    expect(models).toEqual(['grok-4'])
+    expect(models).toEqual([{ id: 'grok-4' }])
     expect(calls[0]).toBe('https://api.x.ai/v1/models')
+  })
+
+  test('gemini uses ListModels with inputTokenLimit and method filtering', async () => {
+    const calls: Array<{ url: string; key: string | undefined }> = []
+    const fetchOverride = (async (
+      url: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      calls.push({
+        url: String(url),
+        key: (init?.headers as Record<string, string>)?.['x-goog-api-key'],
+      })
+      return new Response(
+        JSON.stringify({
+          models: [
+            {
+              name: 'models/gemini-2.5-pro',
+              inputTokenLimit: 1_048_576,
+              supportedGenerationMethods: ['generateContent', 'countTokens'],
+            },
+            {
+              name: 'models/gemini-2.5-flash',
+              inputTokenLimit: 1_048_576,
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/text-embedding-004',
+              inputTokenLimit: 2_048,
+              supportedGenerationMethods: ['embedContent'],
+            },
+            { notName: true },
+          ],
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+
+    const conn: Connection = {
+      id: 'gem',
+      label: 'Gemini',
+      kind: 'gemini',
+      apiKey: 'g-key',
+    }
+    const models = await fetchRemoteModelsForConnection(conn, {
+      fetchOverride,
+    })
+    expect(models).toEqual([
+      { id: 'gemini-2.5-flash', contextLength: 1_048_576 },
+      { id: 'gemini-2.5-pro', contextLength: 1_048_576 },
+    ])
+    expect(calls[0]?.url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',
+    )
+    expect(calls[0]?.key).toBe('g-key')
+  })
+
+  test('gemini respects a custom base url', async () => {
+    const calls: string[] = []
+    const fetchOverride = (async (url: RequestInfo | URL) => {
+      calls.push(String(url))
+      return new Response(JSON.stringify({ models: [] }), { status: 200 })
+    }) as typeof fetch
+    const conn: Connection = {
+      id: 'gem-proxy',
+      label: 'Gemini Proxy',
+      kind: 'gemini',
+      baseUrl: 'https://proxy.example.com/v1beta/',
+      apiKey: 'g-key',
+    }
+    await fetchRemoteModelsForConnection(conn, { fetchOverride })
+    expect(calls[0]).toBe(
+      'https://proxy.example.com/v1beta/models?pageSize=1000',
+    )
   })
 })

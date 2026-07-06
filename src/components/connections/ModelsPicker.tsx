@@ -6,11 +6,14 @@ import {
   activateConnectionGlobally,
   getSessionAssignment,
 } from '../../services/connections/activate.js';
+import { formatContextWindow, getModelContextWindowForConnection } from '../../services/connections/contextWindows.js';
 import { importLegacyConnections } from '../../services/connections/migrate.js';
 import {
-  fetchRemoteModelsForConnection,
+  fetchAndRecordRemoteModels,
   getStaticModelsForConnection,
+  supportsRemoteModelList,
   type CatalogModel,
+  type RemoteModel,
 } from '../../services/connections/modelCatalog.js';
 import { getDefaultAssignment, listConnections } from '../../services/connections/store.js';
 import type { AgentSlot, Connection } from '../../services/connections/types.js';
@@ -32,15 +35,20 @@ type Props = {
   initialSlot?: AgentSlot;
 };
 
-function buildItems(connections: Connection[], remoteModels: Record<string, string[]>): ModelPickItem[] {
+function buildItems(connections: Connection[], remoteModels: Record<string, RemoteModel[]>): ModelPickItem[] {
   const items: ModelPickItem[] = [];
   for (const connection of connections) {
     const models = [...getStaticModelsForConnection(connection)];
     const seen = new Set(models.map(m => m.value ?? ''));
     for (const remote of remoteModels[connection.id] ?? []) {
-      if (seen.has(remote)) continue;
-      seen.add(remote);
-      models.push({ value: remote, label: remote });
+      if (seen.has(remote.id)) continue;
+      seen.add(remote.id);
+      models.push({
+        value: remote.id,
+        label: remote.id,
+        description:
+          remote.contextLength !== undefined ? `ctx ${formatContextWindow(remote.contextLength)}` : undefined,
+      });
     }
     for (const model of models) {
       items.push({
@@ -78,31 +86,31 @@ export function ModelsPicker({
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [remoteModels, setRemoteModels] = useState<Record<string, string[]>>({});
+  const [remoteModels, setRemoteModels] = useState<Record<string, RemoteModel[]>>({});
   const [connections, setConnections] = useState<Connection[]>([]);
 
-  // Import legacy config once, then load the registry
+  // Import legacy config once, load the registry, then fetch live model
+  // lists (best-effort). Detected context windows are recorded onto the
+  // connections, so the registry is re-read after each fetch resolves.
   useEffect(() => {
     importLegacyConnections();
-    setConnections(listConnections());
-  }, []);
-
-  // Fetch live model lists for OpenAI-compatible endpoints (best-effort)
-  useEffect(() => {
+    const initial = listConnections();
+    setConnections(initial);
     let cancelled = false;
-    for (const connection of connections) {
-      if (connection.kind !== 'openai-compat' && connection.kind !== 'grok') {
+    for (const connection of initial) {
+      if (!supportsRemoteModelList(connection.kind)) {
         continue;
       }
-      void fetchRemoteModelsForConnection(connection).then(models => {
+      void fetchAndRecordRemoteModels(connection).then(models => {
         if (cancelled || models.length === 0) return;
         setRemoteModels(prev => ({ ...prev, [connection.id]: models }));
+        setConnections(listConnections());
       });
     }
     return () => {
       cancelled = true;
     };
-  }, [connections]);
+  }, []);
 
   const allItems = useMemo(() => buildItems(connections, remoteModels), [connections, remoteModels]);
 
@@ -130,7 +138,16 @@ export function ModelsPicker({
         onMainModelChange(result.mainLoopModel ?? null);
       }
       onAuthChanged();
-      const target = `${item.connection.label} / ${item.model.label}`;
+      let target = `${item.connection.label} / ${item.model.label}`;
+      if (item.model.value && supportsRemoteModelList(item.connection.kind)) {
+        // Surface the effective context window so a wrong/missing detection
+        // is visible right where the model was switched.
+        const fresh = listConnections().find(c => c.id === item.connection.id) ?? item.connection;
+        const ctx = getModelContextWindowForConnection(fresh, item.model.value);
+        target += ctx
+          ? ` · ctx ${formatContextWindow(ctx.tokens)}`
+          : ` · ${t('ctx unknown, 200K assumed — set via /connect')}`;
+      }
       const message =
         slot === 'main'
           ? scope === 'global'

@@ -34,6 +34,18 @@ export const TierModelsSchema = z.object({
 export type TierModels = z.infer<typeof TierModelsSchema>
 
 /**
+ * A model's context window size. `source` records how the value was
+ * obtained so automatic refreshes never clobber a manual setting:
+ * - auto:   detected from the provider's model-list endpoint
+ * - manual: entered by the user in /connect
+ */
+export const ModelContextWindowSchema = z.object({
+  tokens: z.number().int().positive(),
+  source: z.enum(['auto', 'manual']).optional(),
+})
+export type ModelContextWindow = z.infer<typeof ModelContextWindowSchema>
+
+/**
  * A "connection" = provider kind + endpoint + one account's credentials +
  * model catalog. Multiple connections may share the same kind (multi-account).
  */
@@ -59,6 +71,15 @@ export const ConnectionSchema = z.object({
   models: z.array(z.string()).optional(),
   /** haiku/sonnet/opus tier mapping applied on activation. */
   tierModels: TierModelsSchema.optional(),
+  /**
+   * Context window sizes keyed by model id. Auto-detected from the
+   * provider's model list where available, or set manually in /connect.
+   * Read by getContextWindowForModel() for auto-compact thresholds and
+   * context usage display.
+   */
+  modelContextWindows: z
+    .record(z.string(), ModelContextWindowSchema)
+    .optional(),
   /** Preset this connection was created from (e.g. 'deepseek', 'zhipu'). */
   presetId: z.string().optional(),
   /** Display-only account identifier (email / key suffix). */

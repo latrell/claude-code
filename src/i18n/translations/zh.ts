@@ -2559,6 +2559,26 @@ const zh: Record<string, string> = {
   'This session only': '仅当前会话',
   'Custom model…': '自定义模型…',
   'type a model id, Enter to confirm': '输入模型 ID，回车确认',
+  'Model context windows…': '模型上下文窗口…',
+  'Model context windows': '模型上下文窗口',
+  'Pick a model to set its context window (used for auto-compact and context display)':
+    '选择模型以设置其上下文窗口（用于自动压缩和上下文用量显示）',
+  'ctx unknown, 200K assumed': '上下文窗口未知，按 200K 处理',
+  'ctx unknown, 200K assumed — set via /connect':
+    '上下文窗口未知，按 200K 处理 — 可在 /connect 中设置',
+  'Context window — {model}': '上下文窗口 — {model}',
+  'Current: {value} tokens ({source})': '当前：{value} tokens（{source}）',
+  'set manually': '手动设置',
+  'from preset': '来自预设',
+  'auto-detected': '自动识别',
+  'Not reported by the provider — enter it to size auto-compact correctly (200K assumed otherwise)':
+    '提供者未上报此模型的上下文窗口 — 填写后自动压缩阈值才能按真实窗口计算（不填按 200K 处理）',
+  'Context window': '上下文窗口',
+  'e.g. 128K or 1M — leave empty to skip': '如 128K 或 1M — 留空跳过',
+  'e.g. 128K or 1M — leave empty to clear the manual value':
+    '如 128K 或 1M — 留空清除手动设置',
+  'Invalid context window — use a token count like 200000, 128K or 1M':
+    '无效的上下文窗口 — 请输入 token 数，如 200000、128K 或 1M',
   'Switching…': '切换中…',
   'Failed to switch connection.': '切换连接失败。',
   'Failed to switch model.': '切换模型失败。',

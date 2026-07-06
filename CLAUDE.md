@@ -266,6 +266,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **`src/services/connections/`** — 连接注册表（`~/.claude/ccb-connections.json`）：一个"连接" = provider 类型 + 端点 + 一份账号凭据 + 模型目录，同一 provider 可存多个连接（多账号）。`activate.ts` 采用部署式激活：会话级只改进程内状态（env + `setProviderCliOverride` + client 缓存清理），全局写回现有持久层（`ccb-provider-auth.json` / `settings.modelType` / `providerModels` / `subagentProvider`），启动链路零改动。Anthropic OAuth 多账号存于 secure storage 的 `claudeAiOauthAccounts` 槽位（`claudeAiOauth` 保持活跃账号镜像，官方兼容）；ChatGPT 多账号按 scope 分文件。`/login` 成功自动注册连接，`/logout` 清空注册表。
 - **`src/commands/connect/`** — 连接管理面板（增删改、设默认、会话切换）；**`src/commands/models/`** — 跨 provider 模型选择器（Enter 会话切换、Shift+Tab 设全局默认、Tab 切主/子 agent 槽位）。
+- **模型上下文窗口**：`connections/contextWindows.ts` + `Connection.modelContextWindows`。打开模型选择器时从 provider 模型列表端点自动识别（OpenAI 兼容 `context_length`/`max_model_len` 等字段、Gemini `inputTokenLimit`）并持久化；`/connect` 可手动设置（manual 优先于 auto）；预设目录的 contextWindow 字符串运行时解析兜底。`getContextWindowForModel()`（`src/utils/context.ts`）经 `getConnectionContextWindow()` 消费，使 auto-compact 阈值与上下文百分比按真实窗口计算，不再对第三方模型一律按 200k。
 - Feature flag：`PROVIDER_CONNECTIONS`。详见 `docs/features/provider-connections.md`。
 
 ### 穷鬼模式（Budget Mode）

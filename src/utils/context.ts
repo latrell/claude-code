@@ -1,6 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { getChatGPTSubscriptionPlan } from '../bootstrap/state.js'
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
+import { getConnectionContextWindow } from '../services/connections/contextWindows.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
@@ -83,6 +84,14 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // Connection registry (/connect + /models): context windows auto-detected
+  // from the provider's model list or entered manually. Primary channel for
+  // third-party models, which otherwise fall through to the 200k default.
+  const connectionWindow = getConnectionContextWindow(model)
+  if (connectionWindow !== undefined) {
+    return connectionWindow
   }
 
   const cap = getModelCapability(model)

@@ -42,8 +42,11 @@ import {
 } from '../../utils/model/subagentProvider.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { activateOAuthAccountSlot } from './oauthAccounts.js'
+import { setSessionAssignment } from './sessionAssignments.js'
 import { setDefaultAssignment, touchConnectionUsage } from './store.js'
 import { kindToModelType, type AgentSlot, type Connection } from './types.js'
+
+export { getSessionAssignment } from './sessionAssignments.js'
 
 export type ActivationResult = {
   success: boolean
@@ -54,18 +57,6 @@ export type ActivationResult = {
    * Only set for slot 'main'.
    */
   mainLoopModel?: string | null
-}
-
-// Session-scoped record of which connection each slot currently uses
-// (process memory only — mirrors what activateConnectionForSession applied).
-const _sessionAssignments: Partial<
-  Record<AgentSlot, { connectionId: string; model?: string }>
-> = {}
-
-export function getSessionAssignment(
-  slot: AgentSlot,
-): { connectionId: string; model?: string } | undefined {
-  return _sessionAssignments[slot]
 }
 
 export function kindToProviderName(
@@ -322,10 +313,10 @@ export async function activateConnectionForSession(
   setProviderCliOverride(kindToProviderName(connection.kind))
   await clearProviderClientCaches()
   touchConnectionUsage(connection.id)
-  _sessionAssignments.main = {
+  setSessionAssignment('main', {
     connectionId: connection.id,
     model: model ?? undefined,
-  }
+  })
 
   return {
     success: true,
@@ -391,10 +382,10 @@ async function activateSubagentForSession(
     setSubagentProviderConfigOverride(subagentLoginConfig(connection, model))
   }
   touchConnectionUsage(connection.id)
-  _sessionAssignments.subagent = {
+  setSessionAssignment('subagent', {
     connectionId: connection.id,
     model: model ?? undefined,
-  }
+  })
   return { success: true }
 }
 
@@ -512,7 +503,7 @@ export async function activateConnectionGlobally(
 export function clearSubagentDefault(): { error: Error | null } {
   setSubagentProviderConfigOverride(undefined)
   setDefaultAssignment('subagent', undefined)
-  _sessionAssignments.subagent = undefined
+  setSessionAssignment('subagent', undefined)
   return writeUserSettings({
     subagentProvider: undefined,
   } as unknown as SettingsJson)

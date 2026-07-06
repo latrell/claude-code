@@ -6,13 +6,20 @@
  * kinds and the ChatGPT Codex option list.
  *
  * Dynamic source (async): GET {baseUrl}/models for OpenAI-compatible
- * endpoints (openai-compat / grok), merged on top by the UI when it arrives.
+ * endpoints (openai-compat / grok) and the Gemini ListModels API, merged
+ * on top by the UI when it arrives. Where the endpoint reports a context
+ * window (context_length, max_model_len, Gemini inputTokenLimit, …) it is
+ * captured so it can be recorded on the connection.
  */
 
 import { CHATGPT_CODEX_MODEL_OPTIONS } from '../../utils/model/chatgptModels.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { t } from '../../i18n/t.js'
+import {
+  formatContextWindow,
+  recordAutoDetectedContextWindows,
+} from './contextWindows.js'
 import type { Connection } from './types.js'
 
 export type CatalogModel = {
@@ -20,6 +27,13 @@ export type CatalogModel = {
   value: string | null
   label: string
   description?: string
+}
+
+/** A model advertised by the provider's model-list endpoint. */
+export type RemoteModel = {
+  id: string
+  /** Context window in tokens, when the endpoint reports one. */
+  contextLength?: number
 }
 
 const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
@@ -45,6 +59,26 @@ function dedupePush(
   if (seen.has(key)) return
   seen.add(key)
   list.push(entry)
+}
+
+/** "ctx 1M" annotation for a model with a recorded context window. */
+function ctxAnnotation(
+  connection: Connection,
+  modelId: string,
+): string | undefined {
+  const entry = connection.modelContextWindows?.[modelId]
+  if (!entry) return undefined
+  return `ctx ${formatContextWindow(entry.tokens)}`
+}
+
+function withCtx(
+  connection: Connection,
+  modelId: string,
+  description?: string,
+): string | undefined {
+  const ctx = ctxAnnotation(connection, modelId)
+  if (!ctx) return description
+  return description ? `${description} · ${ctx}` : ctx
 }
 
 /**
@@ -87,8 +121,13 @@ export function getStaticModelsForConnection(
         : undefined
       for (const model of preset?.models ?? []) {
         if (model.deprecated) continue
+        // A recorded window (auto-detected or manual) supersedes the
+        // preset's static context string.
+        const recorded = connection.modelContextWindows?.[model.id]
         const details = [
-          model.contextWindow,
+          recorded
+            ? `ctx ${formatContextWindow(recorded.tokens)}`
+            : model.contextWindow,
           model.free
             ? t('Free')
             : `¥${model.inputPricePerMTok}/${model.outputPricePerMTok} per MTok`,
@@ -110,7 +149,11 @@ export function getStaticModelsForConnection(
 
   // Connection's explicit model list
   for (const model of connection.models ?? []) {
-    dedupePush(out, seen, { value: model, label: model })
+    dedupePush(out, seen, {
+      value: model,
+      label: model,
+      description: withCtx(connection, model),
+    })
   }
 
   // Tier mapping values are also selectable directly
@@ -124,7 +167,7 @@ export function getStaticModelsForConnection(
       dedupePush(out, seen, {
         value: model,
         label: model,
-        description: `${t('Mapped tier')}: ${tier}`,
+        description: withCtx(connection, model, `${t('Mapped tier')}: ${tier}`),
       })
     }
   }
@@ -132,15 +175,113 @@ export function getStaticModelsForConnection(
   return out
 }
 
+/** Kinds whose live model list can be fetched from the provider. */
+export function supportsRemoteModelList(kind: Connection['kind']): boolean {
+  return kind === 'openai-compat' || kind === 'grok' || kind === 'gemini'
+}
+
 /**
- * Fetch the live model list from an OpenAI-compatible endpoint
- * (GET {baseUrl}/models). Returns [] on any failure — the static catalog
- * remains usable without network access.
+ * Context window field names used across OpenAI-compatible ecosystems.
+ * The official OpenAI /v1/models response has none of these, but most
+ * self-hosted / aggregator endpoints report one.
+ */
+const CONTEXT_LENGTH_KEYS = [
+  'context_length', // OpenRouter, Together, SiliconFlow
+  'max_model_len', // vLLM
+  'max_context_length', // LM Studio
+  'context_window', // various gateways
+  'max_input_tokens', // various gateways
+] as const
+
+function extractContextLength(
+  entry: Record<string, unknown>,
+): number | undefined {
+  for (const key of CONTEXT_LENGTH_KEYS) {
+    const value = entry[key]
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1_000) {
+      return Math.round(value)
+    }
+  }
+  return undefined
+}
+
+const DEFAULT_GEMINI_BASE_URL =
+  'https://generativelanguage.googleapis.com/v1beta'
+
+type FetchOptions = { timeoutMs?: number; fetchOverride?: typeof fetch }
+
+/**
+ * Gemini ListModels: GET {base}/models. Reports inputTokenLimit per model.
+ * Only generateContent-capable models are offered (filters out embedding
+ * and other non-chat models).
+ */
+async function fetchGeminiModels(
+  connection: Connection,
+  options?: FetchOptions,
+): Promise<RemoteModel[]> {
+  const baseUrl = (connection.baseUrl ?? DEFAULT_GEMINI_BASE_URL).replace(
+    /\/+$/,
+    '',
+  )
+  const url = `${baseUrl}/models?pageSize=1000`
+  const doFetch = options?.fetchOverride ?? fetch
+  try {
+    const response = await doFetch(url, {
+      method: 'GET',
+      headers: connection.apiKey ? { 'x-goog-api-key': connection.apiKey } : {},
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 5000),
+    })
+    if (!response.ok) {
+      logForDebugging(
+        `[connections] gemini model list fetch failed (${response.status}) for ${connection.id}`,
+      )
+      return []
+    }
+    const body = (await response.json()) as {
+      models?: Array<Record<string, unknown>>
+    }
+    if (!Array.isArray(body.models)) return []
+    const out: RemoteModel[] = []
+    for (const entry of body.models) {
+      const name = typeof entry.name === 'string' ? entry.name : null
+      if (!name) continue
+      const methods = Array.isArray(entry.supportedGenerationMethods)
+        ? (entry.supportedGenerationMethods as unknown[])
+        : undefined
+      if (methods && !methods.includes('generateContent')) continue
+      const id = name.replace(/^models\//, '')
+      if (!id) continue
+      const inputTokenLimit = entry.inputTokenLimit
+      out.push({
+        id,
+        contextLength:
+          typeof inputTokenLimit === 'number' && inputTokenLimit >= 1_000
+            ? Math.round(inputTokenLimit)
+            : undefined,
+      })
+    }
+    return out.sort((a, b) => a.id.localeCompare(b.id))
+  } catch (err) {
+    logForDebugging(
+      `[connections] gemini model list fetch error for ${connection.id}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return []
+  }
+}
+
+/**
+ * Fetch the live model list for a connection. OpenAI-compatible endpoints
+ * (openai-compat / grok) use GET {baseUrl}/models; gemini uses ListModels.
+ * Returns [] on any failure — the static catalog remains usable without
+ * network access.
  */
 export async function fetchRemoteModelsForConnection(
   connection: Connection,
-  options?: { timeoutMs?: number; fetchOverride?: typeof fetch },
-): Promise<string[]> {
+  options?: FetchOptions,
+): Promise<RemoteModel[]> {
+  if (connection.kind === 'gemini') {
+    return fetchGeminiModels(connection, options)
+  }
   if (connection.kind !== 'openai-compat' && connection.kind !== 'grok') {
     return []
   }
@@ -166,17 +307,37 @@ export async function fetchRemoteModelsForConnection(
       return []
     }
     const body = (await response.json()) as {
-      data?: Array<{ id?: unknown }>
+      data?: Array<Record<string, unknown>>
     }
     if (!Array.isArray(body.data)) return []
     return body.data
-      .map(entry => (typeof entry.id === 'string' ? entry.id : null))
-      .filter((id): id is string => id !== null && id.length > 0)
-      .sort()
+      .map((entry): RemoteModel | null => {
+        const id = typeof entry.id === 'string' ? entry.id : null
+        if (!id || id.length === 0) return null
+        return { id, contextLength: extractContextLength(entry) }
+      })
+      .filter((model): model is RemoteModel => model !== null)
+      .sort((a, b) => a.id.localeCompare(b.id))
   } catch (err) {
     logForDebugging(
       `[connections] model list fetch error for ${connection.id}: ${err instanceof Error ? err.message : String(err)}`,
     )
     return []
   }
+}
+
+/**
+ * Fetch the live model list and persist any auto-detected context windows
+ * onto the connection (source: auto, never overwriting manual entries).
+ * UI entry point — keeps fetchRemoteModelsForConnection itself pure.
+ */
+export async function fetchAndRecordRemoteModels(
+  connection: Connection,
+  options?: FetchOptions,
+): Promise<RemoteModel[]> {
+  const models = await fetchRemoteModelsForConnection(connection, options)
+  if (models.some(model => model.contextLength !== undefined)) {
+    recordAutoDetectedContextWindows(connection.id, models)
+  }
+  return models
 }
