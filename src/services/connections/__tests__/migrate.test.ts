@@ -213,6 +213,26 @@ describe('importLegacyConnections', () => {
     expect(grok?.models).toEqual(['grok-4'])
   })
 
+  test('imports a cursor entry with token and machine id', () => {
+    writeProviderAuth({
+      cursor: {
+        env: {
+          CURSOR_API_KEY: 'user::jwt',
+          CURSOR_MACHINE_ID: 'mach-1',
+          CURSOR_DEFAULT_SONNET_MODEL: 'claude-4.5-sonnet',
+        },
+      },
+    })
+
+    const { imported } = importLegacyConnections()
+    expect(imported).toBe(1)
+
+    const cursor = listConnections().find(c => c.kind === 'cursor')
+    expect(cursor?.apiKey).toBe('user::jwt')
+    expect(cursor?.machineId).toBe('mach-1')
+    expect(cursor?.tierModels?.sonnet).toBe('claude-4.5-sonnet')
+  })
+
   test('imports anthropic-compatible endpoint from userSettings.env', () => {
     writeUserSettings({
       env: {

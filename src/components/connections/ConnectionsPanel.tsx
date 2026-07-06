@@ -101,6 +101,8 @@ export function kindDisplayName(kind: ConnectionKind): string {
       return 'Gemini';
     case 'grok':
       return 'Grok';
+    case 'cursor':
+      return 'Cursor';
     default: {
       const _exhaustive: never = kind;
       void _exhaustive;

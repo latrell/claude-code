@@ -38,11 +38,12 @@ type Props = {
  * with new identities on each render and break Select's focus tracking
  * (see ConnectionsPanel). Custom-endpoint option ids map to their kind here.
  */
-const CUSTOM_KIND_CHOICES: Record<string, 'openai-compat' | 'anthropic-api' | 'gemini' | 'grok'> = {
+const CUSTOM_KIND_CHOICES: Record<string, 'openai-compat' | 'anthropic-api' | 'gemini' | 'grok' | 'cursor'> = {
   'custom:openai-compat': 'openai-compat',
   'custom:anthropic-api': 'anthropic-api',
   'custom:gemini': 'gemini',
   'custom:grok': 'grok',
+  'custom:cursor': 'cursor',
 };
 
 /** Pick tier defaults from a preset catalog by tag heuristics. */
@@ -137,6 +138,11 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           description: t('xAI Grok API (OpenAI compatible)'),
         },
         {
+          label: t('Cursor IDE'),
+          value: 'custom:cursor',
+          description: t('Use models via the Cursor IDE backend (reads your signed-in Cursor session)'),
+        },
+        {
           label: t('Claude account (OAuth)'),
           value: 'claude-oauth',
           description: t('Sign in with a claude.ai subscription account'),
@@ -225,74 +231,107 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
     case 'form': {
       const { kind, preset, presetMode } = step;
+      const isCursor = kind === 'cursor';
       const presetBaseUrl = preset ? resolveChinaProviderBaseURL(preset.id, presetMode ?? 'api') : undefined;
       const keyFormat =
         preset && presetMode === 'coding-plan' ? (preset.codingPlan?.keyFormat ?? preset.keyFormat) : preset?.keyFormat;
 
-      const fields: ConnectionFormField[] = [
+      const tierFields: ConnectionFormField[] = [
         {
-          key: 'label',
-          label: t('Name'),
-          required: true,
-          initialValue: preset ? preset.label : '',
-          placeholder: t('Display name, e.g. "DeepSeek personal"'),
+          key: 'haiku',
+          label: t('Haiku'),
+          placeholder: t('model for fast/background tasks (optional)'),
         },
         {
-          key: 'baseUrl',
-          label: t('Base URL'),
-          url: true,
-          required: kind === 'openai-compat' || kind === 'anthropic-api',
-          initialValue: presetBaseUrl ?? '',
-          locked: Boolean(preset),
-          placeholder:
-            kind === 'gemini'
-              ? t('optional — default Gemini endpoint')
-              : kind === 'grok'
-                ? 'https://api.x.ai/v1'
-                : 'https://api.example.com/v1',
+          key: 'sonnet',
+          label: t('Sonnet'),
+          required: kind === 'gemini',
+          placeholder: t('default model (recommended)'),
         },
         {
-          key: 'apiKey',
-          label: t('API Key'),
-          mask: true,
-          required: true,
-          placeholder: keyFormat ?? 'sk-…',
+          key: 'opus',
+          label: t('Opus'),
+          placeholder: t('model for complex tasks (optional)'),
         },
-        ...(preset
-          ? []
-          : ([
-              {
-                key: 'haiku',
-                label: t('Haiku'),
-                placeholder: t('model for fast/background tasks (optional)'),
-              },
-              {
-                key: 'sonnet',
-                label: t('Sonnet'),
-                required: kind === 'gemini',
-                placeholder: t('default model (recommended)'),
-              },
-              {
-                key: 'opus',
-                label: t('Opus'),
-                placeholder: t('model for complex tasks (optional)'),
-              },
-            ] satisfies ConnectionFormField[])),
       ];
+
+      // Cursor uses a session token + machine id (both optional — falls back to
+      // the signed-in Cursor IDE), and needs no base URL.
+      const fields: ConnectionFormField[] = isCursor
+        ? [
+            {
+              key: 'label',
+              label: t('Name'),
+              required: true,
+              initialValue: 'Cursor',
+              placeholder: t('Display name, e.g. "Cursor work"'),
+            },
+            {
+              key: 'apiKey',
+              label: t('Access token'),
+              mask: true,
+              placeholder: t('optional — leave empty to use the signed-in Cursor IDE'),
+            },
+            {
+              key: 'machineId',
+              label: t('Machine ID'),
+              placeholder: t('optional — auto-detected from the Cursor IDE'),
+            },
+            ...tierFields,
+          ]
+        : [
+            {
+              key: 'label',
+              label: t('Name'),
+              required: true,
+              initialValue: preset ? preset.label : '',
+              placeholder: t('Display name, e.g. "DeepSeek personal"'),
+            },
+            {
+              key: 'baseUrl',
+              label: t('Base URL'),
+              url: true,
+              required: kind === 'openai-compat' || kind === 'anthropic-api',
+              initialValue: presetBaseUrl ?? '',
+              locked: Boolean(preset),
+              placeholder:
+                kind === 'gemini'
+                  ? t('optional — default Gemini endpoint')
+                  : kind === 'grok'
+                    ? 'https://api.x.ai/v1'
+                    : 'https://api.example.com/v1',
+            },
+            {
+              key: 'apiKey',
+              label: t('API Key'),
+              mask: true,
+              required: true,
+              placeholder: keyFormat ?? 'sk-…',
+            },
+            ...(preset ? [] : tierFields),
+          ];
 
       return (
         <ConnectionForm
           key="step-form"
-          title={preset ? tf('Connect {provider}', { provider: preset.label }) : t('Connection details')}
+          title={
+            isCursor
+              ? t('Connect Cursor IDE')
+              : preset
+                ? tf('Connect {provider}', { provider: preset.label })
+                : t('Connection details')
+          }
           subtitle={
-            preset
-              ? tf('Get an API key: {url}', {
-                  url:
-                    presetMode === 'coding-plan'
-                      ? (preset.codingPlan?.purchasePage ?? preset.apiKeyPage)
-                      : preset.apiKeyPage,
-                })
-              : undefined
+            isCursor
+              ? t('Sign in to the Cursor IDE first, or paste a session token + machine id.')
+              : preset
+                ? tf('Get an API key: {url}', {
+                    url:
+                      presetMode === 'coding-plan'
+                        ? (preset.codingPlan?.purchasePage ?? preset.apiKeyPage)
+                        : preset.apiKeyPage,
+                  })
+                : undefined
           }
           fields={fields}
           submitError={submitError}
@@ -312,6 +351,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               kind,
               baseUrl: values['baseUrl'] || presetBaseUrl || undefined,
               apiKey: values['apiKey'] || undefined,
+              ...(values['machineId'] && { machineId: values['machineId'] }),
               ...(Object.keys(tiers).length > 0 && { tierModels: tiers }),
               ...(preset && {
                 presetId: preset.id,

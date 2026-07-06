@@ -18,15 +18,16 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 | `openai-compat` | 任意 OpenAI Chat Completions 端点（DeepSeek、智谱、Ollama…） | 注册表内联 |
 | `gemini` | Google Gemini API | 注册表内联 |
 | `grok` | xAI Grok API | 注册表内联 |
+| `cursor` | Cursor IDE 后端 API（ConnectRPC/protobuf） | 注册表内联（session token + machine id，均可留空自动读取已登录的 Cursor IDE）；见 [`docs/features/cursor-provider.md`](./cursor-provider.md) |
 
 ## 命令
 
 ### `/connect` — 连接管理面板
 
 - 列表展示所有连接，标记全局默认（主/子 agent）与本会话使用中的连接。
-- 添加连接：中国厂商预设（DeepSeek / 智谱 / 通义 / MiMo，含 API 与编程套餐两种接入方式）、OpenAI 兼容自定义端点、Anthropic 兼容网关、Gemini、Grok、Claude OAuth 账号、ChatGPT 订阅账号。
+- 添加连接：中国厂商预设（DeepSeek / 智谱 / 通义 / MiMo，含 API 与编程套餐两种接入方式）、OpenAI 兼容自定义端点、Anthropic 兼容网关、Gemini、Grok、Cursor IDE、Claude OAuth 账号、ChatGPT 订阅账号。
 - 每个连接的操作菜单：本会话使用 / 设为全局默认（主 agent 与子 agent 各自独立）、重命名、删除。
-- 首次打开自动从旧存储导入（幂等）：`ccb-provider-auth.json` 三个槽位、`settings.env` 的 Anthropic 自定义端点、当前 OAuth 账号、ChatGPT 默认凭据。
+- 首次打开自动从旧存储导入（幂等）：`ccb-provider-auth.json` 各 provider 槽位（openai / gemini / grok / cursor）、`settings.env` 的 Anthropic 自定义端点、当前 OAuth 账号、ChatGPT 默认凭据。
 
 ### `/models` — 跨 provider 模型选择器
 

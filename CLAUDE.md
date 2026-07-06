@@ -268,6 +268,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 模型映射：`packages/@ant/model-provider/src/providers/cursor/modelMapping.ts`（`resolveCursorModel`）
 - 认证：`CURSOR_API_KEY`/`CURSOR_ACCESS_TOKEN` + `CURSOR_MACHINE_ID`，或自动从已登录的 Cursor IDE `state.vscdb` 读取
 - 关键环境变量：`CLAUDE_CODE_USE_CURSOR`、`CURSOR_API_KEY`、`CURSOR_MODEL`、`CURSOR_BASE_URL`、`CURSOR_CHAT_PATH`、`CURSOR_CLIENT_VERSION`
+- `/connect` 集成：`ConnectionKind` 含 `'cursor'`，`Connection` 新增 `machineId` 字段（配合 `apiKey` session token，均可留空走 IDE 自动读取）。`AddConnectionWizard` 有独立 Cursor 表单，`activate.ts`/`modelCatalog.ts`/`migrate.ts` 均已适配；Cursor 不支持远程模型列表拉取（`supportsRemoteModelList` 返回 false），用内置 `CURSOR_MODELS` 静态目录 + 自定义输入
 - 限制：流无 token 用量（成本恒 0）；side query 暂走 Anthropic 默认路径。详见 `docs/features/cursor-provider.md`
 
 详见各兼容层的 docs 文档。

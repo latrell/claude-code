@@ -32,11 +32,18 @@ import {
 import type { Connection, TierModels } from './types.js'
 
 function signatureOf(
-  c: Pick<Connection, 'kind' | 'baseUrl' | 'apiKey' | 'credentialRef'>,
+  c: Pick<
+    Connection,
+    'kind' | 'baseUrl' | 'apiKey' | 'credentialRef' | 'machineId'
+  >,
 ): string {
-  return [c.kind, c.baseUrl ?? '', c.apiKey ?? '', c.credentialRef ?? ''].join(
-    '|',
-  )
+  return [
+    c.kind,
+    c.baseUrl ?? '',
+    c.apiKey ?? '',
+    c.credentialRef ?? '',
+    c.machineId ?? '',
+  ].join('|')
 }
 
 /** Human-friendly label for a known preset base URL, else the host name. */
@@ -69,7 +76,7 @@ function presetIdForBaseUrl(baseUrl: string | undefined): string | undefined {
 
 function tierModelsFromEnv(
   env: Record<string, string>,
-  prefix: 'OPENAI' | 'GEMINI' | 'GROK' | 'ANTHROPIC',
+  prefix: 'OPENAI' | 'GEMINI' | 'GROK' | 'ANTHROPIC' | 'CURSOR',
 ): TierModels | undefined {
   const tiers: TierModels = {}
   const haiku = env[`${prefix}_DEFAULT_HAIKU_MODEL`]
@@ -183,6 +190,19 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       apiKey: grokEnv.GROK_API_KEY ?? grokEnv.XAI_API_KEY,
       tierModels,
       models: modelsFromTiers(tierModels, grokEnv.GROK_MODEL),
+    })
+  }
+
+  const cursorEnv = providerAuth.cursor?.env
+  if (cursorEnv?.CURSOR_API_KEY || cursorEnv?.CURSOR_ACCESS_TOKEN) {
+    const tierModels = tierModelsFromEnv(cursorEnv, 'CURSOR')
+    candidates.push({
+      label: 'Cursor',
+      kind: 'cursor',
+      apiKey: cursorEnv.CURSOR_API_KEY ?? cursorEnv.CURSOR_ACCESS_TOKEN,
+      machineId: cursorEnv.CURSOR_MACHINE_ID,
+      tierModels,
+      models: modelsFromTiers(tierModels, cursorEnv.CURSOR_MODEL),
     })
   }
 

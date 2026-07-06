@@ -316,6 +316,34 @@ describe('envForConnection', () => {
     expect(env).toHaveProperty('ANTHROPIC_AUTH_TOKEN', undefined)
   })
 
+  test('cursor sets token + machine id and the connection default model', () => {
+    const env = envForConnection(
+      {
+        id: 'cur',
+        label: 'Cursor',
+        kind: 'cursor',
+        apiKey: 'user::jwt',
+        machineId: 'mach-1',
+        tierModels: { sonnet: 'claude-4.5-sonnet' },
+      },
+      null,
+    )
+    expect(env.CURSOR_API_KEY).toBe('user::jwt')
+    expect(env.CURSOR_MACHINE_ID).toBe('mach-1')
+    expect(env.CURSOR_DEFAULT_MODEL).toBe('claude-4.5-sonnet')
+    expect(env).toHaveProperty('CURSOR_MODEL', undefined)
+  })
+
+  test('cursor auto mode clears token + machine id so the IDE store is used', () => {
+    const env = envForConnection({
+      id: 'cur-auto',
+      label: 'Cursor (auto)',
+      kind: 'cursor',
+    })
+    expect(env).toHaveProperty('CURSOR_API_KEY', undefined)
+    expect(env).toHaveProperty('CURSOR_MACHINE_ID', undefined)
+  })
+
   test('chatgpt-oauth sets auth mode and clears api key', () => {
     const env = envForConnection({
       id: 'gpt',

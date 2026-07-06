@@ -38,6 +38,19 @@ describe('getStaticModelsForConnection', () => {
     )
   })
 
+  test('cursor exposes the curated default + model list', () => {
+    const conn: Connection = {
+      id: 'cur',
+      label: 'Cursor',
+      kind: 'cursor',
+    }
+    const models = getStaticModelsForConnection(conn)
+    expect(models[0]?.value).toBeNull()
+    expect(models.map(m => m.value)).toEqual(
+      expect.arrayContaining(['auto', 'claude-4.5-sonnet', 'gpt-5']),
+    )
+  })
+
   test('preset connections expose the preset catalog with pricing details', () => {
     const conn: Connection = {
       id: 'ds',

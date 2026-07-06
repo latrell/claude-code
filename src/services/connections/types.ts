@@ -11,6 +11,8 @@ import { z } from 'zod'
  * - openai-compat:   any OpenAI Chat Completions endpoint (DeepSeek, Ollama…)
  * - gemini:          Google Gemini Generate Content API
  * - grok:            xAI Grok API (OpenAI-compatible)
+ * - cursor:          Cursor IDE backend API (ConnectRPC/protobuf). Credential
+ *   is a session token + machine id, or auto-read from a signed-in Cursor IDE.
  */
 export const ConnectionKindSchema = z.enum([
   'anthropic-oauth',
@@ -19,6 +21,7 @@ export const ConnectionKindSchema = z.enum([
   'openai-compat',
   'gemini',
   'grok',
+  'cursor',
 ])
 export type ConnectionKind = z.infer<typeof ConnectionKindSchema>
 
@@ -58,8 +61,13 @@ export const ConnectionSchema = z.object({
   kind: ConnectionKindSchema,
   /** Endpoint base URL (openai-compat / anthropic-api / gemini / grok). */
   baseUrl: z.string().optional(),
-  /** API key / auth token for key-based kinds. */
+  /** API key / auth token for key-based kinds (Cursor: session token). */
   apiKey: z.string().optional(),
+  /**
+   * Cursor machine id, paired with the `apiKey` session token. Empty for
+   * Cursor connections that auto-read credentials from a signed-in Cursor IDE.
+   */
+  machineId: z.string().optional(),
   /**
    * Credential slot reference for OAuth kinds:
    * - anthropic-oauth: accountUuid of the secure-storage account slot
@@ -128,7 +136,7 @@ export function isKeyBasedKind(kind: ConnectionKind): boolean {
 /** Maps a connection kind to the settings.json modelType it activates. */
 export function kindToModelType(
   kind: ConnectionKind,
-): 'anthropic' | 'openai' | 'gemini' | 'grok' {
+): 'anthropic' | 'openai' | 'gemini' | 'grok' | 'cursor' {
   switch (kind) {
     case 'anthropic-oauth':
     case 'anthropic-api':
@@ -140,6 +148,8 @@ export function kindToModelType(
       return 'gemini'
     case 'grok':
       return 'grok'
+    case 'cursor':
+      return 'cursor'
     default: {
       const _exhaustive: never = kind
       void _exhaustive

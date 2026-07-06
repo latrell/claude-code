@@ -61,7 +61,7 @@ export type ActivationResult = {
 
 export function kindToProviderName(
   kind: Connection['kind'],
-): 'anthropic' | 'openai' | 'gemini' | 'grok' {
+): 'anthropic' | 'openai' | 'gemini' | 'grok' | 'cursor' {
   return kindToModelType(kind)
 }
 
@@ -161,6 +161,19 @@ export function envForConnection(
       env.GROK_DEFAULT_HAIKU_MODEL = tiers?.haiku
       env.GROK_DEFAULT_SONNET_MODEL = tiers?.sonnet
       env.GROK_DEFAULT_OPUS_MODEL = tiers?.opus
+      break
+    }
+    case 'cursor': {
+      // Empty token/machineId (undefined) clears any prior connection's values
+      // so auth falls back to reading the signed-in Cursor IDE state store.
+      env.CURSOR_API_KEY = connection.apiKey || undefined
+      env.CURSOR_MACHINE_ID = connection.machineId || undefined
+      env.CURSOR_BASE_URL = connection.baseUrl || undefined
+      env.CURSOR_MODEL = undefined
+      env.CURSOR_DEFAULT_MODEL = connectionDefault
+      env.CURSOR_DEFAULT_HAIKU_MODEL = tiers?.haiku
+      env.CURSOR_DEFAULT_SONNET_MODEL = tiers?.sonnet
+      env.CURSOR_DEFAULT_OPUS_MODEL = tiers?.opus
       break
     }
     case 'anthropic-api': {
@@ -417,7 +430,8 @@ export async function activateConnectionGlobally(
       if (
         connection.kind === 'openai-compat' ||
         connection.kind === 'gemini' ||
-        connection.kind === 'grok'
+        connection.kind === 'grok' ||
+        connection.kind === 'cursor'
       ) {
         const env = envForConnection(connection, model)
         writeCCBProviderAuthEnv(modelType as CCBProvider, env)

@@ -42,6 +42,23 @@ const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
   { value: 'haiku', label: 'Haiku' },
 ]
 
+/**
+ * Curated list of commonly available Cursor model ids. Cursor's catalog is not
+ * reliably enumerable over a stable JSON endpoint, so this is a static hint —
+ * the picker's "Custom model…" entry accepts any id the account can use.
+ */
+const CURSOR_MODELS: CatalogModel[] = [
+  { value: 'auto', label: 'auto', description: 'Cursor auto-selects a model' },
+  { value: 'claude-4.5-sonnet', label: 'claude-4.5-sonnet' },
+  { value: 'claude-4-opus', label: 'claude-4-opus' },
+  { value: 'claude-4-sonnet', label: 'claude-4-sonnet' },
+  { value: 'claude-3.7-sonnet', label: 'claude-3.7-sonnet' },
+  { value: 'gpt-5', label: 'gpt-5' },
+  { value: 'gpt-4.1', label: 'gpt-4.1' },
+  { value: 'o3', label: 'o3' },
+  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
+]
+
 function defaultEntry(): CatalogModel {
   return {
     value: null,
@@ -108,6 +125,20 @@ export function getStaticModelsForConnection(
           value: option.value,
           label: option.label,
           description: t(option.description),
+        })
+      }
+      break
+    }
+    case 'cursor': {
+      for (const model of CURSOR_MODELS) {
+        dedupePush(out, seen, {
+          value: model.value,
+          label: model.label,
+          description: withCtx(
+            connection,
+            model.value ?? '',
+            model.description,
+          ),
         })
       }
       break

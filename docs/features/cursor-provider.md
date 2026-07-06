@@ -24,15 +24,32 @@ Cursor 后端 `api2.cursor.sh` 使用 **ConnectRPC**（HTTP/2 + 二进制 protob
 任选其一：
 
 ```bash
-# 1) 会话内切换（持久化到 settings.json 的 modelType）
+# 1) 通过 /connect 添加并管理（推荐）——见下节
+/connect
+
+# 2) 会话内切换（持久化到 settings.json 的 modelType）
 /provider cursor
 
-# 2) 环境变量（进程级）
+# 3) 环境变量（进程级）
 CLAUDE_CODE_USE_CURSOR=1 bun run dev
 
-# 3) 本次进程覆盖（不持久化）
+# 4) 本次进程覆盖（不持久化）
 bun run dev --provider cursor
 ```
+
+### 通过 /connect 管理
+
+Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像其它 provider 一样在 `/connect` 面板里增删改、设默认、按会话/全局切换主/子 agent：
+
+1. `/connect` → **+ Add connection…** → **Cursor IDE**
+2. 表单：
+   - **Name**：连接显示名（默认 `Cursor`）
+   - **Access token**（可选）：留空则激活时自动读取已登录的 Cursor IDE 会话
+   - **Machine ID**（可选）：留空则自动探测 / 从 token 派生
+   - **Haiku / Sonnet / Opus**（可选）：把家族别名映射到具体 Cursor 模型
+3. 创建后在连接菜单里选择「本会话使用 / 设为全局默认」（主 agent 与子 agent 各自独立），并可用内置模型列表（`auto` / `claude-4.5-sonnet` / `gpt-5` …）或「Custom model…」自定义模型 id。
+
+会话级激活只改进程内状态；设为全局默认会把凭据写入 `ccb-provider-auth.json` 的 `cursor` 槽位、把 `settings.modelType` 设为 `cursor`，启动时自动注入。`/connect` 首次打开时也会把已有的 `ccb-provider-auth.json` `cursor` 槽位幂等导入为连接。
 
 ## 认证
 
