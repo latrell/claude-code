@@ -194,6 +194,10 @@ export function getDefaultModel(): ModelName {
   if (provider === 'gemini' && process.env.GEMINI_DEFAULT_MODEL) {
     return process.env.GEMINI_DEFAULT_MODEL
   }
+  // For Grok provider, check GROK_DEFAULT_MODEL
+  if (provider === 'grok' && process.env.GROK_DEFAULT_MODEL) {
+    return process.env.GROK_DEFAULT_MODEL
+  }
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_MODEL

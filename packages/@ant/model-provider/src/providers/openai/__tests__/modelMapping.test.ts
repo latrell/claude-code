@@ -59,6 +59,20 @@ describe('resolveOpenAIModel', () => {
     expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('gpt-4o')
   })
 
+  test('fable resolves via OPENAI_DEFAULT_SONNET_MODEL (default tier)', () => {
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+    expect(resolveOpenAIModel('claude-fable-5')).toBe('deepseek-v4-pro')
+  })
+
+  test('fable falls back to DEFAULT_MODEL_MAP when no env set', () => {
+    expect(resolveOpenAIModel('claude-fable-5')).toBe('gpt-4o')
+  })
+
+  test('fable strips [1m] suffix before resolving', () => {
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+    expect(resolveOpenAIModel('claude-fable-5[1m]')).toBe('deepseek-v4-pro')
+  })
+
   test('maps haiku model', () => {
     expect(resolveOpenAIModel('claude-haiku-4-5-20251001')).toBe('gpt-4o-mini')
   })

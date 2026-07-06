@@ -56,6 +56,11 @@ describe('resolveGeminiModel', () => {
     expect(resolveGeminiModel('claude-sonnet-4-6')).toBe('gemini-2.5-flash')
   })
 
+  test('resolves fable model from GEMINI_DEFAULT_SONNET_MODEL (default tier)', () => {
+    process.env.GEMINI_DEFAULT_SONNET_MODEL = 'gemini-2.5-pro'
+    expect(resolveGeminiModel('claude-fable-5')).toBe('gemini-2.5-pro')
+  })
+
   test('resolves haiku model from GEMINI_DEFAULT_HAIKU_MODEL', () => {
     process.env.GEMINI_DEFAULT_HAIKU_MODEL = 'gemini-2.5-flash-lite'
     expect(resolveGeminiModel('claude-haiku-4-5-20251001')).toBe(

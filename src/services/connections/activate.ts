@@ -117,6 +117,13 @@ export function envForConnection(
 ): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {}
   const tiers = connection.tierModels
+  // Model used when the picker selects "Default" (model = null). Without
+  // this, getDefaultModel() finds no provider default and falls back to the
+  // built-in Anthropic model id (Fable 5), which third-party endpoints
+  // reject. Tier mapping wins, then the picked model, then the first
+  // catalog entry (presets list the recommended model first).
+  const connectionDefault =
+    tiers?.sonnet ?? model ?? connection.models?.[0] ?? undefined
 
   switch (connection.kind) {
     case 'openai-compat': {
@@ -126,6 +133,7 @@ export function envForConnection(
       // The explicitly picked model travels through the main loop model, so
       // the global OPENAI_MODEL override must not linger and shadow it.
       env.OPENAI_MODEL = undefined
+      env.OPENAI_DEFAULT_MODEL = connectionDefault
       env.OPENAI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? model ?? undefined
       env.OPENAI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? model ?? undefined
       env.OPENAI_DEFAULT_OPUS_MODEL = tiers?.opus ?? model ?? undefined
@@ -136,6 +144,9 @@ export function envForConnection(
       env.OPENAI_BASE_URL = undefined
       env.OPENAI_API_KEY = undefined
       env.OPENAI_MODEL = undefined
+      // ChatGPT mode resolves its default via CHATGPT_CODEX_DEFAULT_MODEL;
+      // clear any default left behind by an openai-compat activation.
+      env.OPENAI_DEFAULT_MODEL = undefined
       env.OPENAI_DEFAULT_HAIKU_MODEL = tiers?.haiku
       env.OPENAI_DEFAULT_SONNET_MODEL = tiers?.sonnet
       env.OPENAI_DEFAULT_OPUS_MODEL = tiers?.opus
@@ -145,6 +156,7 @@ export function envForConnection(
       env.GEMINI_BASE_URL = connection.baseUrl
       env.GEMINI_API_KEY = connection.apiKey
       env.GEMINI_MODEL = undefined
+      env.GEMINI_DEFAULT_MODEL = connectionDefault
       env.GEMINI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? model ?? undefined
       env.GEMINI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? model ?? undefined
       env.GEMINI_DEFAULT_OPUS_MODEL = tiers?.opus ?? model ?? undefined
@@ -154,6 +166,7 @@ export function envForConnection(
       env.GROK_BASE_URL = connection.baseUrl
       env.GROK_API_KEY = connection.apiKey
       env.GROK_MODEL = undefined
+      env.GROK_DEFAULT_MODEL = connectionDefault
       env.GROK_DEFAULT_HAIKU_MODEL = tiers?.haiku
       env.GROK_DEFAULT_SONNET_MODEL = tiers?.sonnet
       env.GROK_DEFAULT_OPUS_MODEL = tiers?.opus

@@ -2,6 +2,10 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
   if (/haiku/i.test(model)) return 'haiku'
   if (/opus/i.test(model)) return 'opus'
   if (/sonnet/i.test(model)) return 'sonnet'
+  // Fable is the flagship default tier that replaced Sonnet — map it to the
+  // sonnet slot so *_DEFAULT_SONNET_MODEL overrides apply instead of sending
+  // the Anthropic model id verbatim to a third-party endpoint.
+  if (/fable/i.test(model)) return 'sonnet'
   return null
 }
 

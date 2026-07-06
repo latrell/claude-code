@@ -41,6 +41,15 @@ describe('resolveGrokModel', () => {
     expect(resolveGrokModel('claude-sonnet-4-6')).toBe('grok-3-mini-fast')
   })
 
+  test('fable resolves via GROK_DEFAULT_SONNET_MODEL (default tier)', () => {
+    process.env.GROK_DEFAULT_SONNET_MODEL = 'grok-5'
+    expect(resolveGrokModel('claude-fable-5')).toBe('grok-5')
+  })
+
+  test('fable falls back to the sonnet family default', () => {
+    expect(resolveGrokModel('claude-fable-5')).toBe('grok-3-mini-fast')
+  })
+
   test('maps haiku models to grok-3-mini-fast', () => {
     expect(resolveGrokModel('claude-haiku-4-5-20251001')).toBe(
       'grok-3-mini-fast',

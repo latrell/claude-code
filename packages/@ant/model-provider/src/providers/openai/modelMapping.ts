@@ -6,6 +6,7 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-20250514': 'gpt-4o',
   'claude-sonnet-4-5-20250929': 'gpt-4o',
   'claude-sonnet-4-6': 'gpt-4o',
+  'claude-fable-5': 'gpt-4o',
   'claude-opus-4-20250514': 'o3',
   'claude-opus-4-1-20250805': 'o3',
   'claude-opus-4-5-20251101': 'o3',
@@ -20,6 +21,10 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
   if (/haiku/i.test(model)) return 'haiku'
   if (/opus/i.test(model)) return 'opus'
   if (/sonnet/i.test(model)) return 'sonnet'
+  // Fable is the flagship default tier that replaced Sonnet — map it to the
+  // sonnet slot so *_DEFAULT_SONNET_MODEL overrides apply instead of sending
+  // the Anthropic model id verbatim to a third-party endpoint.
+  if (/fable/i.test(model)) return 'sonnet'
   return null
 }
 

@@ -132,18 +132,21 @@ const ENV_KEYS = [
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
+  'OPENAI_DEFAULT_MODEL',
   'OPENAI_DEFAULT_HAIKU_MODEL',
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
   'GEMINI_BASE_URL',
   'GEMINI_API_KEY',
   'GEMINI_MODEL',
+  'GEMINI_DEFAULT_MODEL',
   'GEMINI_DEFAULT_HAIKU_MODEL',
   'GEMINI_DEFAULT_SONNET_MODEL',
   'GEMINI_DEFAULT_OPUS_MODEL',
   'GROK_BASE_URL',
   'GROK_API_KEY',
   'GROK_MODEL',
+  'GROK_DEFAULT_MODEL',
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
@@ -250,6 +253,58 @@ describe('envForConnection', () => {
     expect(env.OPENAI_DEFAULT_OPUS_MODEL).toBe('deepseek-reasoner')
   })
 
+  test('"Default" (null model) resolves the connection default from the sonnet tier', () => {
+    const env = envForConnection(openaiConn(), null)
+    // Without this, getDefaultModel() falls back to the built-in Anthropic
+    // model id (Fable 5) which third-party endpoints reject.
+    expect(env.OPENAI_DEFAULT_MODEL).toBe('deepseek-chat')
+  })
+
+  test('"Default" (null model) falls back to the first catalog model when no tiers', () => {
+    const env = envForConnection(
+      openaiConn({
+        tierModels: undefined,
+        models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+      }),
+      null,
+    )
+    expect(env.OPENAI_DEFAULT_MODEL).toBe('deepseek-v4-pro')
+  })
+
+  test('"Default" (null model) with no tiers and no catalog clears the default', () => {
+    const env = envForConnection(
+      openaiConn({ tierModels: undefined, models: undefined }),
+      null,
+    )
+    expect(env).toHaveProperty('OPENAI_DEFAULT_MODEL', undefined)
+  })
+
+  test('gemini and grok also expose the connection default model', () => {
+    const gemini = envForConnection(
+      {
+        id: 'gem',
+        label: 'Gemini',
+        kind: 'gemini',
+        apiKey: 'k',
+        tierModels: { sonnet: 'gemini-2.5-pro' },
+      },
+      null,
+    )
+    expect(gemini.GEMINI_DEFAULT_MODEL).toBe('gemini-2.5-pro')
+
+    const grok = envForConnection(
+      {
+        id: 'grok',
+        label: 'Grok',
+        kind: 'grok',
+        apiKey: 'k',
+        models: ['grok-5', 'grok-5-mini'],
+      },
+      null,
+    )
+    expect(grok.GROK_DEFAULT_MODEL).toBe('grok-5')
+  })
+
   test('anthropic-oauth clears custom endpoint overrides', () => {
     const env = envForConnection({
       id: 'acc',
@@ -271,6 +326,8 @@ describe('envForConnection', () => {
     expect(env.OPENAI_AUTH_MODE).toBe('chatgpt')
     expect(env).toHaveProperty('OPENAI_API_KEY', undefined)
     expect(env).toHaveProperty('OPENAI_BASE_URL', undefined)
+    // A previous openai-compat activation's default must not leak in
+    expect(env).toHaveProperty('OPENAI_DEFAULT_MODEL', undefined)
   })
 })
 
@@ -317,6 +374,7 @@ describe('activateConnectionForSession (main slot)', () => {
     )
     // connA's tier mapping must not leak into connB
     expect(process.env.OPENAI_DEFAULT_HAIKU_MODEL).toBe('glm-4.7')
+    expect(process.env.OPENAI_DEFAULT_MODEL).toBe('glm-4.7')
   })
 
   test('anthropic-oauth: activates the stored account slot', async () => {
