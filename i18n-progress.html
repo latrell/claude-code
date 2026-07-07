@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>i18n 处理进度 - src/utils/</title>
+  <style>
+    body { font: 14px/1.5 -apple-system, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #fafafa; }
+    h1 { color: #1a1a1a; }
+    .stats { display: flex; gap: 1rem; margin: 1rem 0; }
+    .stat { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 0.8rem 1.2rem; flex: 1; text-align: center; }
+    .stat .num { font-size: 1.8em; font-weight: bold; color: #D77757; }
+    .stat .label { font-size: 0.85em; color: #666; margin-top: 0.3rem; }
+    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #ddd; }
+    th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 13px; }
+    th { background: #f0f0f0; position: sticky; top: 0; }
+    .done { color: #0a0; }
+    .pending { color: #a00; }
+    .skip { color: #888; }
+    pre { font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>i18n 处理进度 — src/utils/</h1>
+  <p>为用户可见的英文文本添加 <code>t()</code> / <code>tf()</code> 包装</p>
+  <div class="stats">
+    <div class="stat"><div class="num" id="done-count">0</div><div class="label">已完成</div></div>
+    <div class="stat"><div class="num" id="skip-count">0</div><div class="label">无需处理</div></div>
+    <div class="stat"><div class="num" id="pending-count">0</div><div class="label">待处理</div></div>
+    <div class="stat"><div class="num" id="total-count">0</div><div class="label">总计</div></div>
+  </div>
+  <div id="keys-section">
+    <h2>新增翻译 Key</h2>
+    <pre id="keys-list" style="max-height: 400px; overflow-y: auto; background: #fff; border: 1px solid #ddd; padding: 8px;"></pre>
+  </div>
+  <table id="progress-table">
+    <thead><tr><th>文件</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody id="table-body"></tbody>
+  </table>
+  <script>
+    const files = [];
+    let keys = new Set();
+
+    function addFile(path, status, note) {
+      files.push({ path, status, note });
+      render();
+    }
+
+    function addKeys(newKeys) {
+      for (const k of newKeys) keys.add(k);
+      document.getElementById('keys-list').textContent = [...keys].sort().join('\n');
+    }
+
+    function render() {
+      const done = files.filter(f => f.status === 'done').length;
+      const skip = files.filter(f => f.status === 'skip').length;
+      const pending = files.filter(f => f.status === 'pending').length;
+      document.getElementById('done-count').textContent = done;
+      document.getElementById('skip-count').textContent = skip;
+      document.getElementById('pending-count').textContent = pending;
+      document.getElementById('total-count').textContent = files.length;
+
+      const tbody = document.getElementById('table-body');
+      tbody.innerHTML = files.map(f => {
+        const cls = f.status === 'done' ? 'done' : f.status === 'skip' ? 'skip' : 'pending';
+        const label = f.status === 'done' ? '✓ 已完成' : f.status === 'skip' ? '— 跳过' : '⏳ 待处理';
+        return `<tr><td>${f.path}</td><td class="${cls}">${label}</td><td>${f.note || ''}</td></tr>`;
+      }).join('');
+    }
+  </script>
+</body>
+</html>

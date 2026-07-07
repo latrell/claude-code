@@ -12,6 +12,8 @@ import { truncatePathMiddle, truncateToWidth } from '../utils/format.js';
 import { highlightMatch } from '../utils/highlightMatch.js';
 import { readFileInRange } from '../utils/readFileInRange.js';
 import { FuzzyPicker, LoadingState } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   onDone: () => void;
@@ -96,7 +98,7 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        setPreview({ path: focusedPath, content: '(preview unavailable)' });
+        setPreview({ path: focusedPath, content: t('(preview unavailable)') });
       });
     return () => controller.abort();
   }, [focusedPath, effectivePreviewLines]);
@@ -124,8 +126,8 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
 
   return (
     <FuzzyPicker
-      title="Quick Open"
-      placeholder="Type to search files…"
+      title={t('Quick Open')}
+      placeholder={t('Type to search files…')}
       items={results}
       getKey={p => p}
       visibleCount={visibleResults}
@@ -140,8 +142,8 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
         handler: p => handleInsert(p, false),
       }}
       onCancel={onDone}
-      emptyMessage={q => (q ? 'No matching files' : 'Start typing to search…')}
-      selectAction="open in editor"
+      emptyMessage={q => (q ? t('No matching files') : t('Start typing to search…'))}
+      selectAction={t('open in editor')}
       renderItem={(p, isFocused) => (
         <Text color={isFocused ? 'suggestion' : undefined}>{truncatePathMiddle(p, maxPathWidth)}</Text>
       )}
@@ -150,14 +152,14 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
           <>
             <Text dimColor>
               {truncatePathMiddle(p, previewWidth)}
-              {preview.path !== p ? ' · loading…' : ''}
+              {preview.path !== p ? t(' · loading…') : ''}
             </Text>
             {preview.content.split('\n').map((line, i) => (
               <Text key={i}>{highlightMatch(truncateToWidth(line, previewWidth), query)}</Text>
             ))}
           </>
         ) : (
-          <LoadingState message="Loading preview…" dimColor />
+          <LoadingState message={t('Loading preview…')} dimColor />
         )
       }
     />

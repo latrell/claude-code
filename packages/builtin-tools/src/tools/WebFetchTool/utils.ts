@@ -1,5 +1,6 @@
 import axios, { type AxiosResponse } from 'axios'
 import { LRUCache } from 'lru-cache'
+import { t, tf } from 'src/i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -256,7 +257,11 @@ export async function getWithPermittedRedirects(
   depth = 0,
 ): Promise<AxiosResponse<ArrayBuffer> | RedirectInfo> {
   if (depth > MAX_REDIRECTS) {
-    throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`)
+    throw new Error(
+      tf('Too many redirects (exceeded {maxRedirects})', {
+        maxRedirects: MAX_REDIRECTS,
+      }),
+    )
   }
   try {
     return await axios.get(url, {
@@ -278,7 +283,7 @@ export async function getWithPermittedRedirects(
         'location',
       )
       if (!redirectLocation) {
-        throw new Error('Redirect missing Location header')
+        throw new Error(t('Redirect missing Location header'))
       }
 
       // Resolve relative URLs against the original URL
@@ -340,7 +345,7 @@ export async function getURLMarkdownContent(
   abortController: AbortController,
 ): Promise<FetchedContent | RedirectInfo> {
   if (!validateURL(url)) {
-    throw new Error('Invalid URL')
+    throw new Error(t('Invalid URL'))
   }
 
   // Check cache (LRUCache handles TTL automatically)
@@ -458,7 +463,7 @@ export async function fetchContentWithTavily(
   abortController: AbortController,
 ): Promise<FetchedContent | RedirectInfo> {
   if (!validateURL(url)) {
-    throw new Error('Invalid URL')
+    throw new Error(t('Invalid URL'))
   }
 
   // Check cache (LRUCache handles TTL automatically)
@@ -479,7 +484,7 @@ export async function fetchContentWithTavily(
   try {
     parsedUrl = new URL(url)
   } catch {
-    throw new Error('Invalid URL')
+    throw new Error(t('Invalid URL'))
   }
 
   // Upgrade http to https if needed

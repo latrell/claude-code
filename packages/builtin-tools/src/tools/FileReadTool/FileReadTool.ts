@@ -16,6 +16,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   getFileExtensionForAnalytics,
 } from 'src/services/analytics/metadata.js'
+import { t, tf } from 'src/i18n/t.js'
 import {
   countTokensWithAPI,
   roughTokenCountEstimationForFileType,
@@ -1098,7 +1099,7 @@ export async function readImageWithTokenBudget(
   const originalSize = imageBuffer.length
 
   if (originalSize === 0) {
-    throw new Error(`Image file is empty: ${filePath}`)
+    throw new Error(tf('Image file is empty: {filePath}', { filePath }))
   }
 
   const detectedMediaType = detectImageFormatFromBuffer(imageBuffer)

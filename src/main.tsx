@@ -622,7 +622,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
       // It's a JSON string - validate and create temp file
       const parsedJson = safeParseJSON(trimmedSettings);
       if (!parsedJson) {
-        process.stderr.write(chalk.red('Error: Invalid JSON provided to --settings\n'));
+        process.stderr.write(chalk.red(t('Error: Invalid JSON provided to --settings\n')));
         process.exit(1);
       }
 
@@ -646,7 +646,9 @@ function loadSettingsFromFlag(settingsFile: string): void {
         readFileSync(resolvedSettingsPath, 'utf8');
       } catch (e) {
         if (isENOENT(e)) {
-          process.stderr.write(chalk.red(`Error: Settings file not found: ${resolvedSettingsPath}\n`));
+          process.stderr.write(
+            chalk.red(tf('Error: Settings file not found: {path}\n', { path: resolvedSettingsPath })),
+          );
           process.exit(1);
         }
         throw e;
@@ -660,7 +662,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
     if (error instanceof Error) {
       logError(error);
     }
-    process.stderr.write(chalk.red(`Error processing settings: ${errorMessage(error)}\n`));
+    process.stderr.write(chalk.red(tf('Error processing settings: {error}\n', { error: errorMessage(error) })));
     process.exit(1);
   }
 }
@@ -674,7 +676,9 @@ function loadSettingSourcesFromFlag(settingSourcesArg: string): void {
     if (error instanceof Error) {
       logError(error);
     }
-    process.stderr.write(chalk.red(`Error processing --setting-sources: ${errorMessage(error)}\n`));
+    process.stderr.write(
+      chalk.red(tf('Error processing --setting-sources: {error}\n', { error: errorMessage(error) })),
+    );
     process.exit(1);
   }
 }
@@ -1183,13 +1187,13 @@ async function run(): Promise<CommanderCommand> {
   program
     .name('claude')
     .description(t(`Claude Code - starts an interactive session by default, use -p/--print for non-interactive output`))
-    .argument('[prompt]', 'Your prompt', String)
+    .argument('[prompt]', t('Your prompt'), String)
     // Subcommands inherit helpOption via commander's copyInheritedSettings —
     // setting it once here covers mcp, plugin, auth, and all other subcommands.
-    .helpOption('-h, --help', 'Display help for command')
+    .helpOption('-h, --help', t('Display help for command'))
     .option(
       '-d, --debug [filter]',
-      'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")',
+      t('Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")'),
       (_value: string | true) => {
         // If value is provided, it will be the filter string
         // If not provided but flag is present, value will be true
@@ -1197,79 +1201,90 @@ async function run(): Promise<CommanderCommand> {
         return true;
       },
     )
-    .addOption(new Option('--debug-to-stderr', 'Enable debug mode (to stderr)').argParser(Boolean).hideHelp())
+    .addOption(new Option('--debug-to-stderr', t('Enable debug mode (to stderr)')).argParser(Boolean).hideHelp())
     .option(
       '--debug-file <path>',
-      'Write debug logs to a specific file path (implicitly enables debug mode)',
+      t('Write debug logs to a specific file path (implicitly enables debug mode)'),
       () => true,
     )
-    .option('--verbose', 'Override verbose mode setting from config', () => true)
+    .option('--verbose', t('Override verbose mode setting from config'), () => true)
     .option(
       '-p, --print',
-      'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when Claude is run with the -p mode. Only use this flag in directories you trust.',
+      t(
+        'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when Claude is run with the -p mode. Only use this flag in directories you trust.',
+      ),
       () => true,
     )
     .option(
       '--bare',
-      'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read). 3P providers (Bedrock/Vertex/Foundry) use their own credentials. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (CLAUDE.md dirs), --mcp-config, --settings, --agents, --plugin-dir.',
+      t(
+        'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read). 3P providers (Bedrock/Vertex/Foundry) use their own credentials. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (CLAUDE.md dirs), --mcp-config, --settings, --agents, --plugin-dir.',
+      ),
       () => true,
     )
-    .addOption(new Option('--init', 'Run Setup hooks with init trigger, then continue').hideHelp())
-    .addOption(new Option('--init-only', 'Run Setup and SessionStart:startup hooks, then exit').hideHelp())
-    .addOption(new Option('--maintenance', 'Run Setup hooks with maintenance trigger, then continue').hideHelp())
+    .addOption(new Option('--init', t('Run Setup hooks with init trigger, then continue')).hideHelp())
+    .addOption(new Option('--init-only', t('Run Setup and SessionStart:startup hooks, then exit')).hideHelp())
+    .addOption(new Option('--maintenance', t('Run Setup hooks with maintenance trigger, then continue')).hideHelp())
     .addOption(
       new Option(
         '--output-format <format>',
-        'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)',
+        t(
+          'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)',
+        ),
       ).choices(['text', 'json', 'stream-json']),
     )
     .addOption(
       new Option(
         '--json-schema <schema>',
-        'JSON Schema for structured output validation. ' +
-          'Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}',
+        t(
+          'JSON Schema for structured output validation. Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}',
+        ),
       ).argParser(String),
     )
     .option(
       '--include-hook-events',
-      'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)',
+      t('Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)'),
       () => true,
     )
     .option(
       '--include-partial-messages',
-      'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)',
+      t('Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)'),
       () => true,
     )
     .addOption(
       new Option(
         '--input-format <format>',
-        'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)',
+        t('Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)'),
       ).choices(['text', 'stream-json']),
     )
     .option(
       '--mcp-debug',
-      '[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)',
+      t('[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)'),
       () => true,
     )
     .option(
       '--dangerously-skip-permissions',
-      'Bypass all permission checks. Recommended only for sandboxes with no internet access.',
+      t('Bypass all permission checks. Recommended only for sandboxes with no internet access.'),
       () => true,
     )
     .option(
       '--allow-dangerously-skip-permissions',
-      'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.',
+      t(
+        'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.',
+      ),
       () => true,
     )
     .addOption(
-      new Option('--thinking <mode>', 'Thinking mode: enabled (equivalent to adaptive), disabled')
+      new Option('--thinking <mode>', t('Thinking mode: enabled (equivalent to adaptive), disabled'))
         .choices(['enabled', 'adaptive', 'disabled'])
         .hideHelp(),
     )
     .addOption(
       new Option(
         '--max-thinking-tokens <tokens>',
-        '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)',
+        t(
+          '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)',
+        ),
       )
         .argParser(Number)
         .hideHelp(),
@@ -1277,7 +1292,9 @@ async function run(): Promise<CommanderCommand> {
     .addOption(
       new Option(
         '--max-turns <turns>',
-        'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)',
+        t(
+          'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)',
+        ),
       )
         .argParser(Number)
         .hideHelp(),
@@ -1285,21 +1302,21 @@ async function run(): Promise<CommanderCommand> {
     .addOption(
       new Option(
         '--max-budget-usd <amount>',
-        'Maximum dollar amount to spend on API calls (only works with --print)',
+        t('Maximum dollar amount to spend on API calls (only works with --print)'),
       ).argParser(value => {
         const amount = Number(value);
         if (isNaN(amount) || amount <= 0) {
-          throw new Error('--max-budget-usd must be a positive number greater than 0');
+          throw new Error(t('--max-budget-usd must be a positive number greater than 0'));
         }
         return amount;
       }),
     )
     .addOption(
-      new Option('--task-budget <tokens>', 'API-side task budget in tokens (output_config.task_budget)')
+      new Option('--task-budget <tokens>', t('API-side task budget in tokens (output_config.task_budget)'))
         .argParser(value => {
           const tokens = Number(value);
           if (isNaN(tokens) || tokens <= 0 || !Number.isInteger(tokens)) {
-            throw new Error('--task-budget must be a positive integer');
+            throw new Error(t('--task-budget must be a positive integer'));
           }
           return tokens;
         })
@@ -1307,69 +1324,85 @@ async function run(): Promise<CommanderCommand> {
     )
     .option(
       '--replay-user-messages',
-      'Re-emit user messages from stdin back on stdout for acknowledgment (only works with --input-format=stream-json and --output-format=stream-json)',
+      t(
+        'Re-emit user messages from stdin back on stdout for acknowledgment (only works with --input-format=stream-json and --output-format=stream-json)',
+      ),
       () => true,
     )
-    .addOption(new Option('--enable-auth-status', 'Enable auth status messages in SDK mode').default(false).hideHelp())
+    .addOption(
+      new Option('--enable-auth-status', t('Enable auth status messages in SDK mode')).default(false).hideHelp(),
+    )
     .option(
       '--allowedTools, --allowed-tools <tools...>',
-      'Comma or space-separated list of tool names to allow (e.g. "Bash(git:*) Edit")',
+      t('Comma or space-separated list of tool names to allow (e.g. "Bash(git:*) Edit")'),
     )
     .option(
       '--tools <tools...>',
-      'Specify the list of available tools from the built-in set. Use "" to disable all tools, "default" to use all tools, or specify tool names (e.g. "Bash,Edit,Read").',
+      t(
+        'Specify the list of available tools from the built-in set. Use "" to disable all tools, "default" to use all tools, or specify tool names (e.g. "Bash,Edit,Read").',
+      ),
     )
     .option(
       '--disallowedTools, --disallowed-tools <tools...>',
-      'Comma or space-separated list of tool names to deny (e.g. "Bash(git:*) Edit")',
+      t('Comma or space-separated list of tool names to deny (e.g. "Bash(git:*) Edit")'),
     )
-    .option('--mcp-config <configs...>', 'Load MCP servers from JSON files or strings (space-separated)')
+    .option('--mcp-config <configs...>', t('Load MCP servers from JSON files or strings (space-separated)'))
     .addOption(
-      new Option('--permission-prompt-tool <tool>', 'MCP tool to use for permission prompts (only works with --print)')
+      new Option(
+        '--permission-prompt-tool <tool>',
+        t('MCP tool to use for permission prompts (only works with --print)'),
+      )
         .argParser(String)
         .hideHelp(),
     )
-    .addOption(new Option('--system-prompt <prompt>', 'System prompt to use for the session').argParser(String))
-    .addOption(new Option('--system-prompt-file <file>', 'Read system prompt from a file').argParser(String).hideHelp())
+    .addOption(new Option('--system-prompt <prompt>', t('System prompt to use for the session')).argParser(String))
     .addOption(
-      new Option('--append-system-prompt <prompt>', 'Append a system prompt to the default system prompt').argParser(
+      new Option('--system-prompt-file <file>', t('Read system prompt from a file')).argParser(String).hideHelp(),
+    )
+    .addOption(
+      new Option('--append-system-prompt <prompt>', t('Append a system prompt to the default system prompt')).argParser(
         String,
       ),
     )
     .addOption(
       new Option(
         '--append-system-prompt-file <file>',
-        'Read system prompt from a file and append to the default system prompt',
+        t('Read system prompt from a file and append to the default system prompt'),
       )
         .argParser(String)
         .hideHelp(),
     )
     .addOption(
-      new Option('--permission-mode <mode>', 'Permission mode to use for the session')
+      new Option('--permission-mode <mode>', t('Permission mode to use for the session'))
         .argParser(String)
         .choices(PERMISSION_MODES),
     )
-    .option('-c, --continue', 'Continue the most recent conversation in the current directory', () => true)
+    .option('-c, --continue', t('Continue the most recent conversation in the current directory'), () => true)
     .option(
       '-r, --resume [value]',
-      'Resume a conversation by session ID, or open interactive picker with optional search term',
+      t('Resume a conversation by session ID, or open interactive picker with optional search term'),
       value => value || true,
     )
     .option(
       '--fork-session',
-      'When resuming, create a new session ID instead of reusing the original (use with --resume or --continue)',
+      t('When resuming, create a new session ID instead of reusing the original (use with --resume or --continue)'),
       () => true,
     )
-    .addOption(new Option('--prefill <text>', 'Pre-fill the prompt input with text without submitting it').hideHelp())
-    .addOption(new Option('--deep-link-origin', 'Signal that this session was launched from a deep link').hideHelp())
+    .addOption(
+      new Option('--prefill <text>', t('Pre-fill the prompt input with text without submitting it')).hideHelp(),
+    )
+    .addOption(new Option('--deep-link-origin', t('Signal that this session was launched from a deep link')).hideHelp())
     .addOption(
       new Option(
         '--deep-link-repo <slug>',
-        'Repo slug the deep link ?repo= parameter resolved to the current cwd',
+        t('Repo slug the deep link ?repo= parameter resolved to the current cwd'),
       ).hideHelp(),
     )
     .addOption(
-      new Option('--deep-link-last-fetch <ms>', 'FETCH_HEAD mtime in epoch ms, precomputed by the deep link trampoline')
+      new Option(
+        '--deep-link-last-fetch <ms>',
+        t('FETCH_HEAD mtime in epoch ms, precomputed by the deep link trampoline'),
+      )
         .argParser(v => {
           const n = Number(v);
           return Number.isFinite(n) ? n : undefined;
@@ -1378,17 +1411,21 @@ async function run(): Promise<CommanderCommand> {
     )
     .option(
       '--from-pr [value]',
-      'Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term',
+      t('Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term'),
       value => value || true,
     )
     .option(
       '--no-session-persistence',
-      'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)',
+      t(
+        'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)',
+      ),
     )
     .addOption(
       new Option(
         '--resume-session-at <message id>',
-        'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)',
+        t(
+          'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)',
+        ),
       )
         .argParser(String)
         .hideHelp(),
@@ -1396,56 +1433,62 @@ async function run(): Promise<CommanderCommand> {
     .addOption(
       new Option(
         '--rewind-files <user-message-id>',
-        'Restore files to state at the specified user message and exit (requires --resume)',
+        t('Restore files to state at the specified user message and exit (requires --resume)'),
       ).hideHelp(),
     )
     // @[MODEL LAUNCH]: Update the example model ID in the --model help text.
     .option(
       '--model <model>',
-      `Model for the current session. Provide an alias for the latest model (e.g. 'sonnet' or 'opus') or a model's full name (e.g. 'claude-sonnet-4-6').`,
+      t(
+        `Model for the current session. Provide an alias for the latest model (e.g. 'sonnet' or 'opus') or a model's full name (e.g. 'claude-sonnet-4-6').`,
+      ),
     )
     .addOption(
-      new Option('--effort <level>', `Effort level for the current session (low, medium, high, max)`).argParser(
+      new Option('--effort <level>', t(`Effort level for the current session (low, medium, high, max)`)).argParser(
         (rawValue: string) => {
           const value = rawValue.toLowerCase();
           const allowed = ['low', 'medium', 'high', 'max'];
           if (!allowed.includes(value)) {
-            throw new InvalidArgumentError(`It must be one of: ${allowed.join(', ')}`);
+            throw new InvalidArgumentError(tf('It must be one of: {values}', { values: allowed.join(', ') }));
           }
           return value;
         },
       ),
     )
-    .option('--agent <agent>', `Agent for the current session. Overrides the 'agent' setting.`)
-    .option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)')
+    .option('--agent <agent>', t(`Agent for the current session. Overrides the 'agent' setting.`))
+    .option('--betas <betas...>', t('Beta headers to include in API requests (API key users only)'))
     .option(
       '--fallback-model <model>',
-      'Enable automatic fallback to specified model when default model is overloaded (only works with --print)',
+      t('Enable automatic fallback to specified model when default model is overloaded (only works with --print)'),
     )
     .addOption(
       new Option(
         '--workload <tag>',
-        'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)',
+        t(
+          'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)',
+        ),
       ).hideHelp(),
     )
     .option(
       '--settings <file-or-json>',
-      'Path to a settings JSON file or a JSON string to load additional settings from',
+      t('Path to a settings JSON file or a JSON string to load additional settings from'),
     )
-    .option('--add-dir <directories...>', 'Additional directories to allow tool access to')
-    .option('--ide', 'Automatically connect to IDE on startup if exactly one valid IDE is available', () => true)
+    .option('--add-dir <directories...>', t('Additional directories to allow tool access to'))
+    .option('--ide', t('Automatically connect to IDE on startup if exactly one valid IDE is available'), () => true)
     .option(
       '--strict-mcp-config',
-      'Only use MCP servers from --mcp-config, ignoring all other MCP configurations',
+      t('Only use MCP servers from --mcp-config, ignoring all other MCP configurations'),
       () => true,
     )
-    .option('--session-id <uuid>', 'Use a specific session ID for the conversation (must be a valid UUID)')
-    .option('-n, --name <name>', 'Set a display name for this session (shown in /resume and terminal title)')
+    .option('--session-id <uuid>', t('Use a specific session ID for the conversation (must be a valid UUID)'))
+    .option('-n, --name <name>', t('Set a display name for this session (shown in /resume and terminal title)'))
     .option(
       '--agents <json>',
-      'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')',
+      t(
+        'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')',
+      ),
     )
-    .option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
+    .option('--setting-sources <sources>', t('Comma-separated list of setting sources to load (user, project, local).'))
     // gh-33508: <paths...> (variadic) consumed everything until the next
     // --flag. `claude --plugin-dir /path mcp add --transport http` swallowed
     // `mcp` and `add` as paths, then choked on --transport as an unknown
@@ -1453,7 +1496,7 @@ async function run(): Promise<CommanderCommand> {
     // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
     .option(
       '--plugin-dir <path>',
-      'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)',
+      t('Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)'),
       (val: string, prev: string[]) => [...prev, val],
       [] as string[],
     )
@@ -1469,12 +1512,14 @@ async function run(): Promise<CommanderCommand> {
         'Subagent API provider for this process (anthropic/openai/gemini/grok/cursor/unset). Process-scoped, not persisted.',
       ),
     )
-    .option('--disable-slash-commands', 'Disable all skills', () => true)
-    .option('--chrome', 'Enable Claude in Chrome integration')
-    .option('--no-chrome', 'Disable Claude in Chrome integration')
+    .option('--disable-slash-commands', t('Disable all skills'), () => true)
+    .option('--chrome', t('Enable Claude in Chrome integration'))
+    .option('--no-chrome', t('Disable Claude in Chrome integration'))
     .option(
       '--file <specs...>',
-      'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)',
+      t(
+        'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)',
+      ),
     )
     .action(async (prompt, options) => {
       profileCheckpoint('action_handler_start');
@@ -1537,7 +1582,7 @@ async function run(): Promise<CommanderCommand> {
       ) {
         if (!checkHasTrustDialogAccepted()) {
           console.warn(
-            chalk.yellow('Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.'),
+            chalk.yellow(t('Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.')),
           );
         } else {
           // Blocking gate check — returns cached `true` instantly; if disk
@@ -1698,15 +1743,19 @@ async function run(): Promise<CommanderCommand> {
       // Validate tmux option
       if (tmuxEnabled) {
         if (!worktreeEnabled) {
-          process.stderr.write(chalk.red('Error: --tmux requires --worktree\n'));
+          process.stderr.write(chalk.red(t('Error: --tmux requires --worktree\n')));
           process.exit(1);
         }
         if (getPlatform() === 'windows') {
-          process.stderr.write(chalk.red('Error: --tmux is not supported on Windows\n'));
+          process.stderr.write(chalk.red(t('Error: --tmux is not supported on Windows\n')));
           process.exit(1);
         }
         if (!(await isTmuxAvailable())) {
-          process.stderr.write(chalk.red(`Error: tmux is not installed.\n${getTmuxInstallInstructions()}\n`));
+          process.stderr.write(
+            chalk.red(
+              tf('Error: tmux is not installed.\n{instructions}\n', { instructions: getTmuxInstallInstructions() }),
+            ),
+          );
           process.exit(1);
         }
       }
@@ -1726,7 +1775,7 @@ async function run(): Promise<CommanderCommand> {
 
         if (hasAnyTeammateOpt && !hasAllRequiredTeammateOpts) {
           process.stderr.write(
-            chalk.red('Error: --agent-id, --agent-name, and --team-name must all be provided together\n'),
+            chalk.red(t('Error: --agent-id, --agent-name, and --team-name must all be provided together\n')),
           );
           process.exit(1);
         }
@@ -1807,7 +1856,9 @@ async function run(): Promise<CommanderCommand> {
         if ((options.continue || options.resume) && !options.forkSession) {
           process.stderr.write(
             chalk.red(
-              'Error: --session-id can only be used with --continue or --resume if --fork-session is also specified.\n',
+              t(
+                'Error: --session-id can only be used with --continue or --resume if --fork-session is also specified.\n',
+              ),
             ),
           );
           process.exit(1);
@@ -1819,13 +1870,15 @@ async function run(): Promise<CommanderCommand> {
         if (!sdkUrl) {
           const validatedSessionId = validateUuid(sessionId);
           if (!validatedSessionId) {
-            process.stderr.write(chalk.red('Error: Invalid session ID. Must be a valid UUID.\n'));
+            process.stderr.write(chalk.red(t('Error: Invalid session ID. Must be a valid UUID.\n')));
             process.exit(1);
           }
 
           // Check if session ID already exists
           if (sessionIdExists(validatedSessionId)) {
-            process.stderr.write(chalk.red(`Error: Session ID ${validatedSessionId} is already in use.\n`));
+            process.stderr.write(
+              chalk.red(tf('Error: Session ID {id} is already in use.\n', { id: validatedSessionId })),
+            );
             process.exit(1);
           }
         }
@@ -1839,7 +1892,7 @@ async function run(): Promise<CommanderCommand> {
         if (!sessionToken) {
           process.stderr.write(
             chalk.red(
-              'Error: Session token required for file downloads. CLAUDE_CODE_SESSION_ACCESS_TOKEN must be set.\n',
+              t('Error: Session token required for file downloads. CLAUDE_CODE_SESSION_ACCESS_TOKEN must be set.\n'),
             ),
           );
           process.exit(1);
@@ -1883,7 +1936,7 @@ async function run(): Promise<CommanderCommand> {
       if (options.systemPromptFile) {
         if (options.systemPrompt) {
           process.stderr.write(
-            chalk.red('Error: Cannot use both --system-prompt and --system-prompt-file. Please use only one.\n'),
+            chalk.red(t('Error: Cannot use both --system-prompt and --system-prompt-file. Please use only one.\n')),
           );
           process.exit(1);
         }
@@ -1895,11 +1948,15 @@ async function run(): Promise<CommanderCommand> {
           const code = getErrnoCode(error);
           if (code === 'ENOENT') {
             process.stderr.write(
-              chalk.red(`Error: System prompt file not found: ${resolve(options.systemPromptFile)}\n`),
+              chalk.red(
+                tf('Error: System prompt file not found: {path}\n', { path: resolve(options.systemPromptFile) }),
+              ),
             );
             process.exit(1);
           }
-          process.stderr.write(chalk.red(`Error reading system prompt file: ${errorMessage(error)}\n`));
+          process.stderr.write(
+            chalk.red(tf('Error reading system prompt file: {error}\n', { error: errorMessage(error) })),
+          );
           process.exit(1);
         }
       }
@@ -1910,7 +1967,9 @@ async function run(): Promise<CommanderCommand> {
         if (options.appendSystemPrompt) {
           process.stderr.write(
             chalk.red(
-              'Error: Cannot use both --append-system-prompt and --append-system-prompt-file. Please use only one.\n',
+              t(
+                'Error: Cannot use both --append-system-prompt and --append-system-prompt-file. Please use only one.\n',
+              ),
             ),
           );
           process.exit(1);
@@ -1923,11 +1982,17 @@ async function run(): Promise<CommanderCommand> {
           const code = getErrnoCode(error);
           if (code === 'ENOENT') {
             process.stderr.write(
-              chalk.red(`Error: Append system prompt file not found: ${resolve(options.appendSystemPromptFile)}\n`),
+              chalk.red(
+                tf('Error: Append system prompt file not found: {path}\n', {
+                  path: resolve(options.appendSystemPromptFile),
+                }),
+              ),
             );
             process.exit(1);
           }
-          process.stderr.write(chalk.red(`Error reading append system prompt file: ${errorMessage(error)}\n`));
+          process.stderr.write(
+            chalk.red(tf('Error reading append system prompt file: {error}\n', { error: errorMessage(error) })),
+          );
           process.exit(1);
         }
       }
@@ -2033,7 +2098,7 @@ async function run(): Promise<CommanderCommand> {
           logForDebugging(`--mcp-config validation failed (${allErrors.length} errors): ${formattedErrors}`, {
             level: 'error',
           });
-          process.stderr.write(`Error: Invalid MCP configuration:\n${formattedErrors}\n`);
+          process.stderr.write(tf('Error: Invalid MCP configuration:\n{errors}\n', { errors: formattedErrors }));
           process.exit(1);
         }
 
@@ -2046,19 +2111,23 @@ async function run(): Promise<CommanderCommand> {
 
           let reservedNameError: string | null = null;
           if (nonSdkConfigNames.some(isClaudeInChromeMCPServer)) {
-            reservedNameError = `Invalid MCP configuration: "${CLAUDE_IN_CHROME_MCP_SERVER_NAME}" is a reserved MCP name.`;
+            reservedNameError = tf('Invalid MCP configuration: "{name}" is a reserved MCP name.', {
+              name: CLAUDE_IN_CHROME_MCP_SERVER_NAME,
+            });
           } else if (feature('CHICAGO_MCP')) {
             const { isComputerUseMCPServer, COMPUTER_USE_MCP_SERVER_NAME } = await import(
               'src/utils/computerUse/common.js'
             );
             if (nonSdkConfigNames.some(isComputerUseMCPServer)) {
-              reservedNameError = `Invalid MCP configuration: "${COMPUTER_USE_MCP_SERVER_NAME}" is a reserved MCP name.`;
+              reservedNameError = tf('Invalid MCP configuration: "{name}" is a reserved MCP name.', {
+                name: COMPUTER_USE_MCP_SERVER_NAME,
+              });
             }
           }
           if (reservedNameError) {
             // stderr+exit(1) — a throw here becomes a silent unhandled
             // rejection in stream-json mode (void main() in cli.tsx).
-            process.stderr.write(`Error: ${reservedNameError}\n`);
+            process.stderr.write(tf('Error: {message}\n', { message: reservedNameError }));
             process.exit(1);
           }
 
@@ -2083,7 +2152,10 @@ async function run(): Promise<CommanderCommand> {
           const { allowed, blocked } = filterMcpServersByPolicy(scopedConfigs);
           if (blocked.length > 0) {
             process.stderr.write(
-              `Warning: MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`,
+              tf('Warning: MCP {count} blocked by enterprise policy: {names}\n', {
+                count: plural(blocked.length, 'server'),
+                names: blocked.join(', '),
+              }),
             );
           }
           dynamicMcpConfig = { ...dynamicMcpConfig, ...(allowed as Record<string, ScopedMcpServerConfig>) };
@@ -2126,7 +2198,7 @@ async function run(): Promise<CommanderCommand> {
           });
           logForDebugging(`[Claude in Chrome] Error: ${error}`);
           logError(error);
-          console.error(`Error: Failed to run with Claude in Chrome.`);
+          console.error(t('Error: Failed to run with Claude in Chrome.'));
           process.exit(1);
         }
       } else if (autoEnableClaudeInChrome) {
@@ -2156,7 +2228,7 @@ async function run(): Promise<CommanderCommand> {
       if (doesEnterpriseMcpConfigExist()) {
         if (strictMcpConfig) {
           process.stderr.write(
-            chalk.red('You cannot use --strict-mcp-config when an enterprise MCP config is present'),
+            chalk.red(t('You cannot use --strict-mcp-config when an enterprise MCP config is present')),
           );
           process.exit(1);
         }
@@ -2164,7 +2236,7 @@ async function run(): Promise<CommanderCommand> {
         // For --mcp-config, allow if all servers are internal types (sdk)
         if (dynamicMcpConfig && !areMcpConfigsAllowedWithEnterpriseMcpConfig(dynamicMcpConfig)) {
           process.stderr.write(
-            chalk.red('You cannot dynamically configure MCP servers when an enterprise MCP config is present'),
+            chalk.red(t('You cannot dynamically configure MCP servers when an enterprise MCP config is present')),
           );
           process.exit(1);
         }
@@ -2240,9 +2312,10 @@ async function run(): Promise<CommanderCommand> {
         if (bad.length > 0) {
           process.stderr.write(
             chalk.red(
-              `${flag} entries must be tagged: ${bad.join(', ')}\n` +
-                `  plugin:<name>@<marketplace>  — plugin-provided channel (allowlist enforced)\n` +
-                `  server:<name>                — manually configured MCP server\n`,
+              tf(
+                '{flag} entries must be tagged: {bad}\n  plugin:<name>@<marketplace>  — plugin-provided channel (allowlist enforced)\n  server:<name>                — manually configured MCP server\n',
+                { flag, bad: bad.join(', ') },
+              ),
             ),
           );
           process.exit(1);
@@ -2360,7 +2433,10 @@ async function run(): Promise<CommanderCommand> {
               const { allowed, blocked } = filterMcpServersByPolicy(configs);
               if (blocked.length > 0) {
                 process.stderr.write(
-                  `Warning: claude.ai MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`,
+                  tf('Warning: claude.ai MCP {count} blocked by enterprise policy: {names}\n', {
+                    count: plural(blocked.length, 'server'),
+                    names: blocked.join(', '),
+                  }),
                 );
               }
               return allowed;
@@ -2734,13 +2810,17 @@ async function run(): Promise<CommanderCommand> {
           logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
           if (!modelSupportsAdvisor(resolvedInitialModel)) {
             process.stderr.write(
-              chalk.red(`Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`),
+              chalk.red(
+                tf('Error: The model "{model}" does not support the advisor tool.\n', { model: resolvedInitialModel }),
+              ),
             );
             process.exit(1);
           }
           const normalizedAdvisorModel = normalizeModelStringForAPI(parseUserSpecifiedModel(advisorOption));
           if (!isValidAdvisorModel(normalizedAdvisorModel)) {
-            process.stderr.write(chalk.red(`Error: The model "${advisorOption}" cannot be used as an advisor.\n`));
+            process.stderr.write(
+              chalk.red(tf('Error: The model "{model}" cannot be used as an advisor.\n', { model: advisorOption })),
+            );
             process.exit(1);
           }
         }
@@ -2894,7 +2974,7 @@ async function run(): Promise<CommanderCommand> {
           const disabledReason = await getBridgeDisabledReason();
           remoteControl = disabledReason === null;
           if (disabledReason) {
-            process.stderr.write(chalk.yellow(`${disabledReason}\n--rc flag ignored.\n`));
+            process.stderr.write(chalk.yellow(tf('{reason}\n--rc flag ignored.\n', { reason: disabledReason })));
           }
         }
 
@@ -3789,7 +3869,7 @@ async function run(): Promise<CommanderCommand> {
             logEvent('tengu_continue', {
               success: false,
             });
-            return await exitWithError(root, 'No conversation found to continue');
+            return await exitWithError(root, t('No conversation found to continue'));
           }
 
           const loaded = await processResumedConversation(
@@ -3865,7 +3945,10 @@ async function run(): Promise<CommanderCommand> {
         }
 
         const connectInfoMessage = createSystemMessage(
-          `Connected to server at ${_pendingConnect.url}\nSession: ${directConnectConfig.sessionId}`,
+          tf('Connected to server at {url}\nSession: {id}', {
+            url: _pendingConnect.url,
+            id: directConnectConfig.sessionId,
+          }),
           'info',
         );
 
@@ -3897,14 +3980,14 @@ async function run(): Promise<CommanderCommand> {
         let sshSession: import('./ssh/createSSHSession.js').SSHSession | undefined;
         try {
           if (_pendingSSH.local) {
-            process.stderr.write('Starting local ssh-proxy test session...\n');
+            process.stderr.write(t('Starting local ssh-proxy test session...\n'));
             sshSession = await createLocalSSHSession({
               cwd: _pendingSSH.cwd,
               permissionMode: _pendingSSH.permissionMode,
               dangerouslySkipPermissions: _pendingSSH.dangerouslySkipPermissions,
             });
           } else {
-            process.stderr.write(`Connecting to ${_pendingSSH.host}…\n`);
+            process.stderr.write(tf('Connecting to {host}...\n', { host: _pendingSSH.host }));
             // In-place progress: \r + EL0 (erase to end of line). Final \n on
             // success so the next message lands on a fresh line. No-op when
             // stderr isn't a TTY (piped/redirected) — \r would just emit noise.
@@ -3942,8 +4025,13 @@ async function run(): Promise<CommanderCommand> {
 
         const sshInfoMessage = createSystemMessage(
           _pendingSSH.local
-            ? `Local ssh-proxy test session\ncwd: ${sshSession.remoteCwd}\nAuth: unix socket → local proxy`
-            : `SSH session to ${_pendingSSH.host}\nRemote cwd: ${sshSession.remoteCwd}\nAuth: unix socket -R → local proxy`,
+            ? tf('Local ssh-proxy test session\ncwd: {cwd}\nAuth: unix socket → local proxy', {
+                cwd: sshSession.remoteCwd,
+              })
+            : tf('SSH session to {host}\nRemote cwd: {cwd}\nAuth: unix socket -R → local proxy', {
+                host: _pendingSSH.host,
+                cwd: sshSession.remoteCwd,
+              }),
           'info',
         );
 
@@ -3984,8 +4072,10 @@ async function run(): Promise<CommanderCommand> {
           try {
             sessions = await discoverAssistantSessions();
           } catch (e) {
-            return await exitWithError(root, `Failed to discover sessions: ${e instanceof Error ? e.message : e}`, () =>
-              gracefulShutdown(1),
+            return await exitWithError(
+              root,
+              tf('Failed to discover sessions: {error}', { error: e instanceof Error ? e.message : String(e) }),
+              () => gracefulShutdown(1),
             );
           }
           if (sessions.length === 0) {
@@ -4007,7 +4097,10 @@ async function run(): Promise<CommanderCommand> {
             // establish a bridge session before discovery will find it.
             return await exitWithMessage(
               root,
-              `Assistant installed in ${installedDir}. The daemon is starting up — run \`claude assistant\` again in a few seconds to connect.`,
+              tf(
+                'Assistant installed in {dir}. The daemon is starting up — run `claude assistant` again in a few seconds to connect.',
+                { dir: installedDir },
+              ),
               {
                 exitCode: 0,
                 beforeExit: () => gracefulShutdown(0),
@@ -4036,8 +4129,10 @@ async function run(): Promise<CommanderCommand> {
         try {
           apiCreds = await prepareApiRequest();
         } catch (e) {
-          return await exitWithError(root, `Error: ${e instanceof Error ? e.message : 'Failed to authenticate'}`, () =>
-            gracefulShutdown(1),
+          return await exitWithError(
+            root,
+            tf('Error: {message}', { message: e instanceof Error ? e.message : t('Failed to authenticate') }),
+            () => gracefulShutdown(1),
           );
         }
         const getAccessToken = (): string => getClaudeAIOAuthTokens()?.accessToken ?? apiCreds.accessToken;
@@ -4057,7 +4152,7 @@ async function run(): Promise<CommanderCommand> {
         );
 
         const infoMessage = createSystemMessage(
-          `Attached to assistant session ${targetSessionId.slice(0, 8)}…`,
+          tf('Attached to assistant session {id}...', { id: targetSessionId.slice(0, 8) }),
           'info',
         );
 
@@ -4143,8 +4238,10 @@ async function run(): Promise<CommanderCommand> {
         if (remote !== null || teleport) {
           await waitForPolicyLimitsToLoad();
           if (!isPolicyAllowed('allow_remote_sessions')) {
-            return await exitWithError(root, "Error: Remote sessions are disabled by your organization's policy.", () =>
-              gracefulShutdown(1),
+            return await exitWithError(
+              root,
+              t("Error: Remote sessions are disabled by your organization's policy."),
+              () => gracefulShutdown(1),
             );
           }
         }
@@ -4158,7 +4255,7 @@ async function run(): Promise<CommanderCommand> {
           if (!isRemoteTuiEnabled && !hasInitialPrompt) {
             return await exitWithError(
               root,
-              'Error: --remote requires a description.\nUsage: claude --remote "your task description"',
+              t('Error: --remote requires a description.\nUsage: claude --remote "your task description"'),
               () => gracefulShutdown(1),
             );
           }
@@ -4179,7 +4276,7 @@ async function run(): Promise<CommanderCommand> {
             logEvent('tengu_remote_create_session_error', {
               error: 'unable_to_create_session' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             });
-            return await exitWithError(root, 'Error: Unable to create remote session', () => gracefulShutdown(1));
+            return await exitWithError(root, t('Error: Unable to create remote session'), () => gracefulShutdown(1));
           }
           logEvent('tengu_remote_create_session_success', {
             session_id: createdSession.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -4188,9 +4285,9 @@ async function run(): Promise<CommanderCommand> {
           // Check if new remote TUI mode is enabled via feature gate
           if (!isRemoteTuiEnabled) {
             // Original behavior: print session info and exit
-            process.stdout.write(`Created remote session: ${createdSession.title}\n`);
-            process.stdout.write(`View: ${getRemoteSessionUrl(createdSession.id)}?m=0\n`);
-            process.stdout.write(`Resume with: claude --teleport ${createdSession.id}\n`);
+            process.stdout.write(tf('Created remote session: {title}\n', { title: createdSession.title }));
+            process.stdout.write(tf('View: {url}\n', { url: `${getRemoteSessionUrl(createdSession.id)}?m=0` }));
+            process.stdout.write(tf('Resume with: claude --teleport {id}\n', { id: createdSession.id }));
             await gracefulShutdown(0);
             process.exit(0);
           }
@@ -4206,8 +4303,10 @@ async function run(): Promise<CommanderCommand> {
             apiCreds = await prepareApiRequest();
           } catch (error) {
             logError(toError(error));
-            return await exitWithError(root, `Error: ${errorMessage(error) || 'Failed to authenticate'}`, () =>
-              gracefulShutdown(1),
+            return await exitWithError(
+              root,
+              tf('Error: {message}', { message: errorMessage(error) || t('Failed to authenticate') }),
+              () => gracefulShutdown(1),
             );
           }
 
@@ -4224,7 +4323,7 @@ async function run(): Promise<CommanderCommand> {
           // Add remote session info as initial system message
           const remoteSessionUrl = `${getRemoteSessionUrl(createdSession.id)}?m=0`;
           const remoteInfoMessage = createSystemMessage(
-            `/remote-control is active. Code in CLI or at ${remoteSessionUrl}`,
+            tf('/remote-control is active. Code in CLI or at {url}', { url: remoteSessionUrl }),
             'info',
           );
 
@@ -4311,17 +4410,27 @@ async function run(): Promise<CommanderCommand> {
                   } else {
                     // No known paths - show original error
                     throw new TeleportOperationError(
-                      `You must run claude --teleport ${teleport} from a checkout of ${sessionRepo}.`,
+                      tf('You must run claude --teleport {teleport} from a checkout of {repo}.', {
+                        teleport,
+                        repo: sessionRepo,
+                      }),
                       chalk.red(
-                        `You must run claude --teleport ${teleport} from a checkout of ${chalk.bold(sessionRepo)}.\n`,
+                        tf('You must run claude --teleport {teleport} from a checkout of {repo}.\n', {
+                          teleport,
+                          repo: chalk.bold(sessionRepo),
+                        }),
                       ),
                     );
                   }
                 }
               } else if (repoValidation.status === 'error') {
                 throw new TeleportOperationError(
-                  repoValidation.errorMessage || 'Failed to validate session',
-                  chalk.red(`Error: ${repoValidation.errorMessage || 'Failed to validate session'}\n`),
+                  repoValidation.errorMessage || t('Failed to validate session'),
+                  chalk.red(
+                    tf('Error: {message}\n', {
+                      message: repoValidation.errorMessage || t('Failed to validate session'),
+                    }),
+                  ),
                 );
               }
 
@@ -4338,7 +4447,7 @@ async function run(): Promise<CommanderCommand> {
                 process.stderr.write(error.formattedMessage + '\n');
               } else {
                 logError(error);
-                process.stderr.write(chalk.red(`Error: ${errorMessage(error)}\n`));
+                process.stderr.write(chalk.red(tf('Error: {error}\n', { error: errorMessage(error) })));
               }
               await gracefulShutdown(1);
             }
@@ -4389,8 +4498,10 @@ async function run(): Promise<CommanderCommand> {
                 success: false,
               });
               logError(error);
-              await exitWithError(root, `Unable to load transcript from file: ${options.resume}`, () =>
-                gracefulShutdown(1),
+              await exitWithError(
+                root,
+                tf('Unable to load transcript from file: {path}', { path: options.resume }),
+                () => gracefulShutdown(1),
               );
             }
           }
@@ -4411,7 +4522,7 @@ async function run(): Promise<CommanderCommand> {
                 entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 success: false,
               });
-              return await exitWithError(root, `No conversation found with session ID: ${sessionId}`);
+              return await exitWithError(root, tf('No conversation found with session ID: {id}', { id: sessionId }));
             }
 
             const fullPath = matchedLog?.fullPath ?? result.fullPath;
@@ -4439,7 +4550,7 @@ async function run(): Promise<CommanderCommand> {
               success: false,
             });
             logError(error);
-            await exitWithError(root, `Failed to resume session ${sessionId}`);
+            await exitWithError(root, tf('Failed to resume session {id}', { id: sessionId }));
           }
         }
 
@@ -4450,11 +4561,16 @@ async function run(): Promise<CommanderCommand> {
             const failedCount = count(results, r => !r.success);
             if (failedCount > 0) {
               process.stderr.write(
-                chalk.yellow(`Warning: ${failedCount}/${results.length} file(s) failed to download.\n`),
+                chalk.yellow(
+                  tf('Warning: {count}/{total} file(s) failed to download.\n', {
+                    count: failedCount,
+                    total: results.length,
+                  }),
+                ),
               );
             }
           } catch (error) {
-            return await exitWithError(root, `Error downloading files: ${errorMessage(error)}`);
+            return await exitWithError(root, tf('Error downloading files: {error}', { error: errorMessage(error) }));
           }
         }
 
@@ -4566,136 +4682,150 @@ async function run(): Promise<CommanderCommand> {
         );
       }
     })
-    .version(`${MACRO.VERSION_DISPLAY} (Claude Code)`, '-v, --version', 'Output the version number');
+    .version(`${MACRO.VERSION_DISPLAY} (Claude Code)`, '-v, --version', t('Output the version number'));
 
   // Worktree flags
-  program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');
+  program.option('-w, --worktree [name]', t('Create a new git worktree for this session (optionally specify a name)'));
   program.option(
     '--tmux',
-    'Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.',
+    t(
+      'Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.',
+    ),
   );
 
   if (canUserConfigureAdvisor()) {
     program.addOption(
       new Option(
         '--advisor <model>',
-        'Enable the server-side advisor tool with the specified model (alias or full ID).',
+        t('Enable the server-side advisor tool with the specified model (alias or full ID).'),
       ).hideHelp(),
     );
   }
 
   if (process.env.USER_TYPE === 'ant') {
     program.addOption(
-      new Option('--delegate-permissions', '[ANT-ONLY] Alias for --permission-mode auto.').implies({
+      new Option('--delegate-permissions', t('[ANT-ONLY] Alias for --permission-mode auto.')).implies({
         permissionMode: 'auto',
       }),
     );
     program.addOption(
       new Option(
         '--dangerously-skip-permissions-with-classifiers',
-        '[ANT-ONLY] Deprecated alias for --permission-mode auto.',
+        t('[ANT-ONLY] Deprecated alias for --permission-mode auto.'),
       )
         .hideHelp()
         .implies({ permissionMode: 'auto' }),
     );
     program.addOption(
-      new Option('--afk', '[ANT-ONLY] Deprecated alias for --permission-mode auto.')
+      new Option('--afk', t('[ANT-ONLY] Deprecated alias for --permission-mode auto.'))
         .hideHelp()
         .implies({ permissionMode: 'auto' }),
     );
     program.addOption(
       new Option(
         '--tasks [id]',
-        '[ANT-ONLY] Tasks mode: watch for tasks and auto-process them. Optional id is used as both the task list ID and agent ID (defaults to "tasklist").',
+        t(
+          '[ANT-ONLY] Tasks mode: watch for tasks and auto-process them. Optional id is used as both the task list ID and agent ID (defaults to "tasklist").',
+        ),
       )
         .argParser(String)
         .hideHelp(),
     );
-    program.option('--agent-teams', '[ANT-ONLY] Force Claude to use multi-agent mode for solving problems', () => true);
+    program.option(
+      '--agent-teams',
+      t('[ANT-ONLY] Force Claude to use multi-agent mode for solving problems'),
+      () => true,
+    );
   }
 
   if (feature('TRANSCRIPT_CLASSIFIER')) {
-    program.addOption(new Option('--enable-auto-mode', 'Opt in to auto mode').hideHelp());
+    program.addOption(new Option('--enable-auto-mode', t('Opt in to auto mode')).hideHelp());
   }
 
   if (feature('PROACTIVE') || feature('KAIROS')) {
-    program.addOption(new Option('--proactive', 'Start in proactive autonomous mode'));
+    program.addOption(new Option('--proactive', t('Start in proactive autonomous mode')));
   }
 
   if (feature('UDS_INBOX')) {
     program.addOption(
       new Option(
         '--messaging-socket-path <path>',
-        'Unix domain socket path for the UDS messaging server (defaults to a tmp path)',
+        t('Unix domain socket path for the UDS messaging server (defaults to a tmp path)'),
       ),
     );
   }
 
   if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
-    program.addOption(new Option('--brief', 'Enable SendUserMessage tool for agent-to-user communication'));
+    program.addOption(new Option('--brief', t('Enable SendUserMessage tool for agent-to-user communication')));
   }
   if (feature('KAIROS')) {
-    program.addOption(new Option('--assistant', 'Force assistant mode (Agent SDK daemon use)').hideHelp());
+    program.addOption(new Option('--assistant', t('Force assistant mode (Agent SDK daemon use)')).hideHelp());
   }
   program.addOption(
     new Option(
       '--channels <servers...>',
-      'MCP servers whose channel notifications (inbound push) should register this session. Space-separated server names.',
+      t(
+        'MCP servers whose channel notifications (inbound push) should register this session. Space-separated server names.',
+      ),
     ).hideHelp(),
   );
   program.addOption(
     new Option(
       '--dangerously-load-development-channels <servers...>',
-      'Load channel servers not on the approved allowlist. For local channel development only. Shows a confirmation dialog at startup.',
+      t(
+        'Load channel servers not on the approved allowlist. For local channel development only. Shows a confirmation dialog at startup.',
+      ),
     ).hideHelp(),
   );
 
   // Teammate identity options (set by leader when spawning tmux teammates)
   // These replace the CLAUDE_CODE_* environment variables
-  program.addOption(new Option('--agent-id <id>', 'Teammate agent ID').hideHelp());
-  program.addOption(new Option('--agent-name <name>', 'Teammate display name').hideHelp());
-  program.addOption(new Option('--team-name <name>', 'Team name for swarm coordination').hideHelp());
-  program.addOption(new Option('--agent-color <color>', 'Teammate UI color').hideHelp());
-  program.addOption(new Option('--plan-mode-required', 'Require plan mode before implementation').hideHelp());
-  program.addOption(new Option('--parent-session-id <id>', 'Parent session ID for analytics correlation').hideHelp());
+  program.addOption(new Option('--agent-id <id>', t('Teammate agent ID')).hideHelp());
+  program.addOption(new Option('--agent-name <name>', t('Teammate display name')).hideHelp());
+  program.addOption(new Option('--team-name <name>', t('Team name for swarm coordination')).hideHelp());
+  program.addOption(new Option('--agent-color <color>', t('Teammate UI color')).hideHelp());
+  program.addOption(new Option('--plan-mode-required', t('Require plan mode before implementation')).hideHelp());
   program.addOption(
-    new Option('--teammate-mode <mode>', 'How to spawn teammates: "tmux", "in-process", or "auto"')
+    new Option('--parent-session-id <id>', t('Parent session ID for analytics correlation')).hideHelp(),
+  );
+  program.addOption(
+    new Option('--teammate-mode <mode>', t('How to spawn teammates: "tmux", "in-process", or "auto"'))
       .choices(['auto', 'tmux', 'in-process'])
       .hideHelp(),
   );
-  program.addOption(new Option('--agent-type <type>', 'Custom agent type for this teammate').hideHelp());
+  program.addOption(new Option('--agent-type <type>', t('Custom agent type for this teammate')).hideHelp());
 
   // Enable SDK URL for all builds but hide from help
   program.addOption(
     new Option(
       '--sdk-url <url>',
-      'Use remote WebSocket endpoint for SDK I/O streaming (only with -p and stream-json format)',
+      t('Use remote WebSocket endpoint for SDK I/O streaming (only with -p and stream-json format)'),
     ).hideHelp(),
   );
 
   // Enable teleport/remote flags for all builds but keep them undocumented until GA
   program.addOption(
-    new Option('--teleport [session]', 'Resume a teleport session, optionally specify session ID').hideHelp(),
+    new Option('--teleport [session]', t('Resume a teleport session, optionally specify session ID')).hideHelp(),
   );
   program.addOption(
-    new Option('--remote [description]', 'Create a remote session with the given description').hideHelp(),
+    new Option('--remote [description]', t('Create a remote session with the given description')).hideHelp(),
   );
   if (feature('BRIDGE_MODE')) {
     program.addOption(
       new Option(
         '--remote-control [name]',
-        'Start an interactive session with Remote Control enabled (optionally named)',
+        t('Start an interactive session with Remote Control enabled (optionally named)'),
       )
         .argParser(value => value || true)
         .hideHelp(),
     );
     program.addOption(
-      new Option('--rc [name]', 'Alias for --remote-control').argParser(value => value || true).hideHelp(),
+      new Option('--rc [name]', t('Alias for --remote-control')).argParser(value => value || true).hideHelp(),
     );
   }
 
   if (feature('HARD_FAIL')) {
-    program.addOption(new Option('--hard-fail', 'Crash on logError calls instead of silently logging').hideHelp());
+    program.addOption(new Option('--hard-fail', t('Crash on logError calls instead of silently logging')).hideHelp());
   }
 
   profileCheckpoint('run_main_options_built');
@@ -4728,8 +4858,8 @@ async function run(): Promise<CommanderCommand> {
   mcp
     .command('serve')
     .description(t('Start the Claude Code MCP server'))
-    .option('-d, --debug', 'Enable debug mode', () => true)
-    .option('--verbose', 'Override verbose mode setting from config', () => true)
+    .option('-d, --debug', t('Enable debug mode'), () => true)
+    .option('--verbose', t('Override verbose mode setting from config'), () => true)
     .action(async ({ debug, verbose }: { debug?: boolean; verbose?: boolean }) => {
       const { mcpServeHandler } = await import('./cli/handlers/mcp.js');
       await mcpServeHandler({ debug, verbose });
@@ -4747,7 +4877,7 @@ async function run(): Promise<CommanderCommand> {
     .description(t('Remove an MCP server'))
     .option(
       '-s, --scope <scope>',
-      'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in',
+      t('Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in'),
     )
     .action(async (name: string, options: { scope?: string }) => {
       const { mcpRemoveHandler } = await import('./cli/handlers/mcp.js');
@@ -4781,8 +4911,8 @@ async function run(): Promise<CommanderCommand> {
   mcp
     .command('add-json <name> <json>')
     .description(t('Add an MCP server (stdio or SSE) with a JSON string'))
-    .option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local')
-    .option('--client-secret', 'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)')
+    .option('-s, --scope <scope>', t('Configuration scope (local, user, or project)'), 'local')
+    .option('--client-secret', t('Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)'))
     .action(async (name: string, json: string, options: { scope?: string; clientSecret?: true }) => {
       const { mcpAddJsonHandler } = await import('./cli/handlers/mcp.js');
       await mcpAddJsonHandler(name, json, options);
@@ -4791,7 +4921,7 @@ async function run(): Promise<CommanderCommand> {
   mcp
     .command('add-from-claude-desktop')
     .description(t('Import MCP servers from Claude Desktop (Mac and WSL only)'))
-    .option('-s, --scope <scope>', 'Configuration scope (local, user, or project)', 'local')
+    .option('-s, --scope <scope>', t('Configuration scope (local, user, or project)'), 'local')
     .action(async (options: { scope?: string }) => {
       const { mcpAddFromDesktopHandler } = await import('./cli/handlers/mcp.js');
       await mcpAddFromDesktopHandler(options);
@@ -4810,13 +4940,13 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('server')
       .description(t('Start a Claude Code session server'))
-      .option('--port <number>', 'HTTP port', '0')
-      .option('--host <string>', 'Bind address', '0.0.0.0')
-      .option('--auth-token <token>', 'Bearer token for auth')
-      .option('--unix <path>', 'Listen on a unix domain socket')
-      .option('--workspace <dir>', 'Default working directory for sessions that do not specify cwd')
-      .option('--idle-timeout <ms>', 'Idle timeout for detached sessions in ms (0 = never expire)', '600000')
-      .option('--max-sessions <n>', 'Maximum concurrent sessions (0 = unlimited)', '32')
+      .option('--port <number>', t('HTTP port'), '0')
+      .option('--host <string>', t('Bind address'), '0.0.0.0')
+      .option('--auth-token <token>', t('Bearer token for auth'))
+      .option('--unix <path>', t('Listen on a unix domain socket'))
+      .option('--workspace <dir>', t('Default working directory for sessions that do not specify cwd'))
+      .option('--idle-timeout <ms>', t('Idle timeout for detached sessions in ms (0 = never expire)'), '600000')
+      .option('--max-sessions <n>', t('Maximum concurrent sessions (0 = unlimited)'), '32')
       .action(
         async (opts: {
           port: string;
@@ -4837,7 +4967,12 @@ async function run(): Promise<CommanderCommand> {
 
           const existing = await probeRunningServer();
           if (existing) {
-            process.stderr.write(`A claude server is already running (pid ${existing.pid}) at ${existing.httpUrl}\n`);
+            process.stderr.write(
+              tf('A claude server is already running (pid {pid}) at {url}\n', {
+                pid: existing.pid,
+                url: existing.httpUrl,
+              }),
+            );
             process.exit(1);
           }
 
@@ -4901,27 +5036,33 @@ async function run(): Promise<CommanderCommand> {
           'Run Claude Code on a remote host over SSH. Deploys the binary and tunnels API auth back through your local machine — no remote setup needed.',
         ),
       )
-      .option('--permission-mode <mode>', 'Permission mode for the remote session')
-      .option('--dangerously-skip-permissions', 'Skip all permission prompts on the remote (dangerous)')
+      .option('--permission-mode <mode>', t('Permission mode for the remote session'))
+      .option('--dangerously-skip-permissions', t('Skip all permission prompts on the remote (dangerous)'))
       .option(
         '--remote-bin <command>',
-        'Custom remote binary command (skips probe/deploy). ' +
-          "Example: --remote-bin 'bun /path/to/project/dist/cli.js'",
+        t(
+          'Custom remote binary command (skips probe/deploy). ' +
+            "Example: --remote-bin 'bun /path/to/project/dist/cli.js'",
+        ),
       )
       .option(
         '--local',
-        'e2e test mode — spawn the child CLI locally (skip ssh/deploy). ' +
-          'Exercises the auth proxy and unix-socket plumbing without a remote host.',
+        t(
+          'e2e test mode — spawn the child CLI locally (skip ssh/deploy). ' +
+            'Exercises the auth proxy and unix-socket plumbing without a remote host.',
+        ),
       )
       .action(async () => {
         // Argv rewriting in main() should have consumed `ssh <host>` before
         // commander runs. Reaching here means host was missing or the
         // rewrite predicate didn't match.
         process.stderr.write(
-          'Usage: claude ssh <user@host | ssh-config-alias> [dir]\n\n' +
-            "Runs Claude Code on a remote Linux host. You don't need to install\n" +
-            'anything on the remote or run `claude auth login` there — the binary is\n' +
-            'deployed over SSH and API auth tunnels back through your local machine.\n',
+          t(
+            'Usage: claude ssh <user@host | ssh-config-alias> [dir]\n\n' +
+              "Runs Claude Code on a remote Linux host. You don't need to install\n" +
+              'anything on the remote or run `claude auth login` there — the binary is\n' +
+              'deployed over SSH and API auth tunnels back through your local machine.\n',
+          ),
         );
         process.exit(1);
       });
@@ -4934,8 +5075,8 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('open <cc-url>')
       .description(t('Connect to a Claude Code server (internal — use cc:// URLs)'))
-      .option('-p, --print [prompt]', 'Print mode (headless)')
-      .option('--output-format <format>', 'Output format: text, json, stream-json', 'text')
+      .option('-p, --print [prompt]', t('Print mode (headless)'))
+      .option('--output-format <format>', t('Output format: text, json, stream-json'), 'text')
       .action(
         async (
           ccUrl: string,
@@ -4962,7 +5103,9 @@ async function run(): Promise<CommanderCommand> {
             setDirectConnectServerUrl(serverUrl);
             connectConfig = session.config;
           } catch (err) {
-            console.error(err instanceof DirectConnectError ? err.message : String(err));
+            console.error(
+              tf('Error: {message}', { message: err instanceof DirectConnectError ? err.message : String(err) }),
+            );
             process.exit(1);
           }
 
@@ -4982,10 +5125,10 @@ async function run(): Promise<CommanderCommand> {
   auth
     .command('login')
     .description(t('Sign in to your Anthropic account'))
-    .option('--email <email>', 'Pre-populate email address on the login page')
-    .option('--sso', 'Force SSO login flow')
-    .option('--console', 'Use Anthropic Console (API usage billing) instead of Claude subscription')
-    .option('--claudeai', 'Use Claude subscription (default)')
+    .option('--email <email>', t('Pre-populate email address on the login page'))
+    .option('--sso', t('Force SSO login flow'))
+    .option('--console', t('Use Anthropic Console (API usage billing) instead of Claude subscription'))
+    .option('--claudeai', t('Use Claude subscription (default)'))
     .action(
       async ({
         email,
@@ -5006,8 +5149,8 @@ async function run(): Promise<CommanderCommand> {
   auth
     .command('status')
     .description(t('Show authentication status'))
-    .option('--json', 'Output as JSON (default)')
-    .option('--text', 'Output as human-readable text')
+    .option('--json', t('Output as JSON (default)'))
+    .option('--text', t('Output as human-readable text'))
     .action(async (opts: { json?: boolean; text?: boolean }) => {
       const { authStatus } = await import('./cli/handlers/auth.js');
       await authStatus(opts);
@@ -5028,7 +5171,7 @@ async function run(): Promise<CommanderCommand> {
    * @param action Description of the action that failed
    */
   // Hidden flag on all plugin/marketplace subcommands to target cowork_plugins.
-  const coworkOption = () => new Option('--cowork', 'Use cowork_plugins directory').hideHelp();
+  const coworkOption = () => new Option('--cowork', t('Use cowork_plugins directory')).hideHelp();
 
   // Plugin validate command
   const pluginCmd = program
@@ -5050,8 +5193,8 @@ async function run(): Promise<CommanderCommand> {
   pluginCmd
     .command('list')
     .description(t('List installed plugins'))
-    .option('--json', 'Output as JSON')
-    .option('--available', 'Include available plugins from marketplaces (requires --json)')
+    .option('--json', t('Output as JSON'))
+    .option('--available', t('Include available plugins from marketplaces (requires --json)'))
     .addOption(coworkOption())
     .action(async (options: { json?: boolean; available?: boolean; cowork?: boolean }) => {
       const { pluginListHandler } = await import('./cli/handlers/plugins.js');
@@ -5070,9 +5213,11 @@ async function run(): Promise<CommanderCommand> {
     .addOption(coworkOption())
     .option(
       '--sparse <paths...>',
-      'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .claude-plugin plugins',
+      t(
+        'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .claude-plugin plugins',
+      ),
     )
-    .option('--scope <scope>', 'Where to declare the marketplace: user (default), project, or local')
+    .option('--scope <scope>', t('Where to declare the marketplace: user (default), project, or local'))
     .action(
       async (
         source: string,
@@ -5090,7 +5235,7 @@ async function run(): Promise<CommanderCommand> {
   marketplaceCmd
     .command('list')
     .description(t('List all configured marketplaces'))
-    .option('--json', 'Output as JSON')
+    .option('--json', t('Output as JSON'))
     .addOption(coworkOption())
     .action(async (options: { json?: boolean; cowork?: boolean }) => {
       const { marketplaceListHandler } = await import('./cli/handlers/plugins.js');
@@ -5121,7 +5266,7 @@ async function run(): Promise<CommanderCommand> {
     .command('install <plugin>')
     .alias('i')
     .description(t('Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)'))
-    .option('-s, --scope <scope>', 'Installation scope: user, project, or local', 'user')
+    .option('-s, --scope <scope>', t('Installation scope: user, project, or local'), 'user')
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
       const { pluginInstallHandler } = await import('./cli/handlers/plugins.js');
@@ -5134,8 +5279,8 @@ async function run(): Promise<CommanderCommand> {
     .alias('remove')
     .alias('rm')
     .description(t('Uninstall an installed plugin'))
-    .option('-s, --scope <scope>', 'Uninstall from scope: user, project, or local', 'user')
-    .option('--keep-data', "Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)")
+    .option('-s, --scope <scope>', t('Uninstall from scope: user, project, or local'), 'user')
+    .option('--keep-data', t("Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)"))
     .addOption(coworkOption())
     .action(
       async (
@@ -5155,7 +5300,10 @@ async function run(): Promise<CommanderCommand> {
   pluginCmd
     .command('enable <plugin>')
     .description(t('Enable a disabled plugin'))
-    .option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`)
+    .option(
+      '-s, --scope <scope>',
+      t(`Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`),
+    )
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
       const { pluginEnableHandler } = await import('./cli/handlers/plugins.js');
@@ -5166,8 +5314,11 @@ async function run(): Promise<CommanderCommand> {
   pluginCmd
     .command('disable [plugin]')
     .description(t('Disable an enabled plugin'))
-    .option('-a, --all', 'Disable all enabled plugins')
-    .option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`)
+    .option('-a, --all', t('Disable all enabled plugins'))
+    .option(
+      '-s, --scope <scope>',
+      t(`Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`),
+    )
     .addOption(coworkOption())
     .action(async (plugin: string | undefined, options: { scope?: string; cowork?: boolean; all?: boolean }) => {
       const { pluginDisableHandler } = await import('./cli/handlers/plugins.js');
@@ -5178,7 +5329,7 @@ async function run(): Promise<CommanderCommand> {
   pluginCmd
     .command('update <plugin>')
     .description(t('Update a plugin to the latest version (restart required to apply)'))
-    .option('-s, --scope <scope>', `Installation scope: ${VALID_UPDATE_SCOPES.join(', ')} (default: user)`)
+    .option('-s, --scope <scope>', t(`Installation scope: ${VALID_UPDATE_SCOPES.join(', ')} (default: user)`))
     .addOption(coworkOption())
     .action(async (plugin: string, options: { scope?: string; cowork?: boolean }) => {
       const { pluginUpdateHandler } = await import('./cli/handlers/plugins.js');
@@ -5203,7 +5354,7 @@ async function run(): Promise<CommanderCommand> {
   program
     .command('agents')
     .description(t('List configured agents'))
-    .option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
+    .option('--setting-sources <sources>', t('Comma-separated list of setting sources to load (user, project, local).'))
     .action(async () => {
       const { agentsHandler } = await import('./cli/handlers/agents.js');
       await agentsHandler();
@@ -5237,7 +5388,7 @@ async function run(): Promise<CommanderCommand> {
       autoModeCmd
         .command('critique')
         .description(t('Get AI feedback on your custom auto mode rules'))
-        .option('--model <model>', 'Override which model is used')
+        .option('--model <model>', t('Override which model is used'))
         .action(async options => {
           const { autoModeCritiqueHandler } = await import('./cli/handlers/autoMode.js');
           await autoModeCritiqueHandler(options);
@@ -5255,7 +5406,7 @@ async function run(): Promise<CommanderCommand> {
     autonomyCmd
       .command('status')
       .description(t('Print autonomy run, flow, team, pipe, and remote-control status'))
-      .option('--deep', 'Include teams, pipes, daemon, and remote-control sections')
+      .option('--deep', t('Include teams, pipes, daemon, and remote-control sections'))
       .action(async (options: { deep?: boolean }) => {
         const { autonomyStatusHandler } = await import('./cli/handlers/autonomy.js');
         await autonomyStatusHandler(options);
@@ -5341,9 +5492,11 @@ async function run(): Promise<CommanderCommand> {
         // (e.g. `--debug assistant`) and the position-0 predicate
         // didn't match. Print usage like the ssh stub does.
         process.stderr.write(
-          'Usage: claude assistant [sessionId]\n\n' +
-            'Attach the REPL as a viewer client to a running bridge session.\n' +
-            'Omit sessionId to discover and pick from available sessions.\n',
+          t(
+            'Usage: claude assistant [sessionId]\n\n' +
+              'Attach the REPL as a viewer client to a running bridge session.\n' +
+              'Omit sessionId to discover and pick from available sessions.\n',
+          ),
         );
         process.exit(1);
       });
@@ -5391,9 +5544,9 @@ async function run(): Promise<CommanderCommand> {
           '[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
         ),
       )
-      .option('-l, --list', 'List recent published versions with ages')
-      .option('--dry-run', 'Show what would be installed without installing')
-      .option('--safe', 'Roll back to the server-pinned safe version (set by oncall during incidents)')
+      .option('-l, --list', t('List recent published versions with ages'))
+      .option('--dry-run', t('Show what would be installed without installing'))
+      .option('--safe', t('Roll back to the server-pinned safe version (set by oncall during incidents)'))
       .action(
         async (
           target?: string,
@@ -5415,7 +5568,7 @@ async function run(): Promise<CommanderCommand> {
     .description(
       t('Install Claude Code native build. Use [target] to specify version (stable, latest, or specific version)'),
     )
-    .option('--force', 'Force installation even if already installed')
+    .option('--force', t('Force installation even if already installed'))
     .action(async (target: string | undefined, options: { force?: boolean }) => {
       const { installHandler } = await import('./cli/handlers/util.js');
       await installHandler(target, options);
@@ -5443,7 +5596,7 @@ async function run(): Promise<CommanderCommand> {
       .description(t('[ANT-ONLY] Manage conversation logs.'))
       .argument(
         '[number|sessionId]',
-        'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log',
+        t('A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log'),
         validateLogId,
       )
       .action(async (logId: string | number | undefined) => {
@@ -5457,7 +5610,7 @@ async function run(): Promise<CommanderCommand> {
       .description(
         t('[ANT-ONLY] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.'),
       )
-      .argument('[number]', 'A number (0, 1, 2, etc.) to display a specific log', parseInt)
+      .argument('[number]', t('A number (0, 1, 2, etc.) to display a specific log'), parseInt)
       .action(async (number: number | undefined) => {
         const { errorHandler } = await import('./cli/handlers/ant.js');
         await errorHandler(number);
@@ -5467,17 +5620,17 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('export')
       .description(t('[ANT-ONLY] Export a conversation to a text file.'))
-      .usage('<source> <outputFile>')
-      .argument('<source>', 'Session ID, log index (0, 1, 2...), or path to a .json/.jsonl log file')
-      .argument('<outputFile>', 'Output file path for the exported text')
+      .usage(t('<source> <outputFile>'))
+      .argument('<source>', t('Session ID, log index (0, 1, 2...), or path to a .json/.jsonl log file'))
+      .argument('<outputFile>', t('Output file path for the exported text'))
       .addHelpText(
         'after',
-        `
+        t(`
 Examples:
   $ claude export 0 conversation.txt                Export conversation at log index 0
   $ claude export <uuid> conversation.txt           Export conversation by session ID
   $ claude export input.json output.txt             Render JSON log file to text
-  $ claude export <uuid>.jsonl output.txt           Render JSONL session file to text`,
+  $ claude export <uuid>.jsonl output.txt           Render JSONL session file to text`),
       )
       .action(async (source: string, outputFile: string) => {
         const { exportHandler } = await import('./cli/handlers/ant.js');
@@ -5490,8 +5643,8 @@ Examples:
       taskCmd
         .command('create <subject>')
         .description(t('Create a new task'))
-        .option('-d, --description <text>', 'Task description')
-        .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
+        .option('-d, --description <text>', t('Task description'))
+        .option('-l, --list <id>', t('Task list ID (defaults to "tasklist")'))
         .action(async (subject: string, opts: { description?: string; list?: string }) => {
           const { taskCreateHandler } = await import('./cli/handlers/ant.js');
           await taskCreateHandler(subject, opts);
@@ -5500,9 +5653,9 @@ Examples:
       taskCmd
         .command('list')
         .description(t('List all tasks'))
-        .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
-        .option('--pending', 'Show only pending tasks')
-        .option('--json', 'Output as JSON')
+        .option('-l, --list <id>', t('Task list ID (defaults to "tasklist")'))
+        .option('--pending', t('Show only pending tasks'))
+        .option('--json', t('Output as JSON'))
         .action(async (opts: { list?: string; pending?: boolean; json?: boolean }) => {
           const { taskListHandler } = await import('./cli/handlers/ant.js');
           await taskListHandler(opts);
@@ -5511,7 +5664,7 @@ Examples:
       taskCmd
         .command('get <id>')
         .description(t('Get details of a task'))
-        .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
+        .option('-l, --list <id>', t('Task list ID (defaults to "tasklist")'))
         .action(async (id: string, opts: { list?: string }) => {
           const { taskGetHandler } = await import('./cli/handlers/ant.js');
           await taskGetHandler(id, opts);
@@ -5520,12 +5673,12 @@ Examples:
       taskCmd
         .command('update <id>')
         .description(t('Update a task'))
-        .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
-        .option('-s, --status <status>', `Set status (${TASK_STATUSES.join(', ')})`)
-        .option('--subject <text>', 'Update subject')
-        .option('-d, --description <text>', 'Update description')
-        .option('--owner <agentId>', 'Set owner')
-        .option('--clear-owner', 'Clear owner')
+        .option('-l, --list <id>', t('Task list ID (defaults to "tasklist")'))
+        .option('-s, --status <status>', t(`Set status (${TASK_STATUSES.join(', ')})`))
+        .option('--subject <text>', t('Update subject'))
+        .option('-d, --description <text>', t('Update description'))
+        .option('--owner <agentId>', t('Set owner'))
+        .option('--clear-owner', t('Clear owner'))
         .action(
           async (
             id: string,
@@ -5546,7 +5699,7 @@ Examples:
       taskCmd
         .command('dir')
         .description(t('Show the tasks directory path'))
-        .option('-l, --list <id>', 'Task list ID (defaults to "tasklist")')
+        .option('-l, --list <id>', t('Task list ID (defaults to "tasklist")'))
         .action(async (opts: { list?: string }) => {
           const { taskDirHandler } = await import('./cli/handlers/ant.js');
           await taskDirHandler(opts);
@@ -5557,7 +5710,7 @@ Examples:
     program
       .command('completion <shell>', { hidden: true })
       .description(t('Generate shell completion script (bash, zsh, or fish)'))
-      .option('--output <file>', 'Write completion script directly to a file instead of stdout')
+      .option('--output <file>', t('Write completion script directly to a file instead of stdout'))
       .action(async (shell: string, opts: { output?: string }) => {
         const { completionHandler } = await import('./cli/handlers/ant.js');
         await completionHandler(shell, opts, program);

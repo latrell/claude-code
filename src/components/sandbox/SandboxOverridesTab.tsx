@@ -3,6 +3,8 @@ import { Box, color, Link, Text, useTheme, useTabHeaderFocus } from '@anthropic/
 import type { CommandResultDisplay } from '../../types/command.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { Select } from '../CustomSelect/select.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   onComplete: (result?: string, options?: { display?: CommandResultDisplay }) => void;
@@ -18,7 +20,7 @@ export function SandboxOverridesTab({ onComplete }: Props): React.ReactNode {
   if (!isEnabled) {
     return (
       <Box flexDirection="column" paddingY={1}>
-        <Text color="subtle">Sandbox is not enabled. Enable sandbox to configure override settings.</Text>
+        <T color="subtle">Sandbox is not enabled. Enable sandbox to configure override settings.</T>
       </Box>
     );
   }
@@ -26,9 +28,9 @@ export function SandboxOverridesTab({ onComplete }: Props): React.ReactNode {
   if (isLocked) {
     return (
       <Box flexDirection="column" paddingY={1}>
-        <Text color="subtle">
+        <T color="subtle">
           Override settings are managed by a higher-priority configuration and cannot be changed locally.
-        </Text>
+        </T>
         <Box marginTop={1}>
           <Text dimColor>
             Current setting: {currentAllowUnsandboxed ? 'Allow unsandboxed fallback' : 'Strict sandbox mode'}

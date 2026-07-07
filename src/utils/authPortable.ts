@@ -1,4 +1,5 @@
 import { execa } from 'execa'
+import { t } from 'src/i18n/t.js'
 import { getMacOsKeychainStorageServiceName } from 'src/utils/secureStorage/macOsKeychainHelpers.js'
 
 export async function maybeRemoveApiKeyFromMacOSKeychainThrows(): Promise<void> {
@@ -9,7 +10,7 @@ export async function maybeRemoveApiKeyFromMacOSKeychainThrows(): Promise<void> 
       { shell: true, reject: false },
     )
     if (result.exitCode !== 0) {
-      throw new Error('Failed to delete keychain entry')
+      throw new Error(t('Failed to delete keychain entry'))
     }
   }
 }

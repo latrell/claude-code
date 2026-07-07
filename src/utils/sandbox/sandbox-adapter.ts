@@ -20,6 +20,7 @@ import {
   SandboxRuntimeConfigSchema,
   SandboxViolationStore,
 } from '@anthropic-ai/sandbox-runtime'
+import { t } from 'src/i18n/t.js'
 import { rmSync, statSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { memoize } from 'lodash-es'
@@ -712,7 +713,7 @@ async function wrapWithSandbox(
     if (initializationPromise) {
       await initializationPromise
     } else {
-      throw new Error('Sandbox failed to initialize. ')
+      throw new Error(t('Sandbox failed to initialize.'))
     }
   }
 

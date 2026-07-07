@@ -35,6 +35,8 @@ function loadBackend() {
 
 const backend = loadBackend()
 
+import { t } from '../../../../src/i18n/t.js'
+
 export class ComputerUseAPI {
   apps = backend?.apps ?? {
     async prepareDisplay() {
@@ -62,26 +64,26 @@ export class ComputerUseAPI {
       return []
     },
     async open() {
-      throw new Error('@ant/computer-use-swift: macOS only')
+      throw new Error(t('@ant/computer-use-swift: macOS only'))
     },
     async unhide() {},
   }
 
   display = backend?.display ?? {
     getSize() {
-      throw new Error('@ant/computer-use-swift: macOS only')
+      throw new Error(t('@ant/computer-use-swift: macOS only'))
     },
     listAll() {
-      throw new Error('@ant/computer-use-swift: macOS only')
+      throw new Error(t('@ant/computer-use-swift: macOS only'))
     },
   }
 
   screenshot = backend?.screenshot ?? {
     async captureExcluding() {
-      throw new Error('@ant/computer-use-swift: macOS only')
+      throw new Error(t('@ant/computer-use-swift: macOS only'))
     },
     async captureRegion() {
-      throw new Error('@ant/computer-use-swift: macOS only')
+      throw new Error(t('@ant/computer-use-swift: macOS only'))
     },
   }
 

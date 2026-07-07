@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import type { WSContext } from 'hono/ws'
 import type { JsonRpc2ClientMessage } from '../ws-message.js'
 import { handlePermissionResponse } from './acp-client.js'
@@ -115,7 +116,7 @@ async function handleJsonRpcLoadSession(
 ): Promise<void> {
   const payload = payloadRecord(params, 'session/load')
   if (typeof payload.sessionId !== 'string') {
-    throw new Error('Invalid session/load payload')
+    throw new Error(t('Invalid session/load payload'))
   }
   await handleLoadSession(ws, {
     sessionId: payload.sessionId,
@@ -129,7 +130,7 @@ async function handleJsonRpcResumeSession(
 ): Promise<void> {
   const payload = payloadRecord(params, 'session/resume')
   if (typeof payload.sessionId !== 'string') {
-    throw new Error('Invalid session/resume payload')
+    throw new Error(t('Invalid session/resume payload'))
   }
   await handleResumeSession(ws, {
     sessionId: payload.sessionId,
@@ -143,7 +144,7 @@ async function handleJsonRpcSetSessionModel(
 ): Promise<void> {
   const payload = payloadRecord(params, 'session/set_model')
   if (typeof payload.modelId !== 'string') {
-    throw new Error('Invalid session/set_model payload')
+    throw new Error(t('Invalid session/set_model payload'))
   }
   await handleSetSessionModel(ws, { modelId: payload.modelId })
 }
@@ -159,7 +160,7 @@ export async function handleJsonRpcSetSessionMode(
 ): Promise<void> {
   const state = clients.get(ws)
   if (!state?.connection) {
-    throw new Error('Not connected to agent')
+    throw new Error(t('Not connected to agent'))
   }
   const result = await state.connection.setSessionMode(
     params as { sessionId: string; modeId: string },
@@ -173,7 +174,7 @@ export async function handleJsonRpcCloseSession(
 ): Promise<void> {
   const state = clients.get(ws)
   if (!state?.connection) {
-    throw new Error('Not connected to agent')
+    throw new Error(t('Not connected to agent'))
   }
   const result = await state.connection.unstable_closeSession(
     params as { sessionId: string },
@@ -305,7 +306,7 @@ export async function dispatchJsonRpcMessage(
       state,
       msg.id,
       JSONRPC_METHOD_NOT_FOUND,
-      `Method not found: ${msg.method}`,
+      tf('Method not found: {method}', { method: msg.method }),
     )
     return
   }

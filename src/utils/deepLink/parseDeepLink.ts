@@ -18,6 +18,7 @@
  * use (terminalLauncher.ts) — that escaping is the injection boundary.
  */
 
+import { t, tf } from 'src/i18n/t.js'
 import { partiallySanitizeUnicode } from '../sanitization.js'
 
 export const DEEP_LINK_PROTOCOL = 'claude-cli'
@@ -91,7 +92,10 @@ export function parseDeepLink(uri: string): DeepLinkAction {
 
   if (!normalized) {
     throw new Error(
-      `Invalid deep link: expected ${DEEP_LINK_PROTOCOL}:// scheme, got "${uri}"`,
+      tf('Invalid deep link: expected {protocol} scheme, got "{uri}"', {
+        protocol: DEEP_LINK_PROTOCOL,
+        uri,
+      }),
     )
   }
 
@@ -99,11 +103,13 @@ export function parseDeepLink(uri: string): DeepLinkAction {
   try {
     url = new URL(normalized)
   } catch {
-    throw new Error(`Invalid deep link URL: "${uri}"`)
+    throw new Error(tf('Invalid deep link URL: "{uri}"', { uri }))
   }
 
   if (url.hostname !== 'open') {
-    throw new Error(`Unknown deep link action: "${url.hostname}"`)
+    throw new Error(
+      tf('Unknown deep link action: "{action}"', { action: url.hostname }),
+    )
   }
 
   const cwd = url.searchParams.get('cwd') ?? undefined
@@ -113,7 +119,9 @@ export function parseDeepLink(uri: string): DeepLinkAction {
   // Validate cwd if present — must be an absolute path
   if (cwd && !cwd.startsWith('/') && !/^[a-zA-Z]:[/\\]/.test(cwd)) {
     throw new Error(
-      `Invalid cwd in deep link: must be an absolute path, got "${cwd}"`,
+      tf('Invalid cwd in deep link: must be an absolute path, got "{cwd}"', {
+        cwd,
+      }),
     )
   }
 
@@ -123,7 +131,10 @@ export function parseDeepLink(uri: string): DeepLinkAction {
   }
   if (cwd && cwd.length > MAX_CWD_LENGTH) {
     throw new Error(
-      `Deep link cwd exceeds ${MAX_CWD_LENGTH} characters (got ${cwd.length})`,
+      tf('Deep link cwd exceeds {max} characters (got {length})', {
+        max: MAX_CWD_LENGTH,
+        length: cwd.length,
+      }),
     )
   }
 
@@ -131,7 +142,9 @@ export function parseDeepLink(uri: string): DeepLinkAction {
   // this parser stays pure with no config/filesystem access.
   if (repo && !REPO_SLUG_PATTERN.test(repo)) {
     throw new Error(
-      `Invalid repo in deep link: expected "owner/repo", got "${repo}"`,
+      tf('Invalid repo in deep link: expected "owner/repo", got "{repo}"', {
+        repo,
+      }),
     )
   }
 
@@ -144,7 +157,10 @@ export function parseDeepLink(uri: string): DeepLinkAction {
     }
     if (query.length > MAX_QUERY_LENGTH) {
       throw new Error(
-        `Deep link query exceeds ${MAX_QUERY_LENGTH} characters (got ${query.length})`,
+        tf('Deep link query exceeds {max} characters (got {length})', {
+          max: MAX_QUERY_LENGTH,
+          length: query.length,
+        }),
       )
     }
   }

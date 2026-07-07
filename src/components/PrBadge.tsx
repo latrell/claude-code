@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link, Text } from '@anthropic/ink';
 import type { PrReviewState } from '../utils/ghPrStatus.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   number: number;
@@ -18,7 +20,7 @@ export function PrBadge({ number, url, reviewState, bold }: Props): React.ReactN
   );
   return (
     <Text>
-      <Text dimColor={!bold}>PR</Text>{' '}
+      <T dimColor={!bold}>PR</T>{' '}
       <Link url={url} fallback={label}>
         <Text color={statusColor} dimColor={!statusColor && !bold} underline bold={bold}>
           #{number}

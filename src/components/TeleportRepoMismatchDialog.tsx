@@ -5,6 +5,8 @@ import { removePathFromRepo, validateRepoAtPath } from '../utils/githubRepoPathM
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';
 import { Spinner } from './Spinner.js';
+import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   targetRepo: string;
@@ -46,7 +48,9 @@ export function TeleportRepoMismatchDialog({
       setAvailablePaths(updatedPaths);
       setValidating(false);
 
-      setErrorMessage(`${getDisplayPath(value)} no longer contains the correct repository. Select another path.`);
+      setErrorMessage(
+        tf('{path} no longer contains the correct repository. Select another path.', { path: getDisplayPath(value) }),
+      );
     },
     [targetRepo, availablePaths, onSelectPath, onCancel],
   );
@@ -55,29 +59,28 @@ export function TeleportRepoMismatchDialog({
     ...availablePaths.map(path => ({
       label: (
         <Text>
-          Use <Text bold>{getDisplayPath(path)}</Text>
+          <T>Use </T>
+          <Text bold>{getDisplayPath(path)}</Text>
         </Text>
       ),
       value: path,
     })),
-    { label: 'Cancel', value: 'cancel' },
+    { label: t('Cancel'), value: 'cancel' },
   ];
 
   return (
-    <Dialog title="Teleport to Repo" onCancel={onCancel} color="background">
+    <Dialog title={t('Teleport to Repo')} onCancel={onCancel} color="background">
       {availablePaths.length > 0 ? (
         <>
           <Box flexDirection="column" gap={1}>
             {errorMessage && <Text color="error">{errorMessage}</Text>}
-            <Text>
-              Open Claude Code in <Text bold>{targetRepo}</Text>:
-            </Text>
+            <T vars={{ targetRepo }}>Open Claude Code in {targetRepo}:</T>
           </Box>
 
           {validating ? (
             <Box>
               <Spinner />
-              <Text> Validating repository…</Text>
+              <T> Validating repository…</T>
             </Box>
           ) : (
             <Select options={options} onChange={value => void handleChange(value)} />
@@ -86,7 +89,9 @@ export function TeleportRepoMismatchDialog({
       ) : (
         <Box flexDirection="column" gap={1}>
           {errorMessage && <Text color="error">{errorMessage}</Text>}
-          <Text dimColor>Run claude --teleport from a checkout of {targetRepo}</Text>
+          <T dimColor vars={{ targetRepo }}>
+            Run claude --teleport from a checkout of {targetRepo}
+          </T>
         </Box>
       )}
     </Dialog>

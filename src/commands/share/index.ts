@@ -7,6 +7,7 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { t, tf } from '../../i18n/t.js'
 import type { Command, LocalCommandResult } from '../../types/command.js'
 import {
   getSessionId,
@@ -188,7 +189,7 @@ async function uploadToGist(
   )
   const url = result.stdout.trim()
   if (!url.startsWith('https://')) {
-    throw new Error(`Unexpected gh gist output: ${url}`)
+    throw new Error(tf('Unexpected gh gist output: {url}', { url }))
   }
   return url
 }
@@ -205,7 +206,11 @@ async function uploadTo0x0(filePath: string): Promise<string> {
   )
   const url = result.stdout.trim()
   if (!url.startsWith('https://') && !url.startsWith('http://')) {
-    throw new Error(`0x0.st returned unexpected output: ${url.slice(0, 100)}`)
+    throw new Error(
+      tf('0x0.st returned unexpected output: {url}', {
+        url: url.slice(0, 100),
+      }),
+    )
   }
   return url
 }
@@ -256,8 +261,9 @@ function parseShareArgs(args: string): ShareOptions {
 const share: Command = {
   type: 'local',
   name: 'share',
-  description:
+  description: t(
     'Upload the current session log to GitHub Gist. Flags: --public, --private (default), --mask-secrets, --summary-only, --allow-public-fallback',
+  ),
   isHidden: false,
   isEnabled: () => true,
   supportsNonInteractive: true,
@@ -268,15 +274,9 @@ const share: Command = {
       if (!opts.valid) {
         return {
           type: 'text',
-          value: [
-            'Usage: /share [--public|--private] [--mask-secrets] [--summary-only] [--allow-public-fallback]',
-            '',
-            '  --public               Create a public Gist (default: secret)',
-            '  --private              Create a secret Gist (default)',
-            '  --mask-secrets         Redact API keys, tokens, and secrets before uploading',
-            '  --summary-only         Upload a summary (first 200 chars per turn) instead of full log',
-            '  --allow-public-fallback  Fall back to 0x0.st if gh gist fails',
-          ].join('\n'),
+          value: t(
+            'Usage: /share [--public|--private] [--mask-secrets] [--summary-only] [--allow-public-fallback]\n\n  --public               Create a public Gist (default: secret)\n  --private              Create a secret Gist (default)\n  --mask-secrets         Redact API keys, tokens, and secrets before uploading\n  --summary-only         Upload a summary (first 200 chars per turn) instead of full log\n  --allow-public-fallback  Fall back to 0x0.st if gh gist fails',
+          ),
         }
       }
 
@@ -302,14 +302,13 @@ const share: Command = {
         })
         return {
           type: 'text',
-          value: [
-            '## Session log not found',
-            '',
-            `Session: ${sessionId}`,
-            `Expected path: \`${logPath}\``,
-            '',
-            'The session log may not have been written yet. Try sending at least one message first.',
-          ].join('\n'),
+          value: tf(
+            '## Session log not found\n\nSession: {sessionId}\nExpected path: `{logPath}`\n\nThe session log may not have been written yet. Try sending at least one message first.',
+            {
+              sessionId,
+              logPath,
+            },
+          ),
         }
       }
 
@@ -321,23 +320,13 @@ const share: Command = {
         })
         return {
           type: 'text',
-          value: [
-            '## Share session log',
-            '',
-            `Session: ${sessionId}`,
-            `Log file: \`${logPath}\``,
-            '',
-            'To upload to GitHub Gist automatically, install the `gh` CLI:',
-            '  https://cli.github.com/',
-            '',
-            'Then run:',
-            `  \`gh gist create "${logPath}" --secret --filename claude-session.jsonl\``,
-            '',
-            'Or use `--allow-public-fallback` to upload to 0x0.st instead.',
-            '',
-            '_Privacy note: the JSONL contains everything typed in this session,_',
-            '_including tool outputs. Review before sharing._',
-          ].join('\n'),
+          value: tf(
+            '## Share session log\n\nSession: {sessionId}\nLog file: `{logPath}`\n\nTo upload to GitHub Gist automatically, install the `gh` CLI:\n  https://cli.github.com/\n\nThen run:\n  `gh gist create "{logPath}" --secret --filename claude-session.jsonl`\n\nOr use `--allow-public-fallback` to upload to 0x0.st instead.\n\n_Privacy note: the JSONL contains everything typed in this session,_\n_including tool outputs. Review before sharing._',
+            {
+              sessionId,
+              logPath,
+            },
+          ),
         }
       }
 
@@ -348,7 +337,7 @@ const share: Command = {
         if (!uploadContent) {
           return {
             type: 'text',
-            value: 'No conversation content found in session log.',
+            value: t('No conversation content found in session log.'),
           }
         }
       } else {
@@ -371,7 +360,10 @@ const share: Command = {
         const msg = sanitizeErrorMessage(
           writeErr instanceof Error ? writeErr.message : String(writeErr),
         )
-        return { type: 'text', value: `Failed to prepare share file: ${msg}` }
+        return {
+          type: 'text',
+          value: tf('Failed to prepare share file: {error}', { error: msg }),
+        }
       }
 
       try {
@@ -404,16 +396,18 @@ const share: Command = {
         return {
           type: 'text',
           value: [
-            '## Session shared',
+            t('## Session shared'),
             '',
-            `URL:        ${url}`,
-            `Session:    ${sessionId}`,
-            `Visibility: ${opts.isPublic ? 'public' : 'secret'}`,
-            `Method:     ${method}`,
-            opts.summaryOnly ? 'Content:    summary only (truncated)' : '',
-            opts.maskSecrets ? 'Secrets:    masked before upload' : '',
+            `${t('URL:')}        ${url}`,
+            `${t('Session:')}    ${sessionId}`,
+            `${t('Visibility:')} ${opts.isPublic ? 'public' : 'secret'}`,
+            `${t('Method:')}     ${method}`,
+            opts.summaryOnly ? t('Content:    summary only (truncated)') : '',
+            opts.maskSecrets ? t('Secrets:    masked before upload') : '',
             '',
-            '_Privacy note: the JSONL contains everything typed in this session._',
+            t(
+              '_Privacy note: the JSONL contains everything typed in this session._',
+            ),
           ]
             .filter(l => l !== '')
             .join('\n'),
@@ -427,14 +421,14 @@ const share: Command = {
         return {
           type: 'text',
           value: [
-            '## Failed to share session',
+            t('## Failed to share session'),
             '',
-            `Error: ${msg}`,
+            `${t('Error:')} ${msg}`,
             '',
             hasGh
-              ? 'Make sure you are logged in: `gh auth login`'
-              : 'Install the `gh` CLI: https://cli.github.com/',
-            `Log file: \`${logPath}\``,
+              ? t('Make sure you are logged in: `gh auth login`')
+              : t('Install the `gh` CLI: https://cli.github.com/'),
+            tf('Log file: `{logPath}`', { logPath }),
           ].join('\n'),
         }
       } finally {

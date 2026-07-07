@@ -7,6 +7,7 @@
  * Note: Inboxes are keyed by agent name within a team.
  */
 
+import { t, tf } from 'src/i18n/t.js'
 import { randomBytes } from 'crypto'
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -93,14 +94,16 @@ function assertMailboxMessageSize(message: TeammateMessage): void {
   const textBytes = Buffer.byteLength(message.text, 'utf8')
   if (textBytes > MAX_MAILBOX_MESSAGE_TEXT_BYTES) {
     throw new Error(
-      `Mailbox message text exceeds ${MAX_MAILBOX_MESSAGE_TEXT_BYTES} bytes`,
+      tf('Mailbox message text exceeds {max} bytes', {
+        max: MAX_MAILBOX_MESSAGE_TEXT_BYTES,
+      }),
     )
   }
 }
 
 function toMailboxMessage(value: unknown): TeammateMessage {
   if (!value || typeof value !== 'object') {
-    throw new Error('Invalid mailbox message: expected object')
+    throw new Error(t('Invalid mailbox message: expected object'))
   }
   const record = value as Record<string, unknown>
   if (
@@ -109,7 +112,7 @@ function toMailboxMessage(value: unknown): TeammateMessage {
     typeof record.timestamp !== 'string' ||
     typeof record.read !== 'boolean'
   ) {
-    throw new Error('Invalid mailbox message shape')
+    throw new Error(t('Invalid mailbox message shape'))
   }
   const message: TeammateMessage = {
     from: record.from,
@@ -126,7 +129,7 @@ function toMailboxMessage(value: unknown): TeammateMessage {
 function parseMailboxMessages(content: string): TeammateMessage[] {
   const parsed = jsonParse(content)
   if (!Array.isArray(parsed)) {
-    throw new Error('Invalid mailbox file: expected message array')
+    throw new Error(t('Invalid mailbox file: expected message array'))
   }
   return parsed.map(toMailboxMessage)
 }
@@ -135,7 +138,10 @@ async function readMailboxFile(inboxPath: string): Promise<string> {
   const info = await stat(inboxPath)
   if (info.size > MAX_MAILBOX_FILE_BYTES) {
     throw new Error(
-      `Mailbox file exceeds ${MAX_MAILBOX_FILE_BYTES} bytes: ${inboxPath}`,
+      tf('Mailbox file exceeds {max} bytes: {path}', {
+        max: MAX_MAILBOX_FILE_BYTES,
+        path: inboxPath,
+      }),
     )
   }
   return readFile(inboxPath, 'utf-8')
@@ -156,7 +162,9 @@ async function writeMailboxAtomic(
   const bytes = Buffer.byteLength(content, 'utf8')
   if (bytes > MAX_MAILBOX_FILE_BYTES) {
     throw new Error(
-      `Compacted mailbox still exceeds ${MAX_MAILBOX_FILE_BYTES} bytes`,
+      tf('Compacted mailbox still exceeds {max} bytes', {
+        max: MAX_MAILBOX_FILE_BYTES,
+      }),
     )
   }
   const tempPath = `${inboxPath}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`

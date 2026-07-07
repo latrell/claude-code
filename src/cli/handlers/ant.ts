@@ -8,6 +8,7 @@ import {
 } from '../../utils/tasks.js'
 import { getRecentActivity } from '../../utils/logoV2Utils.js'
 import type { LogOption } from '../../types/logs.js'
+import { t, tf } from '../../i18n/t.js'
 
 const DEFAULT_LIST = 'default'
 
@@ -25,7 +26,7 @@ export async function taskCreateHandler(
     blocks: [],
     blockedBy: [],
   })
-  console.log(`Created task ${id}: ${subject}`)
+  console.log(tf('Created task {id}: {subject}', { id, subject }))
 }
 
 export async function taskListHandler(opts: {
@@ -46,7 +47,7 @@ export async function taskListHandler(opts: {
   }
 
   if (tasks.length === 0) {
-    console.log('No tasks found.')
+    console.log(t('No tasks found.'))
     return
   }
 

@@ -7,6 +7,8 @@ import { getCwd } from '../../utils/cwd.js';
 import { readFileSafe } from '../../utils/file.js';
 import { Divider } from '@anthropic/ink';
 import { StructuredDiff } from '../StructuredDiff.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   filePath: string;
@@ -114,7 +116,7 @@ export function DiffDetailView({
       <Divider padding={4} />
       <Box flexDirection="column">
         {hunks.length === 0 ? (
-          <Text dimColor>No diff content</Text>
+          <T dimColor>No diff content</T>
         ) : (
           hunks.map((hunk, index) => (
             <StructuredDiff

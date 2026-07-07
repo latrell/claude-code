@@ -5,6 +5,7 @@ import React from 'react'
  * Extracted from TeammateTool to allow reuse by AgentTool.
  */
 
+import { t } from 'src/i18n/t.js'
 import { getSessionId } from 'src/bootstrap/state.js'
 import type { ToolUseContext } from 'src/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
@@ -172,7 +173,7 @@ async function resolveSpawn(
   context: ToolUseContext,
 ): Promise<ResolvedSpawn> {
   if (!input.name || !input.prompt) {
-    throw new Error('name and prompt are required for spawn operation')
+    throw new Error(t('name and prompt are required for spawn operation'))
   }
 
   const appState = context.getAppState()

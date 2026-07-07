@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
@@ -838,9 +839,7 @@ async function sideQueryViaGemini(
 
   if (!res.ok) {
     const errorBody = await res.text()
-    throw new Error(
-      `Gemini API request failed (${res.status} ${res.statusText}): ${errorBody || 'empty response body'}`,
-    )
+    throw new Error(t('Gemini API request failed'))
   }
 
   const geminiResponse = (await res.json()) as {

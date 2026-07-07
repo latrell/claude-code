@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { tf } from 'src/i18n/t.js'
 import { hasProfileScope, isClaudeAISubscriber } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -33,7 +34,7 @@ const DISK_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 async function _fetchMetricsEnabled(): Promise<MetricsEnabledResponse> {
   const authResult = getAuthHeaders()
   if (authResult.error) {
-    throw new Error(`Auth error: ${authResult.error}`)
+    throw new Error(tf('Auth error: {error}', { error: authResult.error }))
   }
 
   const headers = {

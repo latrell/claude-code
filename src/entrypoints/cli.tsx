@@ -5,6 +5,7 @@
 import '../utils/performanceShim.js';
 import { feature } from 'bun:bundle';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { installNodeFetchTimeoutFix } from '../utils/fetchTimeouts.js';
 
 // Runtime fallback for MACRO.* when not injected by build/dev defines.
 // This happens when running cli.tsx directly (not via `bun run dev` or built dist/).
@@ -36,6 +37,16 @@ if (isEnvTruthy(process.env.CLAUDE_CODE_FORCE_INTERACTIVE)) {
     }
   }
 }
+
+// Node fetch (undici) kills streams idle >300s with `TypeError: terminated`
+// ("API Error: terminated"). Streaming LLM backends send zero bytes during
+// queue+prefill, so slow/self-hosted endpoints (vLLM etc.) trip it on large
+// contexts. Disable the idle timeouts up front, before any network module
+// captures the global dispatcher. No-op under Bun, whose equivalent 5-minute
+// idle timeout is disarmed per request via getFetchIdleTimeoutOptions()
+// (spread into fetch options by getProxyFetchOptions).
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+installNodeFetchTimeoutFix();
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

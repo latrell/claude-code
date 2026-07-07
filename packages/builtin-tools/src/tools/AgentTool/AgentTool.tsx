@@ -14,6 +14,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js';
 import { clearDumpState } from 'src/services/api/dumpPrompts.js';
+import { t, tf } from 'src/i18n/t.js';
 import {
   completeAgentTask as completeAsyncAgent,
   createActivityDescriptionResolver,
@@ -353,7 +354,7 @@ export const AgentTool = buildTool({
 
     // Check if user is trying to use agent teams without access
     if (team_name && !isAgentSwarmsEnabled()) {
-      throw new Error('Agent Teams is not yet available on your plan.');
+      throw new Error(t('Agent Teams is not yet available on your plan.'));
     }
 
     // Teammates (in-process or tmux) passing `name` would trigger spawnTeammate()
@@ -430,7 +431,9 @@ export const AgentTool = buildTool({
         toolUseContext.options.querySource === `agent:builtin:${FORK_AGENT.agentType}` ||
         isInForkChild(toolUseContext.messages)
       ) {
-        throw new Error('Fork is not available inside a forked worker. Complete your task directly using your tools.');
+        throw new Error(
+          t('Fork is not available inside a forked worker. Complete your task directly using your tools.'),
+        );
       }
       selectedAgent = FORK_AGENT;
     } else {
@@ -574,7 +577,7 @@ export const AgentTool = buildTool({
         const reasons = (eligibility as { eligible: false; errors: BackgroundRemoteSessionPrecondition[] }).errors
           .map(formatPreconditionError)
           .join('\n');
-        throw new Error(`Cannot launch remote agent:\n${reasons}`);
+        throw new Error(tf('Cannot launch remote agent:\n{reasons}', { reasons }));
       }
 
       let bundleFailHint: string | undefined;
@@ -1605,7 +1608,9 @@ duration_ms: ${data.totalDurationMs}</usage>`,
       };
     }
     data satisfies never;
-    throw new Error(`Unexpected agent tool result status: ${(data as { status: string }).status}`);
+    throw new Error(
+      tf('Unexpected agent tool result status: {status}', { status: (data as { status: string }).status }),
+    );
   },
   renderToolResultMessage,
   renderToolUseMessage,

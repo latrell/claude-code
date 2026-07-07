@@ -8,6 +8,8 @@ import { Select } from '../../components/CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 import { Spinner } from '../../components/Spinner.js';
 import { Box, Text, instances } from '@anthropic/ink';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { enablePluginOp } from '../../services/plugins/pluginOperations.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { isENOENT, toError } from '../../utils/errors.js';
@@ -86,13 +88,13 @@ export async function playAnimation(skillDir: string): Promise<{
     if (isENOENT(e)) {
       return {
         success: false,
-        message: 'No animation found. Run /think-back first to generate one.',
+        message: t('No animation found. Run /think-back first to generate one.'),
       };
     }
     logError(e);
     return {
       success: false,
-      message: `Could not access animation data: ${toError(e).message}`,
+      message: tf('Could not access animation data: {error}', { error: toError(e).message }),
     };
   }
 
@@ -102,20 +104,20 @@ export async function playAnimation(skillDir: string): Promise<{
     if (isENOENT(e)) {
       return {
         success: false,
-        message: 'Player script not found. The player.js file is missing from the thinkback skill.',
+        message: t('Player script not found. The player.js file is missing from the thinkback skill.'),
       };
     }
     logError(e);
     return {
       success: false,
-      message: `Could not access player script: ${toError(e).message}`,
+      message: tf('Could not access player script: {error}', { error: toError(e).message }),
     };
   }
 
   // Get ink instance for terminal takeover
   const inkInstance = instances.get(process.stdout);
   if (!inkInstance) {
-    return { success: false, message: 'Failed to access terminal instance' };
+    return { success: false, message: t('Failed to access terminal instance') };
   }
 
   inkInstance.enterAlternateScreen();
@@ -139,7 +141,7 @@ export async function playAnimation(skillDir: string): Promise<{
     void execFileNoThrow(openCmd, [htmlPath]);
   }
 
-  return { success: true, message: 'Year in review animation complete!' };
+  return { success: true, message: t('Year in review animation complete!') };
 }
 
 type InstallState =
@@ -187,7 +189,7 @@ function ThinkbackInstaller({
           // Marketplace installed but plugin not installed - refresh to get latest plugins
           // Only refresh when needed to avoid potentially destructive git operations
           setState({ phase: 'installing-marketplace' });
-          setProgressMessage('Updating marketplace…');
+          setProgressMessage(t('Updating marketplace...'));
           logForDebugging(`Refreshing marketplace ${marketplaceName}`);
 
           await refreshMarketplace(marketplaceName, message => {
@@ -207,7 +209,7 @@ function ThinkbackInstaller({
 
           if (result.failed.length > 0) {
             const errorMsg = result.failed.map(f => `${f.name}: ${f.error}`).join(', ');
-            throw new Error(`Failed to install plugin: ${errorMsg}`);
+            throw new Error(tf('Failed to install plugin: {error}', { error: errorMsg }));
           }
 
           clearAllCaches();
@@ -224,7 +226,7 @@ function ThinkbackInstaller({
 
             const enableResult = await enablePluginOp(pluginId);
             if (!enableResult.success) {
-              throw new Error(`Failed to enable plugin: ${enableResult.message}`);
+              throw new Error(tf('Failed to enable plugin: {error}', { error: enableResult.message }));
             }
 
             clearAllCaches();
@@ -248,7 +250,10 @@ function ThinkbackInstaller({
   if (state.phase === 'error') {
     return (
       <Box flexDirection="column">
-        <Text color="error">Error: {state.message}</Text>
+        <Text color="error">
+          <T>Error: </T>
+          {state.message}
+        </Text>
       </Box>
     );
   }
@@ -259,12 +264,12 @@ function ThinkbackInstaller({
 
   const statusMessage =
     state.phase === 'checking'
-      ? 'Checking thinkback installation…'
+      ? t('Checking thinkback installation...')
       : state.phase === 'installing-marketplace'
-        ? 'Installing marketplace…'
+        ? t('Installing marketplace...')
         : state.phase === 'enabling-plugin'
-          ? 'Enabling thinkback plugin…'
-          : 'Installing thinkback plugin…';
+          ? t('Enabling thinkback plugin...')
+          : t('Installing thinkback plugin...');
 
   return (
     <Box flexDirection="column">
@@ -295,31 +300,31 @@ function ThinkbackMenu({
   const options = hasGenerated
     ? [
         {
-          label: 'Play animation',
+          label: t('Play animation'),
           value: 'play' as const,
-          description: 'Watch your year in review',
+          description: t('Watch your year in review'),
         },
         {
-          label: 'Edit content',
+          label: t('Edit content'),
           value: 'edit' as const,
-          description: 'Modify the animation',
+          description: t('Modify the animation'),
         },
         {
-          label: 'Fix errors',
+          label: t('Fix errors'),
           value: 'fix' as const,
-          description: 'Fix validation or rendering issues',
+          description: t('Fix validation or rendering issues'),
         },
         {
-          label: 'Regenerate',
+          label: t('Regenerate'),
           value: 'regenerate' as const,
-          description: 'Create a new animation from scratch',
+          description: t('Create a new animation from scratch'),
         },
       ]
     : [
         {
-          label: "Let's go!",
+          label: t("Let's go!"),
           value: 'regenerate' as const,
-          description: 'Generate your personalized animation',
+          description: t('Generate your personalized animation'),
         },
       ];
 

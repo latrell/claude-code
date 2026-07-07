@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { tf } from 'src/i18n/t.js'
 import type {
   BaseInfo,
   GetConfigResp,
@@ -57,7 +58,12 @@ async function post<T>(
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new Error(
+        tf('HTTP {status}: {statusText}', {
+          status: response.status,
+          statusText: response.statusText,
+        }),
+      )
     }
 
     return (await response.json()) as T

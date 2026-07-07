@@ -238,7 +238,7 @@ async function handleBroadcast(
 
   const teamFile = await readTeamFileAsync(teamName)
   if (!teamFile) {
-    throw new Error(`Team "${teamName}" does not exist`)
+    throw new Error(tf('Team "{teamName}" does not exist', { teamName }))
   }
 
   const senderName =
@@ -1018,7 +1018,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
       }
 
       if (input.to === '*') {
-        throw new Error('structured messages cannot be broadcast')
+        throw new Error(t('structured messages cannot be broadcast'))
       }
 
       switch (input.message.type) {

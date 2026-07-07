@@ -19,6 +19,7 @@ import { McpConnectionError, McpAuthError, McpTimeoutError } from './errors.js'
 import { memoizeWithLRU } from './cache.js'
 import { discoverTools } from './discovery.js'
 import { callMcpTool } from './execution.js'
+import { tf } from 'src/i18n/t.js'
 
 // ============================================================================
 // Event types
@@ -173,7 +174,7 @@ class McpManagerImpl implements McpManager {
     if (!conn || conn.type !== 'connected') {
       throw new McpConnectionError(
         serverName,
-        `Server ${serverName} is not connected`,
+        tf('Server {serverName} is not connected', { serverName }),
       )
     }
 

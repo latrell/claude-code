@@ -1,3 +1,5 @@
+import { t } from 'src/i18n/t.js'
+
 export class Stream<T> implements AsyncIterator<T> {
   private readonly queue: T[] = []
   private readResolve?: (value: IteratorResult<T>) => void
@@ -10,7 +12,7 @@ export class Stream<T> implements AsyncIterator<T> {
 
   [Symbol.asyncIterator](): AsyncIterableIterator<T> {
     if (this.started) {
-      throw new Error('Stream can only be iterated once')
+      throw new Error(t('Stream can only be iterated once'))
     }
     this.started = true
     return this

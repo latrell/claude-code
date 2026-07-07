@@ -6,6 +6,7 @@ import type * as undici from 'undici'
 import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from './debug.js'
 import { getFsImplementation } from './fsOperations.js'
+import { getUndiciTimeoutOptions } from './fetchTimeouts.js'
 
 export type MTLSConfig = {
   cert?: string
@@ -146,6 +147,9 @@ export function getTLSFetchOptions(): {
       ...(tlsConfig.ca && { ca: tlsConfig.ca }),
     },
     pipelining: 1,
+    // Keep stream idle timeouts disabled (see fetchTimeouts.ts) — this agent
+    // may replace the global dispatcher configured at CLI entry.
+    ...getUndiciTimeoutOptions(),
   })
 
   return { dispatcher: agent }

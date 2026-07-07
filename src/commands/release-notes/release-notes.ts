@@ -1,4 +1,5 @@
 import type { LocalCommandResult } from '../../types/command.js'
+import { t, tf } from '../../i18n/t.js'
 import {
   CHANGELOG_URL,
   fetchAndStoreChangelog,
@@ -45,6 +46,6 @@ export async function call(): Promise<LocalCommandResult> {
   // Nothing available, show link
   return {
     type: 'text',
-    value: `See the full changelog at: ${CHANGELOG_URL}`,
+    value: tf('See the full changelog at: {url}', { url: CHANGELOG_URL }),
   }
 }

@@ -3,6 +3,7 @@ import {
   ReadResourceResultSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod/v4'
+import { tf } from 'src/i18n/t.js'
 import { ensureConnectedClient } from 'src/services/mcp/client.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
@@ -84,11 +85,15 @@ export const ReadMcpResourceTool = buildTool({
     }
 
     if (client.type !== 'connected') {
-      throw new Error(`Server "${serverName}" is not connected`)
+      throw new Error(
+        tf('Server "{serverName}" is not connected', { serverName }),
+      )
     }
 
     if (!client.capabilities?.resources) {
-      throw new Error(`Server "${serverName}" does not support resources`)
+      throw new Error(
+        tf('Server "{serverName}" does not support resources', { serverName }),
+      )
     }
 
     const connectedClient = await ensureConnectedClient(client)

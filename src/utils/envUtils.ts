@@ -1,6 +1,7 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
+import { t } from 'src/i18n/t.js'
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
@@ -80,7 +81,9 @@ export function parseEnvVars(
       const [key, ...valueParts] = envStr.split('=')
       if (!key || valueParts.length === 0) {
         throw new Error(
-          `Invalid environment variable format: ${envStr}, environment variables should be added as: -e KEY1=value1 -e KEY2=value2`,
+          t(
+            'Invalid environment variable format: environment variables should be added as: -e KEY1=value1 -e KEY2=value2',
+          ),
         )
       }
       parsedEnv[key] = valueParts.join('=')

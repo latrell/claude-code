@@ -27,6 +27,8 @@ import { Markdown } from '../Markdown.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
 import { RateLimitMessage } from './RateLimitMessage.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 const MAX_API_ERROR_CHARS = 1000;
 
@@ -136,7 +138,7 @@ export function AssistantTextMessage({
       return (
         <MessageResponse>
           <Box flexDirection="column" gap={1}>
-            <Text color="error">We are experiencing high demand for Opus 4.</Text>
+            <T color="error">We are experiencing high demand for Opus 4.</T>
             <Text>
               To continue immediately, use /model to switch to {renderModelName(getDefaultSonnetModel())} and continue
               coding.

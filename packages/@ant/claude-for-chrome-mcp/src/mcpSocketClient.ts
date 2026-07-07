@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import { promises as fsPromises } from 'fs'
 import { createConnection } from 'net'
 import type { Socket } from 'net'
@@ -274,7 +275,9 @@ class McpSocketClient {
         }
         reject(
           new SocketConnectionError(
-            `[${serverName}] Connection attempt timed out after 5000ms`,
+            tf('[{name}] Connection attempt timed out after 5000ms', {
+              name: serverName,
+            }),
           ),
         )
       }, 5000)
@@ -299,7 +302,7 @@ class McpSocketClient {
 
     if (!this.socket) {
       throw new SocketConnectionError(
-        `[${serverName}] Cannot send request: not connected`,
+        tf('[{name}] Cannot send request: not connected', { name: serverName }),
       )
     }
 
@@ -310,7 +313,10 @@ class McpSocketClient {
         this.responseCallback = null
         reject(
           new SocketConnectionError(
-            `[${serverName}] Tool request timed out after ${timeoutMs}ms`,
+            tf('[{name}] Tool request timed out after {timeout}ms', {
+              name: serverName,
+              timeout: timeoutMs,
+            }),
           ),
         )
       }, timeoutMs)
@@ -432,16 +438,19 @@ class McpSocketClient {
             const dirMode = dirStats.mode & 0o777
             if (dirMode !== 0o700) {
               throw new Error(
-                `[${serverName}] Insecure socket directory permissions: ${dirMode.toString(
-                  8,
-                )} (expected 0700). Directory may have been tampered with.`,
+                tf(
+                  '[{name}] Insecure socket directory permissions: {mode} (expected 0700). Directory may have been tampered with.',
+                  { name: serverName, mode: dirMode.toString(8) },
+                ),
               )
             }
             const currentUid = process.getuid?.()
             if (currentUid !== undefined && dirStats.uid !== currentUid) {
               throw new Error(
-                `Socket directory not owned by current user (uid: ${currentUid}, dir uid: ${dirStats.uid}). ` +
-                  `Potential security risk.`,
+                tf(
+                  'Socket directory not owned by current user (uid: {uid}, dir uid: {dirUid}). Potential security risk.',
+                  { uid: currentUid, dirUid: dirStats.uid },
+                ),
               )
             }
           }
@@ -457,24 +466,30 @@ class McpSocketClient {
 
       if (!stats.isSocket()) {
         throw new Error(
-          `[${serverName}] Path exists but it's not a socket: ${socketPath}`,
+          tf('[{name}] Path exists but it is not a socket: {path}', {
+            name: serverName,
+            path: socketPath,
+          }),
         )
       }
 
       const mode = stats.mode & 0o777
       if (mode !== 0o600) {
         throw new Error(
-          `[${serverName}] Insecure socket permissions: ${mode.toString(
-            8,
-          )} (expected 0600). Socket may have been tampered with.`,
+          tf(
+            '[{name}] Insecure socket permissions: {mode} (expected 0600). Socket may have been tampered with.',
+            { name: serverName, mode: mode.toString(8) },
+          ),
         )
       }
 
       const currentUid = process.getuid?.()
       if (currentUid !== undefined && stats.uid !== currentUid) {
         throw new Error(
-          `Socket not owned by current user (uid: ${currentUid}, socket uid: ${stats.uid}). ` +
-            `Potential security risk.`,
+          tf(
+            'Socket not owned by current user (uid: {uid}, socket uid: {socketUid}). Potential security risk.',
+            { uid: currentUid, socketUid: stats.uid },
+          ),
         )
       }
 

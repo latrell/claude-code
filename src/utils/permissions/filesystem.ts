@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import ignore from 'ignore'
@@ -393,7 +394,7 @@ export function getScratchpadDir(): string {
  */
 export async function ensureScratchpadDir(): Promise<string> {
   if (!isScratchpadEnabled()) {
-    throw new Error('Scratchpad directory feature is not enabled')
+    throw new Error(t('Scratchpad directory feature is not enabled'))
   }
 
   const fs = getFsImplementation()

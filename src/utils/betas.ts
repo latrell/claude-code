@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
@@ -72,16 +73,16 @@ export function filterAllowedSdkBetas(
 
   if (isClaudeAISubscriber()) {
     console.warn(
-      'Warning: Custom betas are only available for API key users. Ignoring provided betas.',
+      t(
+        'Warning: Custom betas are only available for API key users. Ignoring provided betas.',
+      ),
     )
     return undefined
   }
 
   const { allowed, disallowed } = partitionBetasByAllowlist(sdkBetas)
   for (const beta of disallowed) {
-    console.warn(
-      `Warning: Beta header '${beta}' is not allowed. Only the following betas are supported: ${ALLOWED_SDK_BETAS.join(', ')}`,
-    )
+    console.warn(t('Warning: Beta header is not allowed.'))
   }
   return allowed.length > 0 ? allowed : undefined
 }

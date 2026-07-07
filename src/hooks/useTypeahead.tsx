@@ -19,6 +19,7 @@ import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { generateProgressiveArgumentHint, parseArguments } from '../utils/argumentSubstitution.js';
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
 import { formatLogMetadata } from '../utils/format.js';
+import { t, tf } from '../i18n/t.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import {
   applyCommandSuggestion,
@@ -658,14 +659,14 @@ export function useTypeahead({
         const seen = new Set<string>();
 
         if (isAgentSwarmsEnabled() && state.teamContext) {
-          for (const t of Object.values(state.teamContext.teammates ?? {})) {
-            if (t.name === TEAM_LEAD_NAME) continue;
-            if (!t.name.toLowerCase().startsWith(partialName)) continue;
-            seen.add(t.name);
+          for (const teamm8 of Object.values(state.teamContext.teammates ?? {})) {
+            if (teamm8.name === TEAM_LEAD_NAME) continue;
+            if (!teamm8.name.toLowerCase().startsWith(partialName)) continue;
+            seen.add(teamm8.name);
             members.push({
-              id: `dm-${t.name}`,
-              displayText: `@${t.name}`,
-              description: 'send message',
+              id: `dm-${teamm8.name}`,
+              displayText: `@${teamm8.name}`,
+              description: t('send message'),
             });
           }
         }
@@ -677,7 +678,7 @@ export function useTypeahead({
           members.push({
             id: `dm-${name}`,
             displayText: `@${name}`,
-            description: status ? `send message · ${status}` : 'send message',
+            description: status ? tf('send message · {status}', { status }) : t('send message'),
           });
         }
 

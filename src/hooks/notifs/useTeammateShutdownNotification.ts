@@ -6,6 +6,7 @@ import {
 } from '../../context/notifications.js'
 import { useAppState } from '../../state/AppState.js'
 import { isInProcessTeammateTask } from '../../tasks/InProcessTeammateTask/types.js'
+import { t, tf } from '../../i18n/t.js'
 
 function parseCount(notif: Notification): number {
   if (!('text' in notif)) {
@@ -22,7 +23,7 @@ function foldSpawn(acc: Notification, _incoming: Notification): Notification {
 function makeSpawnNotif(count: number): Notification {
   return {
     key: 'teammate-spawn',
-    text: count === 1 ? '1 agent spawned' : `${count} agents spawned`,
+    text: tf('{count} agents spawned', { count }),
     priority: 'low',
     timeoutMs: 5000,
     fold: foldSpawn,
@@ -39,7 +40,7 @@ function foldShutdown(
 function makeShutdownNotif(count: number): Notification {
   return {
     key: 'teammate-shutdown',
-    text: count === 1 ? '1 agent shut down' : `${count} agents shut down`,
+    text: tf('{count} agents shut down', { count }),
     priority: 'low',
     timeoutMs: 5000,
     fold: foldShutdown,

@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { SandboxManager, shouldAllowManagedSandboxDomainsOnly } from '../../utils/sandbox/sandbox-adapter.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 export function SandboxConfigTab(): React.ReactNode {
   const isEnabled = SandboxManager.isSandboxingEnabled();
@@ -21,7 +23,7 @@ export function SandboxConfigTab(): React.ReactNode {
   if (!isEnabled) {
     return (
       <Box flexDirection="column" paddingY={1}>
-        <Text color="subtle">Sandbox is not enabled</Text>
+        <T color="subtle">Sandbox is not enabled</T>
         {warningsNote}
       </Box>
     );
@@ -41,7 +43,7 @@ export function SandboxConfigTab(): React.ReactNode {
         <Text bold color="permission">
           Excluded Commands:
         </Text>
-        <Text dimColor>{excludedCommands.length > 0 ? excludedCommands.join(', ') : 'None'}</Text>
+        <Text dimColor>{excludedCommands.length > 0 ? excludedCommands.join(', ') : t('None')}</Text>
       </Box>
 
       {/* Filesystem Read Restrictions */}
@@ -50,9 +52,13 @@ export function SandboxConfigTab(): React.ReactNode {
           <Text bold color="permission">
             Filesystem Read Restrictions:
           </Text>
-          <Text dimColor>Denied: {fsReadConfig.denyOnly.join(', ')}</Text>
+          <T dimColor vars={{ list: fsReadConfig.denyOnly.join(', ') }}>
+            Denied: {list}
+          </T>
           {fsReadConfig.allowWithinDeny && fsReadConfig.allowWithinDeny.length > 0 && (
-            <Text dimColor>Allowed within denied: {fsReadConfig.allowWithinDeny.join(', ')}</Text>
+            <T dimColor vars={{ list: fsReadConfig.allowWithinDeny.join(', ') }}>
+              Allowed within denied: {list}
+            </T>
           )}
         </Box>
       )}
@@ -63,9 +69,13 @@ export function SandboxConfigTab(): React.ReactNode {
           <Text bold color="permission">
             Filesystem Write Restrictions:
           </Text>
-          <Text dimColor>Allowed: {fsWriteConfig.allowOnly.join(', ')}</Text>
+          <T dimColor vars={{ list: fsWriteConfig.allowOnly.join(', ') }}>
+            Allowed: {list}
+          </T>
           {fsWriteConfig.denyWithinAllow.length > 0 && (
-            <Text dimColor>Denied within allowed: {fsWriteConfig.denyWithinAllow.join(', ')}</Text>
+            <T dimColor vars={{ list: fsWriteConfig.denyWithinAllow.join(', ') }}>
+              Denied within allowed: {list}
+            </T>
           )}
         </Box>
       )}
@@ -75,14 +85,18 @@ export function SandboxConfigTab(): React.ReactNode {
         (networkConfig.deniedHosts && networkConfig.deniedHosts.length > 0)) && (
         <Box marginTop={1} flexDirection="column">
           <Text bold color="permission">
-            Network Restrictions
-            {shouldAllowManagedSandboxDomainsOnly() ? ' (Managed)' : ''}:
+            <T>Network Restrictions</T>
+            {shouldAllowManagedSandboxDomainsOnly() ? <T> (Managed)</T> : ''}:
           </Text>
           {networkConfig.allowedHosts && networkConfig.allowedHosts.length > 0 && (
-            <Text dimColor>Allowed: {networkConfig.allowedHosts.join(', ')}</Text>
+            <T dimColor vars={{ list: networkConfig.allowedHosts.join(', ') }}>
+              Allowed: {list}
+            </T>
           )}
           {networkConfig.deniedHosts && networkConfig.deniedHosts.length > 0 && (
-            <Text dimColor>Denied: {networkConfig.deniedHosts.join(', ')}</Text>
+            <T dimColor vars={{ list: networkConfig.deniedHosts.join(', ') }}>
+              Denied: {list}
+            </T>
           )}
         </Box>
       )}
@@ -101,7 +115,7 @@ export function SandboxConfigTab(): React.ReactNode {
       {globPatternWarnings.length > 0 && (
         <Box marginTop={1} flexDirection="column">
           <Text bold color="warning">
-            ⚠ Warning: Glob patterns not fully supported on Linux
+            ⚠ <T>Warning: Glob patterns not fully supported on Linux</T>
           </Text>
           <Text dimColor>
             The following patterns will be ignored: {globPatternWarnings.slice(0, 3).join(', ')}

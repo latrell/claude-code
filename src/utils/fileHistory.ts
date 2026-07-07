@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { createHash, type UUID } from 'crypto'
 import { diffLines } from 'diff'
 import type { Stats } from 'fs'
@@ -374,7 +375,7 @@ export async function fileHistoryRewind(
       trackedFilesCount: captured.trackedFiles.size,
       snapshotFound: false,
     })
-    throw new Error('The selected snapshot was not found')
+    throw new Error(t('The selected snapshot was not found'))
   }
 
   try {

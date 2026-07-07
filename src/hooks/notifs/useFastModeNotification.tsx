@@ -11,7 +11,7 @@ import {
 } from 'src/utils/fastMode.js';
 import { formatDuration } from 'src/utils/format.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 const COOLDOWN_STARTED_KEY = 'fast-mode-cooldown-started';
 const COOLDOWN_EXPIRED_KEY = 'fast-mode-cooldown-expired';
@@ -91,7 +91,7 @@ export function useFastModeNotification(): void {
         key: COOLDOWN_EXPIRED_KEY,
         invalidates: [COOLDOWN_STARTED_KEY],
         color: 'fastMode',
-        text: `Fast limit reset · now using fast mode`,
+        text: t('Fast limit reset · now using fast mode'),
         priority: 'immediate',
       });
     });
@@ -105,8 +105,8 @@ export function useFastModeNotification(): void {
 function getCooldownMessage(reason: CooldownReason, resetIn: string): string {
   switch (reason) {
     case 'overloaded':
-      return `Fast mode overloaded and is temporarily unavailable · resets in ${resetIn}`;
+      return tf('Fast mode overloaded and is temporarily unavailable · resets in {resetIn}', { resetIn });
     case 'rate_limit':
-      return `Fast limit reached and temporarily disabled · resets in ${resetIn}`;
+      return tf('Fast limit reached and temporarily disabled · resets in {resetIn}', { resetIn });
   }
 }

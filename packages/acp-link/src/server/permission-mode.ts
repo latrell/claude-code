@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import { getDefaultPermissionMode } from './runtime-state.js'
 
 export const ACP_LINK_PERMISSION_MODE_ALIASES = {
@@ -33,7 +34,9 @@ export function resolveNewSessionPermissionMode(
   }
 
   throw new Error(
-    'bypassPermissions requires local ACP_PERMISSION_MODE=bypassPermissions before a client can request it.',
+    t(
+      'bypassPermissions requires local ACP_PERMISSION_MODE=bypassPermissions before a client can request it.',
+    ),
   )
 }
 
@@ -44,7 +47,7 @@ export function resolveAcpLinkPermissionMode(
 
   const normalized = mode?.trim().toLowerCase()
   if (!normalized) {
-    throw new Error('Invalid permissionMode: expected a non-empty string.')
+    throw new Error(t('Invalid permissionMode: expected a non-empty string.'))
   }
 
   const resolved =
@@ -52,7 +55,7 @@ export function resolveAcpLinkPermissionMode(
       normalized as keyof typeof ACP_LINK_PERMISSION_MODE_ALIASES
     ]
   if (!resolved) {
-    throw new Error(`Invalid permissionMode: ${mode}.`)
+    throw new Error(tf('Invalid permissionMode: {mode}.', { mode }))
   }
 
   return resolved

@@ -5,6 +5,7 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { ConnectedMCPServer } from './types.js'
 import type { McpClientDependencies } from './interfaces.js'
 import { McpToolCallError, McpAuthError } from './errors.js'
+import { tf } from 'src/i18n/t.js'
 
 // ============================================================================
 // Constants
@@ -131,7 +132,10 @@ export async function callMcpTool(
       if (errorCode === 401) {
         throw new McpAuthError(
           serverName,
-          `MCP server "${serverName}" requires re-authorization (token expired)`,
+          tf(
+            'MCP server "{serverName}" requires re-authorization (token expired)',
+            { serverName },
+          ),
         )
       }
     }
@@ -164,7 +168,14 @@ function createTimeoutPromise(
     const timeoutId = setTimeout(() => {
       reject(
         new Error(
-          `MCP server "${serverName}" tool "${tool}" timed out after ${Math.floor(timeoutMs / 1000)}s`,
+          tf(
+            'MCP server "{serverName}" tool "{tool}" timed out after {timeout}s',
+            {
+              serverName,
+              tool,
+              timeout: Math.floor(timeoutMs / 1000),
+            },
+          ),
         ),
       )
     }, timeoutMs)

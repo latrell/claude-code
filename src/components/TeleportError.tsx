@@ -6,6 +6,8 @@ import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';
 import { TeleportStash } from './TeleportStash.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 export type TeleportLocalErrorType = 'needsLogin' | 'needsGitStash';
 
@@ -97,15 +99,15 @@ export function TeleportError({
       }
 
       return (
-        <Dialog title="Log in to Claude" onCancel={onCancel}>
+        <Dialog title={t('Log in to Claude')} onCancel={onCancel}>
           <Box flexDirection="column">
-            <Text dimColor>Teleport requires a Claude.ai account.</Text>
-            <Text dimColor>Your Claude Pro/Max subscription will be used by Claude Code.</Text>
+            <T dimColor>Teleport requires a Claude.ai account.</T>
+            <T dimColor>Your Claude Pro/Max subscription will be used by Claude Code.</T>
           </Box>
           <Select
             options={[
-              { label: 'Login with Claude account', value: 'login' },
-              { label: 'Exit', value: 'exit' },
+              { label: t('Login with Claude account'), value: 'login' },
+              { label: t('Exit'), value: 'exit' },
             ]}
             onChange={handleLoginDialogSelect}
           />

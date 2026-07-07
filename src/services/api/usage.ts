@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { tf } from 'src/i18n/t.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import {
   getClaudeAIOAuthTokens,
@@ -43,7 +44,7 @@ export async function fetchUtilization(): Promise<Utilization | null> {
 
   const authResult = getAuthHeaders()
   if (authResult.error) {
-    throw new Error(`Auth error: ${authResult.error}`)
+    throw new Error(tf('Auth error: {error}', { error: authResult.error }))
   }
 
   const headers = {

@@ -5,6 +5,7 @@
 // decision matrix module (Bun mock.module is process-global).
 
 import { spawn } from 'node:child_process'
+import { t, tf } from '../../i18n/t.js'
 import {
   type AutofixOutcomeProbeResult,
   type PrViewPayload,
@@ -117,7 +118,11 @@ function runGhPrView(
       if (settled) return
       settled = true
       proc.kill('SIGKILL')
-      reject(new Error(`gh pr view timed out after ${timeoutMs}ms`))
+      reject(
+        new Error(
+          tf('gh pr view timed out after {timeout}ms', { timeout: timeoutMs }),
+        ),
+      )
     }, timeoutMs)
 
     proc.stdout.on('data', chunk => stdoutChunks.push(chunk as Buffer))
@@ -137,7 +142,12 @@ function runGhPrView(
       if (code !== 0) {
         const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
         reject(
-          new Error(`gh pr view exited ${code}: ${stderr || '<no stderr>'}`),
+          new Error(
+            tf('gh pr view exited {code}: {stderr}', {
+              code,
+              stderr: stderr || '<no stderr>',
+            }),
+          ),
         )
         return
       }
@@ -147,7 +157,11 @@ function runGhPrView(
         resolve(parsed)
       } catch (e) {
         reject(
-          new Error(`gh pr view JSON parse failed: ${(e as Error).message}`),
+          new Error(
+            tf('gh pr view JSON parse failed: {error}', {
+              error: (e as Error).message,
+            }),
+          ),
         )
       }
     })

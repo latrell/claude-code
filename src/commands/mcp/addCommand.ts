@@ -5,6 +5,7 @@
  */
 import { type Command, Option } from '@commander-js/extra-typings'
 import { cliError, cliOk } from '../../cli/exit.js'
+import { t, tf } from '../../i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -34,48 +35,66 @@ export function registerMcpAddCommand(mcp: Command): void {
   mcp
     .command('add <name> <commandOrUrl> [args...]')
     .description(
-      'Add an MCP server to Claude Code.\n\n' +
-        'Examples:\n' +
-        '  # Add HTTP server:\n' +
+      t('Add an MCP server to Claude Code.') +
+        '\n\n' +
+        t('Examples:') +
+        '\n' +
+        '  # ' +
+        t('Add HTTP server:') +
+        '\n' +
         '  claude mcp add --transport http sentry https://mcp.sentry.dev/mcp\n\n' +
-        '  # Add HTTP server with headers:\n' +
+        '  # ' +
+        t('Add HTTP server with headers:') +
+        '\n' +
         '  claude mcp add --transport http corridor https://app.corridor.dev/api/mcp --header "Authorization: Bearer ..."\n\n' +
-        '  # Add stdio server with environment variables:\n' +
+        '  # ' +
+        t('Add stdio server with environment variables:') +
+        '\n' +
         '  claude mcp add -e API_KEY=xxx my-server -- npx my-mcp-server\n\n' +
-        '  # Add stdio server with subprocess flags:\n' +
+        '  # ' +
+        t('Add stdio server with subprocess flags:') +
+        '\n' +
         '  claude mcp add my-server -- my-command --some-flag arg1',
     )
     .option(
       '-s, --scope <scope>',
-      'Configuration scope (local, user, or project)',
+      t('Configuration scope (local, user, or project)'),
       'local',
     )
     .option(
       '-t, --transport <transport>',
-      'Transport type (stdio, sse, http). Defaults to stdio if not specified.',
+      t(
+        'Transport type (stdio, sse, http). Defaults to stdio if not specified.',
+      ),
     )
     .option(
       '-e, --env <env...>',
-      'Set environment variables (e.g. -e KEY=value)',
+      t('Set environment variables (e.g. -e KEY=value)'),
     )
     .option(
       '-H, --header <header...>',
-      'Set WebSocket headers (e.g. -H "X-Api-Key: abc123" -H "X-Custom: value")',
+      t(
+        'Set WebSocket headers (e.g. -H "X-Api-Key: abc123" -H "X-Custom: value")',
+      ),
     )
-    .option('--client-id <clientId>', 'OAuth client ID for HTTP/SSE servers')
+    .option('--client-id <clientId>', t('OAuth client ID for HTTP/SSE servers'))
     .option(
       '--client-secret',
-      'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)',
+      t('Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)'),
     )
     .option(
       '--callback-port <port>',
-      'Fixed port for OAuth callback (for servers requiring pre-registered redirect URIs)',
+      t(
+        'Fixed port for OAuth callback (for servers requiring pre-registered redirect URIs)',
+      ),
     )
-    .helpOption('-h, --help', 'Display help for command')
+    .helpOption('-h, --help', t('Display help for command'))
     .addOption(
       new Option(
         '--xaa',
-        "Enable XAA (SEP-990) for this server. Requires 'claude mcp xaa setup' first. Also requires --client-id and --client-secret (for the MCP server's AS).",
+        t(
+          "Enable XAA (SEP-990) for this server. Requires 'claude mcp xaa setup' first. Also requires --client-id and --client-secret (for the MCP server's AS).",
+        ),
       ).hideHelp(!isXaaEnabled()),
     )
     .action(async (name, commandOrUrl, args, options) => {
@@ -86,13 +105,15 @@ export function registerMcpAddCommand(mcp: Command): void {
       // If no name is provided, error
       if (!name) {
         cliError(
-          'Error: Server name is required.\n' +
-            'Usage: claude mcp add <name> <command> [args...]',
+          t('Error: Server name is required.') +
+            '\n' +
+            t('Usage: claude mcp add <name> <command> [args...]'),
         )
       } else if (!actualCommand) {
         cliError(
-          'Error: Command is required when server name is provided.\n' +
-            'Usage: claude mcp add <name> <command> [args...]',
+          t('Error: Command is required when server name is provided.') +
+            '\n' +
+            t('Usage: claude mcp add <name> <command> [args...]'),
         )
       }
 
@@ -103,7 +124,9 @@ export function registerMcpAddCommand(mcp: Command): void {
         // XAA fail-fast: validate at add-time, not auth-time.
         if (options.xaa && !isXaaEnabled()) {
           cliError(
-            'Error: --xaa requires CLAUDE_CODE_ENABLE_XAA=1 in your environment',
+            t(
+              'Error: --xaa requires CLAUDE_CODE_ENABLE_XAA=1 in your environment',
+            ),
           )
         }
         const xaa = Boolean(options.xaa)
@@ -113,11 +136,15 @@ export function registerMcpAddCommand(mcp: Command): void {
           if (!options.clientSecret) missing.push('--client-secret')
           if (!getXaaIdpSettings()) {
             missing.push(
-              "'claude mcp xaa setup' (settings.xaaIdp not configured)",
+              t("'claude mcp xaa setup' (settings.xaaIdp not configured)"),
             )
           }
           if (missing.length) {
-            cliError(`Error: --xaa requires: ${missing.join(', ')}`)
+            cliError(
+              tf('Error: --xaa requires: {items}', {
+                items: missing.join(', '),
+              }),
+            )
           }
         }
 
@@ -146,7 +173,7 @@ export function registerMcpAddCommand(mcp: Command): void {
 
         if (transport === 'sse') {
           if (!actualCommand) {
-            cliError('Error: URL is required for SSE transport.')
+            cliError(t('Error: URL is required for SSE transport.'))
           }
 
           const headers = options.header
@@ -183,7 +210,10 @@ export function registerMcpAddCommand(mcp: Command): void {
           }
 
           process.stdout.write(
-            `Added SSE MCP server ${name} with URL: ${actualCommand} to ${scope} config\n`,
+            tf(
+              'Added SSE MCP server {name} with URL: {url} to {scope} config\n',
+              { name, url: actualCommand, scope },
+            ),
           )
           if (headers) {
             process.stdout.write(
@@ -192,7 +222,7 @@ export function registerMcpAddCommand(mcp: Command): void {
           }
         } else if (transport === 'http') {
           if (!actualCommand) {
-            cliError('Error: URL is required for HTTP transport.')
+            cliError(t('Error: URL is required for HTTP transport.'))
           }
 
           const headers = options.header
@@ -229,7 +259,10 @@ export function registerMcpAddCommand(mcp: Command): void {
           }
 
           process.stdout.write(
-            `Added HTTP MCP server ${name} with URL: ${actualCommand} to ${scope} config\n`,
+            tf(
+              'Added HTTP MCP server {name} with URL: {url} to {scope} config\n',
+              { name, url: actualCommand, scope },
+            ),
           )
           if (headers) {
             process.stdout.write(
@@ -244,20 +277,31 @@ export function registerMcpAddCommand(mcp: Command): void {
             options.xaa
           ) {
             process.stderr.write(
-              `Warning: --client-id, --client-secret, --callback-port, and --xaa are only supported for HTTP/SSE transports and will be ignored for stdio.\n`,
+              t(
+                'Warning: --client-id, --client-secret, --callback-port, and --xaa are only supported for HTTP/SSE transports and will be ignored for stdio.',
+              ) + '\n',
             )
           }
 
           // Warn if this looks like a URL but transport wasn't explicitly specified
           if (!transportExplicit && looksLikeUrl) {
             process.stderr.write(
-              `\nWarning: The command "${actualCommand}" looks like a URL, but is being interpreted as a stdio server as --transport was not specified.\n`,
+              tf(
+                '\nWarning: The command "{command}" looks like a URL, but is being interpreted as a stdio server as --transport was not specified.\n',
+                { command: actualCommand },
+              ),
             )
             process.stderr.write(
-              `If this is an HTTP server, use: claude mcp add --transport http ${name} ${actualCommand}\n`,
+              tf(
+                'If this is an HTTP server, use: claude mcp add --transport http {name} {command}\n',
+                { name, command: actualCommand },
+              ),
             )
             process.stderr.write(
-              `If this is an SSE server, use: claude mcp add --transport sse ${name} ${actualCommand}\n`,
+              tf(
+                'If this is an SSE server, use: claude mcp add --transport sse {name} {command}\n',
+                { name, command: actualCommand },
+              ),
             )
           }
 
@@ -269,10 +313,17 @@ export function registerMcpAddCommand(mcp: Command): void {
           )
 
           process.stdout.write(
-            `Added stdio MCP server ${name} with command: ${actualCommand} ${actualArgs.join(' ')} to ${scope} config\n`,
+            tf(
+              'Added stdio MCP server {name} with command: {cmd} {args} to {scope} config\n',
+              { name, cmd: actualCommand, args: actualArgs.join(' '), scope },
+            ),
           )
         }
-        cliOk(`File modified: ${describeMcpConfigFilePath(scope)}`)
+        cliOk(
+          tf('File modified: {path}', {
+            path: describeMcpConfigFilePath(scope),
+          }),
+        )
       } catch (error) {
         cliError((error as Error).message)
       }

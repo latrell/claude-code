@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 
 function validateUrl(url: string): void {
@@ -6,13 +7,15 @@ function validateUrl(url: string): void {
   try {
     parsedUrl = new URL(url)
   } catch (_error) {
-    throw new Error(`Invalid URL format: ${url}`)
+    throw new Error(tf('Invalid URL format: {url}', { url }))
   }
 
   // Validate URL protocol for security
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
     throw new Error(
-      `Invalid URL protocol: must use http:// or https://, got ${parsedUrl.protocol}`,
+      tf('Invalid URL protocol: must use http:// or https://, got {protocol}', {
+        protocol: parsedUrl.protocol,
+      }),
     )
   }
 }

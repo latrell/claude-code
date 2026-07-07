@@ -1,4 +1,5 @@
 import { log, error as logError } from '../logger'
+import { tf } from 'src/i18n/t.js'
 import {
   storeCreateWorkItem,
   storeGetWorkItem,
@@ -31,11 +32,16 @@ export async function createWorkItem(
   // Validate environment exists and is active
   const env = storeGetEnvironment(environmentId)
   if (!env) {
-    throw new Error(`Environment ${environmentId} not found`)
+    throw new Error(
+      tf('Environment {environmentId} not found', { environmentId }),
+    )
   }
   if (env.status !== 'active') {
     throw new Error(
-      `Environment ${environmentId} is not active (status: ${env.status})`,
+      tf('Environment {environmentId} is not active (status: {status})', {
+        environmentId,
+        status: env.status,
+      }),
     )
   }
 

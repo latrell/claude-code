@@ -2000,7 +2000,10 @@ export function REPL({
     setMessages(prev => [
       ...prev,
       createSystemMessage(
-        `Worktree creation took ${secs}s. For large repos, set \`worktree.sparsePaths\` in .claude/settings.json to check out only the directories you need — e.g. \`{"worktree": {"sparsePaths": ["src", "packages/foo"]}}\`.`,
+        tf(
+          'Worktree creation took {secs}s. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.',
+          { secs },
+        ),
         'info',
       ),
     ]);
@@ -2816,8 +2819,8 @@ export function REPL({
     if (!reason) return;
     if (SandboxManager.isSandboxRequired()) {
       process.stderr.write(
-        `\nError: sandbox required but unavailable: ${reason}\n` +
-          `  sandbox.failIfUnavailable is set — refusing to start without a working sandbox.\n\n`,
+        `\n${tf('Error: sandbox required but unavailable: {reason}', { reason })}\n` +
+          `  ${t('sandbox.failIfUnavailable is set — refusing to start without a working sandbox.')}\n\n`,
       );
       gracefulShutdownSync(1, 'other');
       return;
@@ -2839,7 +2842,7 @@ export function REPL({
     // If sandboxing is enabled (setting.sandbox is defined, initialise the manager)
     SandboxManager.initialize(sandboxAskCallback).catch(err => {
       // Initialization/validation failed - display error and exit
-      process.stderr.write(`\n❌ Sandbox Error: ${errorMessage(err)}\n`);
+      process.stderr.write(`\n${tf('Sandbox Error: {error}', { error: errorMessage(err) })}\n`);
       gracefulShutdownSync(1, 'other');
     });
   }
@@ -3005,10 +3008,10 @@ export function REPL({
               setSpinnerShimmerColor('claudeBlueShimmer_FOR_SYSTEM_SPINNER');
               setSpinnerMessage(
                 event.hookType === 'pre_compact'
-                  ? 'Running PreCompact hooks\u2026'
+                  ? t('Running PreCompact hooks\u2026')
                   : event.hookType === 'post_compact'
-                    ? 'Running PostCompact hooks\u2026'
-                    : 'Running SessionStart hooks\u2026',
+                    ? t('Running PostCompact hooks\u2026')
+                    : t('Running SessionStart hooks\u2026'),
               );
               break;
             case 'compact_start':
@@ -3265,7 +3268,9 @@ export function REPL({
                 persistCurrentGoal();
                 addNotification({
                   key: 'goal-auto-paused-connectivity-error',
-                  text: 'Detected connection error. Active goal was auto-paused. Run /goal resume after network recovers.',
+                  text: t(
+                    'Detected connection error. Active goal was auto-paused. Run /goal resume after network recovers.',
+                  ),
                   priority: 'immediate',
                 });
               }
@@ -3542,7 +3547,7 @@ export function REPL({
           pipeReturnHadErrorRef.current = true;
           relayPipeMessage({
             type: 'error',
-            data: 'Slave request was interrupted before completion.',
+            data: t('Slave request was interrupted before completion.'),
           });
         }
       }
@@ -4684,7 +4689,7 @@ export function REPL({
         addNotification({
           // Same key as text-selection copy — repeated copies replace toast, don't queue.
           key: 'selection-copied',
-          text: 'copied',
+          text: t('copied'),
           color: 'success',
           priority: 'immediate',
           timeoutMs: 2000,
@@ -4887,7 +4892,7 @@ export function REPL({
         ) {
           void sendNotification(
             {
-              message: 'Claude is waiting for your input',
+              message: t('Claude is waiting for your input'),
               notificationType: 'idle_prompt',
             },
             terminal,
@@ -5138,7 +5143,10 @@ export function REPL({
     isInPlanMode: toolPermissionContext.mode === 'plan',
     isQueryActiveNow: queryGuard.getSnapshot,
     onContinuationEnqueued: ({ turn, objective }) => {
-      const visibleGoalTurnInput = `Goal auto-continue (${turn}/1): continue advancing "${objective}".`;
+      const visibleGoalTurnInput = tf('Goal auto-continue ({turn}/1): continue advancing "{objective}".', {
+        turn,
+        objective,
+      });
       setMessages(oldMessages => [
         ...oldMessages,
         createUserMessage({
@@ -5150,7 +5158,7 @@ export function REPL({
     onMaxTurnsReached: () => {
       addNotification({
         key: 'goal-max-turns-reached',
-        text: 'Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.',
+        text: t('Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.'),
         priority: 'immediate',
       });
     },
@@ -5228,7 +5236,7 @@ export function REPL({
     const handleSuspend = () => {
       // Print suspension instructions
       process.stdout.write(
-        `\nClaude Code has been suspended. Run \`fg\` to bring Claude Code back.\nNote: ctrl + z now suspends Claude Code, ctrl + _ undoes input.\n`,
+        `\n${t('Claude Code has been suspended. Run `fg` to bring Claude Code back.')}\n${t('Note: ctrl + z now suspends Claude Code, ctrl + _ undoes input.')}\n`,
       );
     };
 
@@ -5298,11 +5306,13 @@ export function REPL({
       const cmd = currentHooks[completedCount]?.data.command;
       const label = cmd ? ` '${truncateToWidth(cmd, 40)}'` : '';
       return total === 1
-        ? `running ${hookType} hook${label}`
-        : `running ${hookType} hook${label}\u2026 ${completedCount}/${total}`;
+        ? tf('running {hookType} hook{label}', { hookType, label })
+        : tf('running {hookType} hook{label}… {count}/{total}', { hookType, label, count: completedCount, total });
     }
 
-    return total === 1 ? `running ${hookType} hook` : `running stop hooks… ${completedCount}/${total}`;
+    return total === 1
+      ? tf('running {hookType} hook', { hookType })
+      : tf('running stop hooks… {count}/{total}', { count: completedCount, total });
   }, [messages, isLoading]);
 
   // Callback to capture frozen state when entering transcript mode
@@ -5429,7 +5439,7 @@ export function REPL({
           clearTimeout(editorTimerRef.current);
           setEditorStatus(s);
         };
-        setStatus(`rendering ${deferredMessages.length} messages…`);
+        setStatus(tf('rendering {count} messages…', { count: deferredMessages.length }));
         void (async () => {
           try {
             // Width = terminal minus vim's line-number gutter (4 digits +
@@ -5443,9 +5453,9 @@ export function REPL({
             const path = join(tmpdir(), `cc-transcript-${Date.now()}.txt`);
             await writeFile(path, text);
             const opened = openFileInExternalEditor(path);
-            setStatus(opened ? `opening ${path}` : `wrote ${path} · no $VISUAL/$EDITOR set`);
+            setStatus(opened ? tf('opening {path}', { path }) : tf('wrote {path} · no $VISUAL/$EDITOR set', { path }));
           } catch (e) {
-            setStatus(`render failed: ${e instanceof Error ? e.message : String(e)}`);
+            setStatus(tf('render failed: {error}', { error: e instanceof Error ? e.message : String(e) }));
           }
           editorRenderingRef.current = false;
           if (gen !== editorGenRef.current) return;
@@ -6102,7 +6112,9 @@ export function REPL({
                 {pendingSandboxRequest && (
                   <WorkerPendingPermission
                     toolName="Network Access"
-                    description={`Waiting for leader to approve network access to ${pendingSandboxRequest.host}`}
+                    description={tf('Waiting for leader to approve network access to {host}', {
+                      host: pendingSandboxRequest.host,
+                    })}
                   />
                 )}
                 {/* Worker sandbox permission requests from swarm workers */}
@@ -6449,7 +6461,7 @@ export function REPL({
                         inputValue={inputValue}
                         setInputValue={setInputValue}
                         onRequestFeedback={handleSurveyRequestFeedback}
-                        message="How well did Claude use its memory? (optional)"
+                        message={t('How well did Claude use its memory? (optional)')}
                       />
                     ) : (
                       <FeedbackSurvey
@@ -6572,7 +6584,9 @@ export function REPL({
                         setMessages(prev => [
                           ...prev,
                           createSystemMessage(
-                            'That message is no longer in the active context (snipped or pre-compact). Choose a more recent message.',
+                            t(
+                              'That message is no longer in the active context (snipped or pre-compact). Choose a more recent message.',
+                            ),
                             'warning',
                           ),
                         ]);
@@ -6657,7 +6671,7 @@ export function REPL({
                       const historyShortcut = getShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
                       addNotification({
                         key: 'summarize-ctrl-o-hint',
-                        text: `Conversation summarized (${historyShortcut} for history)`,
+                        text: tf('Conversation summarized ({shortcut} for history)', { shortcut: historyShortcut }),
                         priority: 'medium',
                         timeoutMs: 8000,
                       });

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 export function SandboxDoctorSection(): React.ReactNode {
   if (!SandboxManager.isSupportedPlatform()) {
@@ -24,9 +26,9 @@ export function SandboxDoctorSection(): React.ReactNode {
 
   return (
     <Box flexDirection="column">
-      <Text bold>Sandbox</Text>
+      <T bold>Sandbox</T>
       <Text>
-        └ Status: <Text color={statusColor}>{statusText}</Text>
+        └ <T>Status:</T> <Text color={statusColor}>{statusText}</Text>
       </Text>
       {depCheck.errors.map((e, i) => (
         <Text key={i} color="error">

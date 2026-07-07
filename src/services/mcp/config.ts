@@ -3,6 +3,7 @@ import { chmod, open, rename, stat, unlink } from 'fs/promises'
 import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import { dirname, join, parse } from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { getPlatform } from 'src/utils/platform.js'
 import type { PluginError } from '../../types/plugin.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
@@ -629,13 +630,18 @@ export async function addMcpConfig(
 ): Promise<void> {
   if (name.match(/[^a-zA-Z0-9_-]/)) {
     throw new Error(
-      `Invalid name ${name}. Names can only contain letters, numbers, hyphens, and underscores.`,
+      tf(
+        'Invalid name {name}. Names can only contain letters, numbers, hyphens, and underscores.',
+        { name },
+      ),
     )
   }
 
   // Block reserved server name "claude-in-chrome"
   if (isClaudeInChromeMCPServer(name)) {
-    throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+    throw new Error(
+      tf('Cannot add MCP server "{name}": this name is reserved.', { name }),
+    )
   }
 
   if (feature('CHICAGO_MCP')) {
@@ -643,14 +649,18 @@ export async function addMcpConfig(
       '../../utils/computerUse/common.js'
     )
     if (isComputerUseMCPServer(name)) {
-      throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+      throw new Error(
+        tf('Cannot add MCP server "{name}": this name is reserved.', { name }),
+      )
     }
   }
 
   // Block adding servers when enterprise MCP config exists (it has exclusive control)
   if (doesEnterpriseMcpConfigExist()) {
     throw new Error(
-      `Cannot add MCP server: enterprise MCP configuration is active and has exclusive control over MCP servers`,
+      t(
+        'Cannot add MCP server: enterprise MCP configuration is active and has exclusive control over MCP servers',
+      ),
     )
   }
 
@@ -660,21 +670,28 @@ export async function addMcpConfig(
     const formattedErrors = result.error.issues
       .map(err => `${err.path.join('.')}: ${err.message}`)
       .join(', ')
-    throw new Error(`Invalid configuration: ${formattedErrors}`)
+    throw new Error(
+      tf('Invalid configuration: {errors}', { errors: formattedErrors }),
+    )
   }
   const validatedConfig = result.data
 
   // Check denylist (with config for command-based checks)
   if (isMcpServerDenied(name, validatedConfig)) {
     throw new Error(
-      `Cannot add MCP server "${name}": server is explicitly blocked by enterprise policy`,
+      tf(
+        'Cannot add MCP server "{name}": server is explicitly blocked by enterprise policy',
+        { name },
+      ),
     )
   }
 
   // Check allowlist (with config for command-based checks)
   if (!isMcpServerAllowedByPolicy(name, validatedConfig)) {
     throw new Error(
-      `Cannot add MCP server "${name}": not allowed by enterprise policy`,
+      tf('Cannot add MCP server "{name}": not allowed by enterprise policy', {
+        name,
+      }),
     )
   }
 
@@ -683,30 +700,36 @@ export async function addMcpConfig(
     case 'project': {
       const { servers } = getProjectMcpConfigsFromCwd()
       if (servers[name]) {
-        throw new Error(`MCP server ${name} already exists in .mcp.json`)
+        throw new Error(
+          tf('MCP server {name} already exists in .mcp.json', { name }),
+        )
       }
       break
     }
     case 'user': {
       const globalConfig = getGlobalConfig()
       if (globalConfig.mcpServers?.[name]) {
-        throw new Error(`MCP server ${name} already exists in user config`)
+        throw new Error(
+          tf('MCP server {name} already exists in user config', { name }),
+        )
       }
       break
     }
     case 'local': {
       const projectConfig = getCurrentProjectConfig()
       if (projectConfig.mcpServers?.[name]) {
-        throw new Error(`MCP server ${name} already exists in local config`)
+        throw new Error(
+          tf('MCP server {name} already exists in local config', { name }),
+        )
       }
       break
     }
     case 'dynamic':
-      throw new Error('Cannot add MCP server to scope: dynamic')
+      throw new Error(t('Cannot add MCP server to scope: dynamic'))
     case 'enterprise':
-      throw new Error('Cannot add MCP server to scope: enterprise')
+      throw new Error(t('Cannot add MCP server to scope: enterprise'))
     case 'claudeai':
-      throw new Error('Cannot add MCP server to scope: claudeai')
+      throw new Error(t('Cannot add MCP server to scope: claudeai'))
   }
 
   // Add based on scope
@@ -728,7 +751,9 @@ export async function addMcpConfig(
       try {
         await writeMcpjsonFile(mcpConfig)
       } catch (error) {
-        throw new Error(`Failed to write to .mcp.json: ${error}`)
+        throw new Error(
+          tf('Failed to write to .mcp.json: {error}', { error: String(error) }),
+        )
       }
       break
     }
@@ -756,7 +781,7 @@ export async function addMcpConfig(
     }
 
     default:
-      throw new Error(`Cannot add MCP server to scope: ${scope}`)
+      throw new Error(tf('Cannot add MCP server to scope: {scope}', { scope }))
   }
 }
 
@@ -775,7 +800,9 @@ export async function removeMcpConfig(
       const { servers: existingServers } = getProjectMcpConfigsFromCwd()
 
       if (!existingServers[name]) {
-        throw new Error(`No MCP server found with name: ${name} in .mcp.json`)
+        throw new Error(
+          tf('No MCP server found with name: {name} in .mcp.json', { name }),
+        )
       }
 
       // Strip scope information when writing back to .mcp.json
@@ -792,7 +819,11 @@ export async function removeMcpConfig(
       try {
         await writeMcpjsonFile(mcpConfig)
       } catch (error) {
-        throw new Error(`Failed to remove from .mcp.json: ${error}`)
+        throw new Error(
+          tf('Failed to remove from .mcp.json: {error}', {
+            error: String(error),
+          }),
+        )
       }
       break
     }
@@ -800,7 +831,9 @@ export async function removeMcpConfig(
     case 'user': {
       const config = getGlobalConfig()
       if (!config.mcpServers?.[name]) {
-        throw new Error(`No user-scoped MCP server found with name: ${name}`)
+        throw new Error(
+          tf('No user-scoped MCP server found with name: {name}', { name }),
+        )
       }
       saveGlobalConfig(current => {
         const { [name]: _, ...restMcpServers } = current.mcpServers ?? {}
@@ -816,7 +849,9 @@ export async function removeMcpConfig(
       // Check if server exists before updating
       const config = getCurrentProjectConfig()
       if (!config.mcpServers?.[name]) {
-        throw new Error(`No project-local MCP server found with name: ${name}`)
+        throw new Error(
+          tf('No project-local MCP server found with name: {name}', { name }),
+        )
       }
       saveCurrentProjectConfig(current => {
         const { [name]: _, ...restMcpServers } = current.mcpServers ?? {}
@@ -829,7 +864,9 @@ export async function removeMcpConfig(
     }
 
     default:
-      throw new Error(`Cannot remove MCP server from scope: ${scope}`)
+      throw new Error(
+        tf('Cannot remove MCP server from scope: {scope}', { scope }),
+      )
   }
 }
 

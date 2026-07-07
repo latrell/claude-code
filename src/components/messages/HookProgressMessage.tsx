@@ -3,6 +3,8 @@ import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
 import type { buildMessageLookups } from 'src/utils/messages.js';
 import { Box, Text } from '@anthropic/ink';
 import { MessageResponse } from '../MessageResponse.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   hookEvent: HookEvent;
@@ -26,11 +28,11 @@ export function HookProgressMessage({ hookEvent, lookups, toolUseID, isTranscrip
       return (
         <MessageResponse>
           <Box flexDirection="row">
-            <Text dimColor>{inProgressHookCount} </Text>
+            <T dimColor>Running </T>
             <Text dimColor bold>
               {hookEvent}
             </Text>
-            <Text dimColor>{inProgressHookCount === 1 ? ' hook' : ' hooks'} ran</Text>
+            <Text dimColor>{inProgressHookCount === 1 ? <T> hook…</T> : <T> hooks…</T>}</Text>
           </Box>
         </MessageResponse>
       );
@@ -47,11 +49,11 @@ export function HookProgressMessage({ hookEvent, lookups, toolUseID, isTranscrip
   return (
     <MessageResponse>
       <Box flexDirection="row">
-        <Text dimColor>Running </Text>
+        <T dimColor>Running </T>
         <Text dimColor bold>
           {hookEvent}
         </Text>
-        <Text dimColor>{inProgressHookCount === 1 ? ' hook…' : ' hooks…'}</Text>
+        <T dimColor>{inProgressHookCount === 1 ? ' hook…' : ' hooks…'}</T>
       </Box>
     </MessageResponse>
   );

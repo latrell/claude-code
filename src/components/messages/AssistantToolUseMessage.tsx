@@ -12,6 +12,8 @@ import { useIsClassifierChecking } from '../../utils/classifierApprovalsHook.js'
 import { logError } from '../../utils/log.js';
 import type { buildMessageLookups } from '../../utils/messages.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { useSelectedMessageBg } from '../messageActions.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { ToolUseLoader } from '../ToolUseLoader.js';
@@ -178,7 +180,7 @@ export function AssistantToolUseMessage({
             </MessageResponse>
           ) : isWaitingForPermission ? (
             <MessageResponse height={1}>
-              <Text dimColor>Waiting for permission…</Text>
+              <T dimColor>Waiting for permission…</T>
             </MessageResponse>
           ) : (
             renderToolUseProgressMessage(

@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import { splitCommand_DEPRECATED } from 'src/utils/bash/commands.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
@@ -396,7 +397,7 @@ export function extractSedExpressions(command: string): string[] {
 
   // Reject dangerous flag combinations like -ew, -eW, -ee, -we (combined -e/-w with dangerous commands)
   if (/-e[wWe]/.test(withoutSed) || /-w[eE]/.test(withoutSed)) {
-    throw new Error('Dangerous flag combination detected')
+    throw new Error(t('Dangerous flag combination detected'))
   }
 
   // Use shell-quote to parse the arguments properly

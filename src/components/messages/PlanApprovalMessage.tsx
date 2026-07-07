@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { Markdown } from '../../components/Markdown.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { Box, Text } from '@anthropic/ink';
 import { jsonParse } from '../../utils/slowOperations.js';
 import {
@@ -66,7 +68,7 @@ export function PlanApprovalResponseDisplay({ response, senderName }: PlanApprov
             </Text>
           </Box>
           <Box marginTop={1}>
-            <Text>You can now proceed with implementation. Your plan mode restrictions have been lifted.</Text>
+            <T>You can now proceed with implementation. Your plan mode restrictions have been lifted.</T>
           </Box>
         </Box>
       </Box>
@@ -94,7 +96,7 @@ export function PlanApprovalResponseDisplay({ response, senderName }: PlanApprov
           </Box>
         )}
         <Box marginTop={1}>
-          <Text dimColor>Please revise your plan based on the feedback and call ExitPlanMode again.</Text>
+          <T dimColor>Please revise your plan based on the feedback and call ExitPlanMode again.</T>
         </Box>
       </Box>
     </Box>

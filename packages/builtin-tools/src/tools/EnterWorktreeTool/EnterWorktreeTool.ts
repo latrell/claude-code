@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t } from 'src/i18n/t.js'
 import { getSessionId, setOriginalCwd } from 'src/bootstrap/state.js'
 import { clearSystemPromptSections } from 'src/constants/systemPromptSections.js'
 import { logEvent } from 'src/services/analytics/index.js'
@@ -77,7 +78,7 @@ export const EnterWorktreeTool: Tool<InputSchema, Output> = buildTool({
   async call(input) {
     // Validate not already in a worktree created by this session
     if (getCurrentWorktreeSession()) {
-      throw new Error('Already in a worktree session')
+      throw new Error(t('Already in a worktree session'))
     }
 
     // Resolve to main repo root so worktree creation works from within a worktree

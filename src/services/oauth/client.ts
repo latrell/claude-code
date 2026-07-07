@@ -1,5 +1,6 @@
 // OAuth client for handling authentication flows with Claude services
 import axios from 'axios'
+import { t, tf } from 'src/i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -135,8 +136,11 @@ export async function exchangeCodeForTokens(
   if (response.status !== 200) {
     throw new Error(
       response.status === 401
-        ? 'Authentication failed: Invalid authorization code'
-        : `Token exchange failed (${response.status}): ${response.statusText}`,
+        ? t('Authentication failed: Invalid authorization code')
+        : tf('Token exchange failed ({status}): {text}', {
+            status: response.status,
+            text: response.statusText,
+          }),
     )
   }
   logEvent('tengu_oauth_token_exchange_success', {})
@@ -169,7 +173,11 @@ export async function refreshOAuthToken(
     })
 
     if (response.status !== 200) {
-      throw new Error(`Token refresh failed: ${response.statusText}`)
+      throw new Error(
+        tf('Token refresh failed: {statusText}', {
+          statusText: response.statusText,
+        }),
+      )
     }
 
     const data = response.data as OAuthTokenExchangeResponse
@@ -281,13 +289,17 @@ export async function fetchAndStoreUserRoles(
   })
 
   if (response.status !== 200) {
-    throw new Error(`Failed to fetch user roles: ${response.statusText}`)
+    throw new Error(
+      tf('Failed to fetch user roles: {statusText}', {
+        statusText: response.statusText,
+      }),
+    )
   }
   const data = response.data as UserRolesResponse
   const config = getGlobalConfig()
 
   if (!config.oauthAccount) {
-    throw new Error('OAuth account information not found in config')
+    throw new Error(t('OAuth account information not found in config'))
   }
 
   saveGlobalConfig(current => ({

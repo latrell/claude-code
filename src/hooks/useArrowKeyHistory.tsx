@@ -5,6 +5,7 @@ import { ConfigurableShortcutHint } from '../components/ConfigurableShortcutHint
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT } from '../components/PromptInput/Notifications.js';
 import { getHistory } from '../history.js';
 import { Text } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 import type { PromptInputMode } from '../types/textInputTypes.js';
 import type { HistoryEntry, PastedContent } from '../utils/config.js';
 
@@ -138,7 +139,7 @@ export function useArrowKeyHistory(
             action="history:search"
             context="Global"
             fallback="ctrl+r"
-            description="search history"
+            description={t('search history')}
           />
         </Text>
       ),

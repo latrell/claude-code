@@ -23,6 +23,7 @@
  * user's TMUX in all child processes spawned by Shell.ts.
  */
 
+import { t, tf } from 'src/i18n/t.js'
 import { posix } from 'path'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -305,7 +306,10 @@ async function doInitialize(): Promise<void> {
     ])
     if (checkResult.code !== 0) {
       throw new Error(
-        `Failed to create tmux session on socket ${socket}: ${result.stderr}`,
+        tf('Failed to create tmux session on socket {socket}: {error}', {
+          socket,
+          error: result.stderr,
+        }),
       )
     }
   }
@@ -409,9 +413,7 @@ async function doInitialize(): Promise<void> {
     )
   }
 
-  throw new Error(
-    `Failed to get socket info for ${socket}: primary="${infoResult.stderr}", fallback="${pidResult.stderr}"`,
-  )
+  throw new Error(tf('Failed to get socket info for {socket}', { socket }))
 }
 
 // For testing purposes

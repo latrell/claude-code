@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t } from 'src/i18n/t.js'
 import type { TaskStateBase } from 'src/Task.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { stopTask } from 'src/tasks/stopTask.js'
@@ -111,7 +112,7 @@ export const TaskStopTool = buildTool({
     // Support both task_id and shell_id (deprecated KillShell compat)
     const id = task_id ?? shell_id
     if (!id) {
-      throw new Error('Missing required parameter: task_id')
+      throw new Error(t('Missing required parameter: task_id'))
     }
 
     const result = await stopTask(id, {

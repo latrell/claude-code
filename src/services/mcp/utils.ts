@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { join } from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import type { AgentMcpServerInfo } from '../../components/mcp/types.js'
@@ -294,7 +295,10 @@ export function ensureConfigScope(scope?: string): ConfigScope {
 
   if (!ConfigScopeSchema().options.includes(scope as ConfigScope)) {
     throw new Error(
-      `Invalid scope: ${scope}. Must be one of: ${ConfigScopeSchema().options.join(', ')}`,
+      tf('Invalid scope: {scope}. Must be one of: {valid}', {
+        scope: scope ?? '',
+        valid: ConfigScopeSchema().options.join(', '),
+      }),
     )
   }
 
@@ -306,7 +310,9 @@ export function ensureTransport(type?: string): 'stdio' | 'sse' | 'http' {
 
   if (type !== 'stdio' && type !== 'sse' && type !== 'http') {
     throw new Error(
-      `Invalid transport type: ${type}. Must be one of: stdio, sse, http`,
+      tf('Invalid transport type: {type}. Must be one of: stdio, sse, http', {
+        type,
+      }),
     )
   }
 
@@ -320,7 +326,10 @@ export function parseHeaders(headerArray: string[]): Record<string, string> {
     const colonIndex = header.indexOf(':')
     if (colonIndex === -1) {
       throw new Error(
-        `Invalid header format: "${header}". Expected format: "Header-Name: value"`,
+        tf(
+          'Invalid header format: "{header}". Expected format: "Header-Name: value"',
+          { header },
+        ),
       )
     }
 
@@ -329,7 +338,9 @@ export function parseHeaders(headerArray: string[]): Record<string, string> {
 
     if (!key) {
       throw new Error(
-        `Invalid header: "${header}". Header name cannot be empty.`,
+        tf('Invalid header: "{header}". Header name cannot be empty.', {
+          header,
+        }),
       )
     }
 

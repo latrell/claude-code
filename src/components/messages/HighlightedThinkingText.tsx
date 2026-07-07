@@ -6,6 +6,8 @@ import { Box, Text } from '@anthropic/ink';
 import { formatBriefTimestamp } from '../../utils/formatBriefTimestamp.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   text: string;
@@ -25,7 +27,7 @@ export function HighlightedThinkingText({ text, useBriefLayout, timestamp }: Pro
     return (
       <Box flexDirection="column" paddingLeft={2}>
         <Box flexDirection="row">
-          <Text color={isQueued ? 'subtle' : 'briefLabelYou'}>You</Text>
+          <T color={isQueued ? 'subtle' : 'briefLabelYou'}>You</T>
           {ts ? <Text dimColor> {ts}</Text> : null}
         </Box>
         <Text color={isQueued ? 'subtle' : 'text'}>{text}</Text>

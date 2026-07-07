@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { randomUUID } from 'crypto';
 import * as React from 'react';
@@ -115,7 +116,7 @@ export async function processBashCommand(
     const data = response.data;
 
     if (!data) {
-      throw new Error('No result received from shell command');
+      throw new Error(t('No result received from shell command'));
     }
 
     const stderr = data.stderr;

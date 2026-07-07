@@ -7,6 +7,7 @@ import { truncateStartToWidth } from '../../utils/format.js';
 import { plural } from '../../utils/stringUtils.js';
 
 const MAX_VISIBLE_FILES = 5;
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   files: DiffFile[];
@@ -36,7 +37,7 @@ export function DiffFileList({ files, selectedIndex }: Props): React.ReactNode {
   }, [files.length, selectedIndex]);
 
   if (files.length === 0) {
-    return <Text dimColor>No changed files</Text>;
+    return <T dimColor>No changed files</T>;
   }
 
   const visibleFiles = files.slice(startIndex, endIndex);

@@ -5,6 +5,7 @@ import { Text } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { plural } from '../../utils/stringUtils.js';
+import { tf } from '../../i18n/t.js';
 
 export function usePluginInstallationStatus(): void {
   const { addNotification } = useNotifications();
@@ -55,9 +56,7 @@ export function usePluginInstallationStatus(): void {
       key: 'plugin-install-failed',
       jsx: (
         <>
-          <Text color="error">
-            {totalFailed} {plural(totalFailed, 'plugin')} failed to install
-          </Text>
+          <Text color="error">{tf('{count} plugins failed to install', { count: totalFailed })}</Text>
           <Text dimColor> · /plugin for details</Text>
         </>
       ),

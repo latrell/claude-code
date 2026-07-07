@@ -6,6 +6,8 @@ import type { GitFileStatus } from '../utils/git.js';
 import { getFileStatus, stashToCleanState } from '../utils/git.js';
 import { Select } from './CustomSelect/index.js';
 import { Spinner } from './Spinner.js';
+import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type TeleportStashProps = {
   onStashAndContinue: () => void;
@@ -75,7 +77,7 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
       <Box flexDirection="column" padding={1}>
         <Box marginBottom={1}>
           <Spinner />
-          <Text> Checking git status{figures.ellipsis}</Text>
+          <T> Checking git status{figures.ellipsis}</T>
         </Box>
       </Box>
     );
@@ -88,9 +90,9 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
           Error: {error}
         </Text>
         <Box marginTop={1}>
-          <Text dimColor>Press </Text>
+          <T dimColor>Press </T>
           <Text bold>Escape</Text>
-          <Text dimColor> to cancel</Text>
+          <T dimColor> to cancel</T>
         </Box>
       </Box>
     );
@@ -99,33 +101,33 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
   const showFileCount = changedFiles.length > 8;
 
   return (
-    <Dialog title="Working Directory Has Changes" onCancel={onCancel}>
-      <Text>Teleport will switch git branches. The following changes were found:</Text>
+    <Dialog title={t('Working Directory Has Changes')} onCancel={onCancel}>
+      <T>Teleport will switch git branches. The following changes were found:</T>
 
       <Box flexDirection="column" paddingLeft={2}>
         {changedFiles.length > 0 ? (
           showFileCount ? (
-            <Text>{changedFiles.length} files changed</Text>
+            <T vars={{ count: changedFiles.length }}>{changedFiles.length} files changed</T>
           ) : (
             changedFiles.map((file: string, index: number) => <Text key={index}>{file}</Text>)
           )
         ) : (
-          <Text dimColor>No changes detected</Text>
+          <T dimColor>No changes detected</T>
         )}
       </Box>
 
-      <Text>Would you like to stash these changes and continue with teleport?</Text>
+      <T>Would you like to stash these changes and continue with teleport?</T>
 
       {stashing ? (
         <Box>
           <Spinner />
-          <Text> Stashing changes...</Text>
+          <T> Stashing changes...</T>
         </Box>
       ) : (
         <Select
           options={[
-            { label: 'Stash changes and continue', value: 'stash' },
-            { label: 'Exit', value: 'exit' },
+            { label: t('Stash changes and continue'), value: 'stash' },
+            { label: t('Exit'), value: 'exit' },
           ]}
           onChange={handleSelectChange}
         />

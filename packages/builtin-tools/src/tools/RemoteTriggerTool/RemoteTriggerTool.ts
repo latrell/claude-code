@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { z } from 'zod/v4'
+import { t } from 'src/i18n/t.js'
 import { getOauthConfig } from 'src/constants/oauth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { getOrganizationUUID } from 'src/services/oauth/client.js'
@@ -92,7 +93,7 @@ export const RemoteTriggerTool = buildTool({
       }
       const orgUUID = await getOrganizationUUID()
       if (!orgUUID) {
-        throw new Error('Unable to resolve organization UUID.')
+        throw new Error(t('Unable to resolve organization UUID.'))
       }
 
       const base = `${getOauthConfig().BASE_API_URL}/v1/code/triggers`

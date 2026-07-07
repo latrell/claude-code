@@ -13,6 +13,8 @@ import { relativePath } from '../utils/permissions/filesystem.js';
 import { readFileInRange } from '../utils/readFileInRange.js';
 import { ripGrepStream } from '../utils/ripgrep.js';
 import { FuzzyPicker, LoadingState } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   onDone: () => void;
@@ -88,7 +90,7 @@ export function GlobalSearchDialog({ onDone, onInsert }: Props): React.ReactNode
         setPreview({
           file: focused.file,
           line: focused.line,
-          content: '(preview unavailable)',
+          content: t('(preview unavailable)'),
         });
       });
     return () => controller.abort();
@@ -217,8 +219,8 @@ export function GlobalSearchDialog({ onDone, onInsert }: Props): React.ReactNode
 
   return (
     <FuzzyPicker
-      title="Global Search"
-      placeholder="Type to search…"
+      title={t('Global Search')}
+      placeholder={t('Type to search…')}
       items={matches}
       getKey={matchKey}
       visibleCount={visibleResults}
@@ -233,9 +235,9 @@ export function GlobalSearchDialog({ onDone, onInsert }: Props): React.ReactNode
         handler: m => handleInsert(m, false),
       }}
       onCancel={onDone}
-      emptyMessage={q => (isSearching ? 'Searching…' : q ? 'No matches' : 'Type to search…')}
+      emptyMessage={q => (isSearching ? t('Searching…') : q ? t('No matches') : t('Type to search…'))}
       matchLabel={matchLabel}
-      selectAction="open in editor"
+      selectAction={t('open in editor')}
       renderItem={(m, isFocused) => (
         <Text color={isFocused ? 'suggestion' : undefined}>
           <Text dimColor>
@@ -255,7 +257,7 @@ export function GlobalSearchDialog({ onDone, onInsert }: Props): React.ReactNode
             ))}
           </>
         ) : (
-          <LoadingState message="Loading…" dimColor />
+          <LoadingState message={t('Loading…')} dimColor />
         )
       }
     />

@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { readdir, readFile, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -15,7 +16,9 @@ export async function getClaudeDesktopConfigPath(): Promise<string> {
 
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
     throw new Error(
-      `Unsupported platform: ${platform} - Claude Desktop integration only works on macOS and WSL.`,
+      t(
+        'Unsupported platform. Claude Desktop integration only works on macOS and WSL.',
+      ),
     )
   }
 
@@ -91,7 +94,9 @@ export async function getClaudeDesktopConfigPath(): Promise<string> {
   }
 
   throw new Error(
-    'Could not find Claude Desktop config file in Windows. Make sure Claude Desktop is installed on Windows.',
+    t(
+      'Could not find Claude Desktop config file in Windows. Make sure Claude Desktop is installed on Windows.',
+    ),
   )
 }
 
@@ -100,7 +105,9 @@ export async function readClaudeDesktopMcpServers(): Promise<
 > {
   if (!SUPPORTED_PLATFORMS.includes(getPlatform())) {
     throw new Error(
-      'Unsupported platform - Claude Desktop integration only works on macOS and WSL.',
+      t(
+        'Unsupported platform - Claude Desktop integration only works on macOS and WSL.',
+      ),
     )
   }
   try {

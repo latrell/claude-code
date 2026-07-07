@@ -20,6 +20,8 @@ import { useNotifications } from '../context/notifications.js';
 import type { PermissionMode, SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { SDKControlResponse } from '../entrypoints/sdk/controlTypes.js';
 import { Text } from '@anthropic/ink';
+import { T } from '../i18n/TText.js';
+import { t, tf } from '../i18n/t.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { useAppState, useAppStateStore, useSetAppState } from '../state/AppState.js';
 import type { Message } from '../types/message.js';
@@ -127,7 +129,7 @@ export function useReplBridge(
           key: 'bridge-failed',
           jsx: (
             <>
-              <Text color="error">Remote Control failed</Text>
+              <T color="error">Remote Control failed</T>
               {detail && <Text dimColor> · {detail}</Text>}
             </>
           ),
@@ -141,7 +143,7 @@ export function useReplBridge(
         );
         // Clear replBridgeEnabled so /remote-control doesn't mistakenly show
         // BridgeDisconnectDialog for a bridge that never connected.
-        const fuseHint = 'disabled after repeated failures · restart to retry';
+        const fuseHint = t('disabled after repeated failures · restart to retry');
         notifyBridgeFailed(fuseHint);
         setAppState(prev => {
           if (prev.replBridgeError === fuseHint && !prev.replBridgeEnabled) return prev;
@@ -704,7 +706,7 @@ export function useReplBridge(
           if (!outboundOnly) {
             setMessages(prev => [
               ...prev,
-              createSystemMessage(`Remote Control failed to connect: ${errMsg}`, 'warning'),
+              createSystemMessage(tf('Remote Control failed to connect: {error}', { error: errMsg }), 'warning'),
             ]);
           }
         }

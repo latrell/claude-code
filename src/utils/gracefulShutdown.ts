@@ -37,7 +37,7 @@ import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCurrentSessionTitle, sessionIdExists } from './sessionStorage.js'
-import { tf } from '../i18n/t.js'
+import { t, tf } from '../i18n/t.js'
 import { sleep } from './sleep.js'
 import { closeSentry } from './sentry.js'
 import { profileReport } from './startupProfiler.js'
@@ -236,7 +236,7 @@ function forceExit(exitCode: number): never {
   // In tests, process.exit may be mocked to return instead of exiting.
   // In production, we should never reach here.
   if ((process.env.NODE_ENV as string) !== 'test') {
-    throw new Error('unreachable')
+    throw new Error(t('unreachable'))
   }
   // TypeScript trick: cast to never since we know this only happens in tests
   // where the mock returns instead of exiting

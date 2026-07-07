@@ -8,6 +8,7 @@ import {
   parse as shellQuoteParse,
   quote as shellQuoteQuote,
 } from 'shell-quote'
+import { t } from 'src/i18n/t.js'
 import { logError } from '../log.js'
 import { jsonStringify } from '../slowOperations.js'
 
@@ -298,6 +299,6 @@ export function quote(args: ReadonlyArray<unknown>): string {
     if (error instanceof Error) {
       logError(error)
     }
-    throw new Error('Failed to quote shell arguments safely')
+    throw new Error(t('Failed to quote shell arguments safely'))
   }
 }

@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { tf } from 'src/i18n/t.js'
 import type { McpClientDependencies } from './interfaces.js'
 import type { ConnectedMCPServer, ScopedMcpServerConfig } from './types.js'
 
@@ -91,7 +92,11 @@ export async function withConnectionTimeout<T>(
   const timeoutPromise = new Promise<never>((_, reject) => {
     const timeoutId = setTimeout(async () => {
       await onTimeout()
-      reject(new Error(`MCP connection timed out after ${timeoutMs}ms`))
+      reject(
+        new Error(
+          tf('MCP connection timed out after {timeoutMs}ms', { timeoutMs }),
+        ),
+      )
     }, timeoutMs)
 
     // Clean up timeout if connect resolves or rejects

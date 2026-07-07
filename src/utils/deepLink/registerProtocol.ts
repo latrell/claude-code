@@ -28,6 +28,7 @@ import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
 import { which } from '../which.js'
+import { t, tf } from 'src/i18n/t.js'
 import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 
 export const MACOS_BUNDLE_ID = 'com.anthropic.claude-code-url-handler'
@@ -228,7 +229,9 @@ export async function registerProtocolHandler(
       await registerWindows(resolved)
       break
     default:
-      throw new Error(`Unsupported platform: ${process.platform}`)
+      throw new Error(
+        tf('Unsupported platform: {platform}', { platform: process.platform }),
+      )
   }
 }
 

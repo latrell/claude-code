@@ -4,6 +4,7 @@ import { useNotifications } from '../../context/notifications.js';
 import { Text } from '@anthropic/ink';
 import { logForDebugging } from '../../utils/debug.js';
 import { onPluginsAutoUpdated } from '../../utils/plugins/pluginAutoupdate.js';
+import { t, tf } from '../../i18n/t.js';
 
 /**
  * Hook that displays a notification when plugins have been auto-updated.
@@ -44,7 +45,9 @@ export function usePluginAutoupdateNotification(): void {
       jsx: (
         <>
           <Text color="success">
-            {pluginNames.length === 1 ? 'Plugin' : 'Plugins'} updated: {displayNames}
+            {pluginNames.length === 1
+              ? tf('Plugin updated: {names}', { names: displayNames })
+              : tf('Plugins updated: {names}', { names: displayNames })}
           </Text>
           <Text dimColor> · Run /reload-plugins to apply</Text>
         </>

@@ -1,3 +1,5 @@
+import { t } from 'src/i18n/t.js'
+
 /**
  * Unicode Sanitization for Hidden Character Attack Mitigation
  *
@@ -56,9 +58,7 @@ export function partiallySanitizeUnicode(prompt: string): string {
 
   // If we hit max iterations, crash loudly. This should only ever happen if there is a bug or if someone purposefully created a deeply nested unicode string.
   if (iterations >= MAX_ITERATIONS) {
-    throw new Error(
-      `Unicode sanitization reached maximum iterations (${MAX_ITERATIONS}) for input: ${prompt.slice(0, 100)}`,
-    )
+    throw new Error(t('Unicode sanitization reached maximum iterations'))
   }
 
   return current

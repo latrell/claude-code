@@ -10,6 +10,7 @@ import {
   storeListSessionsByEnvironment,
   storeListSessionsByOwnerUuid,
 } from '../store'
+import { t } from 'src/i18n/t.js'
 import { randomUUID } from 'node:crypto'
 import { getAllEventBuses, removeEventBus } from '../transport/event-bus'
 import type {
@@ -198,7 +199,7 @@ export function archiveSession(sessionId: string) {
 
 export function incrementEpoch(sessionId: string): number {
   const record = storeGetSession(sessionId)
-  if (!record) throw new Error('Session not found')
+  if (!record) throw new Error(t('Session not found'))
   const newEpoch = record.workerEpoch + 1
   storeUpdateSession(sessionId, { workerEpoch: newEpoch })
   return newEpoch

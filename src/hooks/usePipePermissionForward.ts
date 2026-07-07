@@ -10,6 +10,7 @@ import { feature } from 'bun:bundle'
 import { useEffect } from 'react'
 import type { Tool, ToolUseContext } from '../Tool.js'
 import type { MessageType } from '../types/message.js'
+import { t, tf } from '../i18n/t.js'
 
 type Deps = {
   store: { getState: () => any }
@@ -165,17 +166,17 @@ export function usePipePermissionForward({
 
         if (entry.type === 'stream' && content) {
           message = createSystemMessage(
-            `[${displayRole} / ${pipeName}] ${content}`,
+            `${tf('[{role} / {name}] {content}', { role: displayRole, name: pipeName, content })}`,
             'warning',
           )
         } else if (entry.type === 'error') {
           message = createSystemMessage(
-            `[${displayRole} / ${pipeName}] Error: ${content || 'no output'}`,
+            `${tf('[{role} / {name}] Error: {detail}', { role: displayRole, name: pipeName, detail: content || t('no output') })}`,
             'error',
           )
         } else if (entry.type === 'done') {
           message = createSystemMessage(
-            `[${displayRole} / ${pipeName}] Completed`,
+            `${tf('[{role} / {name}] Completed', { role: displayRole, name: pipeName })}`,
             'warning',
           )
         }

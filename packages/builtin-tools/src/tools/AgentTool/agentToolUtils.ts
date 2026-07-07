@@ -13,6 +13,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { clearDumpState } from 'src/services/api/dumpPrompts.js'
+import { t } from 'src/i18n/t.js'
 import type { AppState } from 'src/state/AppState.js'
 import type {
   Tool,
@@ -297,7 +298,7 @@ export function finalizeAgentTool(
 
   const lastAssistantMessage = getLastAssistantMessage(agentMessages)
   if (lastAssistantMessage === undefined) {
-    throw new Error('No assistant messages found')
+    throw new Error(t('No assistant messages found'))
   }
   // Extract text content from the agent's response. If the final assistant
   // message is a pure tool_use block (loop exited mid-turn), fall back to

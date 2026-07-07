@@ -5,6 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import { t, tf } from 'src/i18n/t.js'
 import {
   CDN_BASE_URL,
   DEFAULT_BASE_URL,
@@ -37,16 +38,15 @@ export interface WeixinServerDeps {
 function formatPermissionRequestMessage(
   request: ChannelPermissionRequestParams,
 ): string {
-  return [
-    'Claude Code needs your approval.',
-    '',
-    `Tool: ${request.tool_name}`,
-    `Reason: ${request.description}`,
-    `Input: ${request.input_preview}`,
-    '',
-    `Reply with: yes ${request.request_id}`,
-    `Or deny with: no ${request.request_id}`,
-  ].join('\n')
+  return tf(
+    'Claude Code needs your approval.\n\nTool: {toolName}\nReason: {reason}\nInput: {inputPreview}\n\nReply with: yes {requestId}\nOr deny with: no {requestId}',
+    {
+      toolName: request.tool_name,
+      reason: request.description,
+      inputPreview: request.input_preview,
+      requestId: request.request_id,
+    },
+  )
 }
 
 export function createWeixinMcpServer(version: string): Server {
@@ -110,7 +110,7 @@ export function createWeixinMcpServer(version: string): Server {
         content: [
           {
             type: 'text',
-            text: 'WeChat not connected. Run `ccb weixin login` first.',
+            text: t('WeChat not connected. Run `ccb weixin login` first.'),
           },
         ],
         isError: true,
@@ -133,7 +133,7 @@ export function createWeixinMcpServer(version: string): Server {
         if (!chatId || !text) {
           return {
             content: [
-              { type: 'text', text: 'Missing chat_id or text parameter.' },
+              { type: 'text', text: t('Missing chat_id or text parameter.') },
             ],
             isError: true,
           }
@@ -147,7 +147,10 @@ export function createWeixinMcpServer(version: string): Server {
               if (!existsSync(filePath)) {
                 return {
                   content: [
-                    { type: 'text', text: `File not found: ${filePath}` },
+                    {
+                      type: 'text',
+                      text: tf('File not found: {filePath}', { filePath }),
+                    },
                   ],
                   isError: true,
                 }
@@ -165,7 +168,7 @@ export function createWeixinMcpServer(version: string): Server {
 
             return {
               content: [
-                { type: 'text', text: 'Message sent with attachments.' },
+                { type: 'text', text: t('Message sent with attachments.') },
               ],
             }
           }
@@ -177,10 +180,15 @@ export function createWeixinMcpServer(version: string): Server {
             token: account.token,
             contextToken,
           })
-          return { content: [{ type: 'text', text: 'Message sent.' }] }
+          return { content: [{ type: 'text', text: t('Message sent.') }] }
         } catch (error) {
           return {
-            content: [{ type: 'text', text: `Failed to send: ${error}` }],
+            content: [
+              {
+                type: 'text',
+                text: tf('Failed to send: {error}', { error: String(error) }),
+              },
+            ],
             isError: true,
           }
         }
@@ -190,7 +198,7 @@ export function createWeixinMcpServer(version: string): Server {
         const chatId = typeof args?.chat_id === 'string' ? args.chat_id : ''
         if (!chatId) {
           return {
-            content: [{ type: 'text', text: 'Missing chat_id parameter.' }],
+            content: [{ type: 'text', text: t('Missing chat_id parameter.') }],
             isError: true,
           }
         }
@@ -211,12 +219,17 @@ export function createWeixinMcpServer(version: string): Server {
             })
           }
           return {
-            content: [{ type: 'text', text: 'Typing indicator sent.' }],
+            content: [{ type: 'text', text: t('Typing indicator sent.') }],
           }
         } catch (error) {
           return {
             content: [
-              { type: 'text', text: `Failed to send typing: ${error}` },
+              {
+                type: 'text',
+                text: tf('Failed to send typing: {error}', {
+                  error: String(error),
+                }),
+              },
             ],
             isError: true,
           }
@@ -225,7 +238,9 @@ export function createWeixinMcpServer(version: string): Server {
 
       default:
         return {
-          content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+          content: [
+            { type: 'text', text: tf('Unknown tool: {name}', { name }) },
+          ],
           isError: true,
         }
     }
@@ -244,7 +259,9 @@ export async function runWeixinMcpServer(
   const account = loadAccount()
   if (!account) {
     process.stderr.write(
-      '[weixin] No account configured. Run `ccb weixin login` to connect your WeChat account.\n',
+      t(
+        '[weixin] No account configured. Run `ccb weixin login` to connect your WeChat account.',
+      ) + '\n',
     )
     await Promise.all([deps.shutdown1PEventLogging(), deps.shutdownDatadog()])
     process.exit(1)
@@ -312,7 +329,9 @@ export async function runWeixinMcpServer(
     try {
       process.kill(ppid, 0)
     } catch {
-      process.stderr.write('[weixin] Parent process exited, shutting down...\n')
+      process.stderr.write(
+        t('[weixin] Parent process exited, shutting down...') + '\n',
+      )
       clearInterval(parentCheck)
       void shutdownAndExit()
     }

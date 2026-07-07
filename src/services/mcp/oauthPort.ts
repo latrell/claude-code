@@ -3,6 +3,7 @@
  * auth.ts ↔ xaaIdpLogin.ts circular dependency.
  */
 import { createServer } from 'http'
+import { t } from 'src/i18n/t.js'
 import { getPlatform } from '../../utils/platform.js'
 
 // Windows dynamic port range 49152-65535 is reserved
@@ -70,6 +71,6 @@ export async function findAvailablePort(): Promise<number> {
     })
     return REDIRECT_PORT_FALLBACK
   } catch {
-    throw new Error(`No available ports for OAuth redirect`)
+    throw new Error(t('No available ports for OAuth redirect'))
   }
 }

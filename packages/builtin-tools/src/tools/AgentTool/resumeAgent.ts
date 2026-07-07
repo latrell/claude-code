@@ -18,6 +18,7 @@ import {
   filterWhitespaceOnlyAssistantMessages,
 } from 'src/utils/messages.js'
 import { getAgentModel } from 'src/utils/model/agent.js'
+import { tf } from 'src/i18n/t.js'
 import { getQuerySourceForAgent } from 'src/utils/promptCategory.js'
 import {
   getAgentTranscript,
@@ -66,7 +67,9 @@ export async function resumeAgentBackground({
     readAgentMetadata(asAgentId(agentId)),
   ])
   if (!transcript) {
-    throw new Error(`No transcript found for agent ID: ${agentId}`)
+    throw new Error(
+      tf('No transcript found for agent ID: {agentId}', { agentId }),
+    )
   }
   const resumedMessages = filterWhitespaceOnlyAssistantMessages(
     filterOrphanedThinkingOnlyMessages(

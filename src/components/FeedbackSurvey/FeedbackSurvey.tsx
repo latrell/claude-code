@@ -8,6 +8,8 @@ import { FeedbackSurveyView, isValidResponseInput } from './FeedbackSurveyView.j
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';
 import { TranscriptSharePrompt } from './TranscriptSharePrompt.js';
 import { useDebouncedDigitInput } from './useDebouncedDigitInput.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import type { FeedbackSurveyResponse } from './utils.js';
 
 type Props = {
@@ -130,7 +132,7 @@ function FeedbackSurveyThanks({
 
   return (
     <Box marginTop={1} flexDirection="column">
-      <Text color="success">Thanks for the feedback!</Text>
+      <T color="success">Thanks for the feedback!</T>
       {showFollowUp ? (
         <Text dimColor>
           (Optional) Press [<Text color="ansi:cyan">1</Text>] to tell us what went well {' \u00b7 '}

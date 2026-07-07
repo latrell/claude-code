@@ -8,6 +8,8 @@ import { logEvent } from '../services/analytics/index.js';
 import type { HistoryEntry } from '../utils/config.js';
 import { formatRelativeTimeAgo, truncateToWidth } from '../utils/format.js';
 import { FuzzyPicker } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   initialQuery?: string;
@@ -84,8 +86,8 @@ export function HistorySearchDialog({ initialQuery, onSelect, onCancel }: Props)
 
   return (
     <FuzzyPicker
-      title="Search prompts"
-      placeholder="Filter history…"
+      title={t('Search prompts')}
+      placeholder={t('Filter history…')}
       initialQuery={initialQuery}
       items={filtered}
       getKey={item => String(item.entry.timestamp)}
@@ -98,8 +100,8 @@ export function HistorySearchDialog({ initialQuery, onSelect, onCancel }: Props)
         void item.entry.resolve().then(onSelect);
       }}
       onCancel={onCancel}
-      emptyMessage={q => (items === null ? 'Loading…' : q ? 'No matching prompts' : 'No history yet')}
-      selectAction="use"
+      emptyMessage={q => (items === null ? t('Loading…') : q ? t('No matching prompts') : t('No history yet'))}
+      selectAction={t('use')}
       direction="up"
       previewPosition={previewOnRight ? 'right' : 'bottom'}
       renderItem={(item, isFocused) => (
@@ -122,7 +124,7 @@ export function HistorySearchDialog({ initialQuery, onSelect, onCancel }: Props)
                 {row}
               </Text>
             ))}
-            {more > 0 && <Text dimColor>{`… +${more} more lines`}</Text>}
+            {more > 0 && <T dimColor vars={{ more }}>{`… +{more} more lines`}</T>}
           </Box>
         );
       }}

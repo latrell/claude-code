@@ -9,6 +9,7 @@
  * then minimal guard at earliest detection point).
  */
 
+import { t, tf } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 
 /** The canonical Anthropic API host for workspace (non-subscription) endpoints. */
@@ -28,15 +29,25 @@ export function assertWorkspaceHost(url: string): void {
     hostname = new URL(url).hostname
   } catch {
     throw new Error(
-      `assertWorkspaceHost: invalid URL "${url}". Workspace API key requests must target ${WORKSPACE_API_HOST}.`,
+      tf(
+        'assertWorkspaceHost: invalid URL "{url}". Workspace API key requests must target {host}.',
+        {
+          url,
+          host: WORKSPACE_API_HOST,
+        },
+      ),
     )
   }
 
   if (hostname !== WORKSPACE_API_HOST) {
     throw new Error(
-      `assertWorkspaceHost: refusing to send workspace API key to non-Anthropic host "${hostname}". ` +
-        `Workspace API key requests must target ${WORKSPACE_API_HOST}. ` +
-        `If you are using a custom base URL, workspace endpoints are only available on the Anthropic API.`,
+      tf(
+        'assertWorkspaceHost: refusing to send workspace API key to non-Anthropic host "{hostname}". Workspace API key requests must target {target}. If you are using a custom base URL, workspace endpoints are only available on the Anthropic API.',
+        {
+          hostname,
+          target: WORKSPACE_API_HOST,
+        },
+      ),
     )
   }
 }
@@ -56,14 +67,25 @@ export function assertSubscriptionBaseUrl(url: string): void {
     hostname = new URL(url).hostname
   } catch {
     throw new Error(
-      `assertSubscriptionBaseUrl: invalid URL "${url}". Subscription OAuth requests must target ${WORKSPACE_API_HOST}.`,
+      tf(
+        'assertSubscriptionBaseUrl: invalid URL "{url}". Subscription OAuth requests must target {host}.',
+        {
+          url,
+          host: WORKSPACE_API_HOST,
+        },
+      ),
     )
   }
 
   if (hostname !== WORKSPACE_API_HOST) {
     throw new Error(
-      `assertSubscriptionBaseUrl: refusing subscription OAuth request to non-Anthropic host "${hostname}". ` +
-        `Subscription OAuth requests must target ${WORKSPACE_API_HOST}.`,
+      tf(
+        'assertSubscriptionBaseUrl: refusing subscription OAuth request to non-Anthropic host "{hostname}". Subscription OAuth requests must target {target}.',
+        {
+          hostname,
+          target: WORKSPACE_API_HOST,
+        },
+      ),
     )
   }
 }

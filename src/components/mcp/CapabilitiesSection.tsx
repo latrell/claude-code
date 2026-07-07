@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { Byline } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   serverToolsCount: number;
@@ -26,8 +28,8 @@ export function CapabilitiesSection({
 
   return (
     <Box>
-      <Text bold>Capabilities: </Text>
-      <Text color="text">{capabilities.length > 0 ? <Byline>{capabilities}</Byline> : 'none'}</Text>
+      <T bold>Capabilities: </T>
+      <Text color="text">{capabilities.length > 0 ? <Byline>{capabilities}</Byline> : t('none')}</Text>
     </Box>
   );
 }

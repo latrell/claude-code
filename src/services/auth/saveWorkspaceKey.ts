@@ -14,6 +14,7 @@
  */
 
 import { promises as fs } from 'fs'
+import { t, tf } from '../../i18n/t.js'
 import { getGlobalClaudeFile } from '../../utils/env.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logError } from '../../utils/log.js'
@@ -43,22 +44,33 @@ const MAX_KEY_LENGTH = 256
 export async function saveWorkspaceKey(key: string): Promise<void> {
   // --- Validation (prefix-only, no key value in errors) ---
   if (!key || key.trim().length === 0) {
-    throw new Error('Workspace API key must not be empty.')
+    throw new Error(t('Workspace API key must not be empty.'))
   }
 
   const trimmed = key.trim()
 
   if (trimmed.length < MIN_KEY_LENGTH) {
     throw new Error(
-      `Workspace API key is too short (${trimmed.length} chars). ` +
-        `Expected at least ${MIN_KEY_LENGTH} chars starting with "${WORKSPACE_KEY_PREFIX}".`,
+      tf(
+        'Workspace API key is too short ({length} chars). Expected at least {min} chars starting with "{prefix}".',
+        {
+          length: trimmed.length,
+          min: MIN_KEY_LENGTH,
+          prefix: WORKSPACE_KEY_PREFIX,
+        },
+      ),
     )
   }
 
   if (trimmed.length > MAX_KEY_LENGTH) {
     throw new Error(
-      `Workspace API key is too long (${trimmed.length} chars). ` +
-        `Maximum allowed length is ${MAX_KEY_LENGTH} chars.`,
+      tf(
+        'Workspace API key is too long ({length} chars). Maximum allowed length is {max} chars.',
+        {
+          length: trimmed.length,
+          max: MAX_KEY_LENGTH,
+        },
+      ),
     )
   }
 
@@ -66,9 +78,13 @@ export async function saveWorkspaceKey(key: string): Promise<void> {
     // Only show first 4 chars of the actual key to avoid leaking entropy
     const prefix4 = trimmed.slice(0, 4)
     throw new Error(
-      `Workspace API key must start with "${WORKSPACE_KEY_PREFIX}" (workspace key). ` +
-        `Got prefix "${prefix4}...". ` +
-        'Obtain a workspace API key from https://console.anthropic.com/settings/keys.',
+      tf(
+        'Workspace API key must start with "{prefix}" (workspace key). Got prefix "{gotPrefix}...". Obtain a workspace API key from https://console.anthropic.com/settings/keys.',
+        {
+          prefix: WORKSPACE_KEY_PREFIX,
+          gotPrefix: prefix4,
+        },
+      ),
     )
   }
 
@@ -81,7 +97,9 @@ export async function saveWorkspaceKey(key: string): Promise<void> {
   } catch (err: unknown) {
     // Sanitize: re-throw without mentioning the key value
     throw new Error(
-      `Failed to save workspace API key to config: ${sanitizeErrorMessage(err)}`,
+      tf('Failed to save workspace API key to config: {error}', {
+        error: sanitizeErrorMessage(err),
+      }),
     )
   }
 
@@ -106,7 +124,9 @@ export async function removeWorkspaceKey(): Promise<void> {
     })
   } catch (err: unknown) {
     throw new Error(
-      `Failed to remove workspace API key: ${sanitizeErrorMessage(err)}`,
+      tf('Failed to remove workspace API key: {error}', {
+        error: sanitizeErrorMessage(err),
+      }),
     )
   }
 }

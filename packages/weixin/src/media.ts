@@ -7,6 +7,7 @@ import {
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
+import { t, tf } from 'src/i18n/t.js'
 import { getUploadUrl } from './api.js'
 import { UploadMediaType } from './types.js'
 
@@ -51,7 +52,10 @@ export function parseAesKey(aesKeyBase64: string): Buffer {
     return Buffer.from(decoded.toString('ascii'), 'hex')
   }
   throw new Error(
-    `Invalid aes_key: expected 16 raw bytes or 32 hex chars, got ${decoded.length} bytes`,
+    tf(
+      'Invalid aes_key: expected 16 raw bytes or 32 hex chars, got {length} bytes',
+      { length: decoded.length },
+    ),
   )
 }
 
@@ -63,7 +67,9 @@ export async function downloadAndDecrypt(params: {
   const url = buildCdnDownloadUrl(params.encryptQueryParam, params.cdnBaseUrl)
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`CDN download failed: HTTP ${response.status}`)
+    throw new Error(
+      tf('CDN download failed: HTTP {status}', { status: response.status }),
+    )
   }
   const ciphertext = Buffer.from(await response.arrayBuffer())
   return decryptAesEcb(ciphertext, parseAesKey(params.aesKey))
@@ -105,7 +111,7 @@ export async function uploadFile(params: {
   })
 
   if (!uploadResp.upload_param) {
-    throw new Error('No upload_param in response')
+    throw new Error(t('No upload_param in response'))
   }
 
   const uploadUrl = buildCdnUploadUrl(
@@ -120,7 +126,9 @@ export async function uploadFile(params: {
   })
 
   if (!uploadResult.ok) {
-    throw new Error(`CDN upload failed: HTTP ${uploadResult.status}`)
+    throw new Error(
+      tf('CDN upload failed: HTTP {status}', { status: uploadResult.status }),
+    )
   }
 
   return {
@@ -150,7 +158,10 @@ export async function downloadRemoteToTemp(
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   const response = await fetch(url)
-  if (!response.ok) throw new Error(`Download failed: HTTP ${response.status}`)
+  if (!response.ok)
+    throw new Error(
+      tf('Download failed: HTTP {status}', { status: response.status }),
+    )
 
   const buffer = Buffer.from(await response.arrayBuffer())
   const urlPath = new URL(url).pathname

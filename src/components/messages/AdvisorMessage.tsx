@@ -36,7 +36,7 @@ export function AdvisorMessage({
           isUnresolved={!resolvedToolUseIDs.has(block.id)}
           isError={erroredToolUseIDs.has(block.id)}
         />
-        <Text bold>Advising</Text>
+        <T bold>Advising</T>
         {advisorModel ? <Text dimColor> using {renderModelName(advisorModel)}</Text> : null}
         {input ? <Text dimColor> · {input}</Text> : null}
       </Box>
@@ -46,19 +46,27 @@ export function AdvisorMessage({
   let body: React.ReactNode;
   switch (block.content.type) {
     case 'advisor_tool_result_error':
-      body = <Text color="error">Advisor unavailable ({block.content.error_code})</Text>;
+      body = (
+        <T color="error" vars={{ code: block.content.error_code }}>
+          Advisor unavailable ({code})
+        </T>
+      );
       break;
     case 'advisor_result':
       body = verbose ? (
         <Text dimColor>{block.content.text}</Text>
       ) : (
         <Text dimColor>
-          {figures.tick} Advisor has reviewed the conversation and will apply the feedback <CtrlOToExpand />
+          {figures.tick} <T>Advisor has reviewed the conversation and will apply the feedback</T> <CtrlOToExpand />
         </Text>
       );
       break;
     case 'advisor_redacted_result':
-      body = <Text dimColor>{figures.tick} Advisor has reviewed the conversation and will apply the feedback</Text>;
+      body = (
+        <Text dimColor>
+          {figures.tick} <T>Advisor has reviewed the conversation and will apply the feedback</T>
+        </Text>
+      );
       break;
   }
 

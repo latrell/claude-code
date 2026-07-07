@@ -3,6 +3,7 @@
  * Hooks are user-defined shell commands that can be executed at various points
  * in Claude Code's lifecycle.
  */
+import { t, tf } from 'src/i18n/t.js'
 import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
@@ -913,8 +914,12 @@ async function execCommandHook(
     // intentional block after spawn.
     if (!(await pathExists(pluginRoot))) {
       throw new Error(
-        `Plugin directory does not exist: ${pluginRoot}` +
-          (pluginId ? ` (${pluginId} — run /plugin to reinstall)` : ''),
+        tf('Plugin directory does not exist: {root}{extra}', {
+          root: pluginRoot,
+          extra: pluginId
+            ? ` (${pluginId} — ` + t('run /plugin to reinstall') + ')'
+            : '',
+        }),
       )
     }
     // Inline both ROOT and DATA substitution instead of calling
@@ -1093,9 +1098,9 @@ async function execCommandHook(
     const pwshPath = await getCachedPowerShellPath()
     if (!pwshPath) {
       throw new Error(
-        `Hook "${hook.command}" has shell: 'powershell' but no PowerShell ` +
-          `executable (pwsh or powershell) was found on PATH. Install ` +
-          `PowerShell, or remove "shell": "powershell" to use bash.`,
+        t(
+          'PowerShell hook executable not found. Install PowerShell, or remove "shell": "powershell" to use bash.',
+        ),
       )
     }
     child = spawn(pwshPath, buildPowerShellArgs(finalCommand), {
@@ -5116,9 +5121,7 @@ export async function executeWorktreeCreateHook(
     const failedOutputs = results
       .filter(r => !r.succeeded)
       .map(r => `${r.command}: ${r.output.trim() || 'no output'}`)
-    throw new Error(
-      `WorktreeCreate hook failed: ${failedOutputs.join('; ') || 'no successful output'}`,
-    )
+    throw new Error(t('WorktreeCreate hook failed'))
   }
 
   const worktreePath = successfulResult.output.trim()

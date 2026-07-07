@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import uniqBy from 'lodash-es/uniqBy.js'
+import { t, tf } from 'src/i18n/t.js'
 import { dirname } from 'path'
 import { getProjectRoot } from 'src/bootstrap/state.js'
 import {
@@ -647,7 +648,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     )
 
     if (!processedCommand.shouldQuery) {
-      throw new Error('Command processing failed')
+      throw new Error(t('Command processing failed'))
     }
 
     // Extract metadata from the command
@@ -1002,7 +1003,9 @@ async function executeRemoteSkill(
       urlScheme,
       error: msg,
     })
-    throw new Error(`Failed to load remote skill ${slug}: ${msg}`)
+    throw new Error(
+      tf('Failed to load remote skill {slug}: {msg}', { slug, msg }),
+    )
   }
 
   const {

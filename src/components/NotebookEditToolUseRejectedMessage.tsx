@@ -28,7 +28,7 @@ export function NotebookEditToolUseRejectedMessage({
     <MessageResponse>
       <Box flexDirection="column">
         <Box flexDirection="row">
-          <Text color="subtle">User rejected {operation} </Text>
+          <Text color="subtle">User rejected </Text>
           <Text bold color="subtle">
             {verbose ? notebook_path : relative(getCwd(), notebook_path)}
           </Text>

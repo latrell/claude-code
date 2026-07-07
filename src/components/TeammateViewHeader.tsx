@@ -5,6 +5,8 @@ import { useAppState } from '../state/AppState.js';
 import { getViewedTeammateTask } from '../state/selectors.js';
 
 import { OffscreenFreeze } from './OffscreenFreeze.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 /**
  * Header shown when viewing a teammate's transcript.
@@ -23,7 +25,7 @@ export function TeammateViewHeader(): React.ReactNode {
     <OffscreenFreeze>
       <Box flexDirection="column" marginBottom={1}>
         <Box>
-          <Text>Viewing </Text>
+          <T>Viewing </T>
           <Text color={nameColor} bold>
             @{viewedTeammate.identity.agentName}
           </Text>

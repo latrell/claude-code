@@ -1,3 +1,4 @@
+import { t } from '../../../../../src/i18n/t.js'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import {
   isProgressReportingAvailable,
@@ -35,7 +36,7 @@ export function useTerminalNotification(): TerminalNotification {
   const writeRaw = useContext(TerminalWriteContext)
   if (!writeRaw) {
     throw new Error(
-      'useTerminalNotification must be used within TerminalWriteProvider',
+      t('useTerminalNotification must be used within TerminalWriteProvider'),
     )
   }
 

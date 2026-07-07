@@ -1,3 +1,4 @@
+import { tf } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
@@ -356,7 +357,7 @@ async function processUserInputBase(
   }
 
   if (inputString === null && mode !== 'prompt') {
-    throw new Error(`Mode: ${mode} requires a string input.`)
+    throw new Error(tf('Mode: {mode} requires a string input.', { mode }))
   }
 
   // Extract and convert image content to content blocks early

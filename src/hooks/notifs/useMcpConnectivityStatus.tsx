@@ -4,6 +4,7 @@ import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { Text } from '@anthropic/ink';
 import { hasClaudeAiMcpEverConnected } from '../../services/mcp/claudeai.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   mcpClients?: MCPServerConnection[];
@@ -54,9 +55,7 @@ export function useMcpConnectivityStatus({ mcpClients = EMPTY_MCP_CLIENTS }: Pro
         key: 'mcp-failed',
         jsx: (
           <>
-            <Text color="error">
-              {failedLocalClients.length} MCP {failedLocalClients.length === 1 ? 'server' : 'servers'} failed
-            </Text>
+            <Text color="error">{tf('{count} MCP servers failed', { count: failedLocalClients.length })}</Text>
             <Text dimColor> · /mcp</Text>
           </>
         ),
@@ -69,8 +68,7 @@ export function useMcpConnectivityStatus({ mcpClients = EMPTY_MCP_CLIENTS }: Pro
         jsx: (
           <>
             <Text color="error">
-              {failedClaudeAiClients.length} claude.ai {failedClaudeAiClients.length === 1 ? 'connector' : 'connectors'}{' '}
-              unavailable
+              {tf('{count} claude.ai connectors unavailable', { count: failedClaudeAiClients.length })}
             </Text>
             <Text dimColor> · /mcp</Text>
           </>
@@ -83,10 +81,7 @@ export function useMcpConnectivityStatus({ mcpClients = EMPTY_MCP_CLIENTS }: Pro
         key: 'mcp-needs-auth',
         jsx: (
           <>
-            <Text color="warning">
-              {needsAuthLocalServers.length} MCP {needsAuthLocalServers.length === 1 ? 'server needs' : 'servers need'}{' '}
-              auth
-            </Text>
+            <Text color="warning">{tf('{count} MCP servers need auth', { count: needsAuthLocalServers.length })}</Text>
             <Text dimColor> · /mcp</Text>
           </>
         ),
@@ -99,8 +94,7 @@ export function useMcpConnectivityStatus({ mcpClients = EMPTY_MCP_CLIENTS }: Pro
         jsx: (
           <>
             <Text color="warning">
-              {needsAuthClaudeAiServers.length} claude.ai{' '}
-              {needsAuthClaudeAiServers.length === 1 ? 'connector needs' : 'connectors need'} auth
+              {tf('{count} claude.ai connectors need auth', { count: needsAuthClaudeAiServers.length })}
             </Text>
             <Text dimColor> · /mcp</Text>
           </>

@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { lock } from './lockfile.js'
@@ -34,7 +35,7 @@ export function retainActiveFirst<T>(
 export function getAutonomyPersistenceLockCountForTests(): number {
   if (process.env.NODE_ENV !== 'test') {
     throw new Error(
-      'getAutonomyPersistenceLockCountForTests can only be called in tests',
+      t('getAutonomyPersistenceLockCountForTests can only be called in tests'),
     )
   }
   return persistenceLocks.size

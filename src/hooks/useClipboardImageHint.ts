@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useNotifications } from '../context/notifications.js'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { hasImageInClipboard } from '../utils/imagePaste.js'
+import { tf } from '../i18n/t.js'
 
 const NOTIFICATION_KEY = 'clipboard-image-hint'
 // Small debounce to batch rapid focus changes
@@ -53,9 +54,14 @@ export function useClipboardImageHint(
         // Check if clipboard has an image (async osascript call)
         if (await hasImageInClipboard()) {
           lastHintTimeRef.current = now
+          const shortcut = getShortcutDisplay(
+            'chat:imagePaste',
+            'Chat',
+            'ctrl+v',
+          )
           addNotification({
             key: NOTIFICATION_KEY,
-            text: `Image in clipboard · ${getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v')} to paste`,
+            text: tf('Image in clipboard · {shortcut} to paste', { shortcut }),
             priority: 'immediate',
             timeoutMs: 8000,
           })

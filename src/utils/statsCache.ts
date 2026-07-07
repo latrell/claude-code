@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { open } from 'fs/promises'
@@ -404,7 +405,7 @@ export function toDateString(date: Date): string {
   const parts = date.toISOString().split('T')
   const dateStr = parts[0]
   if (!dateStr) {
-    throw new Error('Invalid ISO date string')
+    throw new Error(t('Invalid ISO date string'))
   }
   return dateStr
 }

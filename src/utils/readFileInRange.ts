@@ -1,3 +1,5 @@
+import { tf } from 'src/i18n/t.js'
+
 // ---------------------------------------------------------------------------
 // readFileInRange — line-oriented file reader with two code paths
 // ---------------------------------------------------------------------------
@@ -88,7 +90,9 @@ export async function readFileInRange(
 
   if (stats.isDirectory()) {
     throw new Error(
-      `EISDIR: illegal operation on a directory, read '${filePath}'`,
+      tf('EISDIR: illegal operation on a directory, read "{path}"', {
+        path: filePath,
+      }),
     )
   }
 

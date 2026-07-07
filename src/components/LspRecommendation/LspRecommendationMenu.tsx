@@ -2,6 +2,8 @@ import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { Select } from '../CustomSelect/select.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   pluginName: string;
@@ -73,13 +75,13 @@ export function LspRecommendationMenu({
   ];
 
   return (
-    <PermissionDialog title="LSP Plugin Recommendation">
+    <PermissionDialog title={t('LSP Plugin Recommendation')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box marginBottom={1}>
-          <Text dimColor>LSP provides code intelligence like go-to-definition and error checking</Text>
+          <T dimColor>LSP provides code intelligence like go-to-definition and error checking</T>
         </Box>
         <Box>
-          <Text dimColor>Plugin:</Text>
+          <T dimColor>Plugin:</T>
           <Text> {pluginName}</Text>
         </Box>
         {pluginDescription && (
@@ -88,11 +90,11 @@ export function LspRecommendationMenu({
           </Box>
         )}
         <Box>
-          <Text dimColor>Triggered by:</Text>
+          <T dimColor>Triggered by:</T>
           <Text> {fileExtension} files</Text>
         </Box>
         <Box marginTop={1}>
-          <Text>Would you like to install this LSP plugin?</Text>
+          <T>Would you like to install this LSP plugin?</T>
         </Box>
         <Box>
           <Select options={options} onChange={onSelect} onCancel={() => onResponse('no')} />

@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import { getAllowedSettingSources } from '../../bootstrap/state.js'
 
 /**
@@ -144,7 +145,10 @@ export function parseSettingSourcesFlag(flag: string): SettingSource[] {
         break
       default:
         throw new Error(
-          `Invalid setting source: ${name}. Valid options are: user, project, local`,
+          tf(
+            'Invalid setting source: {name}. Valid options are: user, project, local',
+            { name },
+          ),
         )
     }
   }

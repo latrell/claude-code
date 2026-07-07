@@ -3,6 +3,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { saveGlobalConfig } from 'src/utils/config.js'
+import { t, tf } from '../../i18n/t.js'
 import {
   CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,
   PR_BODY,
@@ -86,7 +87,10 @@ async function createWorkflowFile(
         ...context,
       })
       throw new Error(
-        `Failed to create workflow file ${workflowPath}: A Claude workflow file already exists in this repository. Please remove it first or update it manually.`,
+        tf(
+          'Failed to create workflow file {path}: A Claude workflow file already exists in this repository. Please remove it first or update it manually.',
+          { path: workflowPath },
+        ),
       )
     }
 
@@ -97,14 +101,16 @@ async function createWorkflowFile(
       ...context,
     })
 
-    const helpText =
-      '\n\nNeed help? Common issues:\n' +
-      '· Permission denied → Run: gh auth refresh -h github.com -s repo,workflow\n' +
-      '· Not authorized → Ensure you have admin access to the repository\n' +
-      '· For manual setup → Visit: https://github.com/anthropics/claude-code-action'
+    const helpText = t(
+      '\n\nNeed help? Common issues:\n· Permission denied → Run: gh auth refresh -h github.com -s repo,workflow\n· Not authorized → Ensure you have admin access to the repository\n· For manual setup → Visit: https://github.com/anthropics/claude-code-action',
+    )
 
     throw new Error(
-      `Failed to create workflow file ${workflowPath}: ${createFileResult.stderr}${helpText}`,
+      tf('Failed to create workflow file {path}: {stderr}{help}', {
+        path: workflowPath,
+        stderr: createFileResult.stderr,
+        help: helpText,
+      }),
     )
   }
 }
@@ -149,7 +155,10 @@ export async function setupGitHubActions(
         ...context,
       })
       throw new Error(
-        `Failed to access repository ${repoName}: ${repoCheckResult.stderr}`,
+        tf('Failed to access repository {repo}: {error}', {
+          repo: repoName,
+          error: repoCheckResult.stderr,
+        }),
       )
     }
 
@@ -168,7 +177,9 @@ export async function setupGitHubActions(
         ...context,
       })
       throw new Error(
-        `Failed to get default branch: ${defaultBranchResult.stderr}`,
+        tf('Failed to get default branch: {error}', {
+          error: defaultBranchResult.stderr,
+        }),
       )
     }
     const defaultBranch = defaultBranchResult.stdout.trim()
@@ -187,7 +198,9 @@ export async function setupGitHubActions(
         exit_code: shaResult.code,
         ...context,
       })
-      throw new Error(`Failed to get branch SHA: ${shaResult.stderr}`)
+      throw new Error(
+        tf('Failed to get branch SHA: {error}', { error: shaResult.stderr }),
+      )
     }
     const sha = shaResult.stdout.trim()
 
@@ -214,7 +227,11 @@ export async function setupGitHubActions(
           exit_code: createBranchResult.code,
           ...context,
         })
-        throw new Error(`Failed to create branch: ${createBranchResult.stderr}`)
+        throw new Error(
+          tf('Failed to create branch: {error}', {
+            error: createBranchResult.stderr,
+          }),
+        )
       }
 
       updateProgress()
@@ -270,14 +287,15 @@ export async function setupGitHubActions(
           ...context,
         })
 
-        const helpText =
-          '\n\nNeed help? Common issues:\n' +
-          '· Permission denied → Run: gh auth refresh -h github.com -s repo\n' +
-          '· Not authorized → Ensure you have admin access to the repository\n' +
-          '· For manual setup → Visit: https://github.com/anthropics/claude-code-action'
+        const helpText = t(
+          '\n\nNeed help? Common issues:\n· Permission denied → Run: gh auth refresh -h github.com -s repo\n· Not authorized → Ensure you have admin access to the repository\n· For manual setup → Visit: https://github.com/anthropics/claude-code-action',
+        )
 
         throw new Error(
-          `Failed to set API key secret: ${setSecretResult.stderr || 'Unknown error'}${helpText}`,
+          tf('Failed to set API key secret: {error}{help}', {
+            error: setSecretResult.stderr || t('Unknown error'),
+            help: helpText,
+          }),
         )
       }
     }

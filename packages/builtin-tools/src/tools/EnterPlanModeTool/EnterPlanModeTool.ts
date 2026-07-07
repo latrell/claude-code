@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { t } from 'src/i18n/t.js'
 import {
   getAllowedChannels,
   handlePlanModeTransition,
@@ -76,7 +77,7 @@ export const EnterPlanModeTool: Tool<InputSchema, Output> = buildTool({
   renderToolUseRejectedMessage,
   async call(_input, context) {
     if (context.agentId) {
-      throw new Error('EnterPlanMode tool cannot be used in agent contexts')
+      throw new Error(t('EnterPlanMode tool cannot be used in agent contexts'))
     }
 
     const appState = context.getAppState()

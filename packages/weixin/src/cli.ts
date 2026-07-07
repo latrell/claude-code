@@ -8,49 +8,44 @@ import { startLogin, waitForLogin } from './login.js'
 import { confirmPairing } from './pairing.js'
 import { runWeixinMcpServer } from './server.js'
 import type { WeixinServerDeps } from './server.js'
+import { t, tf } from 'src/i18n/t.js'
 
 function printUsage(): void {
   process.stdout.write(
-    [
-      'Usage:',
-      '  ccb weixin serve',
-      '  ccb weixin login',
-      '  ccb weixin login clear',
-      '  ccb weixin access pair <code>',
-      '',
-      'Session enablement:',
-      '  ccb --channels plugin:weixin@builtin',
-    ].join('\n') + '\n',
+    t(
+      'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nSession enablement:\n  ccb --channels plugin:weixin@builtin',
+    ) + '\n',
   )
 }
 
 async function runLogin(clear = false): Promise<void> {
   if (clear) {
     clearAccount()
-    process.stdout.write('WeChat account cleared.\n')
+    process.stdout.write(t('WeChat account cleared.') + '\n')
     return
   }
 
   const existing = loadAccount()
   if (existing) {
     process.stdout.write(
-      [
-        'Already connected:',
-        `  User ID: ${existing.userId || 'unknown'}`,
-        `  Connected since: ${existing.savedAt}`,
-        '',
-        'Run `ccb weixin login clear` to disconnect.',
-        'Restart Claude Code with:',
-        '  ccb --channels plugin:weixin@builtin',
-      ].join('\n') + '\n',
+      tf(
+        'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
+        {
+          userId: existing.userId || 'unknown',
+          savedAt: existing.savedAt,
+        },
+      ) + '\n',
     )
     return
   }
 
-  process.stdout.write('Starting WeChat QR login...\n\n')
+  process.stdout.write(t('Starting WeChat QR login...') + '\n\n')
   const qr = await startLogin(DEFAULT_BASE_URL)
   process.stdout.write(
-    `\nScan the QR code above with WeChat, or open this URL:\n${qr.qrcodeUrl || ''}\n\n`,
+    tf('\n{scanPrompt}\n{url}\n\n', {
+      scanPrompt: t('Scan the QR code above with WeChat, or open this URL:'),
+      url: qr.qrcodeUrl || '',
+    }),
   )
 
   const result = await waitForLogin({
@@ -59,7 +54,9 @@ async function runLogin(clear = false): Promise<void> {
   })
 
   if (!result.connected || !result.token) {
-    process.stderr.write(`Login failed: ${result.message}\n`)
+    process.stderr.write(
+      tf('Login failed: {message}', { message: result.message }) + '\n',
+    )
     process.exit(1)
   }
 
@@ -71,14 +68,13 @@ async function runLogin(clear = false): Promise<void> {
   })
 
   process.stdout.write(
-    [
-      'Connected successfully!',
-      `  User ID: ${result.userId || 'unknown'}`,
-      `  Base URL: ${result.baseUrl || DEFAULT_BASE_URL}`,
-      '',
-      'Restart Claude Code with:',
-      '  ccb --channels plugin:weixin@builtin',
-    ].join('\n') + '\n',
+    tf(
+      'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
+      {
+        userId: result.userId || 'unknown',
+        baseUrl: result.baseUrl || DEFAULT_BASE_URL,
+      },
+    ) + '\n',
   )
 }
 
@@ -90,11 +86,11 @@ function runAccess(args: string[]): void {
 
   const userId = confirmPairing(args[1])
   if (!userId) {
-    process.stderr.write('Invalid or expired pairing code.\n')
+    process.stderr.write(t('Invalid or expired pairing code.') + '\n')
     process.exit(1)
   }
 
-  process.stdout.write(`Paired successfully: ${userId}\n`)
+  process.stdout.write(tf('Paired successfully: {userId}', { userId }) + '\n')
 }
 
 export async function handleWeixinCli(
@@ -108,7 +104,7 @@ export async function handleWeixinCli(
     case 'serve':
       if (!serverDeps) {
         process.stderr.write(
-          '[weixin] serve handler not available in this context.\n',
+          t('[weixin] serve handler not available in this context.') + '\n',
         )
         process.exit(1)
       }

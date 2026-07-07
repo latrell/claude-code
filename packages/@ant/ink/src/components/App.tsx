@@ -1,3 +1,4 @@
+import { t } from '../../../../../src/i18n/t.js';
 import React, { PureComponent, type ReactNode } from 'react';
 // Business-layer callbacks — replaced with inline defaults so this package
 // has zero dependencies on business code. The business layer can inject
@@ -282,11 +283,15 @@ export default class App extends PureComponent<Props, State> {
     if (!this.isRawModeSupported()) {
       if (stdin === process.stdin) {
         throw new Error(
-          'Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported',
+          t(
+            'Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported',
+          ),
         );
       } else {
         throw new Error(
-          'Raw mode is not supported on the stdin provided to Ink.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported',
+          t(
+            'Raw mode is not supported on the stdin provided to Ink.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported',
+          ),
         );
       }
     }

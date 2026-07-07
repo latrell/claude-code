@@ -15,6 +15,8 @@ import { executeEffort } from '../../commands/effort/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useSetAppState } from '../../state/AppState.js';
 import { useRippleFrame } from './useRippleFrame.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import {
   TRANSPARENT,
   type Overlay,
@@ -184,10 +186,15 @@ export function EffortPanel({ appStateEffort, onDone }: Props): React.ReactNode 
 
   return (
     <Box ref={rippleRef} flexDirection="column" paddingX={1} width={panelWidth + 2}>
-      <Text bold color="suggestion">
+      <T bold color="suggestion">
         Effort
-      </Text>
-      {envActive && <Text color="warning">{`⚠ CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides this session`}</Text>}
+      </T>
+      {envActive && (
+        <T
+          color="warning"
+          vars={{ envRaw: envRaw ?? '' }}
+        >{`⚠ CLAUDE_CODE_EFFORT_LEVEL={envRaw} overrides this session`}</T>
+      )}
       {showingRipple ? (
         <RippleContent
           renderRow={renderRippleRow}
@@ -201,7 +208,7 @@ export function EffortPanel({ appStateEffort, onDone }: Props): React.ReactNode 
         <>
           <PlainContent cursor={cursor} segment={segment} panelWidth={panelWidth} />
           <Box marginTop={1}>
-            <Text color="subtle">←/→ adjust · Enter confirm · Esc cancel</Text>
+            <T color="subtle">←/→ adjust · Enter confirm · Esc cancel</T>
           </Box>
         </>
       )}
@@ -339,7 +346,7 @@ function RippleContent({ renderRow, cursor, segment, panelWidth, time }: RippleC
       <RippleRow segments={renderRow(0, labelOverlays)} />
       <RippleRow segments={renderRow(1, [sublabelOverlay])} />
       <RippleRow segments={renderRow(2, [])} />
-      <Text color={COLOR_LABEL_DEFAULT}>←/→ adjust · Enter confirm · Esc cancel</Text>
+      <T color={COLOR_LABEL_DEFAULT}>←/→ adjust · Enter confirm · Esc cancel</T>
     </>
   );
 }

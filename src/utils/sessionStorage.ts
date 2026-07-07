@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import type { Dirent } from 'fs'
@@ -2349,7 +2350,7 @@ export async function loadTranscriptFromFile(
     } = await loadTranscriptFile(filePath)
 
     if (messages.size === 0) {
-      throw new Error('No messages found in JSONL file')
+      throw new Error(t('No messages found in JSONL file'))
     }
 
     // Find the most recent leaf message using pre-computed leaf UUIDs
@@ -2358,7 +2359,7 @@ export async function loadTranscriptFromFile(
     )
 
     if (!leafMessage) {
-      throw new Error('No valid conversation chain found in JSONL file')
+      throw new Error(t('No valid conversation chain found in JSONL file'))
     }
 
     // Build the conversation chain backwards from leaf to root
@@ -2401,7 +2402,9 @@ export async function loadTranscriptFromFile(
   try {
     parsed = jsonParse(content)
   } catch (error) {
-    throw new Error(`Invalid JSON in transcript file: ${error}`)
+    throw new Error(
+      tf('Invalid JSON in transcript file: {error}', { error: String(error) }),
+    )
   }
 
   let messages: TranscriptMessage[]
@@ -2410,12 +2413,14 @@ export async function loadTranscriptFromFile(
     messages = parsed
   } else if (parsed && typeof parsed === 'object' && 'messages' in parsed) {
     if (!Array.isArray(parsed.messages)) {
-      throw new Error('Transcript messages must be an array')
+      throw new Error(t('Transcript messages must be an array'))
     }
     messages = parsed.messages
   } else {
     throw new Error(
-      'Transcript must be an array of messages or an object with a messages array',
+      t(
+        'Transcript must be an array of messages or an object with a messages array',
+      ),
     )
   }
 

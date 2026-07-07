@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import chalk from 'chalk'
 import { exec } from 'child_process'
 import { execa } from 'execa'
@@ -280,7 +281,7 @@ export function getAnthropicApiKeyWithSource(
       !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
+        t('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required'),
       )
     }
 
@@ -515,7 +516,7 @@ async function _runAndCache(
   } catch (e) {
     if (epoch !== _apiKeyHelperEpoch) return ' '
     const detail = e instanceof Error ? e.message : String(e)
-    console.error(chalk.red(`apiKeyHelper failed: ${detail}`))
+    console.error(chalk.red(tf('apiKeyHelper failed: {detail}', { detail })))
     logForDebugging(`Error getting API key from apiKeyHelper: ${detail}`, {
       level: 'error',
     })
@@ -685,10 +686,14 @@ export function refreshAwsAuth(awsAuthRefresh: string): Promise<boolean> {
         const timedOut = signal === 'SIGTERM'
         const message = timedOut
           ? chalk.red(
-              'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
+              t(
+                'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
+              ),
             )
           : chalk.red(
-              'Error running awsAuthRefresh (in settings or ~/.claude.json):',
+              t(
+                'Error running awsAuthRefresh (in settings or ~/.claude.json):',
+              ),
             )
         console.error(message)
         authStatusManager.endAuthentication(false)
@@ -745,7 +750,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
         reject: false,
       })
       if (result.exitCode !== 0 || !result.stdout) {
-        throw new Error('awsCredentialExport did not return a valid value')
+        throw new Error(t('awsCredentialExport did not return a valid value'))
       }
 
       // Parse the JSON output from aws sts commands
@@ -753,7 +758,9 @@ async function getAwsCredsFromCredentialExport(): Promise<{
 
       if (!isValidAwsStsOutput(awsOutput)) {
         throw new Error(
-          'awsCredentialExport did not return valid AWS STS output structure',
+          t(
+            'awsCredentialExport did not return valid AWS STS output structure',
+          ),
         )
       }
 
@@ -765,7 +772,9 @@ async function getAwsCredsFromCredentialExport(): Promise<{
       }
     } catch (e) {
       const message = chalk.red(
-        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):',
+        t(
+          'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):',
+        ),
       )
       if (e instanceof Error) {
         console.error(message, e.message)
@@ -950,10 +959,14 @@ export function refreshGcpAuth(gcpAuthRefresh: string): Promise<boolean> {
         const timedOut = signal === 'SIGTERM'
         const message = timedOut
           ? chalk.red(
-              'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
+              t(
+                'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
+              ),
             )
           : chalk.red(
-              'Error running gcpAuthRefresh (in settings or ~/.claude.json):',
+              t(
+                'Error running gcpAuthRefresh (in settings or ~/.claude.json):',
+              ),
             )
         console.error(message)
         authStatusManager.endAuthentication(false)
@@ -1091,7 +1104,9 @@ function isValidApiKey(apiKey: string): boolean {
 export async function saveApiKey(apiKey: string): Promise<void> {
   if (!isValidApiKey(apiKey)) {
     throw new Error(
-      'Invalid API key format. API key must contain only alphanumeric characters, dashes, and underscores.',
+      t(
+        'Invalid API key format. API key must contain only alphanumeric characters, dashes, and underscores.',
+      ),
     )
   }
 

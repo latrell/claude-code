@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 import { SocketConnectionError } from './mcpSocketClient.js'
@@ -58,7 +59,9 @@ export const handleToolCall = async (
       content: [
         {
           type: 'text',
-          text: `Error calling tool, please try again. : ${error instanceof Error ? error.message : String(error)}`,
+          text: tf('Error calling tool, please try again. : {detail}', {
+            detail: error instanceof Error ? error.message : String(error),
+          }),
         },
       ],
       isError: true,
@@ -81,7 +84,7 @@ async function handleToolCallConnected(
 
   if (response === null || response === undefined) {
     return {
-      content: [{ type: 'text', text: 'Tool execution completed' }],
+      content: [{ type: 'text', text: t('Tool execution completed') }],
     }
   }
 
@@ -97,7 +100,7 @@ async function handleToolCallConnected(
 
   if (!contentData) {
     return {
-      content: [{ type: 'text', text: 'Tool execution completed' }],
+      content: [{ type: 'text', text: t('Tool execution completed') }],
     }
   }
 
@@ -216,7 +219,10 @@ async function handleSetPermissionMode(
 
   return {
     content: [
-      { type: 'text', text: `Permission mode set to: ${permissionMode}` },
+      {
+        type: 'text',
+        text: tf('Permission mode set to: {mode}', { mode: permissionMode }),
+      },
     ],
   }
 }
@@ -234,7 +240,9 @@ async function handleSwitchBrowser(
       content: [
         {
           type: 'text',
-          text: 'Browser switching is only available with bridge connections.',
+          text: t(
+            'Browser switching is only available with bridge connections.',
+          ),
         },
       ],
       isError: true,
@@ -253,7 +261,9 @@ async function handleSwitchBrowser(
       content: [
         {
           type: 'text',
-          text: 'No other browsers available to switch to. Open Chrome with the Claude extension in another browser to switch.',
+          text: t(
+            'No other browsers available to switch to. Open Chrome with the Claude extension in another browser to switch.',
+          ),
         },
       ],
       isError: true,
@@ -263,7 +273,10 @@ async function handleSwitchBrowser(
   if (result) {
     return {
       content: [
-        { type: 'text', text: `Connected to browser "${result.name}".` },
+        {
+          type: 'text',
+          text: tf('Connected to browser "{name}".', { name: result.name }),
+        },
       ],
     }
   }
@@ -272,7 +285,9 @@ async function handleSwitchBrowser(
     content: [
       {
         type: 'text',
-        text: 'No browser responded within the timeout. Make sure Chrome is open with the Claude extension installed, then try again.',
+        text: t(
+          'No browser responded within the timeout. Make sure Chrome is open with the Claude extension installed, then try again.',
+        ),
       },
     ],
     isError: true,

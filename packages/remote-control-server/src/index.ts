@@ -10,6 +10,7 @@ import { startDisconnectMonitor } from './services/disconnect-monitor'
 import { dirname, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { tf } from 'src/i18n/t.js'
 import acpRoutes from './routes/acp'
 import { webCorsOptions } from './auth/cors'
 

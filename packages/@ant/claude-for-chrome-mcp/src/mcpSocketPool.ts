@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import {
   createMcpSocketClient,
   SocketConnectionError,
@@ -104,7 +105,9 @@ export class McpSocketPool {
     const connected = this.getConnectedClients()
     if (connected.length === 0) {
       throw new SocketConnectionError(
-        `[${this.context.serverName}] No connected sockets available`,
+        tf('[{name}] No connected sockets available', {
+          name: this.context.serverName,
+        }),
       )
     }
     return connected[0]!.callTool(name, args)
@@ -148,7 +151,7 @@ export class McpSocketPool {
 
     if (connected.length === 0) {
       throw new SocketConnectionError(
-        `[${serverName}] No connected sockets available`,
+        tf('[{name}] No connected sockets available', { name: serverName }),
       )
     }
 
@@ -222,7 +225,9 @@ export class McpSocketPool {
     }
 
     throw new SocketConnectionError(
-      `[${serverName}] All sockets failed for tabs_context_mcp`,
+      tf('[{name}] All sockets failed for tabs_context_mcp', {
+        name: serverName,
+      }),
     )
   }
 

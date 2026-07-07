@@ -3,6 +3,7 @@
  * Communicates with the Chrome extension via the office bridge server's /chrome path.
  */
 
+import { t, tf } from '../../../../src/i18n/t.js'
 import WebSocket from 'ws'
 
 import { SocketConnectionError } from './mcpSocketClient.js'
@@ -144,7 +145,9 @@ export class BridgeClient implements SocketClient {
     const { logger, serverName, trackEvent } = this.context
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new SocketConnectionError(`[${serverName}] Bridge not connected`)
+      throw new SocketConnectionError(
+        tf('[{name}] Bridge not connected', { name: serverName }),
+      )
     }
 
     // Lazy discovery: run on first tool call if no extension selected yet.
@@ -210,7 +213,10 @@ export class BridgeClient implements SocketClient {
             })
             reject(
               new SocketConnectionError(
-                `[${serverName}] Tool call timed out: ${name}`,
+                tf('[{name}] Tool call timed out: {toolName}', {
+                  name: serverName,
+                  toolName: name,
+                }),
               ),
             )
           }
@@ -1110,7 +1116,7 @@ export class BridgeClient implements SocketClient {
     // Reject all pending calls
     for (const [id, pending] of this.pendingCalls) {
       clearTimeout(pending.timer)
-      pending.reject(new SocketConnectionError('Bridge client disconnected'))
+      pending.reject(new SocketConnectionError(t('Bridge client disconnected')))
       this.pendingCalls.delete(id)
     }
 

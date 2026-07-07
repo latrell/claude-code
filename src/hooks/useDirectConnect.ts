@@ -23,6 +23,7 @@ import type {
 import { logForDebugging } from '../utils/debug.js'
 import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
+import { t, tf } from '../i18n/t.js'
 
 type UseDirectConnectResult = {
   isRemoteMode: boolean
@@ -104,7 +105,8 @@ export function useDirectConnect({
         const permissionResult: PermissionAskDecision = {
           behavior: 'ask',
           message:
-            request.description ?? `${request.tool_name} requires permission`,
+            request.description ??
+            tf('{tool} requires permission', { tool: request.tool_name }),
           suggestions: request.permission_suggestions as PermissionUpdate[],
           blockedPath: request.blocked_path,
         }
@@ -113,7 +115,8 @@ export function useDirectConnect({
           assistantMessage: syntheticMessage,
           tool,
           description:
-            request.description ?? `${request.tool_name} requires permission`,
+            request.description ??
+            tf('{tool} requires permission', { tool: request.tool_name }),
           input: request.input,
           toolUseContext: {} as ToolUseConfirm['toolUseContext'],
           toolUseID: request.tool_use_id,
@@ -125,7 +128,7 @@ export function useDirectConnect({
           onAbort() {
             const response: RemotePermissionResponse = {
               behavior: 'deny',
-              message: 'User aborted',
+              message: t('User aborted'),
             }
             manager.respondToPermissionRequest(requestId, response)
             setToolUseConfirmQueue(queue =>
@@ -146,7 +149,7 @@ export function useDirectConnect({
           onReject(feedback?: string) {
             const response: RemotePermissionResponse = {
               behavior: 'deny',
-              message: feedback ?? 'User denied permission',
+              message: feedback ?? t('User denied permission'),
             }
             manager.respondToPermissionRequest(requestId, response)
             setToolUseConfirmQueue(queue =>
@@ -170,11 +173,11 @@ export function useDirectConnect({
         if (!isConnectedRef.current) {
           // Never connected — connection failure (e.g. auth rejected)
           process.stderr.write(
-            `\nFailed to connect to server at ${config.wsUrl}\n`,
+            `\n${tf('Failed to connect to server at {url}', { url: config.wsUrl })}\n`,
           )
         } else {
           // Was connected then lost — server process exited or network dropped
-          process.stderr.write('\nServer disconnected.\n')
+          process.stderr.write(`\n${t('Server disconnected.')}\n`)
         }
         isConnectedRef.current = false
         void gracefulShutdown(1)

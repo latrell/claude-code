@@ -204,8 +204,8 @@ export function UltraplanChoiceDialog({
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <Dialog
-      title="Ultraplan approved"
-      subtitle="How should the plan be implemented?"
+      title={t('Ultraplan approved')}
+      subtitle={t('How should the plan be implemented?')}
       onCancel={() => {}}
       hideInputGuide
     >

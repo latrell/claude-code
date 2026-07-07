@@ -1,3 +1,5 @@
+import { tf } from 'src/i18n/t.js'
+
 export type UploadResult = {
   id: string
   url: string
@@ -36,13 +38,17 @@ export async function uploadArtifact(
     parsed = JSON.parse(text)
   } catch {
     throw new Error(
-      `Artifact upload failed: HTTP ${response.status} (non-JSON body)`,
+      tf('Artifact upload failed: HTTP {status} (non-JSON body)', {
+        status: response.status,
+      }),
     )
   }
 
   if (parsed && typeof parsed === 'object' && 'error' in parsed) {
     const code = (parsed as { error: unknown }).error
-    throw new Error(`Artifact upload failed: ${String(code)}`)
+    throw new Error(
+      tf('Artifact upload failed: {code}', { code: String(code) }),
+    )
   }
 
   const data = parsed as Partial<UploadResult>

@@ -1,5 +1,7 @@
 // MCP typed error hierarchy
 
+import { tf } from 'src/i18n/t.js'
+
 /**
  * Base error class for all MCP-related errors.
  */
@@ -47,7 +49,10 @@ export class McpTimeoutError extends McpError {
     public readonly timeoutMs: number,
   ) {
     super(
-      `Connection to ${serverName} timed out after ${timeoutMs}ms`,
+      tf('Connection to {serverName} timed out after {timeoutMs}ms', {
+        serverName,
+        timeoutMs,
+      }),
       serverName,
       'TIMEOUT',
     )
@@ -74,7 +79,11 @@ export class McpToolCallError extends McpError {
  */
 export class McpSessionExpiredError extends McpError {
   constructor(serverName: string) {
-    super(`Session expired for ${serverName}`, serverName, 'SESSION_EXPIRED')
+    super(
+      tf('Session expired for {serverName}', { serverName }),
+      serverName,
+      'SESSION_EXPIRED',
+    )
     this.name = 'McpSessionExpiredError'
   }
 }

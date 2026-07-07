@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import { createServer as createHttpsServer } from 'node:https'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
@@ -54,7 +55,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
   const rcsGroup = config.group || process.env.ACP_RCS_GROUP
   if (rcsGroup && !/^[a-zA-Z0-9_-]+$/.test(rcsGroup)) {
     throw new Error(
-      `Invalid ACP_RCS_GROUP "${rcsGroup}": only letters, digits, hyphens, and underscores are allowed`,
+      tf(
+        'Invalid ACP_RCS_GROUP "{group}": only letters, digits, hyphens, and underscores are allowed',
+        { group: rcsGroup },
+      ),
     )
   }
   let rcsUpstream = null
@@ -236,29 +240,31 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   // Print startup banner
   console.log()
-  console.log(`  🚀 ACP Proxy Server${https ? ' (HTTPS)' : ''}`)
+  console.log(
+    tf('  🚀 ACP Proxy Server{https}', { https: https ? t(' (HTTPS)') : '' }),
+  )
   console.log()
-  console.log(`  Connection:`)
+  console.log(t('  Connection:'))
   if (host === '0.0.0.0') {
-    console.log(`    URL:   ${networkWsUrl}`)
+    console.log(tf('    URL:   {url}', { url: networkWsUrl }))
   } else {
-    console.log(`    URL:   ${localWsUrl}`)
+    console.log(tf('    URL:   {url}', { url: localWsUrl }))
   }
   if (token) {
-    console.log(`    Token: configured`)
+    console.log(t('    Token: configured'))
   }
   console.log()
   if (!token) {
-    console.log(`  ⚠️  Authentication disabled (--no-auth)`)
+    console.log(t('  ⚠️  Authentication disabled (--no-auth)'))
     console.log()
   }
 
   const agentDisplay =
     args.length > 0 ? `${command} ${args.join(' ')}` : command
-  console.log(`  📦 Agent: ${agentDisplay}`)
-  console.log(`     CWD:   ${cwd}`)
+  console.log(tf('  📦 Agent: {display}', { display: agentDisplay }))
+  console.log(tf('     CWD:   {cwd}', { cwd }))
   console.log()
-  console.log(`  Press Ctrl+C to stop`)
+  console.log(t('  Press Ctrl+C to stop'))
   console.log()
 
   logServer.info(

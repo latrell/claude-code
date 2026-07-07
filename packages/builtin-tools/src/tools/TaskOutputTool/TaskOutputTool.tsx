@@ -1,5 +1,6 @@
 import React from 'react';
 import { z } from 'zod/v4';
+import { tf } from 'src/i18n/t.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { FallbackToolUseRejectedMessage } from 'src/components/FallbackToolUseRejectedMessage.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
@@ -234,7 +235,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const task = appState.tasks?.[task_id] as TaskState | undefined;
 
     if (!task) {
-      throw new Error(`No task found with ID: ${task_id}`);
+      throw new Error(tf('No task found with ID: {task_id}', { task_id }));
     }
 
     if (!block) {

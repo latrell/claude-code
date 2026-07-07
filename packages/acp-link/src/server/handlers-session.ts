@@ -1,3 +1,4 @@
+import { t, tf } from '../../../../src/i18n/t.js'
 import * as acp from '@agentclientprotocol/sdk'
 import type { WSContext } from 'hono/ws'
 import { cancelPendingPermissions } from './acp-client.js'
@@ -40,7 +41,7 @@ export async function handleNewSession(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'Not connected to agent',
+      t('Not connected to agent'),
     )
     return
   }
@@ -94,7 +95,7 @@ export async function handleNewSession(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to create session: ${(error as Error).message}`,
+      tf('Failed to create session: {msg}', { msg: (error as Error).message }),
     )
   }
 }
@@ -124,7 +125,7 @@ export async function handleListSessions(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'Not connected to agent',
+      t('Not connected to agent'),
     )
     return
   }
@@ -135,7 +136,7 @@ export async function handleListSessions(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_METHOD_NOT_FOUND,
-      'Listing sessions is not supported by this agent',
+      t('Listing sessions is not supported by this agent'),
     )
     return
   }
@@ -175,7 +176,7 @@ export async function handleListSessions(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to list sessions: ${(error as Error).message}`,
+      tf('Failed to list sessions: {msg}', { msg: (error as Error).message }),
     )
   }
 }
@@ -200,7 +201,7 @@ export async function handleLoadSession(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'Not connected to agent',
+      t('Not connected to agent'),
     )
     return
   }
@@ -211,7 +212,7 @@ export async function handleLoadSession(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_METHOD_NOT_FOUND,
-      'Loading sessions is not supported by this agent',
+      t('Loading sessions is not supported by this agent'),
     )
     return
   }
@@ -243,7 +244,7 @@ export async function handleLoadSession(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to load session: ${(error as Error).message}`,
+      tf('Failed to load session: {msg}', { msg: (error as Error).message }),
     )
   }
 }
@@ -268,7 +269,7 @@ export async function handleResumeSession(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'Not connected to agent',
+      t('Not connected to agent'),
     )
     return
   }
@@ -279,7 +280,7 @@ export async function handleResumeSession(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_METHOD_NOT_FOUND,
-      'Resuming sessions is not supported by this agent',
+      t('Resuming sessions is not supported by this agent'),
     )
     return
   }
@@ -310,7 +311,7 @@ export async function handleResumeSession(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to resume session: ${(error as Error).message}`,
+      tf('Failed to resume session: {msg}', { msg: (error as Error).message }),
     )
   }
 }
@@ -327,7 +328,7 @@ export async function handlePrompt(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'No active session',
+      t('No active session'),
     )
     return
   }
@@ -358,7 +359,7 @@ export async function handlePrompt(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Prompt failed: ${(error as Error).message}`,
+      tf('Prompt failed: {msg}', { msg: (error as Error).message }),
     )
   }
 }
@@ -394,7 +395,7 @@ export async function handleSetSessionModel(
       state,
       state?.pendingJsonRpc?.id ?? null,
       JSONRPC_INVALID_REQUEST,
-      'No active session',
+      t('No active session'),
     )
     return
   }
@@ -405,7 +406,7 @@ export async function handleSetSessionModel(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_METHOD_NOT_FOUND,
-      'Model selection not supported by this agent',
+      t('Model selection not supported by this agent'),
     )
     return
   }
@@ -429,7 +430,7 @@ export async function handleSetSessionModel(
       state,
       state.pendingJsonRpc?.id ?? null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to set model: ${(error as Error).message}`,
+      tf('Failed to set model: {msg}', { msg: (error as Error).message }),
     )
   }
 }

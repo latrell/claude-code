@@ -6,6 +6,8 @@ import { addMcpConfig, getAllMcpConfigs } from '../services/mcp/config.js';
 import type { ConfigScope, McpServerConfig, ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { plural } from '../utils/stringUtils.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
+import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { SelectMulti } from './CustomSelect/SelectMulti.js';
 
 type Props = {
@@ -75,19 +77,22 @@ export function MCPServerDesktopImportDialog({ servers, scope, onDone }: Props):
   return (
     <>
       <Dialog
-        title="Import MCP Servers from Claude Desktop"
-        subtitle={`Found ${serverNames.length} MCP ${plural(serverNames.length, 'server')} in Claude Desktop.`}
+        title={t('Import MCP Servers from Claude Desktop')}
+        subtitle={tf('Found {count} MCP {noun} in Claude Desktop.', {
+          count: serverNames.length,
+          noun: plural(serverNames.length, 'server'),
+        })}
         color="success"
         onCancel={handleEscCancel}
         hideInputGuide
       >
         {collisions.length > 0 && (
-          <Text color="warning">
+          <T color="warning">
             Note: Some servers already exist with the same name. If selected, they will be imported with a numbered
             suffix.
-          </Text>
+          </T>
         )}
-        <Text>Please select the servers you want to import:</Text>
+        <T>Please select the servers you want to import:</T>
 
         <SelectMulti
           options={serverNames.map(server => ({

@@ -1,4 +1,5 @@
 import { type StructuredPatchHunk, structuredPatch } from 'diff'
+import { t } from 'src/i18n/t.js'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import { countCharInString } from 'src/utils/stringUtils.js'
@@ -184,7 +185,7 @@ export function getPatchForEdits({
 
     // If this edit didn't change anything, throw an error
     if (updatedFile === previousContent) {
-      throw new Error('String not found in file. Failed to apply edit.')
+      throw new Error(t('String not found in file. Failed to apply edit.'))
     }
 
     // Track the new string that was applied

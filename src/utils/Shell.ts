@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import { execFileSync, spawn } from 'child_process'
 import { constants as fsConstants, readFileSync, unlinkSync } from 'fs'
 import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
@@ -140,9 +141,9 @@ export async function findSuitableShell(): Promise<string> {
 
   // If no valid shell found, throw a helpful error
   if (!shellPath) {
-    const errorMsg =
-      'No suitable shell found. Claude CLI requires a Posix shell environment. ' +
-      'Please ensure you have a valid shell installed and the SHELL environment variable set.'
+    const errorMsg = t(
+      'No suitable shell found. Claude CLI requires a Posix shell environment. Please ensure you have a valid shell installed and the SHELL environment variable set.',
+    )
     logError(new Error(errorMsg))
     throw new Error(errorMsg)
   }
@@ -162,7 +163,7 @@ export const getShellConfig = memoize(getShellConfigImpl)
 export const getPsProvider = memoize(async (): Promise<ShellProvider> => {
   const psPath = await getCachedPowerShellPath()
   if (!psPath) {
-    throw new Error('PowerShell is not available')
+    throw new Error(t('PowerShell is not available'))
   }
   return createPowerShellProvider(psPath)
 })
@@ -471,7 +472,7 @@ export function setCwd(path: string, relativeTo?: string): void {
     physicalPath = getFsImplementation().realpathSync(resolved)
   } catch (e) {
     if (isENOENT(e)) {
-      throw new Error(`Path "${resolved}" does not exist`)
+      throw new Error(tf('Path "{path}" does not exist', { path: resolved }))
     }
     throw e
   }

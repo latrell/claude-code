@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import axios from 'axios'
 import { getOauthConfig, OAUTH_BETA_HEADER } from 'src/constants/oauth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -33,7 +34,6 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from './settings/settings.js'
-import { t } from '../i18n/t.js'
 import { createSignal } from './signal.js'
 
 export function isFastModeEnabled(): boolean {
@@ -459,7 +459,7 @@ export async function prefetchFastModeStatus(): Promise<void> {
           ? { apiKey }
           : null
     if (!auth) {
-      throw new Error('No auth available')
+      throw new Error(t('No auth available'))
     }
     return fetchFastModeStatus(auth)
   }

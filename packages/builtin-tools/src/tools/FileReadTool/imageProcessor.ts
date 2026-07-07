@@ -1,4 +1,5 @@
 import type { Buffer } from 'buffer'
+import { t } from 'src/i18n/t.js'
 import { isInBundledMode } from 'src/utils/bundledMode.js'
 
 export type SharpInstance = {
@@ -51,7 +52,7 @@ export async function getImageProcessor(): Promise<SharpFunction> {
     } catch {
       // Fall back to sharp if native module is not available
       console.warn(
-        'Native image processor not available, falling back to sharp',
+        t('Native image processor not available, falling back to sharp'),
       )
     }
   }

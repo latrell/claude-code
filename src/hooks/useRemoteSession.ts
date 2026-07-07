@@ -26,6 +26,7 @@ import type {
 } from '../types/permissions.js'
 import { logForDebugging } from '../utils/debug.js'
 import { truncateToWidth } from '../utils/format.js'
+import { t, tf } from '../i18n/t.js'
 import {
   createSystemMessage,
   extractTextContent,
@@ -356,7 +357,8 @@ export function useRemoteSession({
         const permissionResult: PermissionAskDecision = {
           behavior: 'ask',
           message:
-            request.description ?? `${request.tool_name} requires permission`,
+            request.description ??
+            tf('{tool} requires permission', { tool: request.tool_name }),
           suggestions: request.permission_suggestions as PermissionUpdate[],
           blockedPath: request.blocked_path,
         }
@@ -365,7 +367,8 @@ export function useRemoteSession({
           assistantMessage: syntheticMessage,
           tool,
           description:
-            request.description ?? `${request.tool_name} requires permission`,
+            request.description ??
+            tf('{tool} requires permission', { tool: request.tool_name }),
           input: request.input,
           toolUseContext: {} as ToolUseConfirm['toolUseContext'],
           toolUseID: request.tool_use_id,
@@ -377,7 +380,7 @@ export function useRemoteSession({
           onAbort() {
             const response: RemotePermissionResponse = {
               behavior: 'deny',
-              message: 'User aborted',
+              message: t('User aborted'),
             }
             manager.respondToPermissionRequest(requestId, response)
             setToolUseConfirmQueue(queue =>
@@ -399,7 +402,7 @@ export function useRemoteSession({
           onReject(feedback?: string) {
             const response: RemotePermissionResponse = {
               behavior: 'deny',
-              message: feedback ?? 'User denied permission',
+              message: feedback ?? t('User denied permission'),
             }
             manager.respondToPermissionRequest(requestId, response)
             setToolUseConfirmQueue(queue =>
@@ -557,7 +560,7 @@ export function useRemoteSession({
             )
             // Add a warning message to the conversation
             const warningMessage = createSystemMessage(
-              'Remote session may be unresponsive. Attempting to reconnect…',
+              t('Remote session may be unresponsive. Attempting to reconnect…'),
               'warning',
             )
             setMessages(prev => [...prev, warningMessage])

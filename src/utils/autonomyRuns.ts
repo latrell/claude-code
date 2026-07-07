@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { randomUUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
@@ -509,7 +510,7 @@ export async function createAutonomyRun(
 ): Promise<AutonomyRunRecord> {
   const record = await createAutonomyRunCore(params, false)
   if (!record) {
-    throw new Error('Autonomy run was unexpectedly skipped.')
+    throw new Error(t('Autonomy run was unexpectedly skipped.'))
   }
   return record
 }
@@ -968,7 +969,7 @@ export async function commitAutonomyQueuedPrompt(params: {
 }): Promise<QueuedCommand> {
   const command = await commitAutonomyQueuedPromptInternal(params, false)
   if (!command) {
-    throw new Error('Autonomy queued prompt was unexpectedly skipped.')
+    throw new Error(t('Autonomy queued prompt was unexpectedly skipped.'))
   }
   return command
 }

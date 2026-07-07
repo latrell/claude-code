@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js';
 import { feature } from 'bun:bundle';
 import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources';
 import { randomUUID } from 'crypto';
@@ -1071,11 +1072,14 @@ export async function processPromptSlashCommand(
 ): Promise<SlashCommandResult> {
   const command = findCommand(commandName, commands);
   if (!command) {
-    throw new MalformedCommandError(`Unknown command: ${commandName}`);
+    throw new MalformedCommandError(tf('Unknown command: {name}', { name: commandName }));
   }
   if (command.type !== 'prompt') {
     throw new Error(
-      `Unexpected ${command.type} command. Expected 'prompt' command. Use /${commandName} directly in the main conversation.`,
+      tf('Unexpected {type} command. Expected prompt command. Use /{name} directly in the main conversation.', {
+        type: command.type,
+        name: commandName,
+      }),
     );
   }
   return getMessagesForPromptSlashCommand(command, args, context, [], imageContentBlocks);

@@ -4,6 +4,7 @@ import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { getSettingsWithAllErrors } from '../../utils/settings/allErrors.js';
 import type { ValidationError } from '../../utils/settings/validation.js';
 import { useSettingsChange } from '../useSettingsChange.js';
+import { t, tf } from '../../i18n/t.js';
 
 const SETTINGS_ERRORS_NOTIFICATION_KEY = 'settings-errors';
 
@@ -24,7 +25,10 @@ export function useSettingsErrors(): ValidationError[] {
   useEffect(() => {
     if (getIsRemoteMode()) return;
     if (errors.length > 0) {
-      const message = `Found ${errors.length} settings ${errors.length === 1 ? 'issue' : 'issues'} · /doctor for details`;
+      const message = tf('Found {count} settings {word} · /doctor for details', {
+        count: errors.length,
+        word: errors.length === 1 ? t('issue') : t('issues'),
+      });
       addNotification({
         key: SETTINGS_ERRORS_NOTIFICATION_KEY,
         text: message,

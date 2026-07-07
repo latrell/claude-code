@@ -14,6 +14,8 @@ import {
 import type { buildMessageLookups } from '../../../utils/messages.js';
 import { MessageResponse } from '../../MessageResponse.js';
 import { HookProgressMessage } from '../HookProgressMessage.js';
+import { t } from '../../../i18n/t.js';
+import { T } from '../../../i18n/TText.js';
 
 type Props = {
   message: NormalizedUserMessage;
@@ -124,7 +126,7 @@ export function UserToolSuccessMessage({
         {feature('TRANSCRIPT_CLASSIFIER')
           ? yoloReason && (
               <MessageResponse height={1}>
-                <Text dimColor>Allowed by auto mode classifier</Text>
+                <T dimColor>Allowed by auto mode classifier</T>
               </MessageResponse>
             )
           : null}

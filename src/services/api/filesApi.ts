@@ -11,6 +11,7 @@ import axios from 'axios'
 import { randomUUID } from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { count } from '../../utils/array.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -119,7 +120,12 @@ async function retryWithBackoff<T>(
     }
   }
 
-  throw new Error(`${lastError} after ${MAX_RETRIES} attempts`)
+  throw new Error(
+    tf('{error} after {retries} attempts', {
+      error: lastError,
+      retries: MAX_RETRIES,
+    }),
+  )
 }
 
 /**
@@ -160,13 +166,13 @@ export async function downloadFile(
 
       // Non-retriable errors - throw immediately
       if (response.status === 404) {
-        throw new Error(`File not found: ${fileId}`)
+        throw new Error(tf('File not found: {fileId}', { fileId }))
       }
       if (response.status === 401) {
-        throw new Error('Authentication failed: invalid or missing API key')
+        throw new Error(t('Authentication failed: invalid or missing API key'))
       }
       if (response.status === 403) {
-        throw new Error(`Access denied to file: ${fileId}`)
+        throw new Error(tf('Access denied to file: {fileId}', { fileId }))
       }
 
       return { done: false, error: `status ${response.status}` }
@@ -473,7 +479,7 @@ export async function uploadFile(
           if (!fileId) {
             return {
               done: false,
-              error: 'Upload succeeded but no file ID returned',
+              error: t('Upload succeeded but no file ID returned'),
             }
           }
           logDebug(`Uploaded file ${filePath} -> ${fileId} (${fileSize} bytes)`)
@@ -504,7 +510,7 @@ export async function uploadFile(
             error_type:
               'forbidden' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
-          throw new UploadNonRetriableError('Access denied for upload')
+          throw new UploadNonRetriableError(t('Access denied for upload'))
         }
 
         if (response.status === 413) {
@@ -512,7 +518,7 @@ export async function uploadFile(
             error_type:
               'size' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
-          throw new UploadNonRetriableError('File too large for upload')
+          throw new UploadNonRetriableError(t('File too large for upload'))
         }
 
         return { done: false, error: `status ${response.status}` }
@@ -522,7 +528,7 @@ export async function uploadFile(
           throw error
         }
         if (axios.isCancel(error)) {
-          throw new UploadNonRetriableError('Upload canceled')
+          throw new UploadNonRetriableError(t('Upload canceled'))
         }
         // Network errors are retriable
         if (axios.isAxiosError(error)) {
@@ -659,14 +665,16 @@ export async function listFilesCreatedAfter(
               error_type:
                 'auth' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             })
-            throw new Error('Authentication failed: invalid or missing API key')
+            throw new Error(
+              t('Authentication failed: invalid or missing API key'),
+            )
           }
           if (response.status === 403) {
             logEvent('tengu_file_list_failed', {
               error_type:
                 'forbidden' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             })
-            throw new Error('Access denied to list files')
+            throw new Error(t('Access denied to list files'))
           }
 
           return { done: false, error: `status ${response.status}` }

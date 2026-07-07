@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import type {
   EditableSettingSource,
   SettingSource,
@@ -105,7 +106,7 @@ export function scopeToSettingSource(
   scope: PluginScope,
 ): EditableSettingSource {
   if (scope === 'managed') {
-    throw new Error('Cannot install plugins to managed scope')
+    throw new Error(t('Cannot install plugins to managed scope'))
   }
   return SCOPE_TO_EDITABLE_SOURCE[scope]
 }

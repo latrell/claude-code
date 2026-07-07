@@ -8,6 +8,7 @@ import type { Agent } from 'http'
 import { HttpsProxyAgent, type HttpsProxyAgentOptions } from 'https-proxy-agent'
 import memoize from 'lodash-es/memoize.js'
 import type * as undici from 'undici'
+import { t, tf } from 'src/i18n/t.js'
 import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -17,6 +18,10 @@ import {
   getTLSFetchOptions,
   type TLSConfig,
 } from './mtls.js'
+import {
+  getFetchIdleTimeoutOptions,
+  getUndiciTimeoutOptions,
+} from './fetchTimeouts.js'
 
 // Disable fetch keep-alive after a stale-pool ECONNRESET so retries open a
 // fresh TCP connection instead of reusing the dead pooled socket. Sticky for
@@ -50,7 +55,11 @@ export function getAddressFamily(options: LookupOptions): 0 | 4 | 6 {
     case undefined:
       return 4
     default:
-      throw new Error(`Unsupported address family: ${options.family}`)
+      throw new Error(
+        tf('Unsupported address family: {family}', {
+          family: String(options.family),
+        }),
+      )
   }
 }
 
@@ -215,6 +224,9 @@ export const getProxyAgent = memoize((uri: string): undici.Dispatcher => {
     httpProxy: uri,
     httpsProxy: uri,
     noProxy: process.env.NO_PROXY || process.env.no_proxy,
+    // Keep stream idle timeouts disabled (see fetchTimeouts.ts) — this agent
+    // replaces the global dispatcher configured by installNodeFetchTimeoutFix.
+    ...getUndiciTimeoutOptions(),
   }
 
   // Set both connect and requestTls so TLS options apply to both paths:
@@ -291,8 +303,15 @@ export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean }): {
   proxy?: string
   unix?: string
   keepalive?: false
+  timeout?: number | false
 } {
-  const base = keepAliveDisabled ? ({ keepalive: false } as const) : {}
+  // Bun's fetch has a native 5-minute idle timeout that kills long-silence
+  // streams (LLM queue/prefill windows); disarm it per request. {} on Node,
+  // where the global undici dispatcher handles idle timeouts instead.
+  const base = {
+    ...getFetchIdleTimeoutOptions(),
+    ...(keepAliveDisabled ? ({ keepalive: false } as const) : {}),
+  }
 
   // ANTHROPIC_UNIX_SOCKET tunnels through the `claude ssh` auth proxy, which
   // hardcodes the upstream to the Anthropic API. Scope to the Anthropic API

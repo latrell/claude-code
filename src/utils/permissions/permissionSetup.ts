@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import { relative } from 'path'
 import {
@@ -626,7 +627,9 @@ export function transitionPermissionMode(
 
     if (toUsesClassifier && !fromUsesClassifier) {
       if (!isAutoModeGateEnabled()) {
-        throw new Error('Cannot transition to auto mode: gate is not enabled')
+        throw new Error(
+          t('Cannot transition to auto mode: gate is not enabled'),
+        )
       }
       autoModeStateModule?.setAutoModeActive(true)
       context = stripDangerousPermissionsForAutoMode(context)

@@ -1,4 +1,5 @@
 import { toString as qrToString } from 'qrcode'
+import { t, tf } from 'src/i18n/t.js'
 
 export interface QRCodeResult {
   qrcodeUrl?: string
@@ -29,7 +30,9 @@ export async function startLogin(apiBaseUrl: string): Promise<QRCodeResult> {
     `${apiBaseUrl}/ilink/bot/get_bot_qrcode?bot_type=3`,
   )
   if (!response.ok) {
-    throw new Error(`Failed to get QR code: HTTP ${response.status}`)
+    throw new Error(
+      tf('Failed to get QR code: HTTP {status}', { status: response.status }),
+    )
   }
 
   const data = (await response.json()) as {
@@ -38,7 +41,7 @@ export async function startLogin(apiBaseUrl: string): Promise<QRCodeResult> {
   }
 
   if (!data.qrcode) {
-    throw new Error('No qrcode in response')
+    throw new Error(t('No qrcode in response'))
   }
 
   const qrcodeUrl = data.qrcode_img_content || ''
@@ -49,7 +52,7 @@ export async function startLogin(apiBaseUrl: string): Promise<QRCodeResult> {
   return {
     qrcodeUrl,
     qrcodeId: data.qrcode,
-    message: 'Scan the QR code with WeChat to connect.',
+    message: t('Scan the QR code with WeChat to connect.'),
   }
 }
 
@@ -79,7 +82,7 @@ export async function waitForLogin(params: {
       clearTimeout(timeout)
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        throw new Error(tf('HTTP {status}', { status: response.status }))
       }
 
       const data = (await response.json()) as {
@@ -98,20 +101,22 @@ export async function waitForLogin(params: {
             accountId: data.ilink_bot_id,
             baseUrl: data.baseurl,
             userId: data.ilink_user_id,
-            message: 'Connected to WeChat successfully!',
+            message: t('Connected to WeChat successfully!'),
           }
         case 'scaned':
-          process.stderr.write('QR code scanned, waiting for confirmation...\n')
+          process.stderr.write(
+            t('QR code scanned, waiting for confirmation...') + '\n',
+          )
           break
         case 'expired': {
           retryCount += 1
           if (retryCount >= maxRetries) {
             return {
               connected: false,
-              message: 'QR code expired after maximum retries.',
+              message: t('QR code expired after maximum retries.'),
             }
           }
-          process.stderr.write('QR code expired, refreshing...\n')
+          process.stderr.write(t('QR code expired, refreshing...') + '\n')
           const refreshed = await startLogin(apiBaseUrl)
           currentQrcodeId = refreshed.qrcodeId
           break
@@ -130,5 +135,5 @@ export async function waitForLogin(params: {
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
-  return { connected: false, message: 'Login timed out.' }
+  return { connected: false, message: t('Login timed out.') }
 }

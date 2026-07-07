@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 /**
@@ -30,7 +31,7 @@ function base64urlDecode(str: string): string {
 
 function getSigningKey(): string {
   const key = process.env.RCS_API_KEYS?.split(',').filter(Boolean)[0]
-  if (!key) throw new Error('No API key configured for JWT signing')
+  if (!key) throw new Error(t('No API key configured for JWT signing'))
   return key
 }
 

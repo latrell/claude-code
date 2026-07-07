@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t } from 'src/i18n/t.js'
 import {
   getOriginalCwd,
   getProjectRoot,
@@ -229,7 +230,7 @@ export const ExitWorktreeTool: Tool<InputSchema, Output> = buildTool({
     if (!session) {
       // validateInput guards this, but the session is module-level mutable
       // state — defend against a race between validation and execution.
-      throw new Error('Not in a worktree session')
+      throw new Error(t('Not in a worktree session'))
     }
 
     // Capture before keepWorktree/cleanupWorktree null out currentWorktreeSession.

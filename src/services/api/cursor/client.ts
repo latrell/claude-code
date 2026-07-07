@@ -17,6 +17,7 @@ import {
   getProxyFetchOptions,
   getProxyUrl,
 } from 'src/utils/proxy.js'
+import { getUndiciTimeoutOptions } from 'src/utils/fetchTimeouts.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import type {
@@ -102,11 +103,13 @@ export const getNodeH2Dispatcher = memoize(
         noProxy: getNoProxy(),
         allowH2: true,
         ...(tlsOpts && { connect: tlsOpts, requestTls: tlsOpts }),
+        ...getUndiciTimeoutOptions(),
       } as undici.EnvHttpProxyAgent.Options)
     }
     return new undiciMod.Agent({
       allowH2: true,
       ...(tlsOpts && { connect: tlsOpts }),
+      ...getUndiciTimeoutOptions(),
     })
   },
   // memoize keys on the first arg; normalize undefined → '' for a stable key

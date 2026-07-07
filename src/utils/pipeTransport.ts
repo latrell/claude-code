@@ -12,6 +12,7 @@
  * Protocol: newline-delimited JSON (NDJSON), one message per line.
  */
 
+import { t, tf } from 'src/i18n/t.js'
 import { createServer, createConnection, type Server, type Socket } from 'net'
 import { mkdir, unlink, readdir, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -424,7 +425,10 @@ export class PipeClient extends EventEmitter {
         } catch {
           if (Date.now() + retryDelayMs >= deadline) {
             throw new Error(
-              `Pipe "${this.targetName}" not found at ${this.socketPath}. Is the server running?`,
+              tf('Pipe "{name}" not found at {path}. Is the server running?', {
+                name: this.targetName,
+                path: this.socketPath,
+              }),
             )
           }
           await new Promise(r => setTimeout(r, retryDelayMs))
@@ -484,7 +488,9 @@ export class PipeClient extends EventEmitter {
 
   send(msg: PipeMessage): void {
     if (!this.socket || this.socket.destroyed) {
-      throw new Error(`Not connected to pipe "${this.targetName}"`)
+      throw new Error(
+        tf('Not connected to pipe "{name}"', { name: this.targetName }),
+      )
     }
     msg.from = msg.from ?? this.senderName
     msg.ts = msg.ts ?? new Date().toISOString()

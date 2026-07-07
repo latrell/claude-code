@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import {
   type JSONRPCMessage,
@@ -141,12 +142,12 @@ export class WebSocketTransport implements Transport {
    */
   async start(): Promise<void> {
     if (this.started) {
-      throw new Error('Start can only be called once per transport.')
+      throw new Error(t('Start can only be called once per transport.'))
     }
     await this.opened
     if (this.ws.readyState !== WS_OPEN) {
       logForDiagnosticsNoPII('error', 'mcp_websocket_start_not_opened')
-      throw new Error('WebSocket is not open. Cannot start transport.')
+      throw new Error(t('WebSocket is not open. Cannot start transport.'))
     }
     this.started = true
     // Unlike stdio, WebSocket connections are typically already established when the transport is created.
@@ -173,7 +174,7 @@ export class WebSocketTransport implements Transport {
   async send(message: JSONRPCMessage): Promise<void> {
     if (this.ws.readyState !== WS_OPEN) {
       logForDiagnosticsNoPII('error', 'mcp_websocket_send_not_opened')
-      throw new Error('WebSocket is not open. Cannot send message.')
+      throw new Error(t('WebSocket is not open. Cannot send message.'))
     }
     const json = jsonStringify(message)
 

@@ -1,3 +1,4 @@
+import { t } from 'src/i18n/t.js'
 import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -1357,7 +1358,7 @@ export async function deletePermissionRule({
     rule.source === 'flagSettings' ||
     rule.source === 'command'
   ) {
-    throw new Error('Cannot delete permission rules from read-only settings')
+    throw new Error(t('Cannot delete permission rules from read-only settings'))
   }
 
   const updatedContext = applyPermissionUpdate(initialContext, {

@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import {
   expandPastedTextRefs,
   formatPastedTextRef,
@@ -32,7 +33,7 @@ export function editFileInEditor(filePath: string): EditorResult {
   const fs = getFsImplementation()
   const inkInstance = instances.get(process.stdout)
   if (!inkInstance) {
-    throw new Error('Ink instance not found - cannot pause rendering')
+    throw new Error(t('Ink instance not found - cannot pause rendering'))
   }
 
   const editor = getExternalEditor()
@@ -85,7 +86,10 @@ export function editFileInEditor(filePath: string): EditorResult {
         const editorName = toIDEDisplayName(editor)
         return {
           content: null,
-          error: `${editorName} exited with code ${status}`,
+          error: tf('{editor} exited with code {status}', {
+            editor: editorName,
+            status,
+          }),
         }
       }
     }

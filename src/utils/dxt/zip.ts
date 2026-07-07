@@ -1,3 +1,4 @@
+import { t, tf } from 'src/i18n/t.js'
 import { isAbsolute, normalize } from 'path'
 import { logForDebugging } from '../debug.js'
 import { isENOENT } from '../errors.js'
@@ -127,7 +128,7 @@ export async function unzipFile(
     filter: file => {
       const validationResult = validateZipFile(file, state)
       if (!validationResult.isValid) {
-        throw new Error(validationResult.error!)
+        throw new Error(t(validationResult.error!))
       }
       return true
     },
@@ -221,6 +222,6 @@ export async function readAndUnzipFile(
       throw error
     }
     const errorMessage = error instanceof Error ? error.message : String(error)
-    throw new Error(`Failed to read or unzip file: ${errorMessage}`)
+    throw new Error(t('Failed to read or unzip file'))
   }
 }

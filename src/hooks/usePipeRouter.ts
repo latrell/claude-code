@@ -17,6 +17,7 @@ type AddNotification = (opts: {
   priority: string
   timeoutMs: number
 }) => void
+import { t, tf } from '../i18n/t.js'
 
 type Deps = {
   store: StoreApi
@@ -117,7 +118,9 @@ export function usePipeRouter({ store, setAppState, addNotification }: Deps): {
 
         addNotification({
           key: 'pipe-route-success',
-          text: `Routed to ${sentTargetLabels.join(', ')}; main can continue other tasks`,
+          text: tf('Routed to {targets}; main can continue other tasks', {
+            targets: sentTargetLabels.join(', '),
+          }),
           color: 'success',
           priority: 'immediate',
           timeoutMs: 3000,
@@ -125,7 +128,7 @@ export function usePipeRouter({ store, setAppState, addNotification }: Deps): {
       } else {
         addNotification({
           key: 'pipe-route-fallback',
-          text: 'Selected pipes are unavailable; processing locally.',
+          text: t('Selected pipes are unavailable; processing locally.'),
           color: 'warning',
           priority: 'immediate',
           timeoutMs: 4000,
@@ -135,7 +138,9 @@ export function usePipeRouter({ store, setAppState, addNotification }: Deps): {
       if (failedTargetNames.length > 0) {
         addNotification({
           key: 'pipe-route-partial-failure',
-          text: `Failed to send to: ${failedTargetNames.join(', ')}`,
+          text: tf('Failed to send to: {targets}', {
+            targets: failedTargetNames.join(', '),
+          }),
           color: 'warning',
           priority: 'immediate',
           timeoutMs: 4000,

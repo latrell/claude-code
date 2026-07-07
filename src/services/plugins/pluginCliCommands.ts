@@ -7,6 +7,7 @@
  * For the core operations (without CLI side effects), see pluginOperations.ts
  */
 import figures from 'figures'
+import { t, tf } from '../../i18n/t.js'
 import { errorMessage } from '../../utils/errors.js'
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { logError } from '../../utils/log.js'
@@ -62,7 +63,11 @@ function handlePluginCommandError(
       ? 'disable all plugins'
       : `${command} plugins`
   console.error(
-    `${figures.cross} Failed to ${operation}: ${errorMessage(error)}`,
+    tf('{icon} Failed to {operation}: {error}', {
+      icon: figures.cross,
+      operation,
+      error: errorMessage(error),
+    }),
   )
   const telemetryFields = plugin
     ? (() => {
@@ -104,7 +109,7 @@ export async function installPlugin(
   scope: InstallableScope = 'user',
 ): Promise<void> {
   try {
-    console.log(`Installing plugin "${plugin}"...`)
+    console.log(tf('Installing plugin "{plugin}"...', { plugin }))
 
     const result = await installPluginOp(plugin, scope)
 
@@ -295,7 +300,12 @@ export async function updatePluginCli(
   scope: PluginScope,
 ): Promise<void> {
   try {
-    writeToStdout(`正在检查 ${scope} 作用域中插件 "${plugin}" 的更新…\n`)
+    writeToStdout(
+      tf('Checking for updates of plugin "{plugin}" in {scope} scope...\n', {
+        plugin,
+        scope,
+      }),
+    )
 
     const result = await updatePluginOp(plugin, scope)
 

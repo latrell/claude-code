@@ -8,6 +8,8 @@ import { formatTokens } from '../utils/format.js';
 import { getSourceDisplayName, type SettingSource } from '../utils/settings/constants.js';
 import { plural } from '../utils/stringUtils.js';
 import { ContextSuggestions } from './ContextSuggestions.js';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
 
@@ -131,7 +133,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
   return (
     <Box flexDirection="column" paddingLeft={1}>
-      <Text bold>Context Usage</Text>
+      <T bold>Context Usage</T>
       <Box flexDirection="row" gap={2}>
         {/* Fixed size grid */}
         <Box flexDirection="column" flexShrink={0}>
@@ -170,14 +172,18 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           <CollapseStatus />
           {cacheHitRate !== undefined && cacheThreshold !== undefined && (
             <Text color={cacheHitRate < cacheThreshold ? 'warning' : undefined}>
-              Cache hit rate: {cacheHitRate.toFixed(0)}%
-              {cacheHitRate < cacheThreshold ? ` (below ${cacheThreshold}% threshold)` : ''}
+              <T vars={{ rate: cacheHitRate.toFixed(0) }}>Cache hit rate: {rate}%</T>
+              {cacheHitRate < cacheThreshold ? (
+                <T vars={{ threshold: cacheThreshold }}> (below {threshold}% threshold)</T>
+              ) : (
+                ''
+              )}
             </Text>
           )}
           <Text> </Text>
-          <Text dimColor italic>
+          <T dimColor italic>
             Estimated usage by category
-          </Text>
+          </T>
           {visibleCategories.map((cat, index) => {
             const tokenDisplay = formatTokens(cat.tokens);
             // Show "N/A" for deferred categories since they don't count toward context
@@ -200,7 +206,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           {(categories.find(c => c.name === 'Free space')?.tokens ?? 0) > 0 && (
             <Box>
               <Text dimColor>⛶</Text>
-              <Text> Free space: </Text>
+              <T> Free space: </T>
               <Text dimColor>
                 {formatTokens(categories.find(c => c.name === 'Free space')?.tokens || 0)} (
                 {(((categories.find(c => c.name === 'Free space')?.tokens || 0) / rawMaxTokens) * 100).toFixed(1)}
@@ -226,13 +232,14 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {mcpTools.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold>MCP tools</Text>
-              <Text dimColor> · /mcp{hasDeferredMcpTools ? ' (loaded on-demand)' : ''}</Text>
+              <T bold>MCP tools</T>
+              <Text dimColor> · /mcp</Text>
+              {hasDeferredMcpTools && <T dimColor> (loaded on-demand)</T>}
             </Box>
             {/* Show loaded tools first */}
             {mcpTools.some(t => t.isLoaded) && (
               <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>Loaded</Text>
+                <T dimColor>Loaded</T>
                 {mcpTools
                   .filter(t => t.isLoaded)
                   .map((tool, i) => (
@@ -271,8 +278,10 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {((systemTools && systemTools.length > 0) || hasDeferredBuiltinTools) && process.env.USER_TYPE === 'ant' && (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold>[ANT-ONLY] System tools</Text>
-              {hasDeferredBuiltinTools && <Text dimColor> (some loaded on-demand)</Text>}
+              <Text bold>
+                [ANT-ONLY] <T>System tools</T>
+              </Text>
+              {hasDeferredBuiltinTools && <T dimColor> (some loaded on-demand)</T>}
             </Box>
             {/* Always-loaded + deferred-but-loaded tools */}
             <Box flexDirection="column" marginTop={1}>
@@ -323,7 +332,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {agents.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold>Custom agents</Text>
+              <T bold>Custom agents</T>
               <Text dimColor> · /agents</Text>
             </Box>
             {Array.from(groupBySource(agents).entries()).map(([sourceDisplay, sourceAgents]) => (
@@ -343,7 +352,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {memoryFiles.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold>Memory files</Text>
+              <T bold>Memory files</T>
               <Text dimColor> · /memory</Text>
             </Box>
             {memoryFiles.map((file, i) => (
@@ -358,7 +367,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {skills && skills.tokens > 0 && (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold>Skills</Text>
+              <T bold>Skills</T>
               <Text dimColor> · /skills</Text>
             </Box>
             {Array.from(groupBySource(skills.skillFrontmatter).entries()).map(([sourceDisplay, sourceSkills]) => (
@@ -377,7 +386,9 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
         {messageBreakdown && process.env.USER_TYPE === 'ant' && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>[ANT-ONLY] Message breakdown</Text>
+            <Text bold>
+              [ANT-ONLY] <T>Message breakdown</T>
+            </Text>
 
             <Box flexDirection="column" marginLeft={1}>
               <Box>

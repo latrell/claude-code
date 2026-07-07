@@ -1,29 +1,42 @@
+import { t } from '../../../../../src/i18n/t.js'
+
 // Error type constants for the model provider package.
 // Error string constants extracted from src/services/api/errors.ts.
 // The full error handling functions remain in the main project (Phase 4).
 
-export const API_ERROR_MESSAGE_PREFIX = 'API Error'
+export const API_ERROR_MESSAGE_PREFIX = t('API Error')
 
-export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
+export const PROMPT_TOO_LONG_ERROR_MESSAGE = t('Prompt is too long')
 
-export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
-export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login'
-export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
-  'Invalid API key · Fix external API key'
-export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
-  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
-export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
-  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
-export const TOKEN_REVOKED_ERROR_MESSAGE =
-  'OAuth token revoked · Please run /login'
-export const CCR_AUTH_ERROR_MESSAGE =
-  'Authentication error · This may be a temporary network issue, please try again'
-export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
-export const CUSTOM_OFF_SWITCH_MESSAGE =
-  'Opus is experiencing high load, please use /model to switch to Sonnet'
-export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
-export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
-  'Your account does not have access to Claude Code. Please run /login.'
+export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = t(
+  'Credit balance is too low',
+)
+export const INVALID_API_KEY_ERROR_MESSAGE = t(
+  'Not logged in · Please run /login',
+)
+export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL = t(
+  'Invalid API key · Fix external API key',
+)
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH = t(
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead',
+)
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY = t(
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable',
+)
+export const TOKEN_REVOKED_ERROR_MESSAGE = t(
+  'OAuth token revoked · Please run /login',
+)
+export const CCR_AUTH_ERROR_MESSAGE = t(
+  'Authentication error · This may be a temporary network issue, please try again',
+)
+export const REPEATED_529_ERROR_MESSAGE = t('Repeated 529 Overloaded errors')
+export const CUSTOM_OFF_SWITCH_MESSAGE = t(
+  'Opus is experiencing high load, please use /model to switch to Sonnet',
+)
+export const API_TIMEOUT_ERROR_MESSAGE = t('Request timed out')
+export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE = t(
+  'Your account does not have access to Claude Code. Please run /login.',
+)
 
 /** Error classification types returned by classifyAPIError */
 export type APIErrorClassification =

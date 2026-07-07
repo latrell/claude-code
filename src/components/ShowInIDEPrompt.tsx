@@ -4,6 +4,8 @@ import { Box, Text, Pane } from '@anthropic/ink';
 import { getCwd } from '../utils/cwd.js';
 import { isSupportedVSCodeTerminal } from '../utils/ide.js';
 import { Select } from './CustomSelect/index.js';
+import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import type {
   PermissionOption,
   PermissionOptionWithLabel,
@@ -43,20 +45,22 @@ export function ShowInIDEPrompt<A>({
   return (
     <Pane color="permission">
       <Box flexDirection="column" gap={1}>
-        <Text bold color="permission">
+        <T bold color="permission" vars={{ ideName }}>
           Opened changes in {ideName} ⧉
-        </Text>
+        </T>
         {symlinkTarget && (
-          <Text color="warning">
+          <T color="warning" vars={{ symlinkTarget, relative: relative(getCwd(), symlinkTarget) }}>
             {relative(getCwd(), symlinkTarget).startsWith('..')
-              ? `This will modify ${symlinkTarget} (outside working directory) via a symlink`
-              : `Symlink target: ${symlinkTarget}`}
-          </Text>
+              ? `This will modify {symlinkTarget} (outside working directory) via a symlink`
+              : `Symlink target: {symlinkTarget}`}
+          </T>
         )}
-        {isSupportedVSCodeTerminal() && <Text dimColor>Save file to continue…</Text>}
+        {isSupportedVSCodeTerminal() && <T dimColor>Save file to continue…</T>}
         <Box flexDirection="column">
           <Text>
-            Do you want to make this edit to <Text bold>{basename(filePath)}</Text>?
+            <T>Do you want to make this edit to </T>
+            <Text bold>{basename(filePath)}</Text>
+            <T>?</T>
           </Text>
           <Select
             options={options}
@@ -85,11 +89,10 @@ export function ShowInIDEPrompt<A>({
           />
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>
-            Esc to cancel
-            {((focusedOption === 'yes' && !yesInputMode) || (focusedOption === 'no' && !noInputMode)) &&
-              ' · Tab to amend'}
-          </Text>
+          <T dimColor>Esc to cancel</T>
+          {((focusedOption === 'yes' && !yesInputMode) || (focusedOption === 'no' && !noInputMode)) && (
+            <T dimColor> · Tab to amend</T>
+          )}
         </Box>
       </Box>
     </Pane>

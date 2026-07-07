@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 // Matches the canonical definition in src/services/mcp/channelPermissions.ts
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+import { t, tf } from 'src/i18n/t.js'
 import { getUpdates } from './api.js'
 import { getStateDir } from './accounts.js'
 import { downloadAndDecrypt } from './media.js'
@@ -168,7 +169,11 @@ export async function startPollLoop(params: {
 
       if (response.ret !== 0 && response.ret !== undefined) {
         throw new Error(
-          `getUpdates error: ret=${response.ret} errcode=${response.errcode} ${response.errmsg}`,
+          tf('getUpdates error: ret={ret} errcode={errcode} {msg}', {
+            ret: response.ret,
+            errcode: response.errcode,
+            msg: response.errmsg || '',
+          }),
         )
       }
 
@@ -236,7 +241,10 @@ async function processMessage(
     try {
       await sendText({
         to: fromUserId,
-        text: `Your pairing code is: ${code}\n\nAsk the operator to confirm:\nccb weixin access pair ${code}`,
+        text: tf(
+          'Your pairing code is: {code}\n\nAsk the operator to confirm:\nccb weixin access pair {code}',
+          { code },
+        ),
         baseUrl: ctx.baseUrl,
         token: ctx.token,
         contextToken: msg.context_token || '',
@@ -298,7 +306,7 @@ async function processMessage(
   await ctx.onMessage({
     fromUserId,
     messageId: String(msg.message_id || ''),
-    text: textContent || '(media attachment)',
+    text: textContent || t('(media attachment)'),
     attachmentPath: mediaPath,
     attachmentType: mediaType,
   })

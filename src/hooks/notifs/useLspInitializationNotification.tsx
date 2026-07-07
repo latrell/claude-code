@@ -7,6 +7,7 @@ import { getInitializationStatus, getLspServerManager } from '../../services/lsp
 import { useSetAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
+import { tf } from '../../i18n/t.js';
 
 const LSP_POLL_INTERVAL_MS = 5000;
 
@@ -80,7 +81,7 @@ export function useLspInitializationNotification(): void {
         key: `lsp-error-${source}`,
         jsx: (
           <>
-            <Text color="error">LSP for {displayName} failed</Text>
+            <Text color="error">{tf('LSP for {name} failed', { name: displayName })}</Text>
             <Text dimColor> · /plugin for details</Text>
           </>
         ),

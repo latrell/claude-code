@@ -4,6 +4,8 @@ import type { ConfigScope } from 'src/services/mcp/types.js';
 import { describeMcpConfigFilePath, getScopeLabel } from 'src/services/mcp/utils.js';
 import type { ValidationError } from 'src/utils/settings/validation.js';
 import { Box, Link, Text } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 function McpConfigErrorSection({
   scope,
@@ -25,12 +27,14 @@ function McpConfigErrorSection({
     <Box flexDirection="column" marginTop={1}>
       <Box>
         {(hasErrors || hasWarnings) && (
-          <Text color={hasErrors ? 'error' : 'warning'}>[{hasErrors ? 'Failed to parse' : 'Contains warnings'}] </Text>
+          <Text color={hasErrors ? 'error' : 'warning'}>
+            [{hasErrors ? t('Failed to parse') : t('Contains warnings')}]{' '}
+          </Text>
         )}
         <Text>{getScopeLabel(scope)}</Text>
       </Box>
       <Box>
-        <Text dimColor>Location: </Text>
+        <T dimColor>Location: </T>
         <Text dimColor>{describeMcpConfigFilePath(scope)}</Text>
       </Box>
       <Box marginLeft={1} flexDirection="column">
@@ -100,7 +104,7 @@ export function McpParsingWarnings(): React.ReactNode {
 
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
-      <Text bold>MCP Config Diagnostics</Text>
+      <T bold>MCP Config Diagnostics</T>
       <Box marginTop={1}>
         <Text dimColor>
           For help configuring MCP servers, see:{' '}

@@ -7,6 +7,8 @@
  * This must stay in sync with api/api/common/utils/tagged_id.py.
  */
 
+import { tf } from 'src/i18n/t.js'
+
 const BASE_58_CHARS =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const VERSION = '01'
@@ -36,7 +38,9 @@ function base58Encode(n: bigint): string {
 function uuidToBigInt(uuid: string): bigint {
   const hex = uuid.replace(/-/g, '')
   if (hex.length !== 32) {
-    throw new Error(`Invalid UUID hex length: ${hex.length}`)
+    throw new Error(
+      tf('Invalid UUID hex length: {length}', { length: hex.length }),
+    )
   }
   return BigInt('0x' + hex)
 }

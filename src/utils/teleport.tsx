@@ -1,6 +1,7 @@
 import axios from 'axios';
 import chalk from 'chalk';
 import { randomUUID } from 'crypto';
+import { t, tf } from '../i18n/t.js';
 import React from 'react';
 import { getOriginalCwd, getSessionId } from 'src/bootstrap/state.js';
 import { checkGate_CACHED_OR_BLOCKING } from 'src/services/analytics/growthbook.js';
@@ -457,7 +458,7 @@ export async function teleportResumeCodeSession(
   onProgress?: TeleportProgressCallback,
 ): Promise<TeleportRemoteResponse> {
   if (!isPolicyAllowed('allow_remote_sessions')) {
-    throw new Error("Remote sessions are disabled by your organization's policy.");
+    throw new Error(t("Remote sessions are disabled by your organization's policy."));
   }
 
   logForDebugging(`Resuming code session ID: ${sessionId}`);
@@ -469,7 +470,9 @@ export async function teleportResumeCodeSession(
         error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
       throw new Error(
-        'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+        t(
+          'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+        ),
       );
     }
 
@@ -479,7 +482,7 @@ export async function teleportResumeCodeSession(
       logEvent('tengu_teleport_resume_error', {
         error_type: 'no_org_uuid' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
-      throw new Error('Unable to get organization UUID for constructing session URL');
+      throw new Error(t('Unable to get organization UUID for constructing session URL'));
     }
 
     // Fetch and validate repository matches before resuming
@@ -539,7 +542,7 @@ export async function teleportResumeCodeSession(
         );
       default: {
         const _exhaustive: never = repoValidation.status;
-        throw new Error(`Unhandled repo validation status: ${_exhaustive}`);
+        throw new Error(tf('Unhandled repo validation status: {status}', { status: _exhaustive }));
       }
     }
 
@@ -661,7 +664,7 @@ export async function teleportFromSessionsAPI(
     logForDebugging(`[teleport] Session logs fetched in ${Date.now() - logsStartTime}ms`);
 
     if (logs === null) {
-      throw new Error('Failed to fetch session logs');
+      throw new Error(t('Failed to fetch session logs'));
     }
 
     // Filter to get only transcript messages, excluding sidechain messages
@@ -700,7 +703,7 @@ export async function teleportFromSessionsAPI(
 
     logError(err);
 
-    throw new Error(`Failed to fetch session from Sessions API: ${err.message}`);
+    throw new Error(tf('Failed to fetch session from Sessions API: {error}', { error: err.message }));
   }
 }
 
@@ -726,12 +729,12 @@ export async function pollRemoteSessionEvents(
 ): Promise<PollRemoteSessionResponse> {
   const accessToken = getClaudeAIOAuthTokens()?.accessToken;
   if (!accessToken) {
-    throw new Error('No access token for polling');
+    throw new Error(t('No access token for polling'));
   }
 
   const orgUUID = await getOrganizationUUID();
   if (!orgUUID) {
-    throw new Error('No org UUID for polling');
+    throw new Error(t('No org UUID for polling'));
   }
 
   const headers = {
@@ -760,12 +763,12 @@ export async function pollRemoteSessionEvents(
     });
 
     if (eventsResponse.status !== 200) {
-      throw new Error(`Failed to fetch session events: ${eventsResponse.statusText}`);
+      throw new Error(tf('Failed to fetch session events: {error}', { error: eventsResponse.statusText }));
     }
 
     const eventsData: EventsResponse = eventsResponse.data;
     if (!eventsData?.data || !Array.isArray(eventsData.data)) {
-      throw new Error('Invalid events response');
+      throw new Error(t('Invalid events response'));
     }
 
     for (const event of eventsData.data) {

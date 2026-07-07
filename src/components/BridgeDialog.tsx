@@ -18,6 +18,8 @@ import { useAppState, useSetAppState } from '../state/AppState.js';
 import { saveGlobalConfig } from '../utils/config.js';
 import { getBranch } from '../utils/git.js';
 import { Dialog } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   onDone: () => void;
@@ -124,7 +126,7 @@ export function BridgeDialog({ onDone }: Props): React.ReactNode {
       : undefined;
 
   return (
-    <Dialog title="Remote Control" onCancel={onDone} hideInputGuide>
+    <Dialog title={t('Remote Control')} onCancel={onDone} hideInputGuide>
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text>
@@ -145,7 +147,7 @@ export function BridgeDialog({ onDone }: Props): React.ReactNode {
           </Box>
         )}
         {footerText && <Text dimColor>{footerText}</Text>}
-        <Text dimColor>d to disconnect · space for QR code · Enter/Esc to close</Text>
+        <T dimColor>d to disconnect · space for QR code · Enter/Esc to close</T>
       </Box>
     </Dialog>
   );

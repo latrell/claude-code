@@ -1,6 +1,7 @@
 import { getOauthProfileFromApiKey } from 'src/services/oauth/getOauthProfile.js';
 import { isClaudeAISubscriber } from 'src/utils/auth.js';
 import { Text } from '@anthropic/ink';
+import { t, tf } from '../../i18n/t.js';
 import { logEvent } from '../../services/analytics/index.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { useStartupNotification } from './useStartupNotification.js';
@@ -28,11 +29,8 @@ export function useCanSwitchToExistingSubscription(): void {
       key: 'switch-to-subscription',
       jsx: (
         <Text color="suggestion">
-          Use your existing Claude {subscriptionType} plan with Claude Code
-          <Text color="text" dimColor>
-            {' '}
-            · /login to activate
-          </Text>
+          {tf('Use your existing Claude {plan} plan with Claude Code', { plan: subscriptionType ?? '' })}
+          <Text dimColor>{' · /login to activate'}</Text>
         </Text>
       ),
       priority: 'low',

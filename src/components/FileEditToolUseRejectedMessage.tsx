@@ -7,6 +7,7 @@ import { Box, Text } from '@anthropic/ink';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';
 import { StructuredDiffList } from './StructuredDiffList.js';
+import { t } from '../i18n/t.js';
 
 const MAX_LINES_TO_RENDER = 10;
 
@@ -59,7 +60,7 @@ export function FileEditToolUseRejectedMessage({
       <MessageResponse>
         <Box flexDirection="column">
           {text}
-          <HighlightedCode code={truncatedContent || '(No content)'} filePath={file_path} width={columns - 12} dim />
+          <HighlightedCode code={truncatedContent || t('(No content)')} filePath={file_path} width={columns - 12} dim />
           {!verbose && plusLines > 0 && <Text dimColor>… +{plusLines} lines</Text>}
         </Box>
       </MessageResponse>

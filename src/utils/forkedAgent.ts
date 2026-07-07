@@ -9,6 +9,7 @@
  */
 
 import type { UUID } from 'crypto'
+import { t } from 'src/i18n/t.js'
 import { randomUUID } from 'crypto'
 import type { PromptCommand } from '../commands.js'
 import type { QuerySource } from '../constants/querySource.js'
@@ -221,7 +222,7 @@ export async function prepareForkedCommandContext(
     agents[0]
 
   if (!baseAgent) {
-    throw new Error('No agent available for forked execution')
+    throw new Error(t('No agent available for forked execution'))
   }
 
   // Prepare prompt messages

@@ -1,3 +1,4 @@
+import { tf } from 'src/i18n/t.js'
 import type {
   ImageBlockParam,
   TextBlockParam,
@@ -174,7 +175,9 @@ export async function readNotebook(
   if (cellId) {
     const cell = notebook.cells.find((c: NotebookCell) => c.id === cellId)
     if (!cell) {
-      throw new Error(`Cell with ID "${cellId}" not found in notebook`)
+      throw new Error(
+        tf('Cell with ID "{cellId}" not found in notebook', { cellId }),
+      )
     }
     return [processCell(cell, notebook.cells.indexOf(cell), language, true)]
   }

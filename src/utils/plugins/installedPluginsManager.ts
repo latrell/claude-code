@@ -13,6 +13,7 @@
  * plugins active).
  */
 
+import { t } from 'src/i18n/t.js'
 import { dirname, join } from 'path'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, isENOENT, toError } from '../errors.js'
@@ -989,9 +990,7 @@ export function deletePluginCache(installPath: string): void {
   } catch (error) {
     const errorMsg = errorMessage(error)
     logError(toError(error))
-    throw new Error(
-      `Failed to delete plugin cache at ${installPath}: ${errorMsg}`,
-    )
+    throw new Error(t('Failed to delete plugin cache'))
   }
 }
 

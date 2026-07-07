@@ -13,6 +13,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { toError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
+import { t, tf } from '../i18n/t.js'
 import { loadPluginAgents } from '../utils/plugins/loadPluginAgents.js'
 import { getPluginCommands } from '../utils/plugins/loadPluginCommands.js'
 import { loadPluginHooks } from '../utils/plugins/loadPluginHooks.js'
@@ -63,7 +64,7 @@ export function useManagePlugins({
       if (Object.keys(flagged).length > 0) {
         addNotification({
           key: 'plugin-delisted-flagged',
-          text: 'Plugins flagged. Check /plugins',
+          text: t('Plugins flagged. Check /plugins'),
           color: 'warning',
           priority: 'high',
         })
@@ -82,7 +83,9 @@ export function useManagePlugins({
         errors.push({
           type: 'generic-error',
           source: 'plugin-commands',
-          error: `Failed to load plugin commands: ${errorMessage}`,
+          error: tf('Failed to load plugin commands: {error}', {
+            error: errorMessage,
+          }),
         })
       }
 
@@ -94,7 +97,9 @@ export function useManagePlugins({
         errors.push({
           type: 'generic-error',
           source: 'plugin-agents',
-          error: `Failed to load plugin agents: ${errorMessage}`,
+          error: tf('Failed to load plugin agents: {error}', {
+            error: errorMessage,
+          }),
         })
       }
 
@@ -106,7 +111,9 @@ export function useManagePlugins({
         errors.push({
           type: 'generic-error',
           source: 'plugin-hooks',
-          error: `Failed to load plugin hooks: ${errorMessage}`,
+          error: tf('Failed to load plugin hooks: {error}', {
+            error: errorMessage,
+          }),
         })
       }
 
@@ -304,7 +311,7 @@ export function useManagePlugins({
     if (!enabled || !needsRefresh) return
     addNotification({
       key: 'plugin-reload-pending',
-      text: 'Plugins changed. Run /reload-plugins to activate.',
+      text: t('Plugins changed. Run /reload-plugins to activate.'),
       color: 'suggestion',
       priority: 'low',
     })

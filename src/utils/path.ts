@@ -8,6 +8,7 @@ import {
   relative,
   resolve,
 } from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { getCwd } from './cwd.js'
 import { getFsImplementation } from './fsOperations.js'
 import { getPlatform } from './platform.js'
@@ -43,18 +44,22 @@ export function expandPath(path: string, baseDir?: string): string {
 
   // Input validation
   if (typeof path !== 'string') {
-    throw new TypeError(`Path must be a string, received ${typeof path}`)
+    throw new TypeError(
+      tf('Path must be a string, received {type}', { type: typeof path }),
+    )
   }
 
   if (typeof actualBaseDir !== 'string') {
     throw new TypeError(
-      `Base directory must be a string, received ${typeof actualBaseDir}`,
+      tf('Base directory must be a string, received {type}', {
+        type: typeof actualBaseDir,
+      }),
     )
   }
 
   // Security: Check for null bytes
   if (path.includes('\0') || actualBaseDir.includes('\0')) {
-    throw new Error('Path contains null bytes')
+    throw new Error(t('Path contains null bytes'))
   }
 
   const isSyntheticPosixPath = (value: string): boolean =>

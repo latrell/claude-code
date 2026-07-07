@@ -21,7 +21,7 @@ function getEnvVarForProvider(provider: string): string {
     case 'cursor':
       return 'CLAUDE_CODE_USE_CURSOR'
     default:
-      throw new Error(`Unknown provider: ${provider}`)
+      throw new Error(tf('Unknown provider: {provider}', { provider }))
   }
 }
 
