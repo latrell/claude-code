@@ -7,7 +7,8 @@
  * 重试、non-streaming fallback 等。但 OpenAI/Gemini/Grok adapter 是直接的一次
  * try/catch，任何 fetch failed 或瞬态错误都会立即以 "API Error: ..." 退出。
  *
- * 本模块为三个兼容层提供统一的重试包装，覆盖最常见的瞬态错误场景。
+ * 本模块为四个兼容层（OpenAI/Gemini/Grok/Cursor）提供统一的重试包装，
+ * 覆盖最常见的瞬态错误场景。
  * 设计上不与 firstParty 路径产生耦合——firstParty 仍独立使用 withRetry()。
  *
  * 为什么用独立的 compatRetry 而不是复用 withRetry：
@@ -221,6 +222,25 @@ export async function* prependFirstEvent<T>(
   if (first.done) return
   yield first.value
   yield* rest
+}
+
+/**
+ * 在 withCompatRetry 的工厂末尾调用：主动拉取适配流的首个事件，再拼回流头。
+ *
+ * 所有兼容层适配器都是惰性 async generator，message_start 要等第一个网络
+ * chunk 到达才发出。不拉首事件的话，"请求已建立、模型开口前"的断连（LB 空闲
+ * 超时掐 keep-alive 连接、undici TypeError("terminated") 的典型场景）会发生
+ * 在下游 for-await 循环里、重试作用域之外——一次重试都不走就以
+ * "API Error: terminated" 终结整轮。对完全惰性的客户端（Gemini 的
+ * streamGeminiGenerateContent），不拉首事件甚至连 429/5xx 都从不重试。
+ *
+ * 首事件之后的断连仍然不重试（保持现状）：此时内容已 yield 给下游进入
+ * UI/会话历史，盲目整包重试会导致内容与工具调用重复。
+ */
+export async function startStreamEagerly<T>(
+  stream: AsyncGenerator<T, void>,
+): Promise<AsyncGenerator<T, void>> {
+  return prependFirstEvent(await stream.next(), stream)
 }
 
 /**

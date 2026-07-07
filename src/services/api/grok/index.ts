@@ -38,7 +38,11 @@ import {
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
-import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
+import {
+  withCompatRetry,
+  hasExhaustedCompatRetries,
+  startStreamEagerly,
+} from '../compatRetry.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -96,7 +100,9 @@ export async function* queryModelGrok(
     )
 
     // Wrap the API call + stream adaptation in retry for transient errors
-    // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.)
+    // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.).
+    // startStreamEagerly pulls the first adapted event inside the factory so
+    // pre-first-token disconnects are retried too.
     const adaptedStream = yield* withCompatRetry(
       async innerSignal => {
         const client = getGrokClient({
@@ -123,9 +129,11 @@ export async function* queryModelGrok(
             signal: innerSignal,
           },
         )
-        return adaptOpenAIStreamToAnthropic(
-          stream as AsyncIterable<ChatCompletionChunk>,
-          grokModel,
+        return startStreamEagerly(
+          adaptOpenAIStreamToAnthropic(
+            stream as AsyncIterable<ChatCompletionChunk>,
+            grokModel,
+          ),
         )
       },
       { signal, provider: 'grok' },

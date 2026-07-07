@@ -15,6 +15,7 @@ import {
   hasExhaustedCompatRetries,
   isRetryableCompatError,
   prependFirstEvent,
+  startStreamEagerly,
   withCompatRetry,
 } from '../compatRetry.js'
 
@@ -551,6 +552,116 @@ describe('prependFirstEvent', () => {
     } catch (err) {
       expect((err as Error).message).toBe('AI Model Not Found')
     }
+    expect(attempt).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// startStreamEagerly — 首事件拉进重试作用域（全部兼容层工厂的统一用法）
+// ---------------------------------------------------------------------------
+
+describe('startStreamEagerly', () => {
+  async function* lazyStream(
+    events: string[],
+    failFirstWith?: Error,
+  ): AsyncGenerator<string, void> {
+    if (failFirstWith) throw failFirstWith
+    for (const event of events) yield event
+  }
+
+  test('事件原样透传，不丢失、不重复', async () => {
+    const eager = await startStreamEagerly(
+      lazyStream(['message_start', 'delta', 'stop']),
+    )
+    const out: string[] = []
+    for await (const event of eager) out.push(event)
+    expect(out).toEqual(['message_start', 'delta', 'stop'])
+  })
+
+  test('空流产出空流', async () => {
+    const eager = await startStreamEagerly(lazyStream([]))
+    const out: string[] = []
+    for await (const event of eager) out.push(event)
+    expect(out).toEqual([])
+  })
+
+  test('首事件前的错误在调用处抛出（而非下游消费时）', async () => {
+    try {
+      await startStreamEagerly(lazyStream([], new TypeError('terminated')))
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(err).toBeInstanceOf(TypeError)
+      expect((err as Error).message).toBe('terminated')
+    }
+  })
+
+  test('配合 withCompatRetry：模型开口前的 terminated 断连被重试并恢复', async () => {
+    // 用户实际场景：tool_result 提交后、模型产出首个事件前，keep-alive
+    // 连接被 LB 掐断 → undici TypeError("terminated")。修复前该错误发生
+    // 在重试作用域外，零重试直接 "API Error: terminated" 结束整轮。
+    const signal = new AbortController().signal
+    let attempt = 0
+    const gen = withCompatRetry(
+      async () => {
+        attempt++
+        return startStreamEagerly(
+          lazyStream(
+            ['message_start', 'delta'],
+            attempt === 1 ? new TypeError('terminated') : undefined,
+          ),
+        )
+      },
+      { maxRetries: 2, signal, provider: 'test' },
+    )
+
+    // 第一次尝试 terminated → yield 重试进度消息
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    expect((progress.value as SystemAPIErrorMessage).type).toBe('system')
+
+    // 第二次尝试成功 → 返回完整的流
+    const result = await gen.next()
+    expect(result.done).toBe(true)
+    const out: string[] = []
+    for await (const event of result.value as AsyncGenerator<string, void>) {
+      out.push(event)
+    }
+    expect(out).toEqual(['message_start', 'delta'])
+    expect(attempt).toBe(2)
+  })
+
+  test('首事件之后的断连不在重试作用域内（内容已下发，不可盲目重试）', async () => {
+    async function* breaksAfterFirst(): AsyncGenerator<string, void> {
+      yield 'message_start'
+      throw new TypeError('terminated')
+    }
+
+    const signal = new AbortController().signal
+    let attempt = 0
+    const gen = withCompatRetry(
+      async () => {
+        attempt++
+        return startStreamEagerly(breaksAfterFirst())
+      },
+      { maxRetries: 2, signal, provider: 'test' },
+    )
+
+    // 工厂成功返回（首事件已到达）
+    const result = await gen.next()
+    expect(result.done).toBe(true)
+    expect(attempt).toBe(1)
+
+    // 消费时第二个事件抛错 —— 逃逸到重试作用域之外（预期行为）
+    const stream = result.value as AsyncGenerator<string, void>
+    const out: string[] = []
+    try {
+      for await (const event of stream) out.push(event)
+      expect(true).toBe(false)
+    } catch (err) {
+      expect((err as Error).message).toBe('terminated')
+      expect(hasExhaustedCompatRetries(err)).toBe(false)
+    }
+    expect(out).toEqual(['message_start'])
     expect(attempt).toBe(1)
   })
 })

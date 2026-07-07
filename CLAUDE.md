@@ -239,6 +239,8 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 所有兼容层均采用流适配器模式：将第三方 API 格式转为 Anthropic 内部格式，下游代码完全不改。通过 `/login` 命令配置。
 
+**兼容层重试（`src/services/api/compatRetry.ts`）**：四个兼容层（OpenAI/Gemini/Grok/Cursor）统一用 `withCompatRetry`（3 次指数退避）包裹请求工厂，工厂末尾必须调用 `startStreamEagerly()` 主动拉取适配流的首个事件——所有适配器都是惰性 generator，不拉首事件的话"请求已建立、模型开口前"的断连（undici `TypeError("terminated")`，keep-alive 被 LB 空闲超时掐断的典型形态）会逃逸到下游 for-await 循环、零重试直接 `API Error: terminated` 结束整轮（Gemini 曾因完全惰性连 429/5xx 都从不重试）。首事件之后的断连仍不重试（内容已下发，盲目整包重试会重复内容/工具调用）；重试真正耗尽时错误消息带 `(retries exhausted)` 前缀（`hasExhaustedCompatRetries` 判定）。新增兼容层时照抄此模式。
+
 #### OpenAI 兼容层
 
 通过 `CLAUDE_CODE_USE_OPENAI=1` 启用，支持 Ollama/DeepSeek/vLLM 等任意 OpenAI Chat Completions 协议端点。含 DeepSeek thinking mode 支持。

@@ -49,7 +49,11 @@ import {
   convertOutputToLangfuse,
   convertToolsToLangfuse,
 } from '../../../services/langfuse/convert.js'
-import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
+import {
+  withCompatRetry,
+  hasExhaustedCompatRetries,
+  startStreamEagerly,
+} from '../compatRetry.js'
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -359,44 +363,51 @@ export async function* queryModelOpenAI(
     // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.).
     // ChatGPT subscription auth uses the Codex Responses backend;
     // API-key/OpenAI-compatible auth keeps the existing Chat Completions adapter.
+    // startStreamEagerly pulls the first adapted event inside the factory so
+    // "connection established, died before the model spoke" disconnects are
+    // retried too (see the helper's doc comment).
     const adaptedStream = yield* withCompatRetry(
       async innerSignal => {
         if (isChatGPTAuthEnabled(providerEnv)) {
-          return adaptResponsesStreamToAnthropic(
-            await createChatGPTResponsesStream({
-              request: buildResponsesRequest({
+          return startStreamEagerly(
+            adaptResponsesStreamToAnthropic(
+              await createChatGPTResponsesStream({
+                request: buildResponsesRequest({
+                  model: openaiModel,
+                  messages: openaiMessages,
+                  tools: openaiTools,
+                  toolChoice: openaiToolChoice,
+                  reasoningEffort,
+                }),
+                signal: innerSignal,
+                fetchOverride: options.fetchOverride as unknown as typeof fetch,
+                credentialScope: options.providerRuntimeConfig?.credentialScope,
+              }),
+              openaiModel,
+            ),
+          )
+        }
+        return startStreamEagerly(
+          adaptOpenAIStreamToAnthropic(
+            await getOpenAIClient({
+              maxRetries: 0,
+              fetchOverride: options.fetchOverride as unknown as typeof fetch,
+              source: options.querySource,
+              envOverride: options.providerRuntimeConfig?.env,
+            }).chat.completions.create(
+              buildOpenAIRequestBody({
                 model: openaiModel,
                 messages: openaiMessages,
                 tools: openaiTools,
                 toolChoice: openaiToolChoice,
-                reasoningEffort,
+                enableThinking,
+                maxTokens,
+                temperatureOverride: options.temperatureOverride,
               }),
-              signal: innerSignal,
-              fetchOverride: options.fetchOverride as unknown as typeof fetch,
-              credentialScope: options.providerRuntimeConfig?.credentialScope,
-            }),
+              { signal: innerSignal },
+            ),
             openaiModel,
-          )
-        }
-        return adaptOpenAIStreamToAnthropic(
-          await getOpenAIClient({
-            maxRetries: 0,
-            fetchOverride: options.fetchOverride as unknown as typeof fetch,
-            source: options.querySource,
-            envOverride: options.providerRuntimeConfig?.env,
-          }).chat.completions.create(
-            buildOpenAIRequestBody({
-              model: openaiModel,
-              messages: openaiMessages,
-              tools: openaiTools,
-              toolChoice: openaiToolChoice,
-              enableThinking,
-              maxTokens,
-              temperatureOverride: options.temperatureOverride,
-            }),
-            { signal: innerSignal },
           ),
-          openaiModel,
         )
       },
       { signal, provider: 'openai' },

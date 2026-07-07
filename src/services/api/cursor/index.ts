@@ -30,7 +30,7 @@ import { randomUUID } from 'crypto'
 import {
   withCompatRetry,
   hasExhaustedCompatRetries,
-  prependFirstEvent,
+  startStreamEagerly,
 } from '../compatRetry.js'
 import {
   createAssistantAPIErrorMessage,
@@ -130,12 +130,9 @@ export async function* queryModelCursor(
           fetchOverride: options.fetchOverride as typeof fetch | undefined,
           envOverride: options.providerRuntimeConfig?.env,
         })
-        const adapted = adaptCursorFramesToAnthropic(
-          frames,
-          cursorModel,
-          cursorTools,
+        return startStreamEagerly(
+          adaptCursorFramesToAnthropic(frames, cursorModel, cursorTools),
         )
-        return prependFirstEvent(await adapted.next(), adapted)
       },
       { signal, provider: 'cursor' },
     )

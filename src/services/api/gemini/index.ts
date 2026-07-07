@@ -21,7 +21,11 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type { ThinkingConfig } from '../../../utils/thinking.js'
 import type { Options } from '../claude.js'
-import { withCompatRetry, hasExhaustedCompatRetries } from '../compatRetry.js'
+import {
+  withCompatRetry,
+  hasExhaustedCompatRetries,
+  startStreamEagerly,
+} from '../compatRetry.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {
   convertMessagesToLangfuse,
@@ -88,7 +92,10 @@ export async function* queryModelGemini(
     )
 
     // Wrap the API call + stream adaptation in retry for transient errors
-    // (fetch failed, ECONNRESET/EPIPE, 429, 5xx, stream terminated, etc.)
+    // (fetch failed, ECONNRESET/EPIPE, 429, 5xx, stream terminated, etc.).
+    // streamGeminiGenerateContent is a fully lazy generator — without the
+    // eager first pull below, not even its fetch() would run inside the
+    // retry scope, so request-level 429/5xx would never retry.
     const adaptedStream = yield* withCompatRetry(
       async innerSignal => {
         const rawStream = streamGeminiGenerateContent({
@@ -120,7 +127,9 @@ export async function* queryModelGemini(
             },
           },
         })
-        return adaptGeminiStreamToAnthropic(rawStream, geminiModel)
+        return startStreamEagerly(
+          adaptGeminiStreamToAnthropic(rawStream, geminiModel),
+        )
       },
       { signal, provider: 'gemini' },
     )
