@@ -1,0 +1,11 @@
+# Auto-detect text files and use LF line endings (consistent across platforms)
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.svg binary

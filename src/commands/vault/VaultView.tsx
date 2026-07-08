@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { Credential, Vault } from './vaultsApi.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props =
   | { mode: 'list'; vaults: Vault[] }
@@ -21,10 +22,12 @@ function VaultRow({ vault }: { vault: Vault }): React.ReactNode {
       <Box>
         <Text bold>{vault.vault_id}</Text>
         <Text dimColor> · </Text>
-        <Text color={(isArchived ? 'warning' : 'success') as keyof Theme}>{isArchived ? 'archived' : 'active'}</Text>
+        <Text color={(isArchived ? 'warning' : 'success') as keyof Theme}>
+          {isArchived ? t('archived') : t('active')}
+        </Text>
       </Box>
-      <Text>Name: {vault.name}</Text>
-      <Text dimColor>Created: {createdAt}</Text>
+      <Text>{tf('Name: {name}', { name: vault.name })}</Text>
+      <Text dimColor>{tf('Created: {createdAt}', { createdAt })}</Text>
     </Box>
   );
 }
@@ -34,14 +37,14 @@ export function VaultView(props: Props): React.ReactNode {
     if (props.vaults.length === 0) {
       return (
         <Box>
-          <Text dimColor>No vaults found. Use /vault create &lt;name&gt; to create one.</Text>
+          <Text dimColor>{t('No vaults found. Use /vault create <name> to create one.')}</Text>
         </Box>
       );
     }
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Vaults ({props.vaults.length})</Text>
+          <Text bold>{tf('Vaults ({count})', { count: props.vaults.length })}</Text>
         </Box>
         {props.vaults.map(vault => (
           <VaultRow key={vault.vault_id} vault={vault} />
@@ -58,15 +61,17 @@ export function VaultView(props: Props): React.ReactNode {
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Vault: {vault.vault_id}</Text>
+          <Text bold>{tf('Vault: {id}', { id: vault.vault_id })}</Text>
         </Box>
-        <Text>Name: {vault.name}</Text>
+        <Text>{tf('Name: {name}', { name: vault.name })}</Text>
         <Text>
-          Status:{' '}
-          <Text color={(isArchived ? 'warning' : 'success') as keyof Theme}>{isArchived ? 'archived' : 'active'}</Text>
+          {t('Status:')}{' '}
+          <Text color={(isArchived ? 'warning' : 'success') as keyof Theme}>
+            {isArchived ? t('archived') : t('active')}
+          </Text>
         </Text>
-        <Text dimColor>Created: {createdAt}</Text>
-        {archivedAt ? <Text dimColor>Archived: {archivedAt}</Text> : null}
+        <Text dimColor>{tf('Created: {createdAt}', { createdAt })}</Text>
+        {archivedAt ? <Text dimColor>{tf('Archived: {archivedAt}', { archivedAt })}</Text> : null}
       </Box>
     );
   }
@@ -77,11 +82,11 @@ export function VaultView(props: Props): React.ReactNode {
       <Box flexDirection="column">
         <Box>
           <Text bold color={'success' as keyof Theme}>
-            Vault created
+            {t('Vault created')}
           </Text>
         </Box>
-        <Text>ID: {vault.vault_id}</Text>
-        <Text>Name: {vault.name}</Text>
+        <Text>{tf('ID: {id}', { id: vault.vault_id })}</Text>
+        <Text>{tf('Name: {name}', { name: vault.name })}</Text>
       </Box>
     );
   }
@@ -93,11 +98,11 @@ export function VaultView(props: Props): React.ReactNode {
       <Box flexDirection="column">
         <Box>
           <Text bold color={'warning' as keyof Theme}>
-            Vault archived
+            {t('Vault archived')}
           </Text>
         </Box>
-        <Text>ID: {vault.vault_id}</Text>
-        <Text dimColor>Archived at: {archivedAt}</Text>
+        <Text>{tf('ID: {id}', { id: vault.vault_id })}</Text>
+        <Text dimColor>{tf('Archived at: {archivedAt}', { archivedAt })}</Text>
       </Box>
     );
   }
@@ -108,7 +113,9 @@ export function VaultView(props: Props): React.ReactNode {
       return (
         <Box>
           <Text dimColor>
-            No credentials in vault {vaultId}. Use /vault add-credential {vaultId} &lt;key&gt; &lt;value&gt; to add one.
+            {tf('No credentials in vault {vaultId}. Use /vault add-credential {vaultId} <key> <value> to add one.', {
+              vaultId,
+            })}
           </Text>
         </Box>
       );
@@ -116,9 +123,7 @@ export function VaultView(props: Props): React.ReactNode {
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>
-            Credentials in {vaultId} ({credentials.length})
-          </Text>
+          <Text bold>{tf('Credentials in {vaultId} ({count})', { vaultId, count: credentials.length })}</Text>
         </Box>
         {credentials.map(cred => {
           const isArchived = !!cred.archived_at;
@@ -131,12 +136,12 @@ export function VaultView(props: Props): React.ReactNode {
                 {isArchived ? (
                   <>
                     <Text dimColor> · </Text>
-                    <Text color={'warning' as keyof Theme}>archived</Text>
+                    <Text color={'warning' as keyof Theme}>{t('archived')}</Text>
                   </>
                 ) : null}
               </Box>
               {/* SECURITY: credential value is never displayed */}
-              <Text dimColor>Value: ***mask***</Text>
+              <Text dimColor>{t('Value: ***mask***')}</Text>
             </Box>
           );
         })}
@@ -150,13 +155,13 @@ export function VaultView(props: Props): React.ReactNode {
       <Box flexDirection="column">
         <Box>
           <Text bold color={'success' as keyof Theme}>
-            Credential added
+            {t('Credential added')}
           </Text>
         </Box>
-        <Text>ID: {credentialId}</Text>
-        <Text>Vault: {vaultId}</Text>
+        <Text>{tf('ID: {id}', { id: credentialId })}</Text>
+        <Text>{tf('Vault: {vaultId}', { vaultId })}</Text>
         {/* SECURITY: credential value is never echoed back */}
-        <Text dimColor>Value: ***mask***</Text>
+        <Text dimColor>{t('Value: ***mask***')}</Text>
       </Box>
     );
   }
@@ -167,11 +172,11 @@ export function VaultView(props: Props): React.ReactNode {
       <Box flexDirection="column">
         <Box>
           <Text bold color={'warning' as keyof Theme}>
-            Credential archived
+            {t('Credential archived')}
           </Text>
         </Box>
-        <Text>ID: {credentialId}</Text>
-        <Text>Vault: {vaultId}</Text>
+        <Text>{tf('ID: {id}', { id: credentialId })}</Text>
+        <Text>{tf('Vault: {vaultId}', { vaultId })}</Text>
       </Box>
     );
   }

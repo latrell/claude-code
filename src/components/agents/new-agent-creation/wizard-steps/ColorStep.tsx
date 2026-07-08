@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Box, Byline, KeyboardShortcutHint } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import type { AgentColorName } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -33,7 +34,7 @@ export function ColorStep(): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="Choose background color"
+      subtitle={t('Choose background color')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

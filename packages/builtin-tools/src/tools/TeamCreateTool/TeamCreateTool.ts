@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import { getSessionId } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
@@ -98,7 +99,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     if (!input.team_name || input.team_name.trim().length === 0) {
       return {
         result: false,
-        message: 'team_name is required for TeamCreate',
+        message: t('team_name is required for TeamCreate'),
         errorCode: 9,
       }
     }
@@ -106,7 +107,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
   },
 
   async description() {
-    return 'Create a new team for coordinating multiple agents'
+    return t('Create a new team for coordinating multiple agents')
   },
 
   async prompt() {
@@ -129,7 +130,9 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
   async call(input, context) {
     if (!isAgentSwarmsEnabled()) {
       throw new Error(
-        'Agent Teams 功能未启用。请确保未设置 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS_DISABLED 环境变量。',
+        t(
+          'Agent Teams 功能未启用。请确保未设置 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS_DISABLED 环境变量。',
+        ),
       )
     }
 
@@ -142,7 +145,10 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
 
     if (existingTeam) {
       throw new Error(
-        `Already leading team "${existingTeam}". A leader can only manage one team at a time. Use TeamDelete to end the current team before creating a new one.`,
+        tf(
+          'Already leading team "{existingTeam}". A leader can only manage one team at a time. Use TeamDelete to end the current team before creating a new one.',
+          { existingTeam },
+        ),
       )
     }
 

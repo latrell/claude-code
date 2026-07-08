@@ -1,6 +1,7 @@
 import React, { type ReactNode, useEffect, useRef, useState } from 'react';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- UP arrow exit not in Attachments bindings
 import { Box, Text, useInput } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { PastedContent } from '../../utils/config.js';
 import { getImageFromClipboard } from '../../utils/imagePaste.js';
@@ -336,13 +337,13 @@ export function SelectInputOption<T>({
                         action="attachments:next"
                         context="Attachments"
                         fallback="→"
-                        description="next"
+                        description={t('next')}
                       />
                       <ConfigurableShortcutHint
                         action="attachments:previous"
                         context="Attachments"
                         fallback="←"
-                        description="prev"
+                        description={t('prev')}
                       />
                     </>
                   )}
@@ -350,17 +351,17 @@ export function SelectInputOption<T>({
                     action="attachments:remove"
                     context="Attachments"
                     fallback="backspace"
-                    description="remove"
+                    description={t('remove')}
                   />
                   <ConfigurableShortcutHint
                     action="attachments:exit"
                     context="Attachments"
                     fallback="esc"
-                    description="cancel"
+                    description={t('cancel')}
                   />
                 </Byline>
               ) : isFocused ? (
-                '(↓ to select)'
+                t('(↓ to select)')
               ) : null}
             </Text>
           </Box>

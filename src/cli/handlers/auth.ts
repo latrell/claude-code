@@ -198,9 +198,11 @@ export async function authLogin({
     const envScopes = process.env.CLAUDE_CODE_OAUTH_SCOPES
     if (!envScopes) {
       process.stderr.write(
-        'CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n' +
-          'Set it to the space-separated scopes the refresh token was issued with\n' +
-          '(e.g. "user:inference" or "user:profile user:inference user:sessions:claude_code user:mcp_servers").\n',
+        t(
+          'CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n' +
+            'Set it to the space-separated scopes the refresh token was issued with\n' +
+            '(e.g. "user:inference" or "user:profile user:inference user:sessions:claude_code user:mcp_servers").\n',
+        ),
       )
       process.exit(1)
     }
@@ -349,7 +351,7 @@ export async function authStatus(opts: {
       }
     }
     if (!hasAuthProperty && hasApiKeyEnvVar) {
-      process.stdout.write('API key: ANTHROPIC_API_KEY\n')
+      process.stdout.write(t('API key: ANTHROPIC_API_KEY\n'))
     }
     if (!loggedIn) {
       process.stdout.write(

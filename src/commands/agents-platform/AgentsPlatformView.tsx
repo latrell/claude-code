@@ -3,6 +3,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { AgentTrigger } from './agentsApi.js';
 import { cronToHuman } from '../../utils/cron.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props =
   | { mode: 'list'; agents: AgentTrigger[] }
@@ -21,9 +22,9 @@ function AgentRow({ agent }: { agent: AgentTrigger }): React.ReactNode {
         <Text dimColor> · </Text>
         <Text color={'suggestion' as keyof Theme}>{agent.status}</Text>
       </Box>
-      <Text>Schedule: {schedule}</Text>
-      <Text dimColor>Prompt: {agent.prompt}</Text>
-      <Text dimColor>Next run: {nextRun}</Text>
+      <Text>{tf('Schedule: {schedule}', { schedule })}</Text>
+      <Text dimColor>{tf('Prompt: {prompt}', { prompt: agent.prompt })}</Text>
+      <Text dimColor>{tf('Next run: {nextRun}', { nextRun })}</Text>
     </Box>
   );
 }
@@ -33,16 +34,14 @@ export function AgentsPlatformView(props: Props): React.ReactNode {
     if (props.agents.length === 0) {
       return (
         <Box>
-          <Text dimColor>
-            No scheduled agents. Use /agents-platform create &lt;cron&gt; &lt;prompt&gt; to create one.
-          </Text>
+          <Text dimColor>{t('No scheduled agents. Use /agents-platform create <cron> <prompt> to create one.')}</Text>
         </Box>
       );
     }
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Scheduled Agents ({props.agents.length})</Text>
+          <Text bold>{tf('Scheduled Agents ({count})', { count: props.agents.length })}</Text>
         </Box>
         {props.agents.map(agent => (
           <AgentRow key={agent.id} agent={agent} />
@@ -57,13 +56,13 @@ export function AgentsPlatformView(props: Props): React.ReactNode {
       <Box flexDirection="column">
         <Box>
           <Text bold color={'success' as keyof Theme}>
-            Agent created
+            {t('Agent created')}
           </Text>
         </Box>
-        <Text>ID: {props.agent.id}</Text>
-        <Text>Schedule: {schedule}</Text>
-        <Text>Prompt: {props.agent.prompt}</Text>
-        <Text dimColor>Status: {props.agent.status}</Text>
+        <Text>{tf('ID: {id}', { id: props.agent.id })}</Text>
+        <Text>{tf('Schedule: {schedule}', { schedule })}</Text>
+        <Text>{tf('Prompt: {prompt}', { prompt: props.agent.prompt })}</Text>
+        <Text dimColor>{tf('Status: {status}', { status: props.agent.status })}</Text>
       </Box>
     );
   }
@@ -71,7 +70,7 @@ export function AgentsPlatformView(props: Props): React.ReactNode {
   if (props.mode === 'deleted') {
     return (
       <Box>
-        <Text color={'success' as keyof Theme}>Agent {props.id} deleted.</Text>
+        <Text color={'success' as keyof Theme}>{tf('Agent {id} deleted.', { id: props.id })}</Text>
       </Box>
     );
   }
@@ -80,9 +79,9 @@ export function AgentsPlatformView(props: Props): React.ReactNode {
     return (
       <Box flexDirection="column">
         <Box>
-          <Text color={'success' as keyof Theme}>Agent {props.id} triggered.</Text>
+          <Text color={'success' as keyof Theme}>{tf('Agent {id} triggered.', { id: props.id })}</Text>
         </Box>
-        <Text dimColor>Run ID: {props.runId}</Text>
+        <Text dimColor>{tf('Run ID: {runId}', { runId: props.runId })}</Text>
       </Box>
     );
   }

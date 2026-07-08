@@ -2018,10 +2018,13 @@ function PromptInput({
       const terminalName = getNativeCSIuTerminalDisplayName();
       const jsx = terminalName ? (
         <Text dimColor>
-          To enable {shortcut}, set <Text bold>Option as Meta</Text> in {terminalName} preferences (⌘,)
+          {tf('To enable {shortcut}, set Option as Meta in {terminalName} preferences (⌘,)', {
+            shortcut,
+            terminalName,
+          })}
         </Text>
       ) : (
-        <Text dimColor>To enable {shortcut}, run /terminal-setup</Text>
+        <Text dimColor>{tf('To enable {shortcut}, run /terminal-setup', { shortcut })}</Text>
       );
       addNotification({
         key: 'option-meta-hint',

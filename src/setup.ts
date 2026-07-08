@@ -1,5 +1,6 @@
 /* eslint-disable custom-rules/no-process-exit */
 
+import { t, tf } from './i18n/t.js'
 import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import {
@@ -72,7 +73,7 @@ export async function setup(
   if (!nodeVersion || parseInt(nodeVersion, 10) < 18) {
     console.error(
       chalk.bold.red(
-        'Error: Claude Code requires Node.js version 18 or higher.',
+        t('Error: Claude Code requires Node.js version 18 or higher.'),
       ),
     )
     process.exit(1)
@@ -103,7 +104,9 @@ export async function setup(
         logError(error)
         console.error(
           chalk.red(
-            `Error: Failed to start messaging socket (UDS_INBOX): ${errorMessage(error)}`,
+            tf('Error: Failed to start messaging socket (UDS_INBOX): {error}', {
+              error: errorMessage(error),
+            }),
           ),
         )
         process.exit(1)
@@ -129,13 +132,18 @@ export async function setup(
       if (restoredIterm2Backup.status === 'restored') {
         console.log(
           chalk.yellow(
-            'Detected an interrupted iTerm2 setup. Your original settings have been restored. You may need to restart iTerm2 for the changes to take effect.',
+            t(
+              'Detected an interrupted iTerm2 setup. Your original settings have been restored. You may need to restart iTerm2 for the changes to take effect.',
+            ),
           ),
         )
       } else if (restoredIterm2Backup.status === 'failed') {
         console.error(
           chalk.red(
-            `Failed to restore iTerm2 settings. Please manually restore your original settings with: defaults import com.googlecode.iterm2 ${restoredIterm2Backup.backupPath}.`,
+            tf(
+              'Failed to restore iTerm2 settings. Please manually restore your original settings with: defaults import com.googlecode.iterm2 {backupPath}.',
+              { backupPath: restoredIterm2Backup.backupPath },
+            ),
           ),
         )
       }
@@ -147,7 +155,9 @@ export async function setup(
       if (restoredTerminalBackup.status === 'restored') {
         console.log(
           chalk.yellow(
-            'Detected an interrupted Terminal.app setup. Your original settings have been restored. You may need to restart Terminal.app for the changes to take effect.',
+            t(
+              'Detected an interrupted Terminal.app setup. Your original settings have been restored. You may need to restart Terminal.app for the changes to take effect.',
+            ),
           ),
         )
       } else if (restoredTerminalBackup.status === 'failed') {
@@ -260,13 +270,18 @@ export async function setup(
       if (tmuxResult.created) {
         console.log(
           chalk.green(
-            `Created tmux session: ${chalk.bold(tmuxSessionName)}\nTo attach: ${chalk.bold(`tmux attach -t ${tmuxSessionName}`)}`,
+            tf('Created tmux session: {sessionName}\nTo attach: {attachCmd}', {
+              sessionName: chalk.bold(tmuxSessionName),
+              attachCmd: chalk.bold(`tmux attach -t ${tmuxSessionName}`),
+            }),
           ),
         )
       } else {
         console.error(
           chalk.yellow(
-            `Warning: Failed to create tmux session: ${tmuxResult.error}`,
+            tf('Warning: Failed to create tmux session: {error}', {
+              error: tmuxResult.error,
+            }),
           ),
         )
       }
@@ -417,12 +432,16 @@ export async function setup(
       if (process.stdin.isTTY) {
         console.error(
           chalk.bold.red(
-            'WARNING: Running as root/sudo with bypass permissions mode is dangerous.',
+            t(
+              'WARNING: Running as root/sudo with bypass permissions mode is dangerous.',
+            ),
           ),
         )
         console.error(
           chalk.yellow(
-            'Bypass mode skips ALL permission checks. Combined with root, any command (rm -rf /, chmod, dd) executes without review.',
+            t(
+              'Bypass mode skips ALL permission checks. Combined with root, any command (rm -rf /, chmod, dd) executes without review.',
+            ),
           ),
         )
         const readline = await import('readline')
@@ -431,16 +450,18 @@ export async function setup(
           output: process.stdout,
         })
         const answer = await new Promise<string>(resolve => {
-          rl.question('\nI understand the risks. Continue? [y/N] ', resolve)
+          rl.question(t('\nI understand the risks. Continue? [y/N] '), resolve)
         })
         rl.close()
         if (answer.trim().toLowerCase() !== 'y') {
-          console.error('Aborted.')
+          console.error(t('Aborted.'))
           process.exit(1)
         }
       } else {
         console.error(
-          `--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons`,
+          t(
+            '--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons',
+          ),
         )
         process.exit(1)
       }
@@ -466,7 +487,10 @@ export async function setup(
       const isSandboxed = isDocker || isBubblewrap || isSandbox
       if (!isSandboxed || hasInternet) {
         console.error(
-          `--dangerously-skip-permissions can only be used in Docker/sandbox containers with no internet access but got Docker: ${isDocker}, Bubblewrap: ${isBubblewrap}, IS_SANDBOX: ${isSandbox}, hasInternet: ${hasInternet}`,
+          tf(
+            '--dangerously-skip-permissions can only be used in Docker/sandbox containers with no internet access but got Docker: {isDocker}, Bubblewrap: {isBubblewrap}, IS_SANDBOX: {isSandbox}, hasInternet: {hasInternet}',
+            { isDocker, isBubblewrap, isSandbox, hasInternet },
+          ),
         )
         process.exit(1)
       }

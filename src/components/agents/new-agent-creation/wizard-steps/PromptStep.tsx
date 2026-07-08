@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useState } from 'react';
 import { Box, Byline, KeyboardShortcutHint, Text } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { editPromptInEditor } from '../../../../utils/promptEditor.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -32,7 +33,7 @@ export function PromptStep(): ReactNode {
   const handleSubmit = (): void => {
     const trimmedPrompt = systemPrompt.trim();
     if (!trimmedPrompt) {
-      setError('System prompt is required');
+      setError(t('System prompt is required'));
       return;
     }
 
@@ -43,7 +44,7 @@ export function PromptStep(): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="System prompt"
+      subtitle={t('System prompt')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="Type" action="enter text" />
@@ -59,15 +60,15 @@ export function PromptStep(): ReactNode {
       }
     >
       <Box flexDirection="column">
-        <Text>Enter the system prompt for your agent:</Text>
-        <Text dimColor>Be comprehensive for best results</Text>
+        <Text>{t('Enter the system prompt for your agent:')}</Text>
+        <Text dimColor>{t('Be comprehensive for best results')}</Text>
 
         <Box marginTop={1}>
           <TextInput
             value={systemPrompt}
             onChange={setSystemPrompt}
             onSubmit={handleSubmit}
-            placeholder="You are a helpful code reviewer who..."
+            placeholder={t('You are a helpful code reviewer who...')}
             columns={80}
             cursorOffset={cursorOffset}
             onChangeCursorOffset={setCursorOffset}

@@ -87,10 +87,10 @@ function handleList(): void {
     }) + '\n',
   )
 
-  for (const t of templates) {
-    console.log(`  ${t.name}`)
-    console.log(`    ${t.description}`)
-    console.log(`    Path: ${t.filePath}`)
+  for (const tmpl of templates) {
+    console.log(`  ${tmpl.name}`)
+    console.log(`    ${tmpl.description}`)
+    console.log(`${t('    Path:')} ${tmpl.filePath}`)
     console.log()
   }
 }

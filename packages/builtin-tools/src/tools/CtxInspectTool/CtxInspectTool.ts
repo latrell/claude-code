@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import type { ToolResultBlockParam } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
@@ -45,12 +46,12 @@ export const CtxInspectTool = buildTool({
   },
 
   async description() {
-    return 'Inspect the current context window contents and token usage'
+    return t('Inspect the current context window contents and token usage')
   },
   async prompt() {
-    return `Inspect the current conversation context. Shows token usage, message count, and a breakdown of what's consuming context space.
+    return t(`Inspect the current conversation context. Shows token usage, message count, and a breakdown of what's consuming context space.
 
-Use this to understand your context budget before deciding whether to snip old messages or adjust your approach.`
+Use this to understand your context budget before deciding whether to snip old messages or adjust your approach.`)
   },
 
   isConcurrencySafe() {
@@ -65,7 +66,7 @@ Use this to understand your context budget before deciding whether to snip old m
   },
 
   renderToolUseMessage() {
-    return 'Context Inspect'
+    return t('Context Inspect')
   },
 
   mapToolResultToToolResultBlockParam(
@@ -75,7 +76,14 @@ Use this to understand your context budget before deciding whether to snip old m
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `Context: ${content.total_tokens} tokens, ${content.message_count} messages\n${content.summary}`,
+      content: tf(
+        'Context: {total_tokens} tokens, {message_count} messages\n{summary}',
+        {
+          total_tokens: content.total_tokens,
+          message_count: content.message_count,
+          summary: content.summary,
+        },
+      ),
     }
   },
 
@@ -97,16 +105,31 @@ Use this to understand your context budget before deciding whether to snip old m
       !model.startsWith('gemini/')
 
     const summaryParts = [
-      focused ? `Focus: ${focused}` : 'Overall context summary',
-      `Model context: ${model}`,
-      `Prompt caching: ${promptCachingEnabled ? 'enabled' : 'disabled'}`,
-      `Session memory: ${sessionMemoryEnabled ? 'enabled' : 'disabled'}`,
-      `Context collapse: ${collapseEnabled ? 'enabled' : 'disabled'}`,
+      focused
+        ? tf('Focus: {focused}', { focused })
+        : t('Overall context summary'),
+      tf('Model context: {model}', { model }),
+      tf('Prompt caching: {status}', {
+        status: promptCachingEnabled ? t('enabled') : t('disabled'),
+      }),
+      tf('Session memory: {status}', {
+        status: sessionMemoryEnabled ? t('enabled') : t('disabled'),
+      }),
+      tf('Context collapse: {status}', {
+        status: collapseEnabled ? t('enabled') : t('disabled'),
+      }),
     ]
 
     if (collapseEnabled) {
       summaryParts.push(
-        `Collapse spans: ${collapseStats.collapsedSpans} committed, ${collapseStats.stagedSpans} staged, ${collapseStats.collapsedMessages} messages summarized`,
+        tf(
+          'Collapse spans: {collapsedSpans} committed, {stagedSpans} staged, {collapsedMessages} messages summarized',
+          {
+            collapsedSpans: collapseStats.collapsedSpans,
+            stagedSpans: collapseStats.stagedSpans,
+            collapsedMessages: collapseStats.collapsedMessages,
+          },
+        ),
       )
     }
 

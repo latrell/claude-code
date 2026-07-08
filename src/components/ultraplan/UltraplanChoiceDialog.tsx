@@ -1,3 +1,4 @@
+import { t } from '../../i18n/t.js';
 import * as React from 'react';
 import { join } from 'path';
 import { stat, writeFile } from 'fs/promises';

@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Box, Byline, KeyboardShortcutHint } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Select } from '../../../CustomSelect/select.js';
 import { useWizard } from '../../../wizard/index.js';
@@ -11,18 +12,18 @@ export function MethodStep(): ReactNode {
 
   const methodOptions = [
     {
-      label: 'Generate with Claude (recommended)',
+      label: t('Generate with Claude (recommended)'),
       value: 'generate',
     },
     {
-      label: 'Manual configuration',
+      label: t('Manual configuration'),
       value: 'manual',
     },
   ];
 
   return (
     <WizardDialogLayout
-      subtitle="Creation method"
+      subtitle={t('Creation method')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

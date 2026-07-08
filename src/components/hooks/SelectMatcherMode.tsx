@@ -62,8 +62,8 @@ export function SelectMatcherMode({
         inputGuide={() => <Text>{t('Esc to go back')}</Text>}
       >
         <Box flexDirection="column" gap={1}>
-          <Text dimColor>No hooks configured for this event.</Text>
-          <Text dimColor>To add hooks, edit settings.json directly or ask Claude.</Text>
+          <Text dimColor>{t('No hooks configured for this event.')}</Text>
+          <Text dimColor>{t('To add hooks, edit settings.json directly or ask Claude.')}</Text>
         </Box>
       </Dialog>
     );

@@ -506,13 +506,13 @@ export function MessageSelector({
                                       <DiffStatsText diffStats={metadata} />
                                     </>
                                   ) : (
-                                    <>No code changes</>
+                                    <>{t('No code changes')}</>
                                   )}
                                 </Text>
                               </>
                             ) : (
                               <Text dimColor color="warning">
-                                {figures.warning} No code restore
+                                {figures.warning} {t('No code restore')}
                               </Text>
                             )}
                           </Box>
@@ -529,7 +529,10 @@ export function MessageSelector({
             {exitState.pending ? (
               <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : (
-              <>{!error && hasMessagesToSelect && 'Enter to continue · '}Esc to exit</>
+              <>
+                {!error && hasMessagesToSelect && t('Enter to continue · ')}
+                {t('Esc to exit')}
+              </>
             )}
           </Text>
         )}
@@ -541,15 +544,17 @@ export function MessageSelector({
 function getRestoreOptionConversationText(option: RestoreOption): string {
   switch (option) {
     case 'summarize':
-      return 'Messages after this point will be summarized.';
+      return t('Messages after this point will be summarized.');
     case 'summarize_up_to':
-      return 'Preceding messages will be summarized. This and subsequent messages will remain unchanged — you will stay at the end of the conversation.';
+      return t(
+        'Preceding messages will be summarized. This and subsequent messages will remain unchanged — you will stay at the end of the conversation.',
+      );
     case 'both':
     case 'conversation':
-      return 'The conversation will be forked.';
+      return t('The conversation will be forked.');
     case 'code':
     case 'nevermind':
-      return 'The conversation will be unchanged.';
+      return t('The conversation will be unchanged.');
   }
 }
 
@@ -571,7 +576,7 @@ function RestoreOptionDescription({
         (showCodeRestore ? (
           <RestoreCodeConfirmation diffStatsForRestore={diffStatsForRestore} />
         ) : (
-          <Text dimColor>The code will be unchanged.</Text>
+          <Text dimColor>{t('The code will be unchanged.')}</Text>
         ))}
     </Box>
   );
@@ -586,7 +591,7 @@ function RestoreCodeConfirmation({
     return undefined;
   }
   if (!diffStatsForRestore.filesChanged || !diffStatsForRestore.filesChanged[0]) {
-    return <Text dimColor>The code has not changed (nothing will be restored).</Text>;
+    return <Text dimColor>{t('The code has not changed (nothing will be restored).')}</Text>;
   }
 
   const numFilesChanged = diffStatsForRestore.filesChanged.length;

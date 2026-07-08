@@ -27,6 +27,7 @@ import {
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
+import { t } from '../../../i18n/t.js'
 import {
   withCompatRetry,
   hasExhaustedCompatRetries,
@@ -100,7 +101,7 @@ export async function* queryModelCursor(
     const reasoningEffort = resolveReasoningEffort(providerEnv)
 
     if (cursorMessages.length === 0) {
-      throw new Error('No messages to send to Cursor after conversion.')
+      throw new Error(t('No messages to send to Cursor after conversion.'))
     }
 
     logForDebugging(

@@ -3,6 +3,7 @@
  * critique user-written rules. Dynamically imported when `claude auto-mode ...` runs.
  */
 
+import { t } from '../../i18n/t.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   getMainLoopModel,
@@ -83,9 +84,11 @@ export async function autoModeCritiqueHandler(options: {
 
   if (!hasCustomRules) {
     process.stdout.write(
-      'No custom auto mode rules found.\n\n' +
-        'Add rules to your settings file under autoMode.{allow, soft_deny, environment}.\n' +
-        'Run `claude auto-mode defaults` to see the default rules for reference.\n',
+      t(
+        'No custom auto mode rules found.\n\n' +
+          'Add rules to your settings file under autoMode.{allow, soft_deny, environment}.\n' +
+          'Run `claude auto-mode defaults` to see the default rules for reference.\n',
+      ),
     )
     return
   }
@@ -112,7 +115,7 @@ export async function autoModeCritiqueHandler(options: {
       defaults.environment,
     )
 
-  process.stdout.write('Analyzing your auto mode rules…\n\n')
+  process.stdout.write(t('Analyzing your auto mode rules…\n\n'))
 
   let response
   try {
@@ -148,7 +151,7 @@ export async function autoModeCritiqueHandler(options: {
   if (textBlock?.type === 'text') {
     process.stdout.write(textBlock.text + '\n')
   } else {
-    process.stdout.write('No critique was generated. Please try again.\n')
+    process.stdout.write(t('No critique was generated. Please try again.\n'))
   }
 }
 

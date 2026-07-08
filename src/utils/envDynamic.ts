@@ -139,10 +139,38 @@ export async function initJetBrainsDetection(): Promise<void> {
   }
 }
 
-// Combined export that includes all env properties plus dynamic functions
+// Combined export that includes all env properties plus dynamic functions.
+// Uses getters and lazy wrappers to avoid the circular dependency between env.ts
+// and envDynamic.ts that manifests in isolated subprocess environments.
+// NOTE: Must NOT spread getter objects — spreading triggers getters eagerly.
 export const envDynamic = {
-  ...env, // Include all properties from env
-  terminal: getTerminalWithJetBrainsDetection(),
+  get platform() {
+    return env.platform
+  },
+  get isCI() {
+    return env.isCI
+  },
+  get isSSH() {
+    return env.isSSH
+  },
+  get isRunningWithBun() {
+    return env.isRunningWithBun
+  },
+  get isWslEnvironment() {
+    return env.isWslEnvironment
+  },
+  get isNpmFromWindowsPath() {
+    return env.isNpmFromWindowsPath
+  },
+  getPackageManagers: ((...args: Parameters<typeof env.getPackageManagers>) =>
+    env.getPackageManagers(...args)) as typeof env.getPackageManagers,
+  getRuntimes: ((...args: Parameters<typeof env.getRuntimes>) =>
+    env.getRuntimes(...args)) as typeof env.getRuntimes,
+  hasInternetAccess: ((...args: Parameters<typeof env.hasInternetAccess>) =>
+    env.hasInternetAccess(...args)) as typeof env.hasInternetAccess,
+  get terminal() {
+    return getTerminalWithJetBrainsDetection()
+  },
   getIsDocker,
   getIsBubblewrapSandbox,
   isMuslEnvironment,

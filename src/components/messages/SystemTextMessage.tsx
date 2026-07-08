@@ -102,7 +102,7 @@ export function SystemTextMessage({ message, addMargin, verbose, isTranscriptMod
     return (
       <Box marginTop={addMargin ? 1 : 0} backgroundColor={bg} width="100%">
         <Text dimColor>{TEARDROP_ASTERISK} </Text>
-        <Text>Allowed </Text>
+        <Text>{t('Allowed ')}</Text>
         <Text bold>{(message.commands as string[]).join(', ')}</Text>
       </Box>
     );
@@ -186,7 +186,12 @@ function StopHookSummaryMessage({
     return (
       <Box flexDirection="column" width="100%">
         <Text dimColor>
-          {'  ⎿  '}Ran {hookCount} {message.hookLabel} {hookCount === 1 ? 'hook' : 'hooks'}
+          {'  ⎿  '}
+          {tf('Ran {count} {label} {hooks}', {
+            count: hookCount,
+            label: message.hookLabel,
+            hooks: hookCount === 1 ? t('hook') : t('hooks'),
+          })}
           {totalStr}
         </Text>
         {isTranscriptMode &&
@@ -212,7 +217,8 @@ function StopHookSummaryMessage({
       </Box>
       <Box flexDirection="column" width={columns - 10}>
         <Text>
-          Ran <Text bold>{hookCount}</Text> {message.hookLabel ?? 'stop'} {hookCount === 1 ? 'hook' : 'hooks'}
+          {t('Ran')} <Text bold>{hookCount}</Text> {message.hookLabel ?? t('stop')}{' '}
+          {hookCount === 1 ? t('hook') : t('hooks')}
           {totalStr}
           {!verbose && hookInfos.length > 0 && (
             <>
@@ -244,7 +250,7 @@ function StopHookSummaryMessage({
           hookErrors.map((err, idx) => (
             <Text key={idx}>
               <Text dimColor>⎿ &nbsp;</Text>
-              {message.hookLabel ?? 'Stop'} hook error: {err}
+              {message.hookLabel ?? t('Stop')} {t('hook error:')} {err}
             </Text>
           ))}
       </Box>
@@ -351,7 +357,7 @@ function MemorySavedMessage({
   const team = feature('TEAMMEM') ? teamMemSaved!.teamMemSavedPart(message) : null;
   const privateCount = writtenPaths.length - (team?.count ?? 0);
   const parts = [
-    privateCount > 0 ? `${privateCount} ${privateCount === 1 ? 'memory' : 'memories'}` : null,
+    privateCount > 0 ? `${privateCount} ${privateCount === 1 ? t('memory') : t('memories')}` : null,
     team?.segment as React.ReactNode,
   ].filter(Boolean);
   return (
@@ -361,7 +367,7 @@ function MemorySavedMessage({
           <Text dimColor>{BLACK_CIRCLE}</Text>
         </Box>
         <Text>
-          {(message.verb as string) ?? 'Saved'} {parts.join(' \u00B7 ')}
+          {t((message.verb as string) ?? 'Saved')} {parts.join(' \u00B7 ')}
         </Text>
       </Box>
       {writtenPaths.map(p => (
@@ -417,7 +423,8 @@ function BridgeStatusMessage({
       <Box minWidth={2} />
       <Box flexDirection="column">
         <Text>
-          <ThemedText color="suggestion">/remote-control</ThemedText> is active. Code in CLI or at
+          <ThemedText color="suggestion">/remote-control</ThemedText>
+          {t(' is active. Code in CLI or at')}
         </Text>
         <Link url={url}>{url}</Link>
         {upgradeNudge && <Text dimColor>⎿ {upgradeNudge}</Text>}

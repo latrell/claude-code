@@ -9,7 +9,7 @@ import {
 } from '../../commands.js';
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { estimateSkillFrontmatterTokens } from '../../skills/loadSkillsDir.js';
 import { formatTokens } from '../../utils/format.js';
 import { getSettingSourceName, type SettingSource } from '../../utils/settings/constants.js';
@@ -102,7 +102,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
 
   if (skills.length === 0) {
     return (
-      <Dialog title="Skills" subtitle="No skills found" onCancel={handleCancel} hideInputGuide>
+      <Dialog title={t('Skills')} subtitle={t('No skills found')} onCancel={handleCancel} hideInputGuide>
         <Text dimColor>Create skills in .claude/skills/ or ~/.claude/skills/</Text>
         <Text dimColor italic>
           <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" />
@@ -158,7 +158,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
   return (
     <FuzzyPicker
       title="Skills"
-      placeholder="Type to filter skills…"
+      placeholder={t('Type to filter skills\u2026')}
       items={orderedFilteredSkills}
       getKey={s => `${s.name}-${s.source}`}
       visibleCount={12}
@@ -168,7 +168,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
         onExit(`/${getCommandName(skill)}`, { display: 'user' });
       }}
       onCancel={handleCancel}
-      emptyMessage={q => (q.trim() ? `No skills matching "${q.trim()}"` : 'No skills found')}
+      emptyMessage={q => (q.trim() ? tf('No skills matching "{query}"', { query: q.trim() }) : t('No skills found'))}
       matchLabel={subtitle}
       selectAction="invoke skill"
       renderItem={(skill, isFocused) => renderSkillItem(skill, isFocused)}

@@ -7,7 +7,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { countCharInString } from '../utils/stringUtils.js';
 import { MessageResponse } from './MessageResponse.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 const MAX_RENDERED_LINES = 10;
 
@@ -51,12 +51,13 @@ export function FallbackToolUseErrorMessage({ result, verbose }: Props): React.R
           // rendering bug
           <Box>
             <Text dimColor>
-              … +{plusLines} {plusLines === 1 ? 'line' : 'lines'} (
+              {tf('… +{count} {label} ({shortcut}', {
+                count: plusLines,
+                label: plusLines === 1 ? t('line') : t('lines'),
+                shortcut: transcriptShortcut,
+              })}
             </Text>
-            <Text dimColor bold>
-              {transcriptShortcut}
-            </Text>
-            <Text dimColor>to see all)</Text>
+            <Text dimColor>{t('to see all)')}</Text>
           </Box>
         )}
       </Box>

@@ -6,6 +6,7 @@ import type { SystemAPIErrorMessage } from 'src/types/message.js';
 import { useInterval } from 'usehooks-ts';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { t, tf } from '../../i18n/t.js';
 
 const MAX_API_ERROR_CHARS = 1000;
 
@@ -45,9 +46,15 @@ export function SystemAPIErrorMessage({
         <Text color="error">{truncated ? formatted.slice(0, MAX_API_ERROR_CHARS) + '…' : formatted}</Text>
         {truncated && <CtrlOToExpand />}
         <Text dimColor>
-          Retrying in {retryInSecondsLive} {retryInSecondsLive === 1 ? 'second' : 'seconds'}… (attempt {_retryAttempt}/
-          {_maxRetries})
-          {process.env.API_TIMEOUT_MS ? ` · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it` : ''}
+          {tf('Retrying in {seconds} {secondsLabel}… (attempt {attempt}/{maxRetries})', {
+            seconds: retryInSecondsLive,
+            secondsLabel: retryInSecondsLive === 1 ? t('second') : t('seconds'),
+            attempt: _retryAttempt,
+            maxRetries: _maxRetries,
+          })}
+          {process.env.API_TIMEOUT_MS
+            ? tf(' · API_TIMEOUT_MS={timeout}ms, try increasing it', { timeout: process.env.API_TIMEOUT_MS })
+            : ''}
         </Text>
       </Box>
     </MessageResponse>

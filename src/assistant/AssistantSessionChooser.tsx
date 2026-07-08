@@ -6,6 +6,7 @@ import { ListItem } from '../components/design-system/ListItem.js';
 import { useRegisterOverlay } from '../context/overlayContext.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import type { AssistantSession } from './sessionDiscovery.js';
+import { t, tf } from '../i18n/t.js';
 
 interface Props {
   sessions: AssistantSession[];
@@ -34,9 +35,9 @@ export function AssistantSessionChooser({ sessions, onSelect, onCancel }: Props)
   );
 
   return (
-    <Dialog title="Select Assistant Session" onCancel={onCancel} hideInputGuide>
+    <Dialog title={t('Select Assistant Session')} onCancel={onCancel} hideInputGuide>
       <Box flexDirection="column" gap={1}>
-        <Text>Multiple sessions found. Select one to attach:</Text>
+        <Text>{t('Multiple sessions found. Select one to attach:')}</Text>
         <Box flexDirection="column">
           {sessions.map((s, i) => (
             <ListItem key={s.id} isFocused={focusIndex === i}>
@@ -47,7 +48,7 @@ export function AssistantSessionChooser({ sessions, onSelect, onCancel }: Props)
             </ListItem>
           ))}
         </Box>
-        <Text dimColor>↑↓ navigate · Enter select · Esc cancel</Text>
+        <Text dimColor>{t('↑↓ navigate · Enter select · Esc cancel')}</Text>
       </Box>
     </Dialog>
   );

@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Box, Byline, KeyboardShortcutHint } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import {
@@ -29,21 +30,21 @@ export function MemoryStep(): ReactNode {
   const memoryOptions: MemoryOption[] = isUserScope
     ? [
         {
-          label: 'User scope (~/.claude/agent-memory/) (Recommended)',
+          label: t('User scope (~/.claude/agent-memory/) (Recommended)'),
           value: 'user',
         },
-        { label: 'None (no persistent memory)', value: 'none' },
-        { label: 'Project scope (.claude/agent-memory/)', value: 'project' },
-        { label: 'Local scope (.claude/agent-memory-local/)', value: 'local' },
+        { label: t('None (no persistent memory)'), value: 'none' },
+        { label: t('Project scope (.claude/agent-memory/)'), value: 'project' },
+        { label: t('Local scope (.claude/agent-memory-local/)'), value: 'local' },
       ]
     : [
         {
-          label: 'Project scope (.claude/agent-memory/) (Recommended)',
+          label: t('Project scope (.claude/agent-memory/) (Recommended)'),
           value: 'project',
         },
-        { label: 'None (no persistent memory)', value: 'none' },
-        { label: 'User scope (~/.claude/agent-memory/)', value: 'user' },
-        { label: 'Local scope (.claude/agent-memory-local/)', value: 'local' },
+        { label: t('None (no persistent memory)'), value: 'none' },
+        { label: t('User scope (~/.claude/agent-memory/)'), value: 'user' },
+        { label: t('Local scope (.claude/agent-memory-local/)'), value: 'local' },
       ];
 
   const handleSelect = (value: string): void => {
@@ -69,7 +70,7 @@ export function MemoryStep(): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="Configure agent memory"
+      subtitle={t('Configure agent memory')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="↑↓" action="navigate" />

@@ -98,7 +98,11 @@ async function downloadMedia(
     writeFileSync(filePath, data)
     return { path: filePath, type: mediaType }
   } catch (error) {
-    process.stderr.write(`[weixin] Failed to download media: ${error}\n`)
+    process.stderr.write(
+      tf('[weixin] Failed to download media: {error}\n', {
+        error: String(error),
+      }),
+    )
     return null
   }
 }
@@ -153,7 +157,7 @@ export async function startPollLoop(params: {
   let cursor = loadCursor()
   let consecutiveErrors = 0
 
-  process.stderr.write('[weixin] Starting message poll loop...\n')
+  process.stderr.write(t('[weixin] Starting message poll loop...\n'))
 
   while (!abortSignal.aborted) {
     try {
@@ -161,7 +165,7 @@ export async function startPollLoop(params: {
 
       if (response.errcode === -14) {
         process.stderr.write(
-          '[weixin] Session expired (errcode -14). Pausing for 30s...\n',
+          t('[weixin] Session expired (errcode -14). Pausing for 30s...\n'),
         )
         await new Promise(resolve => setTimeout(resolve, 30_000))
         continue
@@ -200,12 +204,15 @@ export async function startPollLoop(params: {
 
       consecutiveErrors += 1
       process.stderr.write(
-        `[weixin] Poll error (${consecutiveErrors}): ${error instanceof Error ? error.message : String(error)}\n`,
+        tf('[weixin] Poll error ({count}): {msg}\n', {
+          count: consecutiveErrors,
+          msg: error instanceof Error ? error.message : String(error),
+        }),
       )
 
       if (consecutiveErrors >= 3) {
         process.stderr.write(
-          '[weixin] Too many consecutive errors, backing off 30s...\n',
+          t('[weixin] Too many consecutive errors, backing off 30s...\n'),
         )
         await new Promise(resolve => setTimeout(resolve, 30_000))
         consecutiveErrors = 0
@@ -215,7 +222,7 @@ export async function startPollLoop(params: {
     }
   }
 
-  process.stderr.write('[weixin] Poll loop stopped.\n')
+  process.stderr.write(t('[weixin] Poll loop stopped.\n'))
 }
 
 async function processMessage(
@@ -250,7 +257,11 @@ async function processMessage(
         contextToken: msg.context_token || '',
       })
     } catch (error) {
-      process.stderr.write(`[weixin] Failed to send pairing code: ${error}\n`)
+      process.stderr.write(
+        tf('[weixin] Failed to send pairing code: {error}\n', {
+          error: String(error),
+        }),
+      )
     }
     return
   }

@@ -5,6 +5,7 @@ import type { UUID } from 'crypto';
 import type { RefObject } from 'react';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { t, tf } from '../i18n/t.js';
 import { every } from 'src/utils/set.js';
 import { getIsRemoteMode } from '../bootstrap/state.js';
 import type { Command } from '../commands.js';
@@ -837,7 +838,7 @@ const MessagesImpl = ({
       return [
         <Box key="unseen-divider" marginTop={1}>
           <Divider
-            title={`${unseenDivider.count} new ${plural(unseenDivider.count, 'message')}`}
+            title={tf('{count} new messages', { count: unseenDivider.count })}
             width={columns}
             color="inactive"
           />
@@ -898,7 +899,10 @@ const MessagesImpl = ({
       {/* Truncation indicator */}
       {hasTruncatedMessages && (
         <Divider
-          title={`${toggleShowAllShortcut} to show ${chalk.bold(hiddenMessageCount)} previous messages`}
+          title={tf('{shortcut} to show {count} previous messages', {
+            shortcut: toggleShowAllShortcut,
+            count: chalk.bold(hiddenMessageCount),
+          })}
           width={columns}
         />
       )}
@@ -912,7 +916,10 @@ const MessagesImpl = ({
         // nothing is actually "hidden" to restore.
         !disableRenderCap && (
           <Divider
-            title={`${toggleShowAllShortcut} to hide ${chalk.bold(hiddenMessageCount)} previous messages`}
+            title={tf('{shortcut} to hide {count} previous messages', {
+              shortcut: toggleShowAllShortcut,
+              count: chalk.bold(hiddenMessageCount),
+            })}
             width={columns}
           />
         )}

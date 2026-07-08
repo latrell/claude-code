@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { ProcessManager } from './manager.js'
 import { MANAGER_HTML } from './html.js'
+import { t } from '../../../../src/i18n/t.js'
 
 function logReq(method: string, path: string, status?: number) {
   const ts = new Date().toISOString()
@@ -28,11 +29,11 @@ export function createApp(manager: ProcessManager): Hono {
       body = await c.req.json<{ group?: string; command?: string }>()
     } catch {
       logReq('POST', '/api/instances', 400)
-      return c.json({ error: 'invalid JSON body' }, 400)
+      return c.json({ error: t('invalid JSON body') }, 400)
     }
     if (!body.group?.trim() || !body.command?.trim()) {
       logReq('POST', '/api/instances', 400)
-      return c.json({ error: 'group and command are required' }, 400)
+      return c.json({ error: t('group and command are required') }, 400)
     }
     const instance = manager.create(body.group.trim(), body.command.trim())
     logReq('POST', `/api/instances group=${body.group}`, 201)
@@ -55,11 +56,11 @@ export function createApp(manager: ProcessManager): Hono {
     const inst = manager.get(id)
     if (!inst) {
       logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 404)
-      return c.json({ error: 'not found' }, 404)
+      return c.json({ error: t('not found') }, 404)
     }
     if (inst.status !== 'running') {
       logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 400)
-      return c.json({ error: 'not running' }, 400)
+      return c.json({ error: t('not running') }, 400)
     }
     manager.stop(inst.id)
     logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 200)
@@ -71,11 +72,11 @@ export function createApp(manager: ProcessManager): Hono {
     const inst = manager.get(id)
     if (!inst) {
       logReq('DELETE', `/api/instances/${id.slice(0, 8)}`, 404)
-      return c.json({ error: 'not found' }, 404)
+      return c.json({ error: t('not found') }, 404)
     }
     if (inst.status === 'running') {
       logReq('DELETE', `/api/instances/${id.slice(0, 8)}`, 400)
-      return c.json({ error: 'still running' }, 400)
+      return c.json({ error: t('still running') }, 400)
     }
     manager.remove(inst.id)
     logReq('DELETE', `/api/instances/${id.slice(0, 8)}`, 200)
@@ -87,7 +88,7 @@ export function createApp(manager: ProcessManager): Hono {
     const inst = manager.get(id)
     if (!inst) {
       logReq('GET', `/api/instances/${id.slice(0, 8)}/logs`, 404)
-      return c.json({ error: 'not found' }, 404)
+      return c.json({ error: t('not found') }, 404)
     }
     logReq('GET', `/api/instances/${id.slice(0, 8)}/logs SSE`)
 
@@ -146,7 +147,7 @@ export function createApp(manager: ProcessManager): Hono {
   // Catch-all: log unmatched routes for debugging
   app.all('*', c => {
     logReq(c.req.method, c.req.path, 404)
-    return c.json({ error: 'not found', path: c.req.path }, 404)
+    return c.json({ error: t('not found'), path: c.req.path }, 404)
   })
 
   return app

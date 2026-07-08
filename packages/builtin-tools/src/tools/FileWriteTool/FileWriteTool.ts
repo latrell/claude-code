@@ -1,4 +1,5 @@
 import { dirname, sep } from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
@@ -94,13 +95,13 @@ export const FileWriteTool = buildTool({
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
-    return 'Write a file to the local filesystem.'
+    return t('Write a file to the local filesystem.')
   },
   userFacingName,
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Writing ${summary}` : 'Writing file'
+    return summary ? tf('Writing {summary}', { summary }) : t('Writing file')
   },
   async prompt() {
     return getWriteToolDescription()
@@ -167,7 +168,7 @@ export const FileWriteTool = buildTool({
     if (denyRule !== null) {
       return {
         result: false,
-        message: '文件位于权限设置中拒绝访问的目录中。',
+        message: t('文件位于权限设置中拒绝访问的目录中。'),
         errorCode: 1,
       }
     }
@@ -200,8 +201,9 @@ export const FileWriteTool = buildTool({
       if (lastWriteTime > readTimestamp.timestamp) {
         return {
           result: false,
-          message:
+          message: t(
             '文件自读取以来已被修改（用户或 linter）。请在尝试写入前重新读取。',
+          ),
           errorCode: 3,
         }
       }
@@ -410,13 +412,15 @@ export const FileWriteTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: tf('File created successfully at: {filePath}', { filePath }),
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: tf('The file {filePath} has been updated successfully.', {
+            filePath,
+          }),
         }
     }
   },

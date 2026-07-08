@@ -2,6 +2,7 @@ import figures from 'figures';
 import React, { useState } from 'react';
 import type { KeyboardEvent } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 import {
   AGENT_COLOR_TO_THEME_COLOR,
   AGENT_COLORS,
@@ -49,7 +50,7 @@ export function ColorPicker({ agentName, currentColor = 'automatic', onConfirm }
               <Text color={isSelected ? 'suggestion' : undefined}>{isSelected ? figures.pointer : ' '}</Text>
 
               {option === 'automatic' ? (
-                <Text bold={isSelected}>Automatic color</Text>
+                <Text bold={isSelected}>{t('Automatic color')}</Text>
               ) : (
                 <Box gap={1}>
                   <Text backgroundColor={AGENT_COLOR_TO_THEME_COLOR[option]} color="inverseText">
@@ -64,7 +65,7 @@ export function ColorPicker({ agentName, currentColor = 'automatic', onConfirm }
       </Box>
 
       <Box marginTop={1}>
-        <Text>Preview: </Text>
+        <Text>{t('Preview: ')}</Text>
         {selectedValue === undefined || selectedValue === 'automatic' ? (
           <Text inverse bold>
             {' '}

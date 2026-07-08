@@ -16,6 +16,7 @@ import { MCPConnectionManager } from '../../services/mcp/MCPConnectionManager.js
 import { AppStateProvider } from '../../state/AppState.js';
 import { onChangeAppState } from '../../state/onChangeAppState.js';
 import { isAnthropicAuthEnabled } from '../../utils/auth.js';
+import { t } from '../../i18n/t.js';
 
 export async function setupTokenHandler(root: Root): Promise<void> {
   logEvent('tengu_setup_token_command', {});
@@ -31,10 +32,10 @@ export async function setupTokenHandler(root: Root): Promise<void> {
             {showAuthWarning && (
               <Box flexDirection="column">
                 <Text color="warning">
-                  Warning: You already have authentication configured via environment variable or API key helper.
+                  {t('Warning: You already have authentication configured via environment variable or API key helper.')}
                 </Text>
                 <Text color="warning">
-                  The setup-token command will create a new OAuth token which you can use instead.
+                  {t('The setup-token command will create a new OAuth token which you can use instead.')}
                 </Text>
               </Box>
             )}
@@ -43,7 +44,9 @@ export async function setupTokenHandler(root: Root): Promise<void> {
                 void resolve();
               }}
               mode="setup-token"
-              startingMessage="This will guide you through long-lived (1-year) auth token setup for your Claude account. Claude subscription required."
+              startingMessage={t(
+                'This will guide you through long-lived (1-year) auth token setup for your Claude account. Claude subscription required.',
+              )}
             />
           </Box>
         </KeybindingSetup>

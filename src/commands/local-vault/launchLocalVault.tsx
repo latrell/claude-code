@@ -8,7 +8,7 @@ import { LocalVaultView } from './LocalVaultView.js';
 import { parseLocalVaultArgs } from './parseArgs.js';
 import { launchCommand } from '../_shared/launchCommand.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 const USAGE = 'Usage: /local-vault list | set KEY VALUE | get KEY [--reveal] | delete KEY';
 
@@ -245,8 +245,8 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
   if (step.kind === 'menu') {
     return (
       <Dialog
-        title="Local Vault"
-        subtitle={`${VAULT_MENU.length} actions`}
+        title={t('Local Vault')}
+        subtitle={tf('{count} actions', { count: String(VAULT_MENU.length) })}
         onCancel={() => closeWith(t('Local vault panel dismissed'))}
         color="background"
         hideInputGuide
@@ -260,11 +260,11 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
           ))}
           {inFlight && (
             <Box marginTop={1}>
-              <Text dimColor>Working...</Text>
+              <Text dimColor>{t('Working...')}</Text>
             </Box>
           )}
           <Box marginTop={1}>
-            <Text dimColor>↑/↓ or 1-5 select · Enter run · Esc close</Text>
+            <Text dimColor>{t('↑/↓ or 1-5 select · Enter run · Esc close')}</Text>
           </Box>
         </Box>
       </Dialog>
@@ -273,13 +273,13 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
 
   if (step.kind === 'confirm-delete') {
     return (
-      <Dialog title="Confirm Delete" onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
+      <Dialog title={t('Confirm Delete')} onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
         <Box flexDirection="column">
-          <Text>Delete secret "{step.key}"? This cannot be undone.</Text>
+          <Text>{tf('Delete secret "{key}"? This cannot be undone.', { key: step.key })}</Text>
           <Box marginTop={1}>
-            <Text dimColor>y/Enter = delete · n/Esc = cancel</Text>
+            <Text dimColor>{t('y/Enter = delete · n/Esc = cancel')}</Text>
           </Box>
-          {inFlight && <Text dimColor>Deleting...</Text>}
+          {inFlight && <Text dimColor>{t('Deleting...')}</Text>}
         </Box>
       </Dialog>
     );
@@ -287,26 +287,32 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
 
   if (step.kind === 'confirm-overwrite') {
     return (
-      <Dialog title="Confirm Overwrite" onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
+      <Dialog
+        title={t('Confirm Overwrite')}
+        onCancel={() => transition({ kind: 'menu' })}
+        color="warning"
+        hideInputGuide
+      >
         <Box flexDirection="column">
-          <Text>Secret "{step.key}" already exists. Overwrite? Old value is lost.</Text>
+          <Text>{tf('Secret "{key}" already exists. Overwrite? Old value is lost.', { key: step.key })}</Text>
           <Box marginTop={1}>
-            <Text dimColor>y/Enter = overwrite · n/Esc = cancel</Text>
+            <Text dimColor>{t('y/Enter = overwrite · n/Esc = cancel')}</Text>
           </Box>
-          {inFlight && <Text dimColor>Storing...</Text>}
+          {inFlight && <Text dimColor>{t('Storing...')}</Text>}
         </Box>
       </Dialog>
     );
   }
 
   // collect-key / collect-value
-  const fieldLabel = step.kind === 'collect-key' ? 'KEY NAME' : 'SECRET VALUE';
-  const placeholder = step.kind === 'collect-key' ? 'e.g. github-token' : '(masked input — value never displayed)';
+  const fieldLabel = step.kind === 'collect-key' ? t('KEY NAME') : t('SECRET VALUE');
+  const placeholder =
+    step.kind === 'collect-key' ? t('e.g. github-token') : t('(masked input — value never displayed)');
   const onSubmit = step.kind === 'collect-key' ? handleKeySubmit : handleValueSubmit;
   const isMasked = step.kind === 'collect-value';
   return (
     <Dialog
-      title={`Local Vault · ${step.kind === 'collect-key' ? 'KEY' : 'VALUE'}`}
+      title={t('Local Vault · KEY / VALUE')}
       onCancel={() => transition({ kind: 'menu' })}
       color="background"
       hideInputGuide
@@ -334,16 +340,16 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
         </Box>
         {error !== null && (
           <Box marginTop={0}>
-            <Text color="warning">✗ {error}</Text>
+            <Text color="warning">{tf('✗ {msg}', { msg: error })}</Text>
           </Box>
         )}
         {inFlight && (
           <Box marginTop={0}>
-            <Text dimColor>Working...</Text>
+            <Text dimColor>{t('Working...')}</Text>
           </Box>
         )}
         <Box marginTop={1}>
-          <Text dimColor>Enter = next · Esc = back</Text>
+          <Text dimColor>{t('Enter = next · Esc = back')}</Text>
         </Box>
       </Box>
     </Dialog>

@@ -1,3 +1,4 @@
+import { t, tf } from '../../i18n/t.js';
 import figures from 'figures';
 import React, { useCallback, useState } from 'react';
 import { Dialog } from '@anthropic/ink';
@@ -166,12 +167,12 @@ export function PluginOptionsDialog({
 
       <Box flexDirection="column">
         <Text dimColor={true}>
-          Field {currentFieldIndex + 1} of {fields.length}
+          {tf('Field {current} of {total}', { current: String(currentFieldIndex + 1), total: String(fields.length) })}
         </Text>
         {currentFieldIndex < fields.length - 1 && (
-          <Text dimColor={true}>Tab: Next field · Enter: Save and continue</Text>
+          <Text dimColor={true}>{t('Tab: Next field · Enter: Save and continue')}</Text>
         )}
-        {currentFieldIndex === fields.length - 1 && <Text dimColor={true}>Enter: Save configuration</Text>}
+        {currentFieldIndex === fields.length - 1 && <Text dimColor={true}>{t('Enter: Save configuration')}</Text>}
       </Box>
     </Dialog>
   );

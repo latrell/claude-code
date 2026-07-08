@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle';
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
 import * as React from 'react';
+import { t, tf } from 'src/i18n/t.js';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
 import type { AppState } from 'src/state/AppState.js';
 import { z } from 'zod/v4';
@@ -562,7 +563,7 @@ export const BashTool = buildTool({
   maxResultSizeChars: 30_000,
   strict: true,
   async description({ description }) {
-    return description || 'Run shell command';
+    return description || t('Run shell command');
   },
   async prompt() {
     return getSimplePrompt();
@@ -613,7 +614,7 @@ export const BashTool = buildTool({
   },
   userFacingName(input) {
     if (!input) {
-      return 'Bash';
+      return t('Bash');
     }
     // Render sed in-place edits as file edits
     if (input.command) {
@@ -631,7 +632,7 @@ export const BashTool = buildTool({
     // exceeds the shimmer tick → transition abort → infinite retry (#21605).
     return isEnvTruthy(process.env.CLAUDE_CODE_BASH_SANDBOX_SHOW_INDICATOR) && shouldUseSandbox(input)
       ? 'SandboxedBash'
-      : 'Bash';
+      : t('Bash');
   },
   getToolUseSummary(input) {
     if (!input?.command) {
@@ -645,10 +646,10 @@ export const BashTool = buildTool({
   },
   getActivityDescription(input) {
     if (!input?.command) {
-      return 'Running command';
+      return t('Running command');
     }
     const desc = input.description ?? truncate(input.command, TOOL_SUMMARY_MAX_LENGTH);
-    return `Running ${desc}`;
+    return tf('Running {desc}', { desc });
   },
   async validateInput(input: BashToolInput): Promise<ValidationResult> {
     if (feature('MONITOR_TOOL') && !isBackgroundTasksDisabled && !input.run_in_background) {
@@ -656,7 +657,10 @@ export const BashTool = buildTool({
       if (sleepPattern !== null) {
         return {
           result: false,
-          message: `Blocked: ${sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.`,
+          message: tf(
+            "Blocked: {sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.",
+            { sleepPattern },
+          ),
           errorCode: 10,
         };
       }
@@ -730,18 +734,27 @@ export const BashTool = buildTool({
     let errorMessage = stderr.trim();
     if (interrupted) {
       if (stderr) errorMessage += EOL;
-      errorMessage += '<error>Command was aborted before completion</error>';
+      errorMessage += t('<error>Command was aborted before completion</error>');
     }
 
     let backgroundInfo = '';
     if (backgroundTaskId) {
       const outputPath = getTaskOutputPath(backgroundTaskId);
       if (assistantAutoBackgrounded) {
-        backgroundInfo = `Command exceeded the assistant-mode blocking budget (${ASSISTANT_BLOCKING_BUDGET_MS / 1000}s) and was moved to the background with ID: ${backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: ${outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.`;
+        backgroundInfo = tf(
+          'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
+          { blockingBudget: ASSISTANT_BLOCKING_BUDGET_MS / 1000, backgroundTaskId, outputPath },
+        );
       } else if (backgroundedByUser) {
-        backgroundInfo = `Command was manually backgrounded by user with ID: ${backgroundTaskId}. Output is being written to: ${outputPath}`;
+        backgroundInfo = tf(
+          'Command was manually backgrounded by user with ID: {backgroundTaskId}. Output is being written to: {outputPath}',
+          { backgroundTaskId, outputPath },
+        );
       } else {
-        backgroundInfo = `Command running in background with ID: ${backgroundTaskId}. Output is being written to: ${outputPath}`;
+        backgroundInfo = tf(
+          'Command running in background with ID: {backgroundTaskId}. Output is being written to: {outputPath}',
+          { backgroundTaskId, outputPath },
+        );
       }
     }
 

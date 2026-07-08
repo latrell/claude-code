@@ -1,3 +1,4 @@
+import { t, tf } from '../../i18n/t.js'
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { randomUUID } from 'crypto'
 import { getOauthConfig } from 'src/constants/oauth.js'
@@ -234,19 +235,23 @@ export async function prepareWorkspaceApiRequest(): Promise<{
       : 'A workspace API key (sk-ant-api03-*) is required to use workspace endpoints ' +
         '(/v1/agents, /v1/vaults, /v1/memory_stores, /v1/skills). '
     throw new Error(
-      preface +
-        'Press W in /login to save your key directly (no restart needed), or ' +
-        'set ANTHROPIC_API_KEY=<key> and restart. ' +
-        'Obtain a key from https://console.anthropic.com/settings/keys. ' +
-        'Subscription OAuth (claude.ai login) cannot reach these endpoints.',
+      t(
+        preface +
+          'Press W in /login to save your key directly (no restart needed), or ' +
+          'set ANTHROPIC_API_KEY=<key> and restart. ' +
+          'Obtain a key from https://console.anthropic.com/settings/keys. ' +
+          'Subscription OAuth (claude.ai login) cannot reach these endpoints.',
+      ),
     )
   }
   if (!apiKey.startsWith('sk-ant-api03-')) {
     // D5: expose at most first 4 chars to avoid leaking high-entropy secret bits into error logs/reports
     throw new Error(
-      `Workspace API key must start with sk-ant-api03-, got prefix "${apiKey.slice(0, 4)}...". ` +
-        'Obtain a workspace API key from https://console.anthropic.com/settings/keys. ' +
-        'Press W in /login to save your key, or set ANTHROPIC_API_KEY.',
+      t(
+        `Workspace API key must start with sk-ant-api03-, got prefix "${apiKey.slice(0, 4)}...". ` +
+          'Obtain a workspace API key from https://console.anthropic.com/settings/keys. ' +
+          'Press W in /login to save your key, or set ANTHROPIC_API_KEY.',
+      ),
     )
   }
   return { apiKey }
@@ -263,13 +268,15 @@ export async function prepareApiRequest(): Promise<{
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (accessToken === undefined) {
     throw new Error(
-      'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+      t(
+        'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+      ),
     )
   }
 
   const orgUUID = await getOrganizationUUID()
   if (!orgUUID) {
-    throw new Error('Unable to get organization UUID')
+    throw new Error(t('Unable to get organization UUID'))
   }
 
   return { accessToken, orgUUID }
@@ -298,7 +305,11 @@ export async function fetchCodeSessionsFromSessionsAPI(): Promise<
     })
 
     if (response.status !== 200) {
-      throw new Error(`Failed to fetch code sessions: ${response.statusText}`)
+      throw new Error(
+        tf('Failed to fetch code sessions: {status}', {
+          status: response.statusText,
+        }),
+      )
     }
 
     // Transform SessionResource[] to CodeSession[] format
@@ -388,16 +399,19 @@ export async function fetchSession(
     const apiMessage = errorData?.error?.message
 
     if (response.status === 404) {
-      throw new Error(`Session not found: ${sessionId}`)
+      throw new Error(tf('Session not found: {sessionId}', { sessionId }))
     }
 
     if (response.status === 401) {
-      throw new Error('Session expired. Please run /login to sign in again.')
+      throw new Error(t('Session expired. Please run /login to sign in again.'))
     }
 
     throw new Error(
       apiMessage ||
-        `Failed to fetch session: ${response.status} ${response.statusText}`,
+        tf('Failed to fetch session: {status} {statusText}', {
+          status: response.status,
+          statusText: response.statusText,
+        }),
     )
   }
 

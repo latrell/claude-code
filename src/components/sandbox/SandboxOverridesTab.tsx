@@ -20,7 +20,7 @@ export function SandboxOverridesTab({ onComplete }: Props): React.ReactNode {
   if (!isEnabled) {
     return (
       <Box flexDirection="column" paddingY={1}>
-        <T color="subtle">Sandbox is not enabled. Enable sandbox to configure override settings.</T>
+        <T color="subtle">{t('Sandbox is not enabled. Enable sandbox to configure override settings.')}</T>
       </Box>
     );
   }
@@ -29,11 +29,12 @@ export function SandboxOverridesTab({ onComplete }: Props): React.ReactNode {
     return (
       <Box flexDirection="column" paddingY={1}>
         <T color="subtle">
-          Override settings are managed by a higher-priority configuration and cannot be changed locally.
+          {t('Override settings are managed by a higher-priority configuration and cannot be changed locally.')}
         </T>
         <Box marginTop={1}>
           <Text dimColor>
-            Current setting: {currentAllowUnsandboxed ? 'Allow unsandboxed fallback' : 'Strict sandbox mode'}
+            {t('Current setting:')}{' '}
+            {currentAllowUnsandboxed ? t('Allow unsandboxed fallback') : t('Strict sandbox mode')}
           </Text>
         </Box>
       </Box>
@@ -53,11 +54,14 @@ function OverridesSelect({ onComplete, currentMode }: Props & { currentMode: Ove
 
   const options = [
     {
-      label: currentMode === 'open' ? `Allow unsandboxed fallback ${currentIndicator}` : 'Allow unsandboxed fallback',
+      label:
+        currentMode === 'open'
+          ? `${t('Allow unsandboxed fallback')} ${currentIndicator}`
+          : t('Allow unsandboxed fallback'),
       value: 'open',
     },
     {
-      label: currentMode === 'closed' ? `Strict sandbox mode ${currentIndicator}` : 'Strict sandbox mode',
+      label: currentMode === 'closed' ? `${t('Strict sandbox mode')} ${currentIndicator}` : t('Strict sandbox mode'),
       value: 'closed',
     },
   ];
@@ -71,8 +75,10 @@ function OverridesSelect({ onComplete, currentMode }: Props & { currentMode: Ove
 
     const message =
       mode === 'open'
-        ? '✓ Unsandboxed fallback allowed - commands can run outside sandbox when necessary'
-        : '✓ Strict sandbox mode - all commands must run in sandbox or be excluded via the `excludedCommands` option';
+        ? t('\u2713 Unsandboxed fallback allowed - commands can run outside sandbox when necessary')
+        : t(
+            '\u2713 Strict sandbox mode - all commands must run in sandbox or be excluded via the `excludedCommands` option',
+          );
 
     onComplete(message);
   }
@@ -80,7 +86,7 @@ function OverridesSelect({ onComplete, currentMode }: Props & { currentMode: Ove
   return (
     <Box flexDirection="column" paddingY={1}>
       <Box marginBottom={1}>
-        <Text bold>Configure Overrides:</Text>
+        <Text bold>{t('Configure Overrides:')}</Text>
       </Box>
       <Select
         options={options}
@@ -92,20 +98,22 @@ function OverridesSelect({ onComplete, currentMode }: Props & { currentMode: Ove
       <Box flexDirection="column" marginTop={1} gap={1}>
         <Text dimColor>
           <Text bold dimColor>
-            Allow unsandboxed fallback:
+            {t('Allow unsandboxed fallback:')}
           </Text>{' '}
-          When a command fails due to sandbox restrictions, Claude can retry with dangerouslyDisableSandbox to run
-          outside the sandbox (falling back to default permissions).
+          {t(
+            'When a command fails due to sandbox restrictions, Claude can retry with dangerouslyDisableSandbox to run outside the sandbox (falling back to default permissions).',
+          )}
         </Text>
         <Text dimColor>
           <Text bold dimColor>
-            Strict sandbox mode:
+            {t('Strict sandbox mode:')}
           </Text>{' '}
-          All bash commands invoked by the model must run in the sandbox unless they are explicitly listed in
-          excludedCommands.
+          {t(
+            'All bash commands invoked by the model must run in the sandbox unless they are explicitly listed in excludedCommands.',
+          )}
         </Text>
         <Text dimColor>
-          Learn more:{' '}
+          {t('Learn more:')}{' '}
           <Link url="https://code.claude.com/docs/en/sandboxing#configure-sandboxing">
             code.claude.com/docs/en/sandboxing#configure-sandboxing
           </Link>

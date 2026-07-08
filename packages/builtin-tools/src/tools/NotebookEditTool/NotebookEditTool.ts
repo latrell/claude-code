@@ -5,6 +5,7 @@ import {
   fileHistoryTrackEdit,
 } from 'src/utils/fileHistory.js'
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import { buildTool, type ToolDef, type ToolUseContext } from 'src/Tool.js'
 import type { NotebookCell, NotebookContent } from 'src/types/notebook.js'
 import { getCwd } from 'src/utils/cwd.js'
@@ -99,12 +100,14 @@ export const NotebookEditTool = buildTool({
     return PROMPT
   },
   userFacingName() {
-    return 'Edit Notebook'
+    return t('Edit Notebook')
   },
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Editing notebook ${summary}` : 'Editing notebook'
+    return summary
+      ? tf('Editing notebook {summary}', { summary })
+      : t('Editing notebook')
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -147,25 +150,31 @@ export const NotebookEditTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Updated cell ${cell_id} with ${new_source}`,
+          content: tf('Updated cell {cell_id} with {new_source}', {
+            cell_id,
+            new_source,
+          }),
         }
       case 'insert':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Inserted cell ${cell_id} with ${new_source}`,
+          content: tf('Inserted cell {cell_id} with {new_source}', {
+            cell_id,
+            new_source,
+          }),
         }
       case 'delete':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Deleted cell ${cell_id}`,
+          content: tf('Deleted cell {cell_id}', { cell_id }),
         }
       default:
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: 'Unknown edit mode',
+          content: t('Unknown edit mode'),
         }
     }
   },
@@ -189,8 +198,9 @@ export const NotebookEditTool = buildTool({
     if (extname(fullPath) !== '.ipynb') {
       return {
         result: false,
-        message:
+        message: t(
           'File must be a Jupyter notebook (.ipynb file). For editing other file types, use the FileEdit tool.',
+        ),
         errorCode: 2,
       }
     }
@@ -202,7 +212,7 @@ export const NotebookEditTool = buildTool({
     ) {
       return {
         result: false,
-        message: 'Edit mode must be replace, insert, or delete.',
+        message: t('Edit mode must be replace, insert, or delete.'),
         errorCode: 4,
       }
     }
@@ -210,7 +220,7 @@ export const NotebookEditTool = buildTool({
     if (edit_mode === 'insert' && !cell_type) {
       return {
         result: false,
-        message: 'Cell type is required when using edit_mode=insert.',
+        message: t('Cell type is required when using edit_mode=insert.'),
         errorCode: 5,
       }
     }
@@ -222,16 +232,18 @@ export const NotebookEditTool = buildTool({
     if (!readTimestamp) {
       return {
         result: false,
-        message:
+        message: t(
           'File has not been read yet. Read it first before writing to it.',
+        ),
         errorCode: 9,
       }
     }
     if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
       return {
         result: false,
-        message:
+        message: t(
           '文件自读取以来已被修改（用户或 linter）。请在尝试写入前重新读取。',
+        ),
         errorCode: 10,
       }
     }
@@ -243,7 +255,7 @@ export const NotebookEditTool = buildTool({
       if (isENOENT(e)) {
         return {
           result: false,
-          message: 'Notebook file does not exist.',
+          message: t('Notebook file does not exist.'),
           errorCode: 1,
         }
       }
@@ -253,7 +265,7 @@ export const NotebookEditTool = buildTool({
     if (!notebook) {
       return {
         result: false,
-        message: 'Notebook is not valid JSON.',
+        message: t('Notebook is not valid JSON.'),
         errorCode: 6,
       }
     }
@@ -261,7 +273,9 @@ export const NotebookEditTool = buildTool({
       if (edit_mode !== 'insert') {
         return {
           result: false,
-          message: 'Cell ID must be specified when not inserting a new cell.',
+          message: t(
+            'Cell ID must be specified when not inserting a new cell.',
+          ),
           errorCode: 7,
         }
       }
@@ -278,14 +292,19 @@ export const NotebookEditTool = buildTool({
           if (!notebook.cells[parsedCellIndex]) {
             return {
               result: false,
-              message: `Cell with index ${parsedCellIndex} does not exist in notebook.`,
+              message: tf(
+                'Cell with index {parsedCellIndex} does not exist in notebook.',
+                { parsedCellIndex },
+              ),
               errorCode: 7,
             }
           }
         } else {
           return {
             result: false,
-            message: `Cell with ID "${cell_id}" not found in notebook.`,
+            message: tf('Cell with ID "{cell_id}" not found in notebook.', {
+              cell_id,
+            }),
             errorCode: 8,
           }
         }
@@ -340,7 +359,7 @@ export const NotebookEditTool = buildTool({
             cell_type: cell_type ?? 'code',
             language: 'python',
             edit_mode: 'replace',
-            error: 'Notebook is not valid JSON.',
+            error: t('Notebook is not valid JSON.'),
             cell_id,
             notebook_path: fullPath,
             original_file: '',
@@ -480,7 +499,7 @@ export const NotebookEditTool = buildTool({
         cell_type: cell_type ?? 'code',
         language: 'python',
         edit_mode: 'replace',
-        error: 'Unknown error occurred while editing notebook',
+        error: t('Unknown error occurred while editing notebook'),
         cell_id,
         notebook_path: fullPath,
         original_file: '',

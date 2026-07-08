@@ -85,9 +85,9 @@ function SedEditPermissionRequestInner({
   // Determine appropriate message when no changes
   const noChangesMessage = useMemo(() => {
     if (!fileExists) {
-      return 'File does not exist';
+      return t('File does not exist');
     }
-    return 'Pattern did not match any content';
+    return t('Pattern did not match any content');
   }, [fileExists]);
 
   // Parse input and add _simulatedSedEdit to ensure what user previewed

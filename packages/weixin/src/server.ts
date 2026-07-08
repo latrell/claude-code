@@ -297,7 +297,10 @@ export async function runWeixinMcpServer(
       })
     } catch (error) {
       process.stderr.write(
-        `[weixin] Failed to relay permission request ${request.request_id}: ${error}\n`,
+        tf(
+          '[weixin] Failed to relay permission request {requestId}: {error}\n',
+          { requestId: request.request_id, error: String(error) },
+        ),
       )
     }
   })

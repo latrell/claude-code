@@ -45,7 +45,7 @@ export function RemoveWorkspaceDirectory({
   );
 
   return (
-    <Dialog title="Remove directory from workspace?" onCancel={onCancel} color="error">
+    <Dialog title={t('Remove directory from workspace?')} onCancel={onCancel} color="error">
       <Box marginX={2} flexDirection="column">
         <Text bold>{directoryPath}</Text>
       </Box>

@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import type { ValidationResult } from 'src/Tool.js'
+import { t, tf } from 'src/i18n/t.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { isENOENT } from 'src/utils/errors.js'
@@ -164,12 +165,12 @@ export const GrepTool = buildTool({
     return getDescription()
   },
   userFacingName() {
-    return 'Search'
+    return t('Search')
   },
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Searching for ${summary}` : 'Searching'
+    return summary ? tf('Searching for {summary}', { summary }) : t('Searching')
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -211,9 +212,15 @@ export const GrepTool = buildTool({
       } catch (e: unknown) {
         if (isENOENT(e)) {
           const cwdSuggestion = await suggestPathUnderCwd(absolutePath)
-          let message = `Path does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+          let message = tf('Path does not exist: {path}. {cwdNote} {cwd}.', {
+            path,
+            cwdNote: FILE_NOT_FOUND_CWD_NOTE,
+            cwd: getCwd(),
+          })
           if (cwdSuggestion) {
-            message += ` Did you mean ${cwdSuggestion}?`
+            message += tf(' Did you mean {suggestion}?', {
+              suggestion: cwdSuggestion,
+            })
           }
           return {
             result: false,
@@ -263,7 +270,7 @@ export const GrepTool = buildTool({
   ) {
     if (mode === 'content') {
       const limitInfo = formatLimitInfo(appliedLimit, appliedOffset)
-      const resultContent = content || '未找到匹配项'
+      const resultContent = content || t('未找到匹配项')
       const finalContent = limitInfo
         ? `${resultContent}\n\n[Showing results with pagination = ${limitInfo}]`
         : resultContent
@@ -276,10 +283,19 @@ export const GrepTool = buildTool({
 
     if (mode === 'count') {
       const limitInfo = formatLimitInfo(appliedLimit, appliedOffset)
-      const rawContent = content || '未找到匹配项'
+      const rawContent = content || t('未找到匹配项')
       const matches = numMatches ?? 0
       const files = numFiles ?? 0
-      const summary = `\n\nFound ${matches} total ${matches === 1 ? 'occurrence' : 'occurrences'} across ${files} ${files === 1 ? 'file' : 'files'}.${limitInfo ? ` with pagination = ${limitInfo}` : ''}`
+      const summary = tf(
+        '\n\nFound {matches} total {matchWord} across {files} {fileWord}.{limitInfo}',
+        {
+          matches,
+          matchWord: matches === 1 ? 'occurrence' : 'occurrences',
+          files,
+          fileWord: files === 1 ? 'file' : 'files',
+          limitInfo: limitInfo ? ` with pagination = ${limitInfo}` : '',
+        },
+      )
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
@@ -293,11 +309,19 @@ export const GrepTool = buildTool({
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: 'No files found',
+        content: t('No files found'),
       }
     }
     // head_limit has already been applied in call() method, so just show all filenames
-    const result = `Found ${numFiles} ${plural(numFiles, 'file')}${limitInfo ? ` ${limitInfo}` : ''}\n${filenames.join('\n')}`
+    const result = tf(
+      'Found {numFiles} {fileWord}{limitInfoStr}\n{filenames}',
+      {
+        numFiles,
+        fileWord: plural(numFiles, 'file'),
+        limitInfoStr: limitInfo ? ` ${limitInfo}` : '',
+        filenames: filenames.join('\n'),
+      },
+    )
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',

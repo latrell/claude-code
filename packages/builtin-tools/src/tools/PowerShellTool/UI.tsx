@@ -1,5 +1,6 @@
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import * as React from 'react';
+import { t, tf } from 'src/i18n/t.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
@@ -70,7 +71,7 @@ export function renderToolUseProgressMessage(
   if (!lastProgress || !lastProgress.data) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>Running…</Text>
+        <Text dimColor>{t('Running…')}</Text>
       </MessageResponse>
     );
   }
@@ -94,7 +95,7 @@ export function renderToolUseProgressMessage(
 export function renderToolUseQueuedMessage(): React.ReactNode {
   return (
     <MessageResponse height={1}>
-      <Text dimColor>Waiting…</Text>
+      <Text dimColor>{t('Waiting…')}</Text>
     </MessageResponse>
   );
 }
@@ -121,7 +122,7 @@ export function renderToolResultMessage(
   if (isImage) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>[Image data detected and sent to Claude]</Text>
+        <Text dimColor>{t('[Image data detected and sent to Claude]')}</Text>
       </MessageResponse>
     );
   }
@@ -138,9 +139,9 @@ export function renderToolResultMessage(
                 Running in the background <KeyboardShortcutHint shortcut="↓" action="manage" parens />
               </>
             ) : interrupted ? (
-              'Interrupted'
+              t('Interrupted')
             ) : (
-              returnCodeInterpretation || '(No output)'
+              returnCodeInterpretation || t('(No output)')
             )}
           </Text>
         </MessageResponse>

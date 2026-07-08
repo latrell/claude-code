@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle';
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
 import * as React from 'react';
+import { t, tf } from 'src/i18n/t.js';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
 import type { AppState } from 'src/state/AppState.js';
 import { z } from 'zod/v4';
@@ -238,8 +239,9 @@ export function detectBlockedSleepPattern(command: string): string | null {
  * (covers direct callers like promptShellExecution.ts that skip
  * validateInput). The call() guard is the load-bearing one.
  */
-const WINDOWS_SANDBOX_POLICY_REFUSAL =
-  'Enterprise policy requires sandboxing, but sandboxing is not available on native Windows. Shell command execution is blocked on this platform by policy.';
+const WINDOWS_SANDBOX_POLICY_REFUSAL = t(
+  'Enterprise policy requires sandboxing, but sandboxing is not available on native Windows. Shell command execution is blocked on this platform by policy.',
+);
 function isWindowsSandboxPolicyViolation(): boolean {
   return (
     getPlatform() === 'windows' &&
@@ -357,7 +359,7 @@ export const PowerShellTool = buildTool({
   strict: true,
 
   async description({ description }: Partial<PowerShellToolInput>): Promise<string> {
-    return description || 'Run PowerShell command';
+    return description || t('Run PowerShell command');
   },
 
   async prompt(): Promise<string> {
@@ -408,7 +410,7 @@ export const PowerShellTool = buildTool({
   },
 
   userFacingName(): string {
-    return 'PowerShell';
+    return t('PowerShell');
   },
 
   getToolUseSummary(input: Partial<PowerShellToolInput> | undefined): string | null {
@@ -424,10 +426,10 @@ export const PowerShellTool = buildTool({
 
   getActivityDescription(input: Partial<PowerShellToolInput> | undefined): string {
     if (!input?.command) {
-      return 'Running command';
+      return t('Running command');
     }
     const desc = input.description ?? truncate(input.command, TOOL_SUMMARY_MAX_LENGTH);
-    return `Running ${desc}`;
+    return tf('Running {desc}', { desc });
   },
 
   isEnabled(): boolean {
@@ -448,7 +450,10 @@ export const PowerShellTool = buildTool({
       if (sleepPattern !== null) {
         return {
           result: false,
-          message: `Blocked: ${sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.`,
+          message: tf(
+            "Blocked: {sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.",
+            { sleepPattern },
+          ),
           errorCode: 10,
         };
       }
@@ -509,18 +514,27 @@ export const PowerShellTool = buildTool({
     let errorMessage = stderr.trim();
     if (interrupted) {
       if (stderr) errorMessage += EOL;
-      errorMessage += '<error>Command was aborted before completion</error>';
+      errorMessage += t('<error>Command was aborted before completion</error>');
     }
 
     let backgroundInfo = '';
     if (backgroundTaskId) {
       const outputPath = getTaskOutputPath(backgroundTaskId);
       if (assistantAutoBackgrounded) {
-        backgroundInfo = `Command exceeded the assistant-mode blocking budget (${ASSISTANT_BLOCKING_BUDGET_MS / 1000}s) and was moved to the background with ID: ${backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: ${outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.`;
+        backgroundInfo = tf(
+          'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
+          { blockingBudget: ASSISTANT_BLOCKING_BUDGET_MS / 1000, backgroundTaskId, outputPath },
+        );
       } else if (backgroundedByUser) {
-        backgroundInfo = `Command was manually backgrounded by user with ID: ${backgroundTaskId}. Output is being written to: ${outputPath}`;
+        backgroundInfo = tf(
+          'Command was manually backgrounded by user with ID: {backgroundTaskId}. Output is being written to: {outputPath}',
+          { backgroundTaskId, outputPath },
+        );
       } else {
-        backgroundInfo = `Command running in background with ID: ${backgroundTaskId}. Output is being written to: ${outputPath}`;
+        backgroundInfo = tf(
+          'Command running in background with ID: {backgroundTaskId}. Output is being written to: {outputPath}',
+          { backgroundTaskId, outputPath },
+        );
       }
     }
 
@@ -833,7 +847,7 @@ async function* runPowerShellCommand({
     // command never ran, so there is no meaningful non-zero exit to report.
     return {
       stdout: '',
-      stderr: 'PowerShell is not available on this system.',
+      stderr: t('PowerShell is not available on this system.'),
       code: 0,
       interrupted: false,
     };
@@ -865,7 +879,7 @@ async function* runPowerShellCommand({
     // code 0 so call() returns stderr gracefully instead of throwing ShellError.
     return {
       stdout: '',
-      stderr: `Failed to execute PowerShell command: ${getErrorMessage(e)}`,
+      stderr: tf('Failed to execute PowerShell command: {error}', { error: getErrorMessage(e) }),
       code: 0,
       interrupted: false,
     };
@@ -886,7 +900,7 @@ async function* runPowerShellCommand({
       {
         abortController,
         getAppState: () => {
-          throw new Error('getAppState not available in runPowerShellCommand context');
+          throw new Error(t('getAppState not available in runPowerShellCommand context'));
         },
         setAppState,
       },

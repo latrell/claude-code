@@ -1,3 +1,4 @@
+import { t, tf } from '../../i18n/t.js';
 import React, { useCallback, useRef, useState } from 'react';
 import { Select } from '../../components/CustomSelect/select.js';
 import { Box, Dialog, Text } from '@anthropic/ink';
@@ -35,18 +36,20 @@ export function UltrareviewOverageDialog({ onProceed, onCancel }: Props): React.
   }, [onCancel]);
 
   const options = [
-    { label: 'Proceed with Extra Usage billing', value: 'proceed' },
-    { label: 'Cancel', value: 'cancel' },
+    { label: t('Proceed with Extra Usage billing'), value: 'proceed' },
+    { label: t('Cancel'), value: 'cancel' },
   ];
 
   return (
-    <Dialog title="Ultrareview billing" onCancel={handleCancel} color="background">
+    <Dialog title={t('Ultrareview billing')} onCancel={handleCancel} color="background">
       <Box flexDirection="column" gap={1}>
         <Text>
-          Your free ultrareviews for this organization are used. Further reviews bill as Extra Usage (pay-per-use).
+          {t(
+            'Your free ultrareviews for this organization are used. Further reviews bill as Extra Usage (pay-per-use).',
+          )}
         </Text>
         {isLaunching ? (
-          <Text color="background">Launching…</Text>
+          <Text color="background">{t('Launching…')}</Text>
         ) : (
           <Select options={options} onChange={handleSelect} onCancel={handleCancel} />
         )}

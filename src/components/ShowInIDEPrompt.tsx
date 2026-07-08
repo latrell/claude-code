@@ -45,15 +45,15 @@ export function ShowInIDEPrompt<A>({
   return (
     <Pane color="permission">
       <Box flexDirection="column" gap={1}>
-        <T bold color="permission" vars={{ ideName }}>
-          Opened changes in {ideName} ⧉
-        </T>
+        <Text bold color="permission">
+          {tf('Opened changes in {ideName} ⧉', { ideName })}
+        </Text>
         {symlinkTarget && (
-          <T color="warning" vars={{ symlinkTarget, relative: relative(getCwd(), symlinkTarget) }}>
+          <Text color="warning">
             {relative(getCwd(), symlinkTarget).startsWith('..')
-              ? `This will modify {symlinkTarget} (outside working directory) via a symlink`
-              : `Symlink target: {symlinkTarget}`}
-          </T>
+              ? tf('This will modify {symlinkTarget} (outside working directory) via a symlink', { symlinkTarget })
+              : t('Symlink target:') + ` ${symlinkTarget}`}
+          </Text>
         )}
         {isSupportedVSCodeTerminal() && <T dimColor>Save file to continue…</T>}
         <Box flexDirection="column">

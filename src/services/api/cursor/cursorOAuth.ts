@@ -24,6 +24,7 @@ import { join } from 'path'
 import { getClaudeConfigHomeDir } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { getCursorClientVersion } from './clientPolicy.js'
+import { t, tf } from '../../../i18n/t.js'
 
 /** Browser page the user visits to confirm the sign-in. */
 const CURSOR_LOGIN_ISSUER = 'https://www.cursor.com'
@@ -271,7 +272,7 @@ async function pollForTokens(
   )}&verifier=${encodeURIComponent(deviceCode.verifier)}`
 
   while (Date.now() - started < POLL_DEADLINE_MS) {
-    if (signal?.aborted) throw new Error('Cursor login cancelled')
+    if (signal?.aborted) throw new Error(t('Cursor login cancelled'))
     let res: Response
     try {
       res = await fetch(url, {
@@ -280,7 +281,7 @@ async function pollForTokens(
         signal,
       })
     } catch (err) {
-      if (signal?.aborted) throw new Error('Cursor login cancelled')
+      if (signal?.aborted) throw new Error(t('Cursor login cancelled'))
       // Transient network error — keep polling until the deadline.
       logForDebugging(`[Cursor] auth poll error: ${String(err)}`, {
         level: 'error',
@@ -303,12 +304,14 @@ async function pollForTokens(
       // 404 = pending confirmation. Other 4xx that isn't rate limiting is a
       // hard failure (bad request / expired challenge).
       if (res.status !== 429) {
-        throw new Error(`Cursor login failed (${res.status})`)
+        throw new Error(
+          tf('Cursor login failed ({status})', { status: res.status }),
+        )
       }
     }
     await sleep(deviceCode.intervalMs)
   }
-  throw new Error('Cursor login timed out after 10 minutes')
+  throw new Error(t('Cursor login timed out after 10 minutes'))
 }
 
 function sleep(ms: number): Promise<void> {
@@ -338,12 +341,16 @@ async function refreshTokens(
     }),
   })
   if (!res.ok) {
-    throw new Error(`Cursor token refresh failed (${res.status})`)
+    throw new Error(
+      tf('Cursor token refresh failed ({status})', { status: res.status }),
+    )
   }
   const data = (await res.json()) as RefreshResponse
   if (data.shouldLogout || !data.access_token) {
     throw new Error(
-      'Cursor session expired. Re-add this connection via /connect to sign in again.',
+      t(
+        'Cursor session expired. Re-add this connection via /connect to sign in again.',
+      ),
     )
   }
   return {
@@ -397,7 +404,9 @@ export async function getValidCursorOAuth(
   let tokens = await readStoredAuth(authFilePath(scope))
   if (!tokens) {
     throw new Error(
-      'Cursor account is not signed in. Run /connect and add a Cursor connection with browser sign-in.',
+      t(
+        'Cursor account is not signed in. Run /connect and add a Cursor connection with browser sign-in.',
+      ),
     )
   }
   const expiresAt = getTokenExpiryMs(tokens.accessToken)

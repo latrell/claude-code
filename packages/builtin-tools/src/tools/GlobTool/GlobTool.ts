@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import type { ValidationResult } from 'src/Tool.js'
+import { t, tf } from 'src/i18n/t.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { isENOENT } from 'src/utils/errors.js'
@@ -62,7 +63,7 @@ export const GlobTool = buildTool({
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Finding ${summary}` : 'Finding files'
+    return summary ? tf('Finding {summary}', { summary }) : t('Finding files')
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -105,9 +106,14 @@ export const GlobTool = buildTool({
       } catch (e: unknown) {
         if (isENOENT(e)) {
           const cwdSuggestion = await suggestPathUnderCwd(absolutePath)
-          let message = `Directory does not exist: ${path}. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+          let message = tf(
+            'Directory does not exist: {path}. {cwdNote} {cwd}.',
+            { path, cwdNote: FILE_NOT_FOUND_CWD_NOTE, cwd: getCwd() },
+          )
           if (cwdSuggestion) {
-            message += ` Did you mean ${cwdSuggestion}?`
+            message += tf(' Did you mean {suggestion}?', {
+              suggestion: cwdSuggestion,
+            })
           }
           return {
             result: false,
@@ -121,7 +127,7 @@ export const GlobTool = buildTool({
       if (!stats.isDirectory()) {
         return {
           result: false,
-          message: `Path is not a directory: ${path}`,
+          message: tf('Path is not a directory: {path}', { path }),
           errorCode: 2,
         }
       }
@@ -176,7 +182,7 @@ export const GlobTool = buildTool({
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: 'No files found',
+        content: t('No files found'),
       }
     }
     return {
@@ -186,7 +192,9 @@ export const GlobTool = buildTool({
         ...output.filenames,
         ...(output.truncated
           ? [
-              '(Results are truncated. Consider using a more specific path or pattern.)',
+              t(
+                '(Results are truncated. Consider using a more specific path or pattern.)',
+              ),
             ]
           : []),
       ].join('\n'),

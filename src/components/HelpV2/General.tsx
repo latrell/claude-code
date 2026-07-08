@@ -21,11 +21,11 @@ export function General(): React.ReactNode {
             <Text bold>3. </Text>
             <Text>Type </Text>
             <Text bold>/commit</Text>
-            <Text> to commit changes, </Text>
+            <T> to commit changes, </T>
             <Text bold>/help</Text>
-            <Text> for commands, or </Text>
+            <T> for commands, or </T>
             <Text bold>?</Text>
-            <Text> for shortcuts.</Text>
+            <T> for shortcuts.</T>
           </Text>
         </Box>
       </Box>

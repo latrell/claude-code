@@ -22,22 +22,22 @@ export function ViewHookMode({ selectedHook, eventSupportsMatcher, onCancel }: P
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text>
-            Event: <Text bold>{selectedHook.event}</Text>
+            {t('Event:')} <Text bold>{selectedHook.event}</Text>
           </Text>
           {eventSupportsMatcher && (
             <Text>
-              Matcher: <Text bold>{selectedHook.matcher || '(all)'}</Text>
+              {t('Matcher:')} <Text bold>{selectedHook.matcher || '(all)'}</Text>
             </Text>
           )}
           <Text>
-            Type: <Text bold>{selectedHook.config.type}</Text>
+            {t('Type:')} <Text bold>{selectedHook.config.type}</Text>
           </Text>
           <Text>
-            Source: <Text dimColor>{hookSourceDescriptionDisplayString(selectedHook.source)}</Text>
+            {t('Source:')} <Text dimColor>{hookSourceDescriptionDisplayString(selectedHook.source)}</Text>
           </Text>
           {selectedHook.pluginName && (
             <Text>
-              Plugin: <Text dimColor>{selectedHook.pluginName}</Text>
+              {t('Plugin:')} <Text dimColor>{selectedHook.pluginName}</Text>
             </Text>
           )}
         </Box>
@@ -49,10 +49,10 @@ export function ViewHookMode({ selectedHook, eventSupportsMatcher, onCancel }: P
         </Box>
         {'statusMessage' in selectedHook.config && selectedHook.config.statusMessage && (
           <Text>
-            Status message: <Text dimColor>{selectedHook.config.statusMessage}</Text>
+            {t('Status message:')} <Text dimColor>{selectedHook.config.statusMessage}</Text>
           </Text>
         )}
-        <Text dimColor>To modify or remove this hook, edit settings.json directly or ask Claude to help.</Text>
+        <Text dimColor>{t('To modify or remove this hook, edit settings.json directly or ask Claude to help.')}</Text>
       </Box>
     </Dialog>
   );
@@ -65,13 +65,13 @@ export function ViewHookMode({ selectedHook, eventSupportsMatcher, onCancel }: P
 function getContentFieldLabel(config: IndividualHookConfig['config']): string {
   switch (config.type) {
     case 'command':
-      return 'Command';
+      return t('Command');
     case 'prompt':
-      return 'Prompt';
+      return t('Prompt');
     case 'agent':
-      return 'Prompt';
+      return t('Prompt');
     case 'http':
-      return 'URL';
+      return t('URL');
   }
 }
 

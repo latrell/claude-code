@@ -9,6 +9,7 @@ import { getExternalEditor } from '../../../utils/editor.js';
 import { toIDEDisplayName } from '../../../utils/ide.js';
 import { editPromptInEditor } from '../../../utils/promptEditor.js';
 import { Divider } from '@anthropic/ink';
+import { t, tf } from '../../../i18n/t.js';
 import TextInput from '../../TextInput.js';
 import { PermissionRequestTitle } from '../PermissionRequestTitle.js';
 import { PreviewBox } from './PreviewBox.js';
@@ -329,7 +330,7 @@ export function PreviewQuestionView({
             {/* Right panel: preview + notes */}
             <Box flexDirection="column" flexGrow={1}>
               <PreviewBox
-                content={previewContent || 'No preview available'}
+                content={previewContent || t('No preview available')}
                 maxLines={previewMaxLines}
                 minWidth={minContentWidth}
                 maxWidth={previewMaxWidth}
@@ -339,7 +340,7 @@ export function PreviewQuestionView({
                 {isInNotesInput ? (
                   <TextInput
                     value={notesValue}
-                    placeholder="Add notes on this design…"
+                    placeholder={t('Add notes on this design\u2026')}
                     onChange={value => {
                       onUpdateQuestionState(questionText, { textInputValue: value }, false);
                     }}
@@ -353,7 +354,7 @@ export function PreviewQuestionView({
                   />
                 ) : (
                   <Text dimColor italic>
-                    {notesValue || 'press n to add notes'}
+                    {notesValue || t('press n to add notes')}
                   </Text>
                 )}
               </Box>
@@ -369,7 +370,9 @@ export function PreviewQuestionView({
               ) : (
                 <Text> </Text>
               )}
-              <Text color={isFooterFocused && footerIndex === 0 ? 'suggestion' : undefined}>Chat about this</Text>
+              <Text color={isFooterFocused && footerIndex === 0 ? 'suggestion' : undefined}>
+                {t('Chat about this')}
+              </Text>
             </Box>
             {isInPlanMode && (
               <Box flexDirection="row" gap={1}>
@@ -379,16 +382,20 @@ export function PreviewQuestionView({
                   <Text> </Text>
                 )}
                 <Text color={isFooterFocused && footerIndex === 1 ? 'suggestion' : undefined}>
-                  Skip interview and plan immediately
+                  {t('Skip interview and plan immediately')}
                 </Text>
               </Box>
             )}
           </Box>
           <Box marginTop={1}>
             <Text color="inactive" dimColor>
-              Enter to select · {figures.arrowUp}/{figures.arrowDown} to navigate · n to add notes
-              {questions.length > 1 && <> · Tab to switch questions</>}
-              {isInNotesInput && editorName && <> · ctrl+g to edit in {editorName}</>} · Esc to cancel
+              {tf('Enter to select \u00b7 {up}/{down} to navigate \u00b7 n to add notes', {
+                up: figures.arrowUp,
+                down: figures.arrowDown,
+              })}
+              {questions.length > 1 && <> \u00b7 {t('Tab to switch questions')}</>}
+              {isInNotesInput && editorName && <> \u00b7 {tf('ctrl+g to edit in {editor}', { editor: editorName })}</>}{' '}
+              \u00b7 {t('Esc to cancel')}
             </Text>
           </Box>
         </Box>

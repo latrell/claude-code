@@ -105,13 +105,13 @@ function RuleDetails({
           borderColor="permission"
         >
           <Text bold color="permission">
-            Rule details
+            {t('Rule details')}
           </Text>
           {ruleDescription}
           <Text italic>
-            This rule is configured by managed settings and cannot be modified.
+            {t('This rule is configured by managed settings and cannot be modified.')}
             {'\n'}
-            Contact your system administrator for more information.
+            {t('Contact your system administrator for more information.')}
           </Text>
         </Box>
         {footer}
@@ -123,10 +123,10 @@ function RuleDetails({
     <>
       <Box flexDirection="column" gap={1} borderStyle="round" paddingLeft={1} paddingRight={1} borderColor="error">
         <Text bold color="error">
-          Delete {getRuleBehaviorLabel(rule.ruleBehavior)} tool?
+          {tf('Delete {behavior} tool?', { behavior: getRuleBehaviorLabel(rule.ruleBehavior) })}
         </Text>
         {ruleDescription}
-        <Text>Are you sure you want to delete this permission rule?</Text>
+        <Text>{t('Are you sure you want to delete this permission rule?')}</Text>
         <Select
           onChange={_ => (_ === 'yes' ? onDelete() : onCancel())}
           onCancel={onCancel}
@@ -214,9 +214,9 @@ function PermissionRulesTab({
       <Text>
         {
           {
-            allow: "Claude Code won't ask before using allowed tools.",
-            ask: 'Claude Code will always ask for confirmation before using these tools.',
-            deny: 'Claude Code will always reject requests to use denied tools.',
+            allow: t("Claude Code won't ask before using allowed tools."),
+            ask: t('Claude Code will always ask for confirmation before using these tools.'),
+            deny: t('Claude Code will always reject requests to use denied tools.'),
           }[tab]
         }
       </Text>
@@ -323,7 +323,7 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
       // Only show "Add a new rule" for allow and deny tabs (and not when searching)
       if (tab !== 'workspace' && tab !== 'recent' && !query) {
         options.push({
-          label: `Add a new rule${figures.ellipsis}`,
+          label: `${t('Add a new rule')}${figures.ellipsis}`,
           value: 'add-new-rule',
         });
       }
@@ -650,28 +650,30 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
     <Box flexDirection="column" onKeyDown={handleKeyDown}>
       <Pane color="permission">
         <Tabs
-          title="Permissions:"
+          title={t('Permissions:')}
           color="permission"
           defaultTab={defaultTab}
           hidden={isHidden}
           initialHeaderFocused={!hasDenials}
           navFromContent={!isSearchMode}
         >
-          <Tab id="recent" title="Recently denied">
+          <Tab id="recent" title={t('Recently denied')}>
             <RecentDenialsTab onHeaderFocusChange={handleHeaderFocusChange} onStateChange={handleDenialStateChange} />
           </Tab>
-          <Tab id="allow" title="Allow">
+          <Tab id="allow" title={t('Allow')}>
             <PermissionRulesTab tab="allow" {...sharedRulesProps} />
           </Tab>
-          <Tab id="ask" title="Ask">
+          <Tab id="ask" title={t('Ask')}>
             <PermissionRulesTab tab="ask" {...sharedRulesProps} />
           </Tab>
-          <Tab id="deny" title="Deny">
+          <Tab id="deny" title={t('Deny')}>
             <PermissionRulesTab tab="deny" {...sharedRulesProps} />
           </Tab>
-          <Tab id="workspace" title="Workspace">
+          <Tab id="workspace" title={t('Workspace')}>
             <Box flexDirection="column">
-              <Text>Claude Code can read files in the workspace, and make edits when auto-accept edits is on.</Text>
+              <Text>
+                {t('Claude Code can read files in the workspace, and make edits when auto-accept edits is on.')}
+              </Text>
               <WorkspaceTab
                 onExit={onExit}
                 toolPermissionContext={toolPermissionContext}

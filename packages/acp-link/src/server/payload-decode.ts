@@ -4,6 +4,7 @@ import type {
   PermissionResponsePayload,
   ProxyMessage,
 } from './types.js'
+import { t, tf } from '../../../../src/i18n/t.js'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -21,7 +22,7 @@ export function optionalStringField(
   if (!Object.hasOwn(payload, key)) return undefined
   const value = payload[key]
   if (typeof value === 'string') return value
-  throw new Error(`Invalid ${source}: expected a string`)
+  throw new Error(tf('Invalid {source}: expected a string', { source }))
 }
 
 export function payloadRecord(
@@ -29,7 +30,7 @@ export function payloadRecord(
   type: string,
 ): Record<string, unknown> {
   if (!isRecord(value)) {
-    throw new Error(`Invalid ${type} payload`)
+    throw new Error(tf('Invalid {type} payload', { type }))
   }
   return value
 }
@@ -51,7 +52,7 @@ export function decodeContentBlocks(value: unknown): ContentBlock[] {
     !Array.isArray(value) ||
     !value.every(block => isRecord(block) && typeof block.type === 'string')
   ) {
-    throw new Error('Invalid prompt payload')
+    throw new Error(t('Invalid prompt payload'))
   }
   return value as ContentBlock[]
 }
@@ -61,7 +62,7 @@ export function decodePermissionResponsePayload(
 ): PermissionResponsePayload {
   const payload = payloadRecord(value, 'permission_response')
   if (typeof payload.requestId !== 'string' || !isRecord(payload.outcome)) {
-    throw new Error('Invalid permission_response payload')
+    throw new Error(t('Invalid permission_response payload'))
   }
   if (payload.outcome.outcome === 'cancelled') {
     return { requestId: payload.requestId, outcome: { outcome: 'cancelled' } }
@@ -75,14 +76,14 @@ export function decodePermissionResponsePayload(
       outcome: { outcome: 'selected', optionId: payload.outcome.optionId },
     }
   }
-  throw new Error('Invalid permission_response payload')
+  throw new Error(t('Invalid permission_response payload'))
 }
 
 export function decodeClientMessage(
   message: Record<string, unknown>,
 ): ProxyMessage {
   if (typeof message.type !== 'string') {
-    throw new Error('Invalid WebSocket message payload')
+    throw new Error(t('Invalid WebSocket message payload'))
   }
 
   switch (message.type) {
@@ -120,7 +121,7 @@ export function decodeClientMessage(
     case 'set_session_model': {
       const payload = payloadRecord(message.payload, 'set_session_model')
       if (typeof payload.modelId !== 'string') {
-        throw new Error('Invalid set_session_model payload')
+        throw new Error(t('Invalid set_session_model payload'))
       }
       return {
         type: 'set_session_model',
@@ -141,7 +142,7 @@ export function decodeClientMessage(
     case 'resume_session': {
       const payload = payloadRecord(message.payload, message.type)
       if (typeof payload.sessionId !== 'string') {
-        throw new Error(`Invalid ${message.type} payload`)
+        throw new Error(tf('Invalid {type} payload', { type: message.type }))
       }
       return {
         type: message.type,
@@ -152,7 +153,9 @@ export function decodeClientMessage(
       }
     }
     default:
-      throw new Error(`Unknown message type: ${message.type}`)
+      throw new Error(
+        tf('Unknown message type: {type}', { type: message.type }),
+      )
   }
 }
 

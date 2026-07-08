@@ -8,7 +8,7 @@ import { FeedbackSurveyView, isValidResponseInput } from './FeedbackSurveyView.j
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';
 import { TranscriptSharePrompt } from './TranscriptSharePrompt.js';
 import { useDebouncedDigitInput } from './useDebouncedDigitInput.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { T } from '../../i18n/TText.js';
 import type { FeedbackSurveyResponse } from './utils.js';
 
@@ -51,7 +51,9 @@ export function FeedbackSurvey({
   if (state === 'submitted') {
     return (
       <Box marginTop={1}>
-        <Text color="success">{'\u2713'} Thanks for sharing your transcript!</Text>
+        <Text color="success">
+          {'\u2713'} {t('Thanks for sharing your transcript!')}
+        </Text>
       </Box>
     );
   }
@@ -59,7 +61,7 @@ export function FeedbackSurvey({
   if (state === 'submitting') {
     return (
       <Box marginTop={1}>
-        <Text dimColor>Sharing transcript{'\u2026'}</Text>
+        <Text dimColor>{t('Sharing transcript\u2026')}</Text>
       </Box>
     );
   }
@@ -139,9 +141,9 @@ function FeedbackSurveyThanks({
           {feedbackCommand}
         </Text>
       ) : lastResponse === 'bad' ? (
-        <Text dimColor>Use /issue to report model behavior issues.</Text>
+        <Text dimColor>{t('Use /issue to report model behavior issues.')}</Text>
       ) : (
-        <Text dimColor>Use {feedbackCommand} to share detailed feedback anytime.</Text>
+        <Text dimColor>{tf('Use {command} to share detailed feedback anytime.', { command: feedbackCommand })}</Text>
       )}
     </Box>
   );

@@ -125,7 +125,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
           logWs.warn('connection rejected: invalid token')
           return {
             onOpen(_event, ws) {
-              ws.close(4001, 'Unauthorized: Invalid token')
+              ws.close(4001, t('Unauthorized: Invalid token'))
             },
             onMessage() {},
             onClose() {},
@@ -161,7 +161,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
           } catch (error) {
             if (error instanceof WsPayloadTooLargeError) {
               logWs.warn({ error: error.message }, 'message too large')
-              ws.close(1009, 'message too large')
+              ws.close(1009, t('message too large'))
               return
             }
             logWs.error({ error: (error as Error).message }, 'message error')

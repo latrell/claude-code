@@ -1,4 +1,4 @@
-import { t } from '../../i18n/t.js'
+import { t, tf } from '../../i18n/t.js'
 
 type MonitorState = {
   taskId: string

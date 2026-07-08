@@ -45,6 +45,7 @@ import {
 } from './idePathConversion.js'
 import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
+import { t } from '../i18n/t.js'
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -1416,7 +1417,7 @@ async function installFromArtifactory(command: string): Promise<string> {
   }
 
   if (!authToken) {
-    throw new Error('No artifactory auth token found in ~/.npmrc')
+    throw new Error(t('No artifactory auth token found in ~/.npmrc'))
   }
 
   // Fetch the version from artifactory
@@ -1432,7 +1433,7 @@ async function installFromArtifactory(command: string): Promise<string> {
 
     const version = versionResponse.data.trim()
     if (!version) {
-      throw new Error('No version found in artifactory response')
+      throw new Error(t('No version found in artifactory response'))
     }
 
     // Download the .vsix file from artifactory

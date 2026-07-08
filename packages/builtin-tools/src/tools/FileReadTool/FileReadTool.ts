@@ -178,7 +178,10 @@ export class MaxFileReadTokenExceededError extends Error {
     public maxTokens: number,
   ) {
     super(
-      `File content (${tokenCount} tokens) exceeds maximum allowed tokens (${maxTokens}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`,
+      tf(
+        'File content ({tokenCount} tokens) exceeds maximum allowed tokens ({maxTokens}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.',
+        { tokenCount, maxTokens },
+      ),
     )
     this.name = 'MaxFileReadTokenExceededError'
   }
@@ -348,7 +351,10 @@ export const FileReadTool = buildTool({
   async prompt() {
     const limits = getDefaultFileReadingLimits()
     const maxSizeInstruction = limits.includeMaxSizeInPrompt
-      ? `. Files larger than ${formatFileSize(limits.maxSizeBytes)} will return an error; use offset and limit for larger files`
+      ? tf(
+          '. Files larger than {maxSize} will return an error; use offset and limit for larger files',
+          { maxSize: formatFileSize(limits.maxSizeBytes) },
+        )
       : ''
     const offsetInstruction = limits.targetedRangeNudge
       ? OFFSET_INSTRUCTION_TARGETED
@@ -421,7 +427,10 @@ export const FileReadTool = buildTool({
       if (!parsed) {
         return {
           result: false,
-          message: `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`,
+          message: tf(
+            'Invalid pages parameter: "{pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.',
+            { pages },
+          ),
           errorCode: 7,
         }
       }
@@ -432,7 +441,10 @@ export const FileReadTool = buildTool({
       if (rangeSize > PDF_MAX_PAGES_PER_READ) {
         return {
           result: false,
-          message: `Page range "${pages}" exceeds maximum of ${PDF_MAX_PAGES_PER_READ} pages per request. Please use a smaller range.`,
+          message: tf(
+            'Page range "{pages}" exceeds maximum of {maxPages} pages per request. Please use a smaller range.',
+            { pages, maxPages: PDF_MAX_PAGES_PER_READ },
+          ),
           errorCode: 8,
         }
       }
@@ -474,7 +486,10 @@ export const FileReadTool = buildTool({
     ) {
       return {
         result: false,
-        message: `This tool cannot read binary files. The file appears to be a binary ${ext} file. Please use appropriate tools for binary file analysis.`,
+        message: tf(
+          'This tool cannot read binary files. The file appears to be a binary {ext} file. Please use appropriate tools for binary file analysis.',
+          { ext },
+        ),
         errorCode: 4,
       }
     }
@@ -484,7 +499,10 @@ export const FileReadTool = buildTool({
     if (isBlockedDevicePath(fullFilePath)) {
       return {
         result: false,
-        message: `Cannot read '${file_path}': this device file would block or produce infinite output.`,
+        message: tf(
+          "Cannot read '{filePath}': this device file would block or produce infinite output.",
+          { filePath: file_path },
+        ),
         errorCode: 9,
       }
     }
@@ -636,11 +654,16 @@ export const FileReadTool = buildTool({
 
         const similarFilename = findSimilarFile(fullFilePath)
         const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+        let message = tf('File does not exist. {cwdNote} {cwd}.', {
+          cwdNote: FILE_NOT_FOUND_CWD_NOTE,
+          cwd: getCwd(),
+        })
         if (cwdSuggestion) {
-          message += ` Did you mean ${cwdSuggestion}?`
+          message += tf(' Did you mean {suggestion}?', {
+            suggestion: cwdSuggestion,
+          })
         } else if (similarFilename) {
-          message += ` Did you mean ${similarFilename}?`
+          message += tf(' Did you mean {similarFilename}?', { similarFilename })
         }
         throw new Error(message)
       }
@@ -672,14 +695,24 @@ export const FileReadTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `PDF file read: ${data.file.filePath} (${formatFileSize(data.file.originalSize)})`,
+          content: tf('PDF file read: {filePath} ({fileSize})', {
+            filePath: data.file.filePath,
+            fileSize: formatFileSize(data.file.originalSize),
+          }),
         }
       case 'parts':
         // Extracted page images are read and sent as image blocks in mapToolResultToAPIMessage
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `PDF pages extracted: ${data.file.count} page(s) from ${data.file.filePath} (${formatFileSize(data.file.originalSize)})`,
+          content: tf(
+            'PDF pages extracted: {count} page(s) from {filePath} ({fileSize})',
+            {
+              count: data.file.count,
+              filePath: data.file.filePath,
+              fileSize: formatFileSize(data.file.originalSize),
+            },
+          ),
         }
       case 'file_unchanged':
         return {
@@ -696,8 +729,16 @@ export const FileReadTool = buildTool({
           // Determine the appropriate warning message
           content =
             data.file.totalLines === 0
-              ? '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
-              : `<system-reminder>Warning: the file exists but is shorter than the provided offset (${data.file.startLine}). The file has ${data.file.totalLines} lines.</system-reminder>`
+              ? t(
+                  '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>',
+                )
+              : tf(
+                  '<system-reminder>Warning: the file exists but is shorter than the provided offset ({startLine}). The file has {totalLines} lines.</system-reminder>',
+                  {
+                    startLine: data.file.startLine,
+                    totalLines: data.file.totalLines,
+                  },
+                )
         }
 
         return {
@@ -818,12 +859,20 @@ async function callInner(
     const cellsJsonBytes = Buffer.byteLength(cellsJson)
     if (cellsJsonBytes > maxSizeBytes) {
       throw new Error(
-        `Notebook content (${formatFileSize(cellsJsonBytes)}) exceeds maximum allowed size (${formatFileSize(maxSizeBytes)}). ` +
-          `Use ${BASH_TOOL_NAME} with jq to read specific portions:\n` +
-          `  cat "${file_path}" | jq '.cells[:20]' # First 20 cells\n` +
-          `  cat "${file_path}" | jq '.cells[100:120]' # Cells 100-120\n` +
-          `  cat "${file_path}" | jq '.cells | length' # Count total cells\n` +
-          `  cat "${file_path}" | jq '.cells[] | select(.cell_type=="code") | .source' # All code sources`,
+        tf(
+          'Notebook content ({size}) exceeds maximum allowed size ({maxSize}). ' +
+            'Use {toolName} with jq to read specific portions:\n' +
+            '  cat "{filePath}" | jq \'.cells[:20]\' # First 20 cells\n' +
+            '  cat "{filePath}" | jq \'.cells[100:120]\' # Cells 100-120\n' +
+            '  cat "{filePath}" | jq \'.cells | length\' # Count total cells\n' +
+            '  cat "{filePath}" | jq \'.cells[] | select(.cell_type=="code") | .source\' # All code sources',
+          {
+            size: formatFileSize(cellsJsonBytes),
+            maxSize: formatFileSize(maxSizeBytes),
+            toolName: BASH_TOOL_NAME,
+            filePath: file_path,
+          },
+        ),
       )
     }
 
@@ -940,9 +989,12 @@ async function callInner(
     const pageCount = await getPDFPageCount(resolvedFilePath)
     if (pageCount !== null && pageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
       throw new Error(
-        `This PDF has ${pageCount} pages, which is too many to read at once. ` +
-          `Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). ` +
-          `Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
+        tf(
+          'This PDF has {pageCount} pages, which is too many to read at once. ' +
+            'Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). ' +
+            'Maximum {maxPages} pages per request.',
+          { pageCount, maxPages: PDF_MAX_PAGES_PER_READ },
+        ),
       )
     }
 
@@ -970,9 +1022,12 @@ async function callInner(
 
     if (!isPDFSupported()) {
       throw new Error(
-        'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
-          `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
-          'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
+        tf(
+          'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+            'or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum {maxPages} pages per request). ' +
+            'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
+          { maxPages: PDF_MAX_PAGES_PER_READ },
+        ),
       )
     }
 

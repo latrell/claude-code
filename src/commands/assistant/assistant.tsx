@@ -8,7 +8,7 @@ import { useRegisterOverlay } from '../../context/overlayContext.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { findGitRoot } from '../../utils/git.js';
 import { buildCliLaunch, spawnCli } from '../../utils/cliLaunch.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { getKairosActive, setKairosActive } from '../../bootstrap/state.js';
 import type { LocalJSXCommandContext } from '../../commands.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
@@ -77,7 +77,7 @@ export function NewInstallWizard({ defaultDir, onInstalled, onCancel, onError }:
       child.unref();
 
       child.on('error', err => {
-        onError(`Failed to start daemon: ${err.message}`);
+        onError(tf('Failed to start daemon: {msg}', { msg: err.message }));
       });
 
       // Give the daemon a moment to initialize, then report success.
@@ -87,34 +87,34 @@ export function NewInstallWizard({ defaultDir, onInstalled, onCancel, onError }:
         onInstalled(dir);
       }, 1500);
     } catch (err) {
-      onError(`Failed to start daemon: ${err instanceof Error ? err.message : String(err)}`);
+      onError(tf('Failed to start daemon: {msg}', { msg: err instanceof Error ? err.message : String(err) }));
     }
   }
 
   if (starting) {
     return (
-      <Dialog title="Assistant Setup" onCancel={onCancel} hideInputGuide>
-        <Text>Starting daemon in {defaultDir}...</Text>
+      <Dialog title={t('Assistant Setup')} onCancel={onCancel} hideInputGuide>
+        <Text>{tf('Starting daemon in {dir}...', { dir: defaultDir })}</Text>
       </Dialog>
     );
   }
 
   return (
-    <Dialog title="Assistant Setup" onCancel={onCancel} hideInputGuide>
+    <Dialog title={t('Assistant Setup')} onCancel={onCancel} hideInputGuide>
       <Box flexDirection="column" gap={1}>
-        <Text>No active assistant sessions found.</Text>
+        <Text>{t('No active assistant sessions found.')}</Text>
         <Text>
-          Start a daemon in <Text bold>{defaultDir || '.'}</Text> to create a cloud session?
+          {t('Start a daemon in')} <Text bold>{defaultDir || '.'}</Text> {t('to create a cloud session?')}
         </Text>
         <Box flexDirection="column">
           <ListItem isFocused={focusIndex === 0}>
-            <Text>Start assistant daemon</Text>
+            <Text>{t('Start assistant daemon')}</Text>
           </ListItem>
           <ListItem isFocused={focusIndex === 1}>
-            <Text>Cancel</Text>
+            <Text>{t('Cancel')}</Text>
           </ListItem>
         </Box>
-        <Text dimColor>Enter to select · Esc to cancel</Text>
+        <Text dimColor>{t('Enter to select · Esc to cancel')}</Text>
       </Box>
     </Dialog>
   );

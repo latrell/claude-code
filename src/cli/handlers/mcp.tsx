@@ -138,7 +138,7 @@ export async function mcpRemoveHandler(name: string, options: { scope?: string }
       scopes.forEach(scope => {
         process.stderr.write(`  - ${getScopeLabel(scope)} (${describeMcpConfigFilePath(scope)})\n`);
       });
-      process.stderr.write('\nTo remove from a specific scope, use:\n');
+      process.stderr.write(t('\nTo remove from a specific scope, use:\n'));
       scopes.forEach(scope => {
         process.stderr.write(`  claude mcp remove "${name}" -s ${scope}\n`);
       });
@@ -201,18 +201,18 @@ export async function mcpGetHandler(name: string): Promise<void> {
   }
 
   console.log(`${name}:`);
-  console.log(`  Scope: ${getScopeLabel(server.scope)}`);
+  console.log(`  ${t('Scope:')} ${getScopeLabel(server.scope)}`);
 
   // Check server health
   const status = await checkMcpServerHealth(name, server);
-  console.log(`  Status: ${status}`);
+  console.log(`  ${t('Status:')} ${status}`);
 
   // Intentionally excluding sse-ide servers here since they're internal
   if (server.type === 'sse') {
-    console.log(`  Type: sse`);
-    console.log(`  URL: ${server.url}`);
+    console.log(`  ${t('Type:')} sse`);
+    console.log(`  ${t('URL:')} ${server.url}`);
     if (server.headers) {
-      console.log('  Headers:');
+      console.log(`  ${t('Headers:')}`);
       for (const [key, value] of Object.entries(server.headers)) {
         console.log(`    ${key}: ${value}`);
       }
@@ -220,18 +220,18 @@ export async function mcpGetHandler(name: string): Promise<void> {
     if (server.oauth?.clientId || server.oauth?.callbackPort) {
       const parts: string[] = [];
       if (server.oauth.clientId) {
-        parts.push('client_id configured');
+        parts.push(t('client_id configured'));
         const clientConfig = getMcpClientConfig(name, server);
-        if (clientConfig?.clientSecret) parts.push('client_secret configured');
+        if (clientConfig?.clientSecret) parts.push(t('client_secret configured'));
       }
-      if (server.oauth.callbackPort) parts.push(`callback_port ${server.oauth.callbackPort}`);
-      console.log(`  OAuth: ${parts.join(', ')}`);
+      if (server.oauth.callbackPort) parts.push(tf('callback_port {port}', { port: server.oauth.callbackPort }));
+      console.log(`  ${t('OAuth:')} ${parts.join(', ')}`);
     }
   } else if (server.type === 'http') {
-    console.log(`  Type: http`);
-    console.log(`  URL: ${server.url}`);
+    console.log(`  ${t('Type:')} http`);
+    console.log(`  ${t('URL:')} ${server.url}`);
     if (server.headers) {
-      console.log('  Headers:');
+      console.log(`  ${t('Headers:')}`);
       for (const [key, value] of Object.entries(server.headers)) {
         console.log(`    ${key}: ${value}`);
       }
@@ -239,26 +239,26 @@ export async function mcpGetHandler(name: string): Promise<void> {
     if (server.oauth?.clientId || server.oauth?.callbackPort) {
       const parts: string[] = [];
       if (server.oauth.clientId) {
-        parts.push('client_id configured');
+        parts.push(t('client_id configured'));
         const clientConfig = getMcpClientConfig(name, server);
-        if (clientConfig?.clientSecret) parts.push('client_secret configured');
+        if (clientConfig?.clientSecret) parts.push(t('client_secret configured'));
       }
-      if (server.oauth.callbackPort) parts.push(`callback_port ${server.oauth.callbackPort}`);
-      console.log(`  OAuth: ${parts.join(', ')}`);
+      if (server.oauth.callbackPort) parts.push(tf('callback_port {port}', { port: server.oauth.callbackPort }));
+      console.log(`  ${t('OAuth:')} ${parts.join(', ')}`);
     }
   } else if (server.type === 'stdio') {
-    console.log(`  Type: stdio`);
-    console.log(`  Command: ${server.command}`);
+    console.log(`  ${t('Type:')} stdio`);
+    console.log(`  ${t('Command:')} ${server.command}`);
     const args = Array.isArray(server.args) ? server.args : [];
-    console.log(`  Args: ${args.join(' ')}`);
+    console.log(`  ${t('Args:')} ${args.join(' ')}`);
     if (server.env) {
-      console.log('  Environment:');
+      console.log(`  ${t('Environment:')}`);
       for (const [key, value] of Object.entries(server.env)) {
         console.log(`    ${key}=${value}`);
       }
     }
   }
-  console.log(`\nTo remove this server, run: claude mcp remove "${name}" -s ${server.scope}`);
+  console.log(tf('\nTo remove this server, run: claude mcp remove "{name}" -s {scope}', { name, scope: server.scope }));
   // Use gracefulShutdown to properly clean up MCP server connections
   // (process.exit bypasses cleanup handlers, leaving child processes orphaned)
   await gracefulShutdown(0);

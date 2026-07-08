@@ -1,5 +1,6 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { t } from '../../../../i18n/t.js';
 import { useMainLoopModel } from '../../../../hooks/useMainLoopModel.js';
 import { Box, Byline, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
@@ -28,7 +29,7 @@ export function GenerateStep(): ReactNode {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsGenerating(false);
-      setError('Generation cancelled');
+      setError(t('Generation cancelled'));
     }
   }, []);
 
@@ -75,7 +76,7 @@ export function GenerateStep(): ReactNode {
   const handleGenerate = async (): Promise<void> => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) {
-      setError('Please describe what the agent should do');
+      setError(t('Please describe what the agent should do'));
       return;
     }
 
@@ -109,7 +110,7 @@ export function GenerateStep(): ReactNode {
       if (err instanceof APIUserAbortError) {
         // User cancelled - no error to show
       } else if (err instanceof Error && !err.message.includes('No assistant message found')) {
-        setError(err.message || 'Failed to generate agent');
+        setError(err.message || t('Failed to generate agent'));
       }
       updateWizardData({ isGenerating: false });
     } finally {
@@ -118,7 +119,9 @@ export function GenerateStep(): ReactNode {
     }
   };
 
-  const subtitle = 'Describe what this agent should do and when it should be used (be comprehensive for best results)';
+  const subtitle = t(
+    'Describe what this agent should do and when it should be used (be comprehensive for best results)',
+  );
 
   if (isGenerating) {
     return (
@@ -130,7 +133,7 @@ export function GenerateStep(): ReactNode {
       >
         <Box flexDirection="row" alignItems="center">
           <Spinner />
-          <Text color="suggestion"> Generating agent from description...</Text>
+          <Text color="suggestion">{t(' Generating agent from description...')}</Text>
         </Box>
       </WizardDialogLayout>
     );
@@ -162,7 +165,7 @@ export function GenerateStep(): ReactNode {
           value={prompt}
           onChange={setPrompt}
           onSubmit={handleGenerate}
-          placeholder="e.g., Help me write unit tests for my code..."
+          placeholder={t('e.g., Help me write unit tests for my code...')}
           columns={80}
           cursorOffset={cursorOffset}
           onChangeCursorOffset={setCursorOffset}

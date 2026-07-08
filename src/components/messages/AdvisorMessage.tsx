@@ -1,6 +1,8 @@
 import figures from 'figures';
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
+import { tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import type { AdvisorBlock } from '../../utils/advisor.js';
 import { renderModelName } from '../../utils/model/model.js';
 import { jsonStringify } from '../../utils/slowOperations.js';
@@ -46,11 +48,7 @@ export function AdvisorMessage({
   let body: React.ReactNode;
   switch (block.content.type) {
     case 'advisor_tool_result_error':
-      body = (
-        <T color="error" vars={{ code: block.content.error_code }}>
-          Advisor unavailable ({code})
-        </T>
-      );
+      body = <Text color="error">{tf('Advisor unavailable ({code})', { code: block.content.error_code })}</Text>;
       break;
     case 'advisor_result':
       body = verbose ? (

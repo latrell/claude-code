@@ -515,7 +515,6 @@ const zh: Record<string, string> = {
   cwd: '工作目录',
   'System Diagnostics': '系统诊断',
   '/rename to add a name': '/rename 添加名称',
-  Config: '配置',
   Usage: '用量',
   // Notification channel labels
   Auto: '自动',
@@ -571,7 +570,6 @@ const zh: Record<string, string> = {
   'Plan includes at least {amount} of API usage':
     '计划内含至少 {amount} 的 API 用量',
   '{amount} bonus quota': '赠送额度 {amount}',
-  'On-Demand Usage': '按量付费用量',
   'On-Demand': '按量付费',
   '{used} spent': '已花费 {used}',
   'No monthly limit': '无每月限额',
@@ -886,7 +884,6 @@ const zh: Record<string, string> = {
   Disconnected: '已断开连接',
 
   // ── Spinner thinking state fragments ───────────────────────────
-  thinking: '思考中',
   'thinking{effort}': '思考中{effort}',
   'thought for {n}s': '思考了 {n} 秒',
 
@@ -1586,8 +1583,6 @@ const zh: Record<string, string> = {
   'setting up': '设置中',
   stopping: '正在停止',
   'awaiting approval': '等待审批',
-  idle: '空闲',
-  working: '工作中',
   'No tasks currently running': '当前无任务运行',
   'Viewing teammate': '查看队友',
   'Viewing leader': '查看领导者',
@@ -1597,13 +1592,9 @@ const zh: Record<string, string> = {
   Agents: '智能体',
   Shells: 'Shell',
   Monitors: '监控',
-  Completed: '已完成',
-  Failed: '失败',
-  Stopped: '已停止',
   'Async agent': '异步智能体',
   Progress: '进度',
   Prompt: '提示',
-  Error: '错误',
   'Monitor details': '监控详情',
   'Shell details': 'Shell 详情',
   Status: '状态',
@@ -1659,13 +1650,10 @@ const zh: Record<string, string> = {
   ultrareview: 'ultrareview',
   'error · {error}': '错误 · {error}',
   'background agents launched': '个后台智能体已启动',
-  agents: '智能体',
   '{type} agents': '{type} 智能体',
   finished: '已完成',
-  Running: '运行',
   'Initializing…': '初始化中…',
   'Running in the background': '在后台运行中',
-  Done: '完成',
   teleport: '传送',
   tool: '工具',
   tools: '工具',
@@ -1679,7 +1667,6 @@ const zh: Record<string, string> = {
   background: '后台',
   update: '更新',
   remove: '移除',
-  dismiss: '关闭',
   continue: '继续',
   add: '添加',
   expand: '展开',
@@ -1688,8 +1675,6 @@ const zh: Record<string, string> = {
   'go back': '返回',
   stop: '停止',
   foreground: '前台',
-  resume: '恢复',
-  back: '返回',
   skip: '跳过',
   preview: '预览',
   rename: '重命名',
@@ -2178,7 +2163,6 @@ const zh: Record<string, string> = {
 
   // ── Permission mode titles ────────────────────────────────────
   'Plan Mode': '计划模式',
-  Plan: '计划',
   'Accept edits': '接受编辑',
   Accept: '接受',
   Bypass: '绕过权限',
@@ -2221,7 +2205,6 @@ const zh: Record<string, string> = {
   'Bash command (unsandboxed)': 'Bash 命令（未沙箱化）',
   'Bash command': 'Bash 命令',
   'PowerShell command': 'PowerShell 命令',
-  'Tool use': '工具使用',
   'Enter plan mode?': '进入计划模式？',
   'Exit plan mode?': '退出计划模式？',
   'Ready to code?': '准备开始编码？',
@@ -2449,7 +2432,6 @@ const zh: Record<string, string> = {
   "Don't ask again": '不再询问',
   'Error submitting feedback / bug report': '提交反馈/错误报告时出错',
   'Error: {error}': '错误：{error}',
-  Exit: '退出',
   'Exit and fix manually': '退出并手动修复',
   'Failed to check for updates': '检查更新失败',
   'Failed to connect': '连接失败',
@@ -2554,7 +2536,6 @@ const zh: Record<string, string> = {
     '还没有任何连接。添加一个以管理提供者和账号。',
   '+ Add connection…': '+ 添加连接…',
   'Clear subagent default (inherit main)': '清除子 agent 默认（继承主 agent）',
-  Close: '关闭',
   'Claude account': 'Claude 账号',
   'Anthropic compatible': 'Anthropic 兼容',
   'ChatGPT account': 'ChatGPT 账号',
@@ -2567,7 +2548,6 @@ const zh: Record<string, string> = {
   'Set as global default (main agent)': '设为全局默认（主 agent）',
   'Use for this session (subagents)': '本会话使用（子 agent）',
   'Set as global default (subagents)': '设为全局默认（子 agent）',
-  Rename: '重命名',
   Delete: '删除',
   'Rename connection': '重命名连接',
   'Delete connection "{label}"? Stored credentials for it will be removed.':
@@ -2641,7 +2621,6 @@ const zh: Record<string, string> = {
     '登录后此账号将作为连接添加，并成为当前活跃的 Claude 账号。',
   'Login finished but no account information was stored.':
     '登录已完成，但未能保存账号信息。',
-  'Claude Account': 'Claude 账号',
   'ChatGPT Subscription': 'ChatGPT 订阅',
   required: '必填',
   'Open the URL below and enter the code to sign in:':
@@ -2669,7 +2648,1128 @@ const zh: Record<string, string> = {
   'Run /connect to add providers and accounts first.':
     '请先运行 /connect 添加提供者和账号。',
   'Model picker closed': '已关闭模型选择器',
+
+  // ── i18n batch: agent creation wizard ──────────────────────────
+  'Agent type (identifier)': '智能体类型（标识符）',
+  'All tools': '所有工具',
+  None: '无',
+  Description: '描述',
+  '(tells Claude when to use this agent):':
+    '（告诉 Claude 何时使用此智能体）：',
+  'Permission mode': '权限模式',
+  Hooks: '钩子',
+  Skills: '技能',
+  Color: '颜色',
+  'System prompt': '系统提示',
+  'Automatic color': '自动颜色',
+  'Preview: ': '预览：',
+  'Enter a unique identifier for your agent:': '为您的智能体输入唯一标识符：',
+  'e.g., test-runner, tech-lead, etc': '例如 test-runner、tech-lead 等',
+  'Enter the system prompt for your agent:': '输入智能体的系统提示：',
+  'Be comprehensive for best results': '为获得最佳结果，请尽量详尽',
+  'You are a helpful code reviewer who...': '你是一个乐于助人的代码审查者…',
+  'Generation cancelled': '生成已取消',
+  'Creation method': '创建方法',
+  'Generate with Claude (recommended)': '使用 Claude 生成（推荐）',
+  'Manual configuration': '手动配置',
+  'Choose background color': '选择背景颜色',
+  'Choose location': '选择位置',
+  'Personal (~/.claude/agents/)': '个人（~/.claude/agents/）',
+  'Project (.claude/agents/)': '项目（.claude/agents/）',
+  'Configure agent memory': '配置智能体记忆',
+  'User scope (~/.claude/agent-memory/) (Recommended)':
+    '用户范围（~/.claude/agent-memory/）（推荐）',
+  'None (no persistent memory)': '无（无持久记忆）',
+  'Project scope (.claude/agent-memory/)': '项目范围（.claude/agent-memory/）',
+  'Local scope (.claude/agent-memory-local/)':
+    '本地范围（.claude/agent-memory-local/）',
+  'Project scope (.claude/agent-memory/) (Recommended)':
+    '项目范围（.claude/agent-memory/）（推荐）',
+  'User scope (~/.claude/agent-memory/)': '用户范围（~/.claude/agent-memory/）',
+  'Select tools': '选择工具',
+  'Confirm and save': '确认并保存',
+  'Description (tell Claude when to use this agent)':
+    '描述（告诉 Claude 何时使用此智能体）',
+  'When should Claude use this agent?': 'Claude 应该在什么情况下使用此智能体？',
+  "e.g., use this agent after you're done writing code...":
+    '例如，在完成代码编写后使用此智能体…',
+  'Describe what this agent should do and when it should be used (be comprehensive for best results)':
+    '描述此智能体的职责和使用场景（为获得最佳结果，请尽量详尽）',
+  'e.g., Help me write unit tests for my code...': '例如，帮我编写单元测试…',
+  'Please describe what the agent should do': '请描述智能体应该做什么',
+  'Description is required': '描述为必填项',
+  'Failed to save agent': '保存智能体失败',
+  'Opened {agentType} in editor. If you made edits, restart to load the latest version.':
+    '已在编辑器中打开{agentType}。如果进行过修改，请重启以加载最新版本。',
+  'Open in editor': '在编辑器中打开',
+  'Edit tools': '编辑工具',
+  'Edit model': '编辑模型',
+  'Edit color': '编辑颜色',
+  'Source: ': '来源：',
+  'Agent type is required': '智能体类型为必填项',
+  'System prompt is required': '系统提示为必填项',
+  'Press {key1} to retry · Press {key2} to cancel':
+    '按 {key1} 重试 · 按 {key2} 取消',
+  'Fetching your Claude Code sessions…': '正在获取您的 Claude Code 会话…',
+  'Check your internet connection': '请检查您的网络连接',
+  'Teleport requires a Claude account': 'Teleport 需要 Claude 账号',
+  'Sorry, Claude encountered an error': '抱歉，Claude 遇到了错误',
+  'Sorry, Claude Code encountered an error': '抱歉，Claude Code 遇到了错误',
+  'No code changes': '无代码更改',
+  'No code restore': '无代码恢复',
+  'Enter to continue · ': '回车继续 · ',
+  'Esc to exit': 'Esc 退出',
+  'Messages after this point will be summarized.': '此点之后的消息将被摘要。',
+  'Preceding messages will be summarized. This and subsequent messages will remain unchanged — you will stay at the end of the conversation.':
+    '之前的消息将被摘要。此消息及后续消息保持不变 — 您将停留在对话末尾。',
+  'The conversation will be forked.': '对话将被分叉。',
+  'The conversation will be unchanged.': '对话保持不变。',
+  'The code will be unchanged.': '代码保持不变。',
+  'The code has not changed (nothing will be restored).':
+    '代码未更改（无需恢复任何内容）。',
+  'User rejected ': '用户已拒绝 ',
+  'User rejected {operation} to ': '用户已拒绝{operation}到 ',
+  "User rejected Claude's plan:": '用户拒绝了 Claude 的计划：',
+  Overview: '概览',
+  Models: '模型',
+  'Esc to close': 'Esc 关闭',
+  'When hooks are disabled:': '当钩子禁用时：',
+  'No skills found': '未找到技能',
+  'No skills matching "{query}"': '没有与"{query}"匹配的技能',
+  'Type to filter skills\u2026': '输入以筛选技能…',
+  'Press \u2191\u2193 to navigate, Enter to select, Esc to cancel':
+    '↑↓ 导航，Enter 选择，Esc 取消',
+  'Press Enter to continue anyway, or Ctrl+C to exit and fix issues':
+    '按回车继续，或按 Ctrl+C 退出并修复问题',
+  'Setup Warnings': '设置警告',
+  'We found some potential issues, but you can continue anyway':
+    '我们发现了一些潜在问题，但您仍然可以继续',
+  'Having trouble? See manual setup instructions at:':
+    '遇到问题？请查看以下网址的手动设置说明：',
+  'Install GitHub App': '安装 GitHub App',
+  Success: '成功',
+  'GitHub Actions setup complete!': 'GitHub Actions 设置完成！',
+  'github-actions setup failed': 'github-actions 设置失败',
+  'Existing Workflow Found': '找到现有工作流',
+  'Update workflow file with latest version': '将工作流文件更新到最新版本',
+  'Skip workflow update (configure secrets only)':
+    '跳过工作流更新（仅配置密钥）',
+  'Exit without making changes': '退出而不做更改',
+  'Workflow file conflict': '工作流文件冲突',
+  'A Claude workflow file already exists at': 'Claude 工作流文件已存在于',
+  'A Claude workflow file already exists in this repository.':
+    '此仓库中已存在 Claude 工作流文件。',
+  'Install the Claude GitHub App': '安装 Claude GitHub App',
+  'Opening browser to install the Claude GitHub App…':
+    '正在打开浏览器安装 Claude GitHub App…',
+  'Important: Make sure to grant access to this specific repository':
+    '重要：请确保授予对此特定仓库的访问权限',
+  'Install GitHub CLI from https://cli.github.com/':
+    '从 https://cli.github.com/ 安装 GitHub CLI',
+  'GitHub CLI (gh) does not appear to be installed or accessible.':
+    'GitHub CLI (gh) 似乎未安装或无法访问。',
+  'GitHub CLI not found': '未找到 GitHub CLI',
+  'GitHub CLI not authenticated': 'GitHub CLI 未登录',
+  'GitHub CLI does not appear to be authenticated.': 'GitHub CLI 似乎未登录。',
+  'Missing required scopes': '缺少必需的作用域',
+  'GitHub CLI is missing required permissions: {scopes}.':
+    'GitHub CLI 缺少所需权限：{scopes}。',
+  'Please install the app for repository: {repo}': '请为仓库 {repo} 安装应用',
+  'Enter repository': '输入仓库',
+  'Select GitHub repository': '选择 GitHub 仓库',
+  'Enter a different repository': '输入其他仓库',
+  'Enter a repo as owner/repo or https://github.com/owner/repo…':
+    '以 owner/repo 或 https://github.com/owner/repo… 格式输入仓库',
+  'Use current repository: {repo}': '使用当前仓库：{repo}',
+  'Repository: {name}': '仓库：{name}',
+  'Repository not found': '未找到仓库',
+  'Repository format warning': '仓库格式警告',
+  'Repository should be in format "owner/repo"': '仓库应为 "owner/repo" 格式',
+  'Invalid GitHub URL format': '无效的 GitHub URL 格式',
+  'The repository URL format appears to be invalid.': '仓库 URL 格式似乎无效。',
+  'Check that the repository name is correct: {name}':
+    '请检查仓库名称是否正确：{name}',
+  'Admin permissions required': '需要管理员权限',
+  'You might need admin permissions on {name} to set up GitHub Actions.':
+    '您可能需要对 {name} 拥有管理员权限才能设置 GitHub Actions。',
+  'Getting repository information': '正在获取仓库信息',
+  'Creating branch': '正在创建分支',
+  'Creating workflow file': '正在创建工作流文件',
+  'Creating workflow files': '正在创建工作流文件',
+  'Opening pull request page': '正在打开拉取请求页面',
+  'Create GitHub Actions workflow': '创建 GitHub Actions 工作流',
+  'Create Authentication Token': '创建认证令牌',
+  'Starting authentication…': '正在开始认证…',
+  'Processing authentication…': '正在处理认证…',
+  'Opening browser to sign in with your Claude account…':
+    '正在打开浏览器以使用您的 Claude 账号登录…',
+  'Using token for GitHub Actions setup…':
+    '正在使用令牌进行 GitHub Actions 设置…',
+  'Authentication token created successfully!': '认证令牌创建成功！',
+  'Creating a long-lived token for GitHub Actions':
+    '正在为 GitHub Actions 创建长期令牌',
+  'Choose API key': '选择 API 密钥',
+  'Use your existing Claude Code API key': '使用现有的 Claude Code API 密钥',
+  'Create a long-lived token with your Claude subscription':
+    '使用您的 Claude 订阅创建长期令牌',
+  'Enter a new API key': '输入新的 API 密钥',
+  'sk-ant… (Create a new key at https://platform.claude.com/settings/keys)':
+    'sk-ant…（在 https://platform.claude.com/settings/keys 创建新密钥）',
+  'Setup API key secret': '设置 API 密钥机密',
+  'ANTHROPIC_API_KEY already exists in repository secrets!':
+    '仓库机密中已存在 ANTHROPIC_API_KEY！',
+  'Setting up {name} secret': '正在设置 {name} 机密',
+  'Use the existing API key': '使用现有 API 密钥',
+  'Create a new secret with a different name': '使用不同名称创建新机密',
+  'Enter new secret name (alphanumeric with underscores):':
+    '输入新机密名称（字母数字加下划线）：',
+  'e.g., CLAUDE_API_KEY': '例如 CLAUDE_API_KEY',
+  'Auth: ': '认证：',
+  'Status: ': '状态：',
+  'Scope:': '范围：',
+  'Type:': '类型：',
+  URL: 'URL',
+  'URL: ': 'URL：',
+  'Command: ': '命令：',
+  'Args: ': '参数：',
+  'Args:': '参数：',
+  'Headers:': '头部：',
+  'OAuth:': 'OAuth：',
+  'Environment:': '环境：',
+  'Tools: ': '工具：',
+  'Config location: ': '配置位置：',
+  'Version:': '版本：',
+  'Path:': '路径：',
+  'Error:': '错误：',
+  'Source:': '来源：',
+  'Plugin:': '插件：',
+  'client_id configured': 'client_id 已配置',
+  'client_secret configured': 'client_secret 已配置',
+  'callback_port {port}': 'callback_port {port}',
+  'MCP server "{serverName}" not found': '未找到 MCP 服务器 "{serverName}"',
+  'Successfully reconnected to {serverName}': '已成功重新连接到 {serverName}',
+  'Failed to reconnect to {serverName}': '重新连接到 {serverName} 失败',
+  'Error: {errorMessage}': '错误：{errorMessage}',
+  'Error: {msg}': '错误：{msg}',
+  'OAuth error: {msg}': 'OAuth 错误：{msg}',
+  'Reason: {msg}': '原因：{msg}',
+  'Reconnecting to ': '正在重新连接到 ',
+  enabled: '已启用',
+  'Connecting to {serverName}...': '正在连接到 {serverName}…',
+  'Authenticating with {serverName}...': '正在使用 {serverName} 进行认证…',
+  'Authentication successful. Connected to {serverName}.':
+    '认证成功。已连接到 {serverName}。',
+  'Authentication successful. Reconnected to {serverName}.':
+    '认证成功。已重新连接到 {serverName}。',
+  'Authentication cleared for {serverName}.':
+    '已清除 {serverName} 的认证信息。',
+  'Disconnected from {serverName}.': '已断开与 {serverName} 的连接。',
+  'Reconnection failed after authentication': '认证后重新连接失败',
+  'Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect.':
+    '认证成功，但服务器重新连接失败。您可能需要手动重启 Claude Code 才能使更改生效。',
+  'Authentication successful, but server still requires authentication. You may need to manually restart Claude Code.':
+    '认证成功，但服务器仍需认证。您可能需要手动重启 Claude Code。',
+  'Clear authentication for {serverName}': '清除 {serverName} 的认证信息',
+  'Clear authentication': '清除认证',
+  Authenticate: '认证',
+  'Re-authenticate': '重新认证',
+  'not authenticated': '未认证',
+  'View tools': '查看工具',
+  Reconnect: '重新连接',
+  Enable: '启用',
+  Disable: '禁用',
+  'This will open claude.ai in the browser. Find the MCP server in the list and click "Disconnect".':
+    '这将在浏览器中打开 claude.ai。在列表中找到 MCP 服务器并点击"断开连接"。',
+  'This may take a few moments.': '这可能需要一些时间。',
+  'Find the MCP server in the browser and click "Disconnect".':
+    '在浏览器中找到 MCP 服务器并点击"断开连接"。',
+  'Exported {source} → {outputFile}': '已导出 {source} → {outputFile}',
+  'Exported session {sessionId} → {outputFile}':
+    '已将会话 {sessionId} 导出到 {outputFile}',
+  'Source not found: {source}': '未找到来源：{source}',
+  'Session not found: {logId}': '未找到会话：{logId}',
+  'Task not found: {id}': '未找到任务：{id}',
+  'Updated task {id}: [{status}] {subject}':
+    '已更新任务 {id}：[{status}] {subject}',
+  'No recent sessions.': '无最近会话。',
+  'Last {count} sessions:': '最近 {count} 个会话：',
+  'Completion cache regenerated for {shell}.':
+    '已完成 {shell} 的补全缓存重建。',
+  'Recent versions:': '最近版本：',
+  'Analyzing your auto mode rules…\n\n': '正在分析您的自动模式规则…\n\n',
+  'No critique was generated. Please try again.\n': '未生成评论。请重试。\n',
+  'API key: ANTHROPIC_API_KEY\n': 'API 密钥：ANTHROPIC_API_KEY\n',
+  'Warning: You already have authentication configured via environment variable or API key helper.':
+    '警告：您已通过环境变量或 API 密钥助手配置了认证。',
+  'The setup-token command will create a new OAuth token which you can use instead.':
+    'setup-token 命令将创建一个新的 OAuth 令牌，您可以改用它。',
+  Allow: '允许',
+  Ask: '询问',
+  Deny: '拒绝',
+  Workspace: '工作区',
+  'Permissions:': '权限：',
+  'Recently denied': '最近拒绝',
+  'Any Bash command': '任意 Bash 命令',
+  'Any Bash command starting with ': '以以下内容开头的任意 Bash 命令 ',
+  'The Bash command ': 'Bash 命令 ',
+  'Any use of the ': '使用 ',
+  ' tool': ' 工具',
+  'Rule details': '规则详情',
+  'This rule is configured by managed settings and cannot be modified.':
+    '此规则由托管设置配置，无法修改。',
+  'Contact your system administrator for more information.':
+    '请联系您的系统管理员了解更多信息。',
+  'Are you sure you want to delete this permission rule?':
+    '您确定要删除此权限规则吗？',
+  'Delete {behavior} tool?': '删除{behavior}工具？',
+  'Claude Code will always ask for confirmation before using these tools.':
+    '在使用这些工具前，Claude Code 将始终要求确认。',
+  'Claude Code will always reject requests to use denied tools.':
+    'Claude Code 将始终拒绝使用被拒绝工具的请求。',
+  "Claude Code won't ask before using allowed tools.":
+    'Claude Code 在使用允许的工具前不会询问。',
+  'Add a new rule': '添加新规则',
+  'Claude Code can read files in the workspace, and make edits when auto-accept edits is on.':
+    'Claude Code 可以读取工作区中的文件，并在自动接受编辑开启时进行编辑。',
+  'Add directory to workspace': '添加目录到工作区',
+  'Remove directory from workspace?': '从工作区移除目录？',
+  'Enter the path to the directory:': '输入目录路径：',
+  'Yes, for this session': '是，仅本次会话',
+  'Yes, and remember this directory': '是，并记住此目录',
+  'Claude Code will be able to read files in this directory and make edits when auto-accept edits is on.':
+    'Claude Code 将能够读取此目录中的文件，并在自动接受编辑开启时进行编辑。',
+  'Directory path': '目录路径',
+  'Requires manual approval': '需要手动批准',
+  'Ctrl-D to hide debug info': 'Ctrl-D 隐藏调试信息',
+  'ctrl+g to edit in {editor}': 'ctrl+g 在 {editor} 中编辑',
+  'Review artifact?': '审查工件？',
+  'Chat about this': '对此进行聊天',
+  'Skip interview and plan immediately': '跳过访谈并立即计划',
+  'press n to add notes': '按 n 添加备注',
+  'Add notes on this design\u2026': '在此设计中添加备注…',
+  'No preview available': '无可用预览',
+  'Enter to select \u00b7 {up}/{down} to navigate \u00b7 n to add notes':
+    'Enter 选择 · {up}/{down} 导航 · n 添加备注',
+  'Tab to switch questions': 'Tab 切换问题',
+  'Sandbox BashTool, with auto-allow': '沙箱 BashTool，自动允许',
+  'Sandbox BashTool, with regular permissions': '沙箱 BashTool，常规权限',
+  'No Sandbox': '无沙箱',
+  Mode: '模式',
+  Overrides: '覆盖',
+  Dependencies: '依赖',
+  'Sandbox:': '沙箱：',
+  'Cannot block unix domain sockets (see Dependencies tab)':
+    '无法阻止 Unix 域套接字（请参阅依赖标签页）',
+  'Configure Mode:': '配置模式：',
+  'All bash commands invoked by the model must run in the sandbox unless they are explicitly listed in excludedCommands.':
+    '模型调用的所有 bash 命令必须在沙箱中运行，除非它们明确列在 excludedCommands 中。',
+  'Commands will try to run in the sandbox automatically, and attempts to run outside of the sandbox fallback to regular permissions. Explicit ask/deny rules are always respected.':
+    '命令将尝试自动在沙箱中运行，尝试在沙箱外运行将回退到常规权限。显式的询问/拒绝规则始终有效。',
+  'Sandbox is not enabled. Enable sandbox to configure override settings.':
+    '沙箱未启用。请启用沙箱以配置覆盖设置。',
+  'Override settings are managed by a higher-priority configuration and cannot be changed locally.':
+    '覆盖设置由更高优先级的配置管理，无法在本地更改。',
+  'Allow unsandboxed fallback': '允许非沙箱回退',
+  'Allow unsandboxed fallback:': '允许非沙箱回退：',
+  'Strict sandbox mode': '严格沙箱模式',
+  'Strict sandbox mode:': '严格沙箱模式：',
+  'Configure Overrides:': '配置覆盖：',
+  'Excluded Commands:': '排除的命令：',
+  'Filesystem Read Restrictions:': '文件系统读取限制：',
+  'Filesystem Write Restrictions:': '文件系统写入限制：',
+  'Allowed Unix Sockets:': '允许的 Unix 套接字：',
+  'The following patterns will be ignored:': '以下模式将被忽略：',
+  'Current setting:': '当前设置：',
+  'No marketplaces configured': '未配置市场',
+  'Configured marketplaces:': '已配置的市场：',
+  'Adding marketplace...': '正在添加市场…',
+  'Successfully added marketplace: {name} (declared in {scope} settings)':
+    '已成功添加市场：{name}（在 {scope} 设置中声明）',
+  'Successfully removed marketplace: {name}': '已成功移除市场：{name}',
+  'Successfully updated marketplace: {name}': '已成功更新市场：{name}',
+  'Successfully updated {count} marketplace(s)': '已成功更新 {count} 个市场',
+  'Updating marketplace: {name}...': '正在更新市场：{name}…',
+  'Updating {count} marketplace(s)...': '正在更新 {count} 个市场…',
+  'Invalid marketplace source format. Try: owner/repo, https://..., or ./path':
+    '无效的市场源格式。请尝试：owner/repo、https://... 或 ./path',
+  'Invalid scope "{scope}". Valid scopes: {validScopes}':
+    '无效的范围 "{scope}"。有效范围：{validScopes}',
+  'Invalid scope {scope}. Use: user, project, or local':
+    '无效的范围 {scope}。请使用：user、project 或 local',
+  'Invalid scope: {scope}. Must be one of: {validScopes}.':
+    '无效的范围：{scope}。必须是以下之一：{validScopes}。',
+  'Cannot use --all with a specific plugin': '不能将 --all 与特定插件同时使用',
+  'Cannot use --scope with --all': '不能将 --scope 与 --all 同时使用',
+  'Please specify a plugin name or use --all to disable all plugins':
+    '请指定插件名称或使用 --all 禁用所有插件',
+  '--cowork can only be used with user scope': '--cowork 只能用于 user 范围',
+  'Validating {fileType} manifest: {filePath}':
+    '正在验证 {fileType} 清单：{filePath}',
+  'Validating {fileType}: {filePath}': '正在验证 {fileType}：{filePath}',
+  'Validation passed': '验证通过',
+  'Validation passed with warnings': '验证通过但有警告',
+  'Validation failed': '验证失败',
+  'Unexpected error during validation: {error}': '验证时出现意外错误：{error}',
+  'Failed to {action}: {error}': '操作 "{action}" 失败：{error}',
+  'Failed to {action} MCP server ': 'MCP 服务器 "{action}" 失败 ',
+  'Found {count} {word}:': '找到 {count} 个{word}：',
+  'failed to load': '加载失败',
+  loaded: '已加载',
+  'loaded with errors': '已加载但存在错误',
+  'Session-only plugins (--plugin-dir):': '仅会话插件（--plugin-dir）：',
+  'Are you sure you want to delete the agent {agentType}?':
+    '您确定要删除智能体 {agentType} 吗？',
+  'Guest passes · {count} left': '好友通行证 · 剩余 {count} 个',
+  'Guest passes are not currently available.': '好友通行证当前不可用。',
+  'Referral link copied to clipboard!': '推荐链接已复制到剪贴板！',
+  'Loading guest pass information…': '正在加载好友通行证信息…',
+  'Terms apply.': '适用条款。',
+  'Enter to copy link · Esc to cancel': '回车复制链接 · Esc 取消',
+  'Authentication error · Try again': '认证错误 · 重试',
+  'Not logged in · Run /login': '未登录 · 运行 /login',
+  'To enable {shortcut}, run /terminal-setup':
+    '要启用 {shortcut}，请运行 /terminal-setup',
+  'To enable {shortcut}, set Option as Meta in {terminalName} preferences (⌘,)':
+    '要启用 {shortcut}，请在 {terminalName} 偏好设置中将 Option 作为 Meta 键（⌘,）',
+  Location: '位置',
+  'Errors:': '错误：',
+  'Warnings:': '警告：',
+  'to save': '保存',
+  'to save and edit': '保存并编辑',
+  'Press ': '按 ',
+  Enter: '回车',
+  ' or ': ' 或 ',
+  ' Not now': '稍后再说',
+  'Accept terms · Help improve Claude: ON': '接受条款 · 帮助改进 Claude：开启',
+  'Accept terms · Help improve Claude: OFF': '接受条款 · 帮助改进 Claude：关闭',
+  'Accept terms · Help improve Claude: OFF (for emails with your domain)':
+    '接受条款 · 帮助改进 Claude：关闭（针对您域名的邮件）',
+  'false (for emails with your domain)': 'false（针对您域名的邮件）',
+  'Updates to Consumer Terms and Policies': '消费者条款和政策更新',
+  'Data Privacy': '数据隐私',
+  'When a command fails due to sandbox restrictions, Claude can retry with dangerouslyDisableSandbox to run outside the sandbox (falling back to default permissions).':
+    '当命令因沙箱限制失败时，Claude 可以使用 dangerouslyDisableSandbox 重新尝试在沙箱外运行（回退到默认权限）。',
+  'Auto-allow mode:': '自动允许模式：',
+  'Rolling back to version {version}...': '正在回滚到版本 {version}…',
+  'Safe rollback: would install the server-pinned safe version.':
+    '安全回滚：将安装服务器锁定的安全版本。',
+  '(dry run — no changes made)': '（试运行 — 未做任何更改）',
+  '(version listing requires access to the release registry)':
+    '（版本列表需要访问发布注册表）',
+  'Contact oncall for the current safe version.':
+    '请联系值班人员获取当前安全版本。',
+  'Safe version pinning requires access to the release API.':
+    '安全版本锁定需要访问发布 API。',
+  'Use `claude update --list` for available versions.':
+    '使用 `claude update --list` 查看可用版本。',
+
+  // ── i18n batch: LogoV2 / HelpV2 / hooks / misc ────────────────
+  'Welcome to Claude Code': '欢迎使用 Claude Code',
+  'Listening for channel messages from: {list}':
+    '正在监听来自 {list} 的频道消息',
+  'Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart Claude Code without {flag} to disable.':
+    '实验功能 · 入站消息将推送至此会话，此功能存在提示注入风险。重启 Claude Code 时不加 {flag} 可禁用。',
+  'no MCP server configured with that name': '未配置该名称的 MCP 服务器',
+  'plugin not installed': '插件未安装',
+  'Share Claude Code and earn {amount} of extra usage · /passes':
+    '分享 Claude Code 赚取 {amount} 额外用量 · /passes',
+  '3 guest passes at /passes': '/passes 有 3 张好友通行证',
+  'Opus now defaults to 1M context · 5x more room, same pricing':
+    'Opus 现在默认 1M 上下文 · 5 倍空间，定价不变',
+  '{amount} in extra usage for third-party apps · /extra-usage':
+    '第三方应用 {amount} 额外用量 · /extra-usage',
+  'On us. Works on third-party apps · /extra-usage':
+    '我们请客。适用于第三方应用 · /extra-usage',
+  'extra usage credit': '额外用量额度',
+  'tmux session: ': 'tmux 会话：',
+  'Use /issue to report model behavior issues': '使用 /issue 报告模型行为问题',
+  'API calls:': 'API 调用：',
+  'Debug logs:': '调试日志：',
+  'Startup Perf:': '启动性能：',
+  'Browse default commands:': '浏览默认命令：',
+  'Browse custom commands:': '浏览自定义命令：',
+  'No custom commands found': '未找到自定义命令',
+  'Browse ant-only commands:': '浏览仅内部命令：',
+  ' to commit changes, ': ' 提交更改，',
+  ' for commands, or ': ' 命令，或 ',
+  ' for shortcuts.': ' 查看快捷键。',
+  'Event:': '事件：',
+  'Matcher:': '匹配器：',
+  'Status message:': '状态消息：',
+  'No hooks configured for this event.': '此事件未配置钩子。',
+  'To add hooks, edit settings.json directly or ask Claude.':
+    '要添加钩子，请直接编辑 settings.json 或询问 Claude。',
+  'Hooks Restricted by Policy': '钩子受策略限制',
+  'Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json, .claude/settings.json, and .claude/settings.local.json are blocked.':
+    '仅托管设置中的钩子可以运行。来自 ~/.claude/settings.json、.claude/settings.json 和 .claude/settings.local.json 的用户自定义钩子已被阻止。',
+  'This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude.':
+    '此菜单为只读。要添加或修改钩子，请直接编辑 settings.json 或询问 Claude。',
+  'Learn more': '了解更多',
+  'To modify or remove this hook, edit settings.json directly or ask Claude to help.':
+    '要修改或移除此钩子，请直接编辑 settings.json 或让 Claude 帮忙。',
+  'Hook Configuration - Disabled': '钩子配置 — 已禁用',
+  'All hooks are currently ': '所有钩子当前为 ',
+  ' by a managed settings file': '（由托管设置文件）',
+  'You have {configuredCount} configured and {runningCount} running.':
+    '您已配置 {configuredCount} 个，运行 {runningCount} 个。',
+  '· No hook commands will execute': '· 钩子命令将不会执行',
+  '· StatusLine will not be displayed': '· 状态栏将不会显示',
+  '· Tool operations will proceed without hook validation':
+    '· 工具操作将在没有钩子验证的情况下进行',
+  'To re-enable hooks, remove "disableAllHooks" from settings.json or ask Claude.':
+    '要重新启用钩子，请从 settings.json 中移除 "disableAllHooks" 或询问 Claude。',
+  'Snapshot timestamp: {timestamp}': '快照时间戳：{timestamp}',
+  'Merge snapshot into current memory': '将快照合并到当前记忆',
+  'Keep current memory and ask Claude to merge in the snapshot changes.':
+    '保留当前记忆并要求 Claude 合并快照更改。',
+  'Keep current memory': '保留当前记忆',
+  'Ignore this snapshot update and continue with current memory.':
+    '忽略此快照更新并继续使用当前记忆。',
+  'Replace with snapshot': '替换为快照',
+  'Overwrite current memory files with the snapshot contents.':
+    '用快照内容覆盖当前记忆文件。',
+  'Agent memory snapshot update': '智能体记忆快照更新',
+  'A newer {scope} memory snapshot is available for {agentType}.':
+    '智能体 {agentType} 有更新的 {scope} 记忆快照可用。',
+  'A newer {scope} persistent memory snapshot is available for the "{agentType}" agent.\n\nPlease merge the snapshot update into the current {scope} agent memory before continuing:\n- Preserve useful current memory entries.\n- Incorporate newer or more accurate information from the snapshot.\n- Resolve duplicates or conflicts in favor of the most current, specific information.\n- Keep the memory concise and relevant to future runs of this agent.\n\nAfter merging, continue with the user':
+    '智能体 "{agentType}" 有更新的 {scope} 持久记忆快照可用。\n\n请在继续前将快照更新合并到当前 {scope} 智能体记忆：\n- 保留有用的当前记忆条目。\n- 纳入快照中更新或更准确的信息。\n- 以最新、最具体的信息为准解决重复或冲突。\n- 保持记忆简洁且与此智能体未来运行相关。\n\n合并后，继续与用户',
+  'Current model (custom ID)': '当前模型（自定义 ID）',
+  "Model determines the agent's reasoning capabilities and speed.":
+    '模型决定了智能体的推理能力和速度。',
+  'Read-only tools': '只读工具',
+  'Execution tools': '执行工具',
+  'MCP tools': 'MCP 工具',
+  'Other tools': '其他工具',
+  'No tools available': '无可用工具',
+  'Tools for {serverName}': '{serverName} 的工具',
+  'Failed to load description': '加载描述失败',
+  'read-only': '只读',
+  destructive: '破坏性',
+  'open-world': '开放世界',
+  'Tool name: ': '工具名称：',
+  'Full name: ': '全名：',
+  'Description:': '描述：',
+  'Parameters:': '参数：',
+  '(required)': '（必填）',
+  unknown: '未知',
+  'Claude Code needs your approval for the plan':
+    'Claude Code 需要您批准该计划',
+  'Claude Code wants to enter plan mode': 'Claude Code 想要进入计划模式',
+  'Claude needs your approval for a review artifact':
+    'Claude 需要您批准审查工件',
+  'Claude Code needs your attention': 'Claude Code 需要您的关注',
+  'Claude needs your permission to use {toolName}':
+    'Claude 需要您允许使用 {toolName}',
+  Suggestions: '建议',
+  Suggestion: '建议',
+  Rules: '规则',
+  Directories: '目录',
+  Behavior: '行为',
+  Message: '消息',
+  Reason: '原因',
+  'Unreachable Rules ({count})': '不可达规则（{count} 个）',
+  'Add {behavior} permission rule': '添加 {behavior} 权限规则',
+  'Permission rules are a tool name, optionally followed by a specifier in parentheses.':
+    '权限规则是一个工具名称，可选择后跟括号中的说明符。',
+  'e.g.,': '例如：',
+  'Enter permission rule{ellipsis}': '输入权限规则{ellipsis}',
+  'No recent denials. Commands denied by the auto mode classifier will appear here.':
+    '没有最近的拒绝。被自动模式分类器拒绝的命令将显示在此处。',
+  'Commands recently denied by the auto mode classifier.':
+    '最近被自动模式分类器拒绝的命令。',
+  'Try again': '重试',
+  'Allow for this session ({count} {apps})': '允许本次会话（{count} 个{apps}）',
+  'Accessibility:': '无障碍：',
+  'Screen Recording:': '屏幕录制：',
+  granted: '已授权',
+  'not granted': '未授权',
+  'Grant the missing permissions in System Settings, then select "Try again". macOS may require you to restart Claude Code after granting Screen Recording.':
+    '在系统设置中授予缺少的权限，然后选择"重试"。授予屏幕录制权限后，macOS 可能需要您重启 Claude Code。',
+  'equivalent to shell access': '相当于 shell 访问权限',
+  'can read/write any file': '可以读写任意文件',
+  'can change system settings': '可以更改系统设置',
+  'Add {behavior} permission {ruleCount}': '添加 {behavior} 权限{ruleCount}',
+  'Where should these rules be saved?': '这些规则应保存在哪里？',
+  'Where should this rule be saved?': '此规则应保存在哪里？',
+  'Project settings (local)': '项目设置（本地）',
+  'Project settings': '项目设置',
+  'User settings': '用户设置',
+  'Select any you wish to enable.': '选择您想要启用的。',
+  'reject all': '全部拒绝',
+  'agent-only': '仅智能体',
+  'not connected (agent-only)': '未连接（仅智能体）',
+  'may need auth': '可能需要认证',
+  'may need authentication': '可能需要认证',
+  'The server will connect when the agent runs.':
+    '该服务器将在智能体运行时连接。',
+  'This server connects only when running the agent.':
+    '此服务器仅在运行智能体时连接。',
+  'server provided by plugin "{plugin}"': '由插件 "{plugin}" 提供的服务器',
+  'already-configured "{name}"': '已配置的 "{name}"',
+  'Built-in MCPs': '内置 MCP',
+  'Project MCPs': '项目 MCP',
+  'User MCPs': '用户 MCP',
+  'Local MCPs': '本地 MCP',
+  'Enterprise MCPs': '企业 MCP',
+  'Agent MCPs': '智能体 MCP',
+  'claude.ai': 'claude.ai',
+  'always available': '始终可用',
+  'Enter to continue': '回车继续',
+  'Connect the agent to this MCP server': '将智能体连接到此 MCP 服务器',
+  'No content': '无内容',
+  'Checking GitHub CLI installation…': '正在检查 GitHub CLI 安装…',
+  'Your GitHub CLI authentication is missing the "{scopes}" {count} {noun} needed to manage GitHub Actions and secrets.':
+    '您的 GitHub CLI 认证缺少管理 GitHub Actions 和机密所需的 "{scopes}" {count} {noun}。',
+  'To fix this, run:': '要修复此问题，请运行：',
+  'Run: gh auth login': '运行：gh auth login',
+  'You can add the repo scope with: gh auth refresh -h github.com -s repo,workflow':
+    '您可以通过以下命令添加 repo 范围：gh auth refresh -h github.com -s repo,workflow',
+  'For private repositories, make sure your GitHub token has the "repo" scope':
+    '对于私有仓库，请确保您的 GitHub 令牌具有 "repo" 范围',
+  'macOS: brew install gh': 'macOS：brew install gh',
+  'Linux: See installation instructions at https://github.com/cli/cli#installation':
+    'Linux：请查看 https://github.com/cli/cli#installation 的安装说明',
+  'Windows: winget install --id GitHub.cli':
+    'Windows：winget install --id GitHub.cli',
+  'Follow the prompts to authenticate with GitHub': '按照提示认证 GitHub',
+  'Ask a repository admin to run this command if setup fails':
+    '如果设置失败，请让仓库管理员运行此命令',
+  'Ensure you have access to this repository': '确保您有权访问此仓库',
+  'Repository admins can install GitHub Apps and set secrets':
+    '仓库管理员可以安装 GitHub Apps 和设置机密',
+  'This will add the necessary permissions to manage workflows and secrets.':
+    '这将添加管理工作流和机密所需的权限。',
+  'You can also try the manual setup steps if needed:':
+    '如果需要，您也可以尝试手动设置步骤：',
+  'Alternatively, you can use the manual setup instructions':
+    '或者，您可以使用手动设置说明',
+  'For manual setup instructions, see:': '有关手动设置说明，请参阅：',
+  'Example: anthropics/claude-cli': '示例：anthropics/claude-cli',
+  'Use format: owner/repo': '使用格式：owner/repo',
+  'Use format: owner/repo or https://github.com/owner/repo':
+    '使用格式：owner/repo 或 https://github.com/owner/repo',
+  'Or set up authentication using environment variables or other methods':
+    '或者使用环境变量或其他方法设置认证',
+  See: '请参阅',
+  'API key is required': '需要 API 密钥',
+  'GitHub Actions setup failed': 'GitHub Actions 设置失败',
+  'Failed to set up GitHub Actions': '设置 GitHub Actions 失败',
+  'The file .github/workflows/claude.yml already exists':
+    '文件 .github/workflows/claude.yml 已经存在',
+  '1. A pre-filled PR page has been created': '1. 已创建预填充的 PR 页面',
+  "2. Install the Claude GitHub App if you haven't already":
+    '2. 如果尚未安装，请安装 Claude GitHub App',
+  '3. Merge the PR to enable Claude PR assistance':
+    '3. 合并 PR 以启用 Claude PR 辅助',
+  '2. Your workflow file was kept unchanged': '2. 您的工作流文件保持不变',
+  '3. API key is configured and ready to use': '3. API 密钥已配置且可用',
+  'Installed {editor} terminal Shift+Enter key binding':
+    '已安装 {editor} 终端的 Shift+Enter 快捷键绑定',
+  'Installed Alacritty Shift+Enter key binding':
+    '已安装 Alacritty Shift+Enter 快捷键绑定',
+  'Installed Zed Shift+Enter key binding': '已安装 Zed Shift+Enter 快捷键绑定',
+  'Failed to install {editor} terminal Shift+Enter key binding':
+    '安装 {editor} 终端 Shift+Enter 快捷键绑定失败',
+  'Failed to install Alacritty Shift+Enter key binding':
+    '安装 Alacritty Shift+Enter 快捷键绑定失败',
+  'Failed to install Zed Shift+Enter key binding':
+    '安装 Zed Shift+Enter 快捷键绑定失败',
+  'Found existing {editor} terminal Shift+Enter key binding. Remove it to continue.':
+    '发现已存在的 {editor} 终端 Shift+Enter 快捷键绑定。请移除它以继续。',
+  'Found existing Alacritty Shift+Enter key binding. Remove it to continue.':
+    '发现已存在的 Alacritty Shift+Enter 快捷键绑定。请移除它以继续。',
+  'Found existing Zed Shift+Enter key binding. Remove it to continue.':
+    '发现已存在的 Zed Shift+Enter 快捷键绑定。请移除它以继续。',
+  'Error backing up existing {editor} terminal keybindings. Bailing out.':
+    '备份现有 {editor} 终端快捷键绑定失败。正在退出。',
+  'Error backing up existing Alacritty config. Bailing out.':
+    '备份现有 Alacritty 配置失败。正在退出。',
+  'Error backing up existing Zed keymap. Bailing out.':
+    '备份现有 Zed 键位映射失败。正在退出。',
+  'Cannot install keybindings from a remote {editor} session.':
+    '无法从远程 {editor} 会话安装快捷键绑定。',
+  'Shift+Enter is natively supported in {terminal}.\n\nNo configuration needed. Just use Shift+Enter to add newlines.':
+    '{terminal} 原生支持 Shift+Enter。\n\n无需配置。直接使用 Shift+Enter 换行即可。',
+  'Note: iTerm2, WezTerm, Ghostty, Kitty, and Warp support Shift+Enter natively.':
+    '注意：iTerm2、WezTerm、Ghostty、Kitty 和 Warp 原生支持 Shift+Enter。',
+  'Note: You can already use backslash (\\\\) + return to add newlines.':
+    '注意：您已经可以使用反斜杠 (\\\\) + 回车来换行。',
+  'Option+Enter will now enter a newline.': '现在 Option+Enter 将输入换行符。',
+  'Terminal setup cannot be run from {terminal}.\n\nThis command configures a convenient Shift+Enter shortcut for multi-line prompts.\n{note1}\n\nTo set up the shortcut (optional):\n1. Exit tmux/screen temporarily\n2. Run /terminal-setup directly in one of these terminals:\n{platformTerms}   • IDE: VSCode, Cursor, Windsurf, Zed\n   • Other: Alacritty\n3. Return to tmux/screen - settings will persist\n\n{note2}':
+    '无法从 {terminal} 运行终端设置。\n\n此命令为多行提示配置便捷的 Shift+Enter 快捷键。\n{note1}\n\n要设置快捷键（可选）：\n1. 临时退出 tmux/screen\n2. 直接在以下终端之一运行 /terminal-setup：\n{platformTerms}   • IDE：VSCode、Cursor、Windsurf、Zed\n   • 其他：Alacritty\n3. 返回 tmux/screen — 设置将持续存在\n\n{note2}',
+  'Failed to enable Option as Meta key for Terminal.app.':
+    '无法为 Terminal.app 启用 Option 作为 Meta 键。',
+  'Configured Terminal.app settings:': '已配置的 Terminal.app 设置：',
+  'You may need to restart Alacritty for changes to take effect':
+    '您可能需要重启 Alacritty 以使更改生效',
+  'You must restart Terminal.app for changes to take effect.':
+    '您必须重启 Terminal.app 以使更改生效。',
+  'Saved in {path}': '已保存在 {path}',
+  'Saved in at ~/.claude/settings.json': '已保存在 ~/.claude/settings.json',
+  'Backup path:': '备份路径：',
+  '1. Open {editor} on your local machine (not connected to remote)':
+    '1. 在本地机器上打开 {editor}（未连接到远程）',
+  '2. Open the Command Palette (Cmd/Ctrl+Shift+P) → "Preferences: Open Keyboard Shortcuts (JSON)"':
+    '2. 打开命令面板 (Cmd/Ctrl+Shift+P) → "Preferences: Open Keyboard Shortcuts (JSON)"',
+  '3. Add this keybinding (the file must be a JSON array):':
+    '3. 添加快捷键绑定（文件必须是 JSON 数组）：',
+  'To install the Shift+Enter keybinding:': '要安装 Shift+Enter 快捷键绑定：',
+  'reconnecting ({attempt}/{max})…': '正在重新连接（{attempt}/{max}）…',
+  'connecting…': '正在连接…',
+  'Checked in at {path}': '已在 {path} 签入',
+  'Suggested rules:': '建议的规则：',
+  'Failed to generate agent': '生成智能体失败',
+  'Network error accessing {url}': '访问 {url} 时网络错误',
+  'Network error accessing {url}: {details}':
+    '访问 {url} 时网络错误：{details}',
+  'Git {authType} authentication failed for {url}':
+    'Git {authType} 认证在 {url} 失败',
+  'Git {operation} timed out for {url}': 'Git {operation} 在 {url} 超时',
+  'Failed to parse manifest at {path}: {parseError}':
+    '解析 {path} 的清单失败：{parseError}',
+  'Invalid manifest at {path}: {errors}': '{path} 的清单无效：{errors}',
+  'Plugin "{pluginId}" not found in marketplace "{marketplace}"':
+    '在市场 "{marketplace}" 中未找到插件 "{pluginId}"',
+  'Marketplace "{marketplace}" not found': '未找到市场 "{marketplace}"',
+  'Failed to load marketplace "{marketplace}": {reason}':
+    '加载市场 "{marketplace}" 失败：{reason}',
+  'Invalid MCP server config for "{serverName}": {validationError}':
+    '"{serverName}" 的 MCP 服务器配置无效：{validationError}',
+  'MCP server "{serverName}" skipped — same command/URL as {dup}':
+    'MCP 服务器 "{serverName}" 已跳过 — 与 {dup} 的命令/URL 相同',
+  'Failed to load hooks from {hookPath}: {reason}':
+    '从 {hookPath} 加载钩子失败：{reason}',
+  'Failed to load {component} from {path}: {reason}':
+    '从 {path} 加载 {component} 失败：{reason}',
+  'Failed to download MCPB from {url}: {reason}':
+    '从 {url} 下载 MCPB 失败：{reason}',
+  'Failed to extract MCPB {mcpbPath}: {reason}':
+    '解压 MCPB {mcpbPath} 失败：{reason}',
+  'MCPB manifest invalid at {mcpbPath}: {validationError}':
+    '{mcpbPath} 的 MCPB 清单无效：{validationError}',
+  'Marketplace "{marketplace}" is blocked by enterprise policy':
+    '市场 "{marketplace}" 被企业策略阻止',
+  'Marketplace "{marketplace}" is not in the allowed marketplace list':
+    '市场 "{marketplace}" 不在允许的市场列表中',
+  'Dependency "{dependency}" is disabled': '依赖 "{dependency}" 已禁用',
+  'Dependency "{dependency}" is not installed': '依赖 "{dependency}" 未安装',
+  'Plugin "{plugin}" not cached at {installPath}':
+    '插件 "{plugin}" 未在 {installPath} 缓存',
+  'Invalid LSP server config for "{serverName}": {validationError}':
+    '"{serverName}" 的 LSP 服务器配置无效：{validationError}',
+  'LSP server "{serverName}" failed to start: {reason}':
+    'LSP 服务器 "{serverName}" 启动失败：{reason}',
+  'LSP server "{serverName}" crashed with exit code {exitCode}':
+    'LSP 服务器 "{serverName}" 崩溃，退出代码 {exitCode}',
+  'LSP server "{serverName}" crashed with signal {signal}':
+    'LSP 服务器 "{serverName}" 因信号 {signal} 崩溃',
+  'LSP server "{serverName}" {method} failed: {error}':
+    'LSP 服务器 "{serverName}" {method} 失败：{error}',
+  'LSP server "{serverName}" timed out on {method} after {timeoutMs}ms':
+    'LSP 服务器 "{serverName}" 在 {method} 上超时（{timeoutMs}ms）',
+  'Authentication successful for {serverName}. The server will connect when the agent runs.':
+    '{serverName} 认证成功。服务器将在智能体运行时连接。',
+  'Marketplace {name} already on disk — declared in {scope} settings':
+    '市场 {name} 已在磁盘上 — 在 {scope} 设置中声明',
+  'Not now': '稍后再说',
+  'Would you like to:': '您想要：',
+  'What would you like to do?': '您想要做什么？',
+  'You can either:': '您可以：',
+  'Press any key to exit': '按任意键退出',
+  'Press any key to return to API key selection': '按任意键返回 API 密钥选择',
+  'Press Enter to try again, or any other key to cancel':
+    '按回车重试，或按其他任意键取消',
+  'Please enter a repository name to continue': '请输入仓库名称以继续',
+  'Then we can dive into what you want to build!':
+    '然后我们就可以深入了解您想要构建什么！',
+  'View the latest workflow template at:': '查看最新工作流模板：',
+  'Using existing API key secret': '使用现有 API 密钥机密',
+  'got it': '知道了',
+  'good to know': '好的',
+  noted: '已记录',
+  'Next steps:': '后续步骤：',
+  'How to fix:': '如何修复：',
+  '1. Install the Claude GitHub App if you have not already':
+    '1. 如果尚未安装，请安装 Claude GitHub App',
+  'Used by: ': '使用者：',
+  'URL:': 'URL：',
+  'Type: ': '类型：',
+  'User MCP Server': '用户 MCP 服务器',
+  'Project MCP Server': '项目 MCP 服务器',
+  'Looks like an error occurred. Let me show you how to fix it.':
+    '似乎发生了错误。让我向您展示如何修复。',
+  'Tool name:': '工具名称：',
+
+  // ── i18n batch: autonomy / plugin errors / misc ────────────────
+  'Auto mode': '自动模式',
+  'Check whether auto permission mode is available and why':
+    '检查自动权限模式是否可用及原因',
+  'Runs summary': '运行摘要',
+  'Show queued/running/completed/failed run totals and latest run':
+    '显示排队/运行中/已完成/失败的运行总数和最新运行',
+  'Recent runs': '最近运行',
+  'List recent autonomy run IDs, triggers, statuses, and prompts':
+    '列出最近的自主运行 ID、触发器、状态和提示',
+  'Flows summary': '流程摘要',
+  'Show managed flow totals across queued/running/waiting states':
+    '显示跨排队/运行中/等待状态的托管流程总数',
+  'Recent flows': '最近流程',
+  'List recent managed flow IDs, status, current step, and goal':
+    '列出最近的托管流程 ID、状态、当前步骤和目标',
+  Cron: 'Cron',
+  'Show scheduled autonomy jobs, durability, recurrence, and next run':
+    '显示计划的自主任务、持久性、重复周期和下次运行',
+  'Workflow runs': '工作流运行',
+  'Show persisted WorkflowTool runs and their current workflow step':
+    '显示持久化的 WorkflowTool 运行及其当前工作流步骤',
+  Teams: '团队',
+  'Show Agent Teams, teammate backends, activity, and open tasks':
+    '显示智能体团队、队友后端、活动和开放任务',
+  Pipes: '管道',
+  'Show UDS/named-pipe and LAN registry for terminal messaging':
+    '显示 UDS/命名管道和 LAN 注册表（用于终端消息传递）',
+  'Show daemon state and live background or interactive sessions':
+    '显示守护进程状态和实时后台或交互式会话',
+  'Remote Control': '远程控制',
+  'Show bridge mode, base URL, token presence, and entitlement note':
+    '显示桥接模式、基本 URL、令牌存在和权限说明',
+  RemoteTrigger: '远程触发器',
+  'Show recent remote trigger audit records, failures, and latest call':
+    '显示最近的远程触发器审计记录、失败和最新调用',
+  'Flow {id}': '流程 {id}',
+  'Resume {id}': '恢复 {id}',
+  'Cancel {id}': '取消 {id}',
+  'Cancel {status} flow': '取消 {status} 流程',
+  'Resume waiting flow': '恢复等待中的流程',
+  'Resume waiting step: {step}': '恢复等待中的步骤：{step}',
+  'Full deep status': '完整深度状态',
+  'Print every local autonomy surface in one diagnostic report':
+    '在一个诊断报告中打印所有本地自主面',
+  'Failed to remove "{name}": {msg}': '移除 "{name}" 失败：{msg}',
+  'Removed "{name}" from {scopes} settings':
+    '已从 {scopes} 设置中移除 "{name}"',
+  'Removed marketplace "{name}"': '已移除市场 "{name}"',
+  'No plugin errors': '无插件错误',
+  'Errors ({count})': '错误（{count} 个）',
+  'Plugin Command Usage:': '插件命令用法：',
+  'Managed by your organization — contact your admin':
+    '由您的组织管理 — 请联系管理员',
+  'Add the marketplace first using /plugin marketplace add':
+    '请先使用 /plugin marketplace add 添加市场',
+  'Available marketplaces: {list}': '可用市场：{list}',
+  'Configured marketplaces:\n{list}': '已配置的市场：\n{list}',
+  'Loading marketplaces...': '正在加载市场…',
+  'Error loading marketplaces: {msg}': '加载市场时出错：{msg}',
+  'Marketplaces:': '市场：',
+  'Allowed sources: {list}': '允许的来源：{list}',
+  'This marketplace source is explicitly blocked by your administrator':
+    '此市场源已被管理员明确阻止',
+  'Contact your administrator to configure allowed marketplace sources':
+    '请联系您的管理员配置允许的市场来源',
+  'Plugin may not exist in marketplace "{marketplace}"':
+    '插件可能不存在于市场 "{marketplace}" 中',
+  'Disable plugin "{plugin}" if you want this plugin':
+    '如果要保留此插件，请禁用插件 "{plugin}"',
+  'Remove "{name}" from your MCP config if you want the plugin':
+    '如果要保留该插件，请从 MCP 配置中移除 "{name}"',
+  'Enable "{dependency}" or uninstall "{plugin}"':
+    '启用 "{dependency}" 或卸载 "{plugin}"',
+  'Install "{dependency}" or uninstall "{plugin}"':
+    '安装 "{dependency}" 或卸载 "{plugin}"',
+  'Restart to retry loading plugins': '重启以重新加载插件',
+  'Run /plugins to refresh the plugin cache': '运行 /plugins 刷新插件缓存',
+  'Check that the path in your manifest or marketplace config is correct':
+    '检查清单或市场配置中的路径是否正确',
+  'Check {component} directory structure and file permissions':
+    '检查 {component} 目录结构和文件权限',
+  'Check manifest file syntax in the plugin directory':
+    '检查插件目录中的清单文件语法',
+  'Check manifest file follows the required schema':
+    '检查清单文件是否符合所需架构',
+  'Check MCP server configuration in .mcp.json or manifest':
+    '检查 .mcp.json 或清单中的 MCP 服务器配置',
+  'Check LSP server configuration in the plugin manifest':
+    '检查插件清单中的 LSP 服务器配置',
+  'Check LSP server logs with --debug for details':
+    '使用 --debug 检查 LSP 服务器日志以获取详细信息',
+  'Check hooks.json file syntax and structure':
+    '检查 hooks.json 文件语法和结构',
+  'Check your internet connection and try again': '请检查您的网络连接并重试',
+  'Check your internet connection and URL accessibility':
+    '请检查您的网络连接和 URL 可访问性',
+  'Configure credentials or use SSH URL instead': '请配置凭据或改用 SSH URL',
+  'Configure SSH keys or use HTTPS URL instead':
+    '请配置 SSH 密钥或改用 HTTPS URL',
+  'Contact the plugin author about the invalid manifest':
+    '请联系插件作者关于无效清单的问题',
+  'Verify the MCPB file is valid and not corrupted':
+    '验证 MCPB 文件是否有效且未损坏',
+  'Validation:': '验证：',
+  'Management:': '管理：',
+  'Installation:': '安装：',
+  'For more help:': '更多帮助：',
+  'Also requested:': '同时请求：',
+  'All tools selected': '已选择所有工具',
+  'Hide advanced options': '隐藏高级选项',
+  'Show advanced options': '显示高级选项',
+  'Individual Tools:': '单个工具：',
+  'MCP Servers:': 'MCP 服务器：',
+  'Field {current} of {total}': '字段 {current}/{total}',
+  'Tab: Next field · Enter: Save and continue':
+    'Tab：下一个字段 · Enter：保存并继续',
+  'Enter: Save configuration': 'Enter：保存配置',
+  'Continue without waiting': '不等待继续',
+  'MCP server "{serverName}" requests your input':
+    'MCP 服务器 "{serverName}" 请求您的输入',
+  'MCP server "{serverName}" — waiting for completion':
+    'MCP 服务器 "{serverName}" — 等待完成',
+  'MCP server "{serverName}" wants to open a URL':
+    'MCP 服务器 "{serverName}" 想要打开 URL',
+  'Waiting for the server to confirm completion…': '正在等待服务器确认完成…',
+  'Opening your options\u2026': '正在打开选项…',
+  'Claude Code needs your input': 'Claude Code 需要您的输入',
+  'This field is required': '此字段为必填项',
+  'File does not exist': '文件不存在',
+  'Pattern did not match any content': '模式未匹配任何内容',
+  'Insert new cell': '插入新单元格',
+  'Delete cell': '删除单元格',
+  'Replace cell contents': '替换单元格内容',
+  'Read file': '读取文件',
+  'Task #{taskId} assigned by {assignedBy}':
+    '任务 #{taskId} 由 {assignedBy} 分配',
+  'Open System Settings → Accessibility': '打开系统设置 → 无障碍',
+  'Open System Settings → Screen Recording': '打开系统设置 → 屏幕录制',
+
+  // ── i18n batch: remaining high-priority ─────────────────────────
+  'A tool for editing files': '一个用于编辑文件的工具',
+  'Add funds to continue with extra usage': '添加额度以继续使用超额用量',
+  'Advisor unavailable ({code})': '顾问不可用（{code}）',
+  'Auto classifier checking\u2026': '自动分类器检查中…',
+  'Bash classifier checking\u2026': 'Bash 分类器检查中…',
+  'Approved Plan': '已批准的计划',
+  'Approved Plan (edited by user)': '已批准的计划（用户已编辑）',
+  'Claude wants to search the web for: {query}': 'Claude 想要搜索网络：{query}',
+  'Clean up team and task directories when the swarm is complete':
+    '在 swarm 完成后清理团队和任务目录',
+  'Cleaned up directories and worktrees for team "{teamName}"':
+    '已清理团队 "{teamName}" 的目录和 worktree',
+  'Checking goal status\u2026': '正在检查目标状态…',
+  'Goal achieved \u2014 usage report:': '目标达成 — 使用报告：',
+  'Goal operation rejected': '目标操作被拒绝',
+  'No active goal. The user can set one with `/goal <objective>`.':
+    '没有活动目标。用户可以使用 `/goal <目标>` 设置。',
+  'Goal marked as blocked after {count} consecutive attempts.':
+    '目标在 {count} 次连续尝试后被标记为阻塞。',
+  'Blocked attempt {count} recorded for': '已记录第 {count} 次阻塞尝试',
+  'You are not in plan mode. This tool is only for exiting plan mode after writing a plan. If your plan was already approved, continue with implementation.':
+    '您不在计划模式中。此工具仅用于在编写计划后退出计划模式。如果您的计划已获批准，请继续实施。',
+  'User has approved the plan. There is nothing else needed from you now. Please respond with "ok"':
+    '用户已批准该计划。您现在无需做其他事情。请回复 "ok"。',
+  'User has approved exiting plan mode. You can now proceed.':
+    '用户已批准退出计划模式。您现在可以继续。',
+  'Run shell command': '运行 shell 命令',
+  Bash: 'Bash',
+  SandboxedBash: 'SandboxedBash',
+  'Running command': '正在运行命令',
+  'Run PowerShell command': '运行 PowerShell 命令',
+  PowerShell: 'PowerShell',
+  'Web Search': '网络搜索',
+  'Searching the web': '正在搜索网络',
+  'No search results found.': '未找到搜索结果。',
+  'Error: Missing query': '错误：缺少查询',
+  'Error: Cannot specify both allowed_domains and blocked_domains in the same request':
+    '错误：不能在同一请求中同时指定 allowed_domains 和 blocked_domains',
+  'Editing notebook': '正在编辑 Notebook',
+  'File must be a Jupyter notebook (.ipynb file). For editing other file types, use the FileEdit tool.':
+    '文件必须是 Jupyter notebook（.ipynb 文件）。要编辑其他文件类型，请使用 FileEdit 工具。',
+  'Edit mode must be replace, insert, or delete.':
+    '编辑模式必须是 replace、insert 或 delete。',
+  'Notebook file does not exist.': 'Notebook 文件不存在。',
+  'Notebook is not valid JSON.': 'Notebook 不是有效的 JSON。',
+  'Cell ID must be specified when not inserting a new cell.':
+    '不插入新单元格时必须指定单元格 ID。',
+  'Unknown edit mode': '未知编辑模式',
+  'Cell type is required when using edit_mode=insert.':
+    '使用 edit_mode=insert 时需要指定单元格类型。',
+  'Write a file to the local filesystem.': '将文件写入本地文件系统。',
+  'Writing file': '正在写入文件',
+  'File created successfully at: {filePath}': '文件已成功创建在：{filePath}',
+  'The file {filePath} has been updated successfully.':
+    '文件 {filePath} 已成功更新。',
+  'Processed {count} occurrence(s) in {filePath}':
+    '已处理 {filePath} 中的 {count} 处匹配',
+  'File is too large to edit ({size}). Maximum editable file size is {maxSize}.':
+    '文件过大（{size}）。最大可编辑文件大小为 {maxSize}。',
+  'File has been unexpectedly modified. Read it again before attempting to write it.':
+    '文件已被意外修改。在尝试写入前请重新读取。',
+  'Finding files': '正在查找文件',
+  'No files found': '未找到文件',
+  '(Results are truncated. Consider using a more specific path or pattern.)':
+    '（结果已被截断。请考虑使用更具体的路径或模式。）',
+  Searching: '正在搜索',
+  'Found {numFiles} {fileWord}': '找到 {numFiles} 个{fileWord}',
+  'Found {matches} total {matchWord} across {files} {fileWord}':
+    '在 {files} 个{fileWord}中共找到 {matches} 处{matchWord}',
+  'Write a file': '写入文件',
+  'Edit cells': '编辑单元格',
+  'Insert cell': '插入单元格',
+  'Replace cell': '替换单元格',
+  CtxInspect: '上下文检查',
+  'Context Inspect': '上下文检查',
+  'Inspect the current context window contents and token usage':
+    '检查当前上下文窗口内容和 token 使用情况',
+  'Inspect the current conversation context': '检查当前对话上下文',
+  Goal: '目标',
+  'WebSearchTool requires permission.': 'WebSearchTool 需要权限。',
+  TaskGet: '任务获取',
+  'Task not found': '未找到任务',
+  'Discover Skills': '发现技能',
+  ExecuteExtraTool: '执行额外工具',
+  'ExecuteExtraTool delegates permission to the target tool.':
+    'ExecuteExtraTool 将权限委托给目标工具。',
+  'Tool "{name}" not found. Use SearchExtraTools to discover available tools.':
+    '工具 "{name}" 未找到。请使用 SearchExtraTools 发现可用工具。',
+  'Tool "{name}" has not been discovered yet': '工具 "{name}" 尚未被发现',
+  'Invalid parameters for tool "{name}": {message}':
+    '工具 "{name}" 的参数无效：{message}',
+  'Permission denied for tool "{name}": {message}':
+    '工具 "{name}" 的权限被拒绝：{message}',
+  'No files found matching "{pattern}"': '未找到匹配 "{pattern}" 的文件',
+  'Searching for "{pattern}"': '正在搜索 "{pattern}"',
+  'No matches found': '未找到匹配',
   Cancel: '取消',
+  disabled: '已禁用',
+  connected: '已连接',
+  'not found': '未找到',
+  'not running': '未在运行',
+  'invalid JSON body': '无效的 JSON 主体',
+  'group and command are required': '需要 group 和 command',
+  'Shutting down...': '正在关闭…',
+  'ACP Manager': 'ACP 管理器',
+  'Press Ctrl+C to stop': '按 Ctrl+C 停止',
+  'Error: agent command is required (or use --manager)':
+    '错误：需要 agent 命令（或使用 --manager）',
+  'WARNING: Authentication disabled. This is dangerous for remote access!':
+    '警告：认证已禁用。这对外部访问很危险！',
+  'Failed to connect: {message}': '连接失败：{message}',
+  'Invalid {source}: expected a string': '无效的 {source}：应为字符串',
+  'Invalid {type} payload': '无效的 {type} 载荷',
+  'Invalid prompt payload': '无效的提示载荷',
+  'Invalid permission_response payload': '无效的 permission_response 载荷',
+  'Invalid WebSocket message payload': '无效的 WebSocket 消息载荷',
+  'Invalid set_session_model payload': '无效的 set_session_model 载荷',
+  'Unknown message type: {type}': '未知的消息类型：{type}',
+  'Unsupported WebSocket message payload': '不支持的 WebSocket 消息载荷',
+  'message too large': '消息过大',
+  'Certificate expired, regenerating...': '证书已过期，正在重新生成…',
+  'Certificate expires in {days} days, regenerating...':
+    '证书将在 {days} 天后过期，正在重新生成…',
+  'Using existing certificate from {dir}': '正在使用来自 {dir} 的现有证书',
+  'Valid for {days} more days': '有效期还有 {days} 天',
+  'LAN IP changed (missing: {ips}), regenerating certificate...':
+    'LAN IP 已更改（缺少：{ips}），正在重新生成证书…',
+  'Invalid certificate, regenerating...': '证书无效，正在重新生成…',
+  'Generating self-signed certificate...': '正在生成自签名证书…',
+  'Including LAN IPs: {ips}': '包含 LAN IP：{ips}',
+  'Certificate saved to {dir}': '证书已保存到 {dir}',
+  'Valid for 365 days': '有效期 365 天',
+  'First access will show a security warning - click "Advanced" -> "Proceed"':
+    '首次访问将显示安全警告 - 点击"高级"->"继续"',
+  'Created tmux session: {sessionName}\nTo attach: {attachCmd}':
+    '已创建 tmux 会话：{sessionName}\n要附加：{attachCmd}',
+  'Warning: Failed to create tmux session: {error}':
+    '警告：创建 tmux 会话失败：{error}',
+  'WARNING: Running as root/sudo with bypass permissions mode is dangerous.':
+    '警告：以 root/sudo 身份使用绕过权限模式是危险的。',
+  'Bypass mode skips ALL permission checks. Combined with root, any command (rm -rf /, chmod, dd) executes without review.':
+    '绕过模式跳过所有权限检查。结合 root 权限，任何命令（rm -rf /、chmod、dd）都会不经审查执行。',
+  '\nI understand the risks. Continue? [y/N] ':
+    '\n我了解风险。是否继续？[y/N] ',
+  'Aborted.': '已中止。',
+  '--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons':
+    '出于安全原因，--dangerously-skip-permissions 不能与 root/sudo 权限一起使用',
+  '--dangerously-skip-permissions can only be used in Docker/sandbox containers with no internet access but got Docker: {isDocker}, Bubblewrap: {isBubblewrap}, IS_SANDBOX: {isSandbox}, hasInternet: {hasInternet}':
+    '--dangerously-skip-permissions 只能在无互联网访问的 Docker/sandbox 容器中使用，当前状态 Docker：{isDocker}、Bubblewrap：{isBubblewrap}、IS_SANDBOX：{isSandbox}、hasInternet：{hasInternet}',
+  'Error: Claude Code requires Node.js version 18 or higher.':
+    '错误：Claude Code 需要 Node.js 18 或更高版本。',
+  'Error: Failed to start messaging socket (UDS_INBOX): {error}':
+    '错误：启动消息传递套接字（UDS_INBOX）失败：{error}',
+  'Detected an interrupted iTerm2 setup. Your original settings have been restored. You may need to restart iTerm2 for the changes to take effect.':
+    '检测到 iTerm2 设置被中断。您的原始设置已恢复。您可能需要重启 iTerm2 以使更改生效。',
+  'Failed to restore iTerm2 settings. Please manually restore your original settings with: defaults import com.googlecode.iterm2 {backupPath}.':
+    '恢复 iTerm2 设置失败。请使用以下命令手动恢复您的原始设置：defaults import com.googlecode.iterm2 {backupPath}。',
+  'Detected an interrupted Terminal.app setup. Your original settings have been restored. You may need to restart Terminal.app for the changes to take effect.':
+    '检测到 Terminal.app 设置被中断。您的原始设置已恢复。您可能需要重启 Terminal.app 以使更改生效。',
+  'Working...': '工作中…',
+  'No claude.ai OAuth token available': '没有可用的 claude.ai OAuth 令牌',
+  'No claude.ai OAuth token found': '未找到 claude.ai OAuth 令牌',
+  'No code verifier saved': '未保存代码验证器',
+  'Unexpected auth result: ': '意外的认证结果：',
+  'Cursor login cancelled': 'Cursor 登录已取消',
+  'Cursor login failed ({status})': 'Cursor 登录失败（{status}）',
+  'Cursor login timed out after 10 minutes': 'Cursor 登录超时（超过 10 分钟）',
+  'Cursor token refresh failed ({status})': 'Cursor 令牌刷新失败（{status}）',
+  'Cursor session expired. Re-add this connection via /connect to sign in again.':
+    'Cursor 会话已过期。请通过 /connect 重新添加此连接以重新登录。',
+  'Cursor account is not signed in. Run /connect and add a Cursor connection with browser sign-in.':
+    'Cursor 账号未登录。请运行 /connect 并添加使用浏览器登录的 Cursor 连接。',
+  'Unable to get organization UUID': '无法获取组织 UUID',
+  'No access token available': '无可用访问令牌',
+  'Session expired. Please run /login to sign in again.':
+    '会话已过期。请运行 /login 重新登录。',
+  'Workspace API key must start with sk-ant-api03-, got prefix "{prefix}...". Obtain a workspace API key from https://console.anthropic.com/settings/keys. Press W in /login to save your key, or set ANTHROPIC_API_KEY.':
+    'Workspace API 密钥必须以 sk-ant-api03- 开头，获取的前缀为 "{prefix}..."。请从 https://console.anthropic.com/settings/keys 获取 Workspace API 密钥。在 /login 中按 W 保存密钥，或设置 ANTHROPIC_API_KEY。',
+  'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.':
+    'Claude Code 网络会话需要使用 Claude.ai 账号进行认证。API 密钥认证不足以访问此功能。请运行 /login 进行认证，或通过 /status 检查认证状态。',
+  'Failed to fetch code sessions: {status}': '获取代码会话失败：{status}',
+  'Failed to fetch session: {status} {statusText}':
+    '获取会话失败：{status} {statusText}',
+  'Session not found: {sessionId}': '未找到会话：{sessionId}',
+  'No artifactory auth token found in ~/.npmrc':
+    '在 ~/.npmrc 中未找到 artifactory 认证令牌',
+  'No version found in artifactory response': '在 artifactory 响应中未找到版本',
+  'Cannot send UDS message without auth token': '没有认证令牌无法发送 UDS 消息',
+  'Invalid store name: store name must not be empty.':
+    '无效的存储名称：存储名称不能为空。',
+  'No messages to send to Cursor after conversion.':
+    '转换后没有消息发送到 Cursor。',
+  'Agent created': '智能体已创建',
+  'Scheduled Agents ({count})': '计划智能体（{count} 个）',
+  'No scheduled agents. Use /agents-platform create <cron> <prompt> to create one.':
+    '没有计划智能体。使用 /agents-platform create <cron> <prompt> 创建一个。',
+  'Schedule: {schedule}': '计划：{schedule}',
+  'Prompt: {prompt}': '提示：{prompt}',
+  'Next run: {nextRun}': '下次运行：{nextRun}',
+  'ID: {id}': 'ID：{id}',
+  'Agent {id} deleted.': '智能体 {id} 已删除。',
+  'Agent {id} triggered.': '智能体 {id} 已触发。',
+  'Run ID: {runId}': '运行 ID：{runId}',
+  'Memory store created': '记忆存储已创建',
+  'Memory store archived': '记忆存储已归档',
+  archived: '已归档',
+  active: '活跃',
+  'Memory Stores ({count})': '记忆存储（{count} 个）',
+  'Memory Store: {id}': '记忆存储：{id}',
+  'Namespace: {namespace}': '命名空间：{namespace}',
+  'No memory stores found. Use /memory-stores create <name> to create one.':
+    '没有找到记忆存储。使用 /memory-stores create <名称> 创建一个。',
+  'Vault created': '保险库已创建',
+  'Vault archived': '保险库已归档',
+  'Credential added': '凭据已添加',
+  'Credential archived': '凭据已归档',
+  'Vaults ({count})': '保险库（{count} 个）',
+  'No vaults found. Use /vault create <name> to create one.':
+    '没有找到保险库。使用 /vault create <名称> 创建一个。',
+  'Checking connectivity...': '正在检查连接…',
+  'Unable to connect to Anthropic services': '无法连接到 Anthropic 服务',
+  'Vault: {id}': '保险库：{id}',
+  'Vault: {vaultId}': '保险库：{vaultId}',
+  'Credentials in {vaultId} ({count})': '{vaultId} 中的凭据（{count} 个）',
+  'No credentials in vault {vaultId}. Use /vault add-credential {vaultId} <key> <value> to add one.':
+    '保险库 {vaultId} 中没有凭据。使用 /vault add-credential {vaultId} <键> <值> 添加一个。',
+  'Name: {name}': '名称：{name}',
+  'Created: {createdAt}': '创建时间：{createdAt}',
+  'Archived: {archivedAt}': '归档时间：{archivedAt}',
 }
 
 export default zh

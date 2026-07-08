@@ -14,7 +14,7 @@ import { buildCliLaunch, spawnCli } from '../../utils/cliLaunch.js';
 import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { errorMessage } from '../../utils/errors.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type ServerStatus = 'stopped' | 'starting' | 'running' | 'error';
 
@@ -75,7 +75,7 @@ function RemoteControlServer({ onDone }: Props): React.ReactNode {
           setStatus('error');
           setError(msg);
           daemonStatus = 'error';
-          onDone(`Remote Control Server failed to start: ${msg}`, {
+          onDone(tf('Remote Control Server failed to start: {msg}', { msg }), {
             display: 'system',
           });
         }
@@ -118,7 +118,7 @@ function ServerManagementDialog({ onDone }: Props): React.ReactNode {
       startDaemon();
       onDone(t('Remote Control Server restarted.'), { display: 'system' });
     } catch (err) {
-      onDone(`Failed to restart: ${errorMessage(err)}`, { display: 'system' });
+      onDone(tf('Failed to restart: {msg}', { msg: errorMessage(err) }), { display: 'system' });
     }
   }
 
@@ -146,18 +146,18 @@ function ServerManagementDialog({ onDone }: Props): React.ReactNode {
   );
 
   return (
-    <Dialog title="Remote Control Server" onCancel={handleContinue} hideInputGuide>
+    <Dialog title={t('Remote Control Server')} onCancel={handleContinue} hideInputGuide>
       <Box flexDirection="column" gap={1}>
         <Text>
-          Remote Control Server is{' '}
+          {t('Remote Control Server is')}{' '}
           <Text bold color="success">
-            running
+            {t('running')}
           </Text>
-          {daemonProcess ? ` (PID: ${daemonProcess.pid})` : ''}
+          {daemonProcess ? tf(' (PID: {pid})', { pid: String(daemonProcess.pid) }) : ''}
         </Text>
         {logPreview.length > 0 && (
           <Box flexDirection="column">
-            <Text dimColor>Recent logs:</Text>
+            <Text dimColor>{t('Recent logs:')}</Text>
             {logPreview.map((line, i) => (
               <Text key={i} dimColor>
                 {line}
@@ -167,16 +167,16 @@ function ServerManagementDialog({ onDone }: Props): React.ReactNode {
         )}
         <Box flexDirection="column">
           <ListItem isFocused={focusIndex === 0}>
-            <Text>Stop server</Text>
+            <Text>{t('Stop server')}</Text>
           </ListItem>
           <ListItem isFocused={focusIndex === 1}>
-            <Text>Restart server</Text>
+            <Text>{t('Restart server')}</Text>
           </ListItem>
           <ListItem isFocused={focusIndex === 2}>
-            <Text>Continue</Text>
+            <Text>{t('Continue')}</Text>
           </ListItem>
         </Box>
-        <Text dimColor>Enter to select · Esc to continue</Text>
+        <Text dimColor>{t('Enter to select · Esc to continue')}</Text>
       </Box>
     </Dialog>
   );

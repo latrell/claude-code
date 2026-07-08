@@ -77,7 +77,10 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
       <Box flexDirection="column" padding={1}>
         <Box marginBottom={1}>
           <Spinner />
-          <T> Checking git status{figures.ellipsis}</T>
+          <Text>
+            {t(' Checking git status')}
+            {figures.ellipsis}
+          </Text>
         </Box>
       </Box>
     );
@@ -107,7 +110,7 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
       <Box flexDirection="column" paddingLeft={2}>
         {changedFiles.length > 0 ? (
           showFileCount ? (
-            <T vars={{ count: changedFiles.length }}>{changedFiles.length} files changed</T>
+            <Text>{tf('{count} files changed', { count: changedFiles.length })}</Text>
           ) : (
             changedFiles.map((file: string, index: number) => <Text key={index}>{file}</Text>)
           )

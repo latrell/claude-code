@@ -74,13 +74,13 @@ export function TeleportRepoMismatchDialog({
         <>
           <Box flexDirection="column" gap={1}>
             {errorMessage && <Text color="error">{errorMessage}</Text>}
-            <T vars={{ targetRepo }}>Open Claude Code in {targetRepo}:</T>
+            <Text>{tf('Open Claude Code in {targetRepo}:', { targetRepo })}</Text>
           </Box>
 
           {validating ? (
             <Box>
               <Spinner />
-              <T> Validating repository…</T>
+              <Text>{t('Validating repository\u2026')}</Text>
             </Box>
           ) : (
             <Select options={options} onChange={value => void handleChange(value)} />
@@ -89,9 +89,7 @@ export function TeleportRepoMismatchDialog({
       ) : (
         <Box flexDirection="column" gap={1}>
           {errorMessage && <Text color="error">{errorMessage}</Text>}
-          <T dimColor vars={{ targetRepo }}>
-            Run claude --teleport from a checkout of {targetRepo}
-          </T>
+          <Text dimColor>{tf('Run claude --teleport from a checkout of {targetRepo}', { targetRepo })}</Text>
         </Box>
       )}
     </Dialog>

@@ -1,5 +1,6 @@
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
@@ -93,15 +94,19 @@ export const WebSearchTool = buildTool({
   maxResultSizeChars: 100_000,
   shouldDefer: true,
   async description(input) {
-    return `Claude wants to search the web for: ${input.query}`
+    return tf('Claude wants to search the web for: {query}', {
+      query: input.query,
+    })
   },
   userFacingName() {
-    return 'Web Search'
+    return t('Web Search')
   },
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Searching for ${summary}` : 'Searching the web'
+    return summary
+      ? tf('Searching for {summary}', { summary })
+      : t('Searching the web')
   },
   isEnabled() {
     // Always enabled — the adapter factory selects the appropriate backend
@@ -126,7 +131,7 @@ export const WebSearchTool = buildTool({
   async checkPermissions(_input): Promise<PermissionResult> {
     return {
       behavior: 'passthrough',
-      message: 'WebSearchTool requires permission.',
+      message: t('WebSearchTool requires permission.'),
       suggestions: [
         {
           type: 'addRules',
@@ -151,15 +156,16 @@ export const WebSearchTool = buildTool({
     if (!query.length) {
       return {
         result: false,
-        message: 'Error: Missing query',
+        message: t('Error: Missing query'),
         errorCode: 1,
       }
     }
     if (allowed_domains?.length && blocked_domains?.length) {
       return {
         result: false,
-        message:
+        message: t(
           'Error: Cannot specify both allowed_domains and blocked_domains in the same request',
+        ),
         errorCode: 2,
       }
     }
@@ -204,7 +210,7 @@ export const WebSearchTool = buildTool({
         })),
       })
     } else {
-      results.push('No search results found.')
+      results.push(t('No search results found.'))
     }
 
     const data: Output = {
@@ -217,7 +223,9 @@ export const WebSearchTool = buildTool({
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     const { query, results } = output
 
-    let formattedOutput = `Web search results for query: "${query}"\n\n`
+    let formattedOutput = tf('Web search results for query: "{query}"\n\n', {
+      query,
+    })
 
     ;(results ?? []).forEach(result => {
       if (result == null) {
@@ -237,13 +245,14 @@ export const WebSearchTool = buildTool({
           }
           formattedOutput += '\n'
         } else {
-          formattedOutput += 'No links found.\n\n'
+          formattedOutput += t('No links found.\n\n')
         }
       }
     })
 
-    formattedOutput +=
-      '\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.'
+    formattedOutput += t(
+      '\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.',
+    )
 
     return {
       tool_use_id: toolUseID,

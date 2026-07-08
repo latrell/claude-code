@@ -46,14 +46,14 @@ export function PermissionRuleInput({ onCancel, onSubmit, ruleBehavior }: Permis
     <>
       <Box flexDirection="column" gap={1} borderStyle="round" paddingLeft={1} paddingRight={1} borderColor="permission">
         <Text bold color="permission">
-          Add {ruleBehavior} permission rule
+          {tf('Add {behavior} permission rule', { behavior: ruleBehavior })}
         </Text>
         <Box flexDirection="column">
           <Text>
-            Permission rules are a tool name, optionally followed by a specifier in parentheses.
+            {t('Permission rules are a tool name, optionally followed by a specifier in parentheses.')}
             <Newline />
-            e.g., <Text bold>{permissionRuleValueToString({ toolName: WebFetchTool.name })}</Text>
-            <Text bold={false}> or </Text>
+            {t('e.g.,')} <Text bold>{permissionRuleValueToString({ toolName: WebFetchTool.name })}</Text>
+            <Text bold={false}>{t(' or ')}</Text>
             <Text bold>
               {permissionRuleValueToString({
                 toolName: BashTool.name,
@@ -67,7 +67,7 @@ export function PermissionRuleInput({ onCancel, onSubmit, ruleBehavior }: Permis
               value={inputValue}
               onChange={setInputValue}
               onSubmit={handleSubmit}
-              placeholder={`Enter permission rule${figures.ellipsis}`}
+              placeholder={tf('Enter permission rule{ellipsis}', { ellipsis: figures.ellipsis })}
               columns={textInputColumns}
               cursorOffset={cursorOffset}
               onChangeCursorOffset={setCursorOffset}

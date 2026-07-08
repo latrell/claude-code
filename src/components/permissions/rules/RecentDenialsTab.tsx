@@ -5,6 +5,7 @@ import { Box, Text, useInput, useTabHeaderFocus } from '@anthropic/ink';
 import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/autoModeDenials.js';
 import { Select } from '../../CustomSelect/select.js';
 import { StatusIcon } from '@anthropic/ink';
+import { t } from '../../../i18n/t.js';
 
 type Props = {
   onHeaderFocusChange?: (focused: boolean) => void;
@@ -66,7 +67,9 @@ export function RecentDenialsTab({ onHeaderFocusChange, onStateChange }: Props):
   );
 
   if (denials.length === 0) {
-    return <Text dimColor>No recent denials. Commands denied by the auto mode classifier will appear here.</Text>;
+    return (
+      <Text dimColor>{t('No recent denials. Commands denied by the auto mode classifier will appear here.')}</Text>
+    );
   }
 
   const options = denials.map((d, idx) => {
@@ -86,7 +89,7 @@ export function RecentDenialsTab({ onHeaderFocusChange, onStateChange }: Props):
 
   return (
     <Box flexDirection="column">
-      <Text>Commands recently denied by the auto mode classifier.</Text>
+      <Text>{t('Commands recently denied by the auto mode classifier.')}</Text>
       <Box marginTop={1}>
         <Select
           options={options}

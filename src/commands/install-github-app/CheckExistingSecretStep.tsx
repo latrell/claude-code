@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { t } from '../../i18n/t.js';
 import TextInput from '../../components/TextInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, color, Text, useTheme } from '@anthropic/ink';
@@ -48,38 +49,38 @@ export function CheckExistingSecretStep({
     <>
       <Box flexDirection="column" borderStyle="round" paddingX={1}>
         <Box flexDirection="column" marginBottom={1}>
-          <Text bold>Install GitHub App</Text>
-          <Text dimColor>Setup API key secret</Text>
+          <Text bold>{t('Install GitHub App')}</Text>
+          <Text dimColor>{t('Setup API key secret')}</Text>
         </Box>
         <Box marginBottom={1}>
-          <Text color="warning">ANTHROPIC_API_KEY already exists in repository secrets!</Text>
+          <Text color="warning">{t('ANTHROPIC_API_KEY already exists in repository secrets!')}</Text>
         </Box>
         <Box marginBottom={1}>
-          <Text>Would you like to:</Text>
+          <Text>{t('Would you like to:')}</Text>
         </Box>
         <Box marginBottom={1}>
           <Text>
             {useExistingSecret ? color('success', theme)('> ') : '  '}
-            Use the existing API key
+            {t('Use the existing API key')}
           </Text>
         </Box>
         <Box marginBottom={1}>
           <Text>
             {!useExistingSecret ? color('success', theme)('> ') : '  '}
-            Create a new secret with a different name
+            {t('Create a new secret with a different name')}
           </Text>
         </Box>
         {!useExistingSecret && (
           <>
             <Box marginBottom={1}>
-              <Text>Enter new secret name (alphanumeric with underscores):</Text>
+              <Text>{t('Enter new secret name (alphanumeric with underscores):')}</Text>
             </Box>
             <TextInput
               value={secretName}
               onChange={onSecretNameChange}
               onSubmit={onSubmit}
               focus={true}
-              placeholder="e.g., CLAUDE_API_KEY"
+              placeholder={t('e.g., CLAUDE_API_KEY')}
               columns={terminalSize.columns}
               cursorOffset={cursorOffset}
               onChangeCursorOffset={setCursorOffset}

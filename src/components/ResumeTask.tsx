@@ -13,7 +13,7 @@ import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { Spinner } from './Spinner.js';
 import { TeleportError } from './TeleportError.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 type Props = {
   onSelect: (session: CodeSession) => void;
@@ -130,7 +130,7 @@ export function ResumeTask({ onSelect, onCancel, isEmbedded = false }: Props): R
           <Spinner />
           <Text bold>{t('Loading Claude Code sessions…')}</Text>
         </Box>
-        <Text dimColor>{retrying ? 'Retrying…' : 'Fetching your Claude Code sessions…'}</Text>
+        <Text dimColor>{retrying ? t('Retrying…') : t('Fetching your Claude Code sessions…')}</Text>
       </Box>
     );
   }
@@ -144,9 +144,7 @@ export function ResumeTask({ onSelect, onCancel, isEmbedded = false }: Props): R
 
         {renderErrorSpecificGuidance(loadErrorType)}
 
-        <Text dimColor>
-          Press <Text bold>Ctrl+R</Text> to retry · Press <Text bold>{escKey}</Text> to cancel
-        </Text>
+        <Text dimColor>{tf('Press {key1} to retry · Press {key2} to cancel', { key1: 'Ctrl+R', key2: escKey })}</Text>
       </Box>
     );
   }
@@ -285,14 +283,14 @@ function renderErrorSpecificGuidance(errorType: LoadErrorType): React.ReactNode 
     case 'network':
       return (
         <Box marginY={1} flexDirection="column">
-          <Text dimColor>Check your internet connection</Text>
+          <Text dimColor>{t('Check your internet connection')}</Text>
         </Box>
       );
 
     case 'auth':
       return (
         <Box marginY={1} flexDirection="column">
-          <Text dimColor>Teleport requires a Claude account</Text>
+          <Text dimColor>{t('Teleport requires a Claude account')}</Text>
           <Text dimColor>
             Run <Text bold>/login</Text> and select &quot;Claude account with subscription&quot;
           </Text>
@@ -302,14 +300,14 @@ function renderErrorSpecificGuidance(errorType: LoadErrorType): React.ReactNode 
     case 'api':
       return (
         <Box marginY={1} flexDirection="column">
-          <Text dimColor>Sorry, Claude encountered an error</Text>
+          <Text dimColor>{t('Sorry, Claude encountered an error')}</Text>
         </Box>
       );
 
     case 'other':
       return (
         <Box marginY={1} flexDirection="row">
-          <Text dimColor>Sorry, Claude Code encountered an error</Text>
+          <Text dimColor>{t('Sorry, Claude Code encountered an error')}</Text>
         </Box>
       );
   }

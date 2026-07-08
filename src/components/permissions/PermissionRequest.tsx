@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
+import { t, tf } from '../../i18n/t.js';
 import { EnterPlanModeTool } from '@claude-code-best/builtin-tools/tools/EnterPlanModeTool/EnterPlanModeTool.js';
 import { ExitPlanModeV2Tool } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
 import { useNotifyAfterTimeout } from '../../hooks/useNotifyAfterTimeout.js';
@@ -165,22 +166,22 @@ function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
   const toolName = toolUseConfirm.tool.userFacingName(toolUseConfirm.input as never);
 
   if (toolUseConfirm.tool === ExitPlanModeV2Tool) {
-    return 'Claude Code needs your approval for the plan';
+    return t('Claude Code needs your approval for the plan');
   }
 
   if (toolUseConfirm.tool === EnterPlanModeTool) {
-    return 'Claude Code wants to enter plan mode';
+    return t('Claude Code wants to enter plan mode');
   }
 
   if (feature('REVIEW_ARTIFACT') && toolUseConfirm.tool === ReviewArtifactTool) {
-    return 'Claude needs your approval for a review artifact';
+    return t('Claude needs your approval for a review artifact');
   }
 
   if (!toolName || toolName.trim() === '') {
-    return 'Claude Code needs your attention';
+    return t('Claude Code needs your attention');
   }
 
-  return `Claude needs your permission to use ${toolName}`;
+  return tf('Claude needs your permission to use {toolName}', { toolName });
 }
 
 // TODO: Move this to Tool.renderPermissionRequest

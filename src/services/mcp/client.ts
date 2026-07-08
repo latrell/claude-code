@@ -1,3 +1,4 @@
+import { t } from '../../i18n/t.js'
 import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
@@ -376,7 +377,7 @@ export function createClaudeAiProxyFetch(innerFetch: FetchLike): FetchLike {
       await checkAndRefreshOAuthTokenIfNeeded()
       const currentTokens = getClaudeAIOAuthTokens()
       if (!currentTokens) {
-        throw new Error('No claude.ai OAuth token available')
+        throw new Error(t('No claude.ai OAuth token available'))
       }
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const headers = new Headers(init?.headers)
@@ -874,7 +875,7 @@ export const connectToServer = memoize(
 
         const tokens = getClaudeAIOAuthTokens()
         if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
+          throw new Error(t('No claude.ai OAuth token found'))
         }
 
         const oauthConfig = getOauthConfig()

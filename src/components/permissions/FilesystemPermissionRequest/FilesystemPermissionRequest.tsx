@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
+import { t } from '../../../i18n/t.js';
 import { FallbackPermissionRequest } from '../FallbackPermissionRequest.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { ToolInput } from '../FilePermissionDialog/useFilePermissionDialog.js';
@@ -30,10 +31,7 @@ export function FilesystemPermissionRequest({
   const userFacingName = toolUseConfirm.tool.userFacingName(toolUseConfirm.input as never);
 
   const isReadOnly = toolUseConfirm.tool.isReadOnly(toolUseConfirm.input);
-  const userFacingReadOrEdit = isReadOnly ? 'Read' : 'Edit';
-
-  // Use simple singular form - the actual operation details are shown in content
-  const title = `${userFacingReadOrEdit} file`;
+  const title = isReadOnly ? t('Read file') : t('Edit file');
 
   // Simple pass-through parser since we don't need to transform the input
   const parseInput = (input: unknown): ToolInput => input as ToolInput;

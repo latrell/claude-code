@@ -47,6 +47,7 @@ import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
 import type { McpHTTPServerConfig, McpSSEServerConfig } from './types.js'
+import { t, tf } from '../../i18n/t.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 import { performCrossAppAccess, XaaTokenExchangeError } from './xaa.js'
 import {
@@ -1254,7 +1255,7 @@ export async function performMCPOAuthFlow(
           : {}),
       })
     } else {
-      throw new Error('Unexpected auth result: ' + result)
+      throw new Error(t('Unexpected auth result: ') + result)
     }
   } catch (error) {
     logMCPDebug(serverName, `Error during auth completion: ${error}`)
@@ -1951,7 +1952,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async codeVerifier(): Promise<string> {
     if (!this._codeVerifier) {
       logMCPDebug(this.serverName, `No code verifier saved`)
-      throw new Error('No code verifier saved')
+      throw new Error(t('No code verifier saved'))
     }
     logMCPDebug(this.serverName, `Returning code verifier`)
     return this._codeVerifier

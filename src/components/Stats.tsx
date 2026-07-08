@@ -214,7 +214,7 @@ function StatsContent({ allTimePromise, onClose }: StatsContentProps): React.Rea
     <Pane color="claude">
       <Box flexDirection="row" gap={1} marginBottom={1}>
         <Tabs title="" color="claude" defaultTab="Overview">
-          <Tab title="Overview">
+          <Tab title={t('Overview')}>
             <OverviewTab
               stats={displayStats}
               allTimeStats={allTimeStats}
@@ -222,7 +222,7 @@ function StatsContent({ allTimePromise, onClose }: StatsContentProps): React.Rea
               isLoading={isLoadingFiltered}
             />
           </Tab>
-          <Tab title="Models">
+          <Tab title={t('Models')}>
             <ModelsTab stats={displayStats} dateRange={dateRange} isLoading={isLoadingFiltered} />
           </Tab>
         </Tabs>

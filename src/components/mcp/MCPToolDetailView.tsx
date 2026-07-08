@@ -5,7 +5,7 @@ import type { Tool } from '../../Tool.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Dialog } from '@anthropic/ink';
 import type { ServerInfo } from './types.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   tool: Tool;
@@ -44,7 +44,7 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
         );
         setToolDescription(desc);
       } catch {
-        setToolDescription('Failed to load description');
+        setToolDescription(t('Failed to load description'));
       }
     }
     void loadDescription();
@@ -53,9 +53,9 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
   const titleContent = (
     <>
       {displayName}
-      {isReadOnly && <Text color="success"> [read-only]</Text>}
-      {isDestructive && <Text color="error"> [destructive]</Text>}
-      {isOpenWorld && <Text dimColor> [open-world]</Text>}
+      {isReadOnly && <Text color="success">{t(' [read-only]')}</Text>}
+      {isDestructive && <Text color="error">{t(' [destructive]')}</Text>}
+      {isOpenWorld && <Text dimColor>{t(' [open-world]')}</Text>}
     </>
   );
 
@@ -74,18 +74,18 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
     >
       <Box flexDirection="column">
         <Box>
-          <Text bold>Tool name: </Text>
+          <Text bold>{t('Tool name: ')}</Text>
           <Text dimColor>{toolName}</Text>
         </Box>
 
         <Box>
-          <Text bold>Full name: </Text>
+          <Text bold>{t('Full name: ')}</Text>
           <Text dimColor>{tool.name}</Text>
         </Box>
 
         {toolDescription && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>Description:</Text>
+            <Text bold>{t('Description:')}</Text>
             <Text wrap="wrap">{toolDescription}</Text>
           </Box>
         )}
@@ -94,7 +94,7 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
           tool.inputJSONSchema.properties &&
           Object.keys(tool.inputJSONSchema.properties).length > 0 && (
             <Box flexDirection="column" marginTop={1}>
-              <Text bold>Parameters:</Text>
+              <Text bold>{t('Parameters:')}</Text>
               <Box marginLeft={2} flexDirection="column">
                 {Object.entries(tool.inputJSONSchema.properties).map(([key, value]) => {
                   const required = tool.inputJSONSchema?.required as string[] | undefined;
@@ -102,9 +102,9 @@ export function MCPToolDetailView({ tool, server, onBack }: Props): React.ReactN
                   return (
                     <Text key={key}>
                       • {key}
-                      {isRequired && <Text dimColor> (required)</Text>}:{' '}
+                      {isRequired && <Text dimColor>{t(' (required)')}</Text>}:{' '}
                       <Text dimColor>
-                        {typeof value === 'object' && value && 'type' in value ? String(value.type) : 'unknown'}
+                        {typeof value === 'object' && value && 'type' in value ? String(value.type) : t('unknown')}
                       </Text>
                       {typeof value === 'object' && value && 'description' in value && (
                         <Text dimColor> - {String(value.description)}</Text>

@@ -8,7 +8,7 @@ import { formatTokens } from '../utils/format.js';
 import { getSourceDisplayName, type SettingSource } from '../utils/settings/constants.js';
 import { plural } from '../utils/stringUtils.js';
 import { ContextSuggestions } from './ContextSuggestions.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 import { T } from '../i18n/TText.js';
 
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
@@ -172,9 +172,9 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           <CollapseStatus />
           {cacheHitRate !== undefined && cacheThreshold !== undefined && (
             <Text color={cacheHitRate < cacheThreshold ? 'warning' : undefined}>
-              <T vars={{ rate: cacheHitRate.toFixed(0) }}>Cache hit rate: {rate}%</T>
+              <Text>{tf('Cache hit rate: {rate}%', { rate: cacheHitRate.toFixed(0) })}</Text>
               {cacheHitRate < cacheThreshold ? (
-                <T vars={{ threshold: cacheThreshold }}> (below {threshold}% threshold)</T>
+                <Text>{tf(' (below {threshold}% threshold)', { threshold: cacheThreshold })}</Text>
               ) : (
                 ''
               )}

@@ -24,6 +24,7 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { validateKey } from '../../utils/localValidate.js'
+import { t, tf } from '../../i18n/t.js'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -86,29 +87,46 @@ export function isValidStoreName(store: string): boolean {
 
 function validateStoreName(store: string): void {
   if (!store) {
-    throw new Error('Invalid store name: store name must not be empty.')
+    throw new Error(t('Invalid store name: store name must not be empty.'))
   }
   if (store.length > MAX_STORE_NAME_LENGTH) {
     throw new Error(
-      `Invalid store name: "${store.slice(0, 20)}…" is too long (max ${MAX_STORE_NAME_LENGTH} chars).`,
+      tf('Invalid store name: "{name}" is too long (max {maxLength} chars).', {
+        name: store.slice(0, 20) + '…',
+        maxLength: MAX_STORE_NAME_LENGTH,
+      }),
     )
   }
   // Reject path separators (forward slash, backslash), Windows drive colons.
   // Null bytes checked separately to avoid biome noControlCharactersInRegex warning.
   if (/[/\\:]/.test(store) || store.includes('\0')) {
     throw new Error(
-      `Invalid store name: "${store}" contains illegal characters (path separators, null byte, or colon).`,
+      tf(
+        'Invalid store name: "{name}" contains illegal characters (path separators, null byte, or colon).',
+        {
+          name: store,
+        },
+      ),
     )
   }
   // Reject names starting with "." — covers ".." and hidden names
   if (store.startsWith('.')) {
-    throw new Error(`Invalid store name: "${store}" must not start with ".".`)
+    throw new Error(
+      tf('Invalid store name: "{name}" must not start with ".".', {
+        name: store,
+      }),
+    )
   }
   // Guard: resolved basename must equal the store name itself.
   // This catches any path-like names that slipped through the above checks.
   if (basename(store) !== store) {
     throw new Error(
-      `Invalid store name: "${store}" is path-like and would escape the base directory.`,
+      tf(
+        'Invalid store name: "{name}" is path-like and would escape the base directory.',
+        {
+          name: store,
+        },
+      ),
     )
   }
 }
@@ -142,7 +160,9 @@ export function createStore(store: string): void {
   validateStoreName(store)
   const storeDir = getStoreDir(store)
   if (existsSync(storeDir)) {
-    throw new Error(`Store "${store}" already exists`)
+    throw new Error(
+      tf('Store "{storeName}" already exists', { storeName: store }),
+    )
   }
   mkdirSync(storeDir, { recursive: true })
 }
@@ -152,7 +172,9 @@ export function archiveStore(store: string): void {
   validateStoreName(store)
   const storeDir = getStoreDir(store)
   if (!existsSync(storeDir)) {
-    throw new Error(`Store "${store}" does not exist`)
+    throw new Error(
+      tf('Store "{storeName}" does not exist', { storeName: store }),
+    )
   }
   const archivedDir = storeDir + '.archived'
   renameSync(storeDir, archivedDir)
@@ -168,8 +190,12 @@ export function setEntry(store: string, key: string, value: string): void {
   const byteLength = Buffer.byteLength(value, 'utf8')
   if (byteLength > MAX_VALUE_BYTES) {
     throw new Error(
-      `Entry value too large: ${byteLength} bytes exceeds the 1 MB limit. ` +
-        'Use external storage for large data.',
+      tf(
+        'Entry value too large: {size} bytes exceeds the 1 MB limit. Use external storage for large data.',
+        {
+          size: byteLength,
+        },
+      ),
     )
   }
 

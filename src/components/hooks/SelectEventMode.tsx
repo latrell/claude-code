@@ -13,6 +13,7 @@ import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
 import type { HookEventMetadata } from 'src/utils/hooks/hooksConfigManager.js';
 import { Box, Link, Text } from '@anthropic/ink';
 import { plural } from '../../utils/stringUtils.js';
+import { t, tf } from '../../i18n/t.js';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 
@@ -33,25 +34,29 @@ export function SelectEventMode({
   onSelectEvent,
   onCancel,
 }: Props): React.ReactNode {
-  const subtitle = `${totalHooksCount} ${plural(totalHooksCount, 'hook')} configured`;
+  const subtitle = tf('{count} {word} configured', { count: totalHooksCount, word: plural(totalHooksCount, 'hook') });
 
   return (
     <Dialog title="Hooks" subtitle={subtitle} onCancel={onCancel}>
       <Box flexDirection="column" gap={1}>
         {restrictedByPolicy && (
           <Box flexDirection="column">
-            <Text color="suggestion">{figures.info} Hooks Restricted by Policy</Text>
+            <Text color="suggestion">
+              {figures.info} {t('Hooks Restricted by Policy')}
+            </Text>
             <Text dimColor>
-              Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json,
-              .claude/settings.json, and .claude/settings.local.json are blocked.
+              {t(
+                'Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json, .claude/settings.json, and .claude/settings.local.json are blocked.',
+              )}
             </Text>
           </Box>
         )}
 
         <Box flexDirection="column">
           <Text dimColor>
-            {figures.info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude.{' '}
-            <Link url="https://code.claude.com/docs/en/hooks">Learn more</Link>
+            {figures.info}{' '}
+            {t('This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude.')}{' '}
+            <Link url="https://code.claude.com/docs/en/hooks">{t('Learn more')}</Link>
           </Text>
         </Box>
 

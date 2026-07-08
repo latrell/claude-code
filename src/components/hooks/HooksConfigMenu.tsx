@@ -182,7 +182,11 @@ export function HooksConfigMenu({ toolNames, onExit }: Props): React.ReactNode {
   // users can edit settings.json or ask Claude instead.
   if (hooksDisabled) {
     return (
-      <Dialog title="Hook Configuration - Disabled" onCancel={handleExit} inputGuide={() => <Text>Esc to close</Text>}>
+      <Dialog
+        title="Hook Configuration - Disabled"
+        onCancel={handleExit}
+        inputGuide={() => <Text>{t('Esc to close')}</Text>}
+      >
         <Box flexDirection="column" gap={1}>
           <Box flexDirection="column">
             <Text>
@@ -191,7 +195,7 @@ export function HooksConfigMenu({ toolNames, onExit }: Props): React.ReactNode {
               configured {plural(totalHooksCount, 'hook')} that {plural(totalHooksCount, 'is', 'are')} not running.
             </Text>
             <Box marginTop={1}>
-              <Text dimColor>When hooks are disabled:</Text>
+              <Text dimColor>{t('When hooks are disabled:')}</Text>
             </Box>
             <Text dimColor>· No hook commands will execute</Text>
             <Text dimColor>· StatusLine will not be displayed</Text>

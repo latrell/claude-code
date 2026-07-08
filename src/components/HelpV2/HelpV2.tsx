@@ -58,7 +58,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
         commands={builtinCommands}
         maxHeight={maxHeight}
         columns={columns}
-        title="Browse default commands:"
+        title={t('Browse default commands:')}
         onCancel={close}
       />
     </Tab>,
@@ -70,8 +70,8 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
         commands={customCommands}
         maxHeight={maxHeight}
         columns={columns}
-        title="Browse custom commands:"
-        emptyMessage="No custom commands found"
+        title={t('Browse custom commands:')}
+        emptyMessage={t('No custom commands found')}
         onCancel={close}
       />
     </Tab>,
@@ -79,12 +79,12 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
 
   if (process.env.USER_TYPE === 'ant' && antOnlyCommands.length > 0) {
     tabs.push(
-      <Tab key="ant-only" title="[ant-only]">
+      <Tab key="ant-only" title={t('[ant-only]')}>
         <Commands
           commands={antOnlyCommands}
           maxHeight={maxHeight}
           columns={columns}
-          title="Browse ant-only commands:"
+          title={t('Browse ant-only commands:')}
           onCancel={close}
         />
       </Tab>,
@@ -95,7 +95,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
     <Box flexDirection="column" height={insideModal ? undefined : maxHeight}>
       <Pane color="professionalBlue">
         <Tabs
-          title={process.env.USER_TYPE === 'ant' ? '/help' : `Claude Code v${MACRO.VERSION_DISPLAY}`}
+          title={process.env.USER_TYPE === 'ant' ? '/help' : `${t('Claude Code')} v${MACRO.VERSION_DISPLAY}`}
           color="professionalBlue"
           defaultTab="general"
         >
@@ -103,7 +103,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
         </Tabs>
         <Box marginTop={1}>
           <Text>
-            For more help: <Link url="https://code.claude.com/docs/en/overview" />
+            {t('For more help:')} <Link url="https://code.claude.com/docs/en/overview" />
           </Text>
         </Box>
         <Box marginTop={1}>

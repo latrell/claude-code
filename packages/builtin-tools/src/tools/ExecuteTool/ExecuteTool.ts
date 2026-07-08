@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import {
   buildTool,
   findToolByName,
@@ -75,7 +76,10 @@ export const ExecuteTool = buildTool({
         },
         newMessages: [
           createUserMessage({
-            content: `Tool "${input.tool_name}" not found. Use SearchExtraTools to discover available tools.`,
+            content: tf(
+              'Tool "{tool_name}" not found. Use SearchExtraTools to discover available tools.',
+              { tool_name: input.tool_name },
+            ),
           }),
         ],
       }
@@ -100,7 +104,10 @@ export const ExecuteTool = buildTool({
           },
           newMessages: [
             createUserMessage({
-              content: `Tool "${input.tool_name}" has not been discovered yet. You must first use SearchExtraTools to discover this tool before executing it.\n\nUsage: SearchExtraTools("select:${input.tool_name}")`,
+              content: tf(
+                'Tool "{tool_name}" has not been discovered yet. You must first use SearchExtraTools to discover this tool before executing it.\n\nUsage: SearchExtraTools("select:{tool_name}")',
+                { tool_name: input.tool_name },
+              ),
             }),
           ],
         }
@@ -116,7 +123,10 @@ export const ExecuteTool = buildTool({
         },
         newMessages: [
           createUserMessage({
-            content: `工具 "${input.tool_name}" 当前不可用：Remote Control 未连接。`,
+            content: tf(
+              '工具 "{tool_name}" 当前不可用：Remote Control 未连接。',
+              { tool_name: input.tool_name },
+            ),
           }),
         ],
       }
@@ -174,7 +184,10 @@ export const ExecuteTool = buildTool({
           },
           newMessages: [
             createUserMessage({
-              content: `Invalid parameters for tool "${input.tool_name}": ${validation.message}`,
+              content: tf(
+                'Invalid parameters for tool "{tool_name}": {message}',
+                { tool_name: input.tool_name, message: validation.message },
+              ),
             }),
           ],
         }
@@ -194,7 +207,10 @@ export const ExecuteTool = buildTool({
         },
         newMessages: [
           createUserMessage({
-            content: `Permission denied for tool "${input.tool_name}": ${permResult.message ?? 'Permission denied'}`,
+            content: tf('Permission denied for tool "{tool_name}": {message}', {
+              tool_name: input.tool_name,
+              message: permResult.message ?? t('Permission denied'),
+            }),
           }),
         ],
       }
@@ -220,14 +236,14 @@ export const ExecuteTool = buildTool({
   async checkPermissions() {
     return {
       behavior: 'passthrough',
-      message: 'ExecuteExtraTool delegates permission to the target tool.',
+      message: t('ExecuteExtraTool delegates permission to the target tool.'),
     }
   },
   renderToolUseMessage(input) {
-    return `${input.tool_name}`
+    return `${input.tool_name}` // tool name is already an identifier, no translation needed
   },
   userFacingName() {
-    return 'ExecuteExtraTool'
+    return t('ExecuteExtraTool')
   },
   mapToolResultToToolResultBlockParam(content, toolUseID) {
     return {

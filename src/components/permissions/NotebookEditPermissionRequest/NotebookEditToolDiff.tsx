@@ -2,6 +2,7 @@ import { relative } from 'path';
 import * as React from 'react';
 import { Suspense, use, useMemo } from 'react';
 import { Box, NoSelect, Text } from '@anthropic/ink';
+import { t } from '../../../i18n/t.js';
 import type { NotebookCell, NotebookCellType, NotebookContent } from '../../../types/notebook.js';
 import { intersperse } from '../../../utils/array.js';
 import { getCwd } from '../../../utils/cwd.js';
@@ -106,13 +107,13 @@ function NotebookEditToolDiffInner({
   let editTypeDescription: string;
   switch (edit_mode) {
     case 'insert':
-      editTypeDescription = 'Insert new cell';
+      editTypeDescription = t('Insert new cell');
       break;
     case 'delete':
-      editTypeDescription = 'Delete cell';
+      editTypeDescription = t('Delete cell');
       break;
     default:
-      editTypeDescription = 'Replace cell contents';
+      editTypeDescription = t('Replace cell contents');
   }
 
   return (

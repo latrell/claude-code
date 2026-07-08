@@ -11,7 +11,7 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { McpParsingWarnings } from './McpParsingWarnings.js';
 import type { AgentMcpServerInfo, ServerInfo } from './types.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   servers: ServerInfo[];
@@ -34,15 +34,15 @@ const SCOPE_ORDER: ConfigScope[] = ['project', 'local', 'user', 'enterprise'];
 function getScopeHeading(scope: ConfigScope): { label: string; path?: string } {
   switch (scope) {
     case 'project':
-      return { label: 'Project MCPs', path: describeMcpConfigFilePath(scope) };
+      return { label: t('Project MCPs'), path: describeMcpConfigFilePath(scope) };
     case 'user':
-      return { label: 'User MCPs', path: describeMcpConfigFilePath(scope) };
+      return { label: t('User MCPs'), path: describeMcpConfigFilePath(scope) };
     case 'local':
-      return { label: 'Local MCPs', path: describeMcpConfigFilePath(scope) };
+      return { label: t('Local MCPs'), path: describeMcpConfigFilePath(scope) };
     case 'enterprise':
-      return { label: 'Enterprise MCPs' };
+      return { label: t('Enterprise MCPs') };
     case 'dynamic':
-      return { label: 'Built-in MCPs', path: 'always available' };
+      return { label: t('Built-in MCPs'), path: t('always available') };
     default:
       return { label: scope };
   }
@@ -168,24 +168,24 @@ export function MCPListPanel({
 
     if (server.client.type === 'disabled') {
       statusIcon = color('inactive', theme)(figures.radioOff);
-      statusText = 'disabled';
+      statusText = t('disabled');
     } else if (server.client.type === 'connected') {
       statusIcon = color('success', theme)(figures.tick);
-      statusText = 'connected';
+      statusText = t('connected');
     } else if (server.client.type === 'pending') {
       statusIcon = color('inactive', theme)(figures.radioOff);
       const { reconnectAttempt, maxReconnectAttempts } = server.client;
       if (reconnectAttempt && maxReconnectAttempts) {
-        statusText = `reconnecting (${reconnectAttempt}/${maxReconnectAttempts})…`;
+        statusText = tf('reconnecting ({attempt}/{max})…', { attempt: reconnectAttempt, max: maxReconnectAttempts });
       } else {
-        statusText = 'connecting…';
+        statusText = t('connecting…');
       }
     } else if (server.client.type === 'needs-auth') {
       statusIcon = color('warning', theme)(figures.triangleUpOutline);
-      statusText = 'needs authentication';
+      statusText = t('needs authentication');
     } else {
       statusIcon = color('error', theme)(figures.cross);
-      statusText = 'failed';
+      statusText = t('failed');
     }
 
     return (
@@ -204,7 +204,7 @@ export function MCPListPanel({
     const statusIcon = agentServer.needsAuth
       ? color('warning', theme)(figures.triangleUpOutline)
       : color('inactive', theme)(figures.radioOff);
-    const statusText = agentServer.needsAuth ? 'may need auth' : 'agent-only';
+    const statusText = agentServer.needsAuth ? t('may need auth') : t('agent-only');
 
     return (
       <Box key={`agent-${agentServer.name}-${index}`}>
@@ -223,8 +223,8 @@ export function MCPListPanel({
       <McpParsingWarnings />
 
       <Dialog
-        title="Manage MCP servers"
-        subtitle={`${totalServers} ${plural(totalServers, 'server')}`}
+        title={t('Manage MCP servers')}
+        subtitle={tf('{count} {word}', { count: totalServers, word: plural(totalServers, 'server') })}
         onCancel={handleCancel}
         hideInputGuide
       >
@@ -249,7 +249,7 @@ export function MCPListPanel({
           {claudeAiServers.length > 0 && (
             <Box flexDirection="column" marginBottom={1}>
               <Box paddingLeft={2}>
-                <Text bold>claude.ai</Text>
+                <Text bold>{t('claude.ai')}</Text>
               </Box>
               {claudeAiServers.map(server => renderServerItem(server))}
             </Box>
@@ -259,7 +259,7 @@ export function MCPListPanel({
           {agentServers.length > 0 && (
             <Box flexDirection="column" marginBottom={1}>
               <Box paddingLeft={2}>
-                <Text bold>Agent MCPs</Text>
+                <Text bold>{t('Agent MCPs')}</Text>
               </Box>
               {/* Group servers by source agent */}
               {[...new Set(agentServers.flatMap(s => s.sourceAgents))].map(agentName => (
@@ -290,11 +290,12 @@ export function MCPListPanel({
           <Box flexDirection="column">
             {hasFailedClients && (
               <Text dimColor>
-                {debugMode ? '※ Error logs shown inline with --debug' : '※ Run claude --debug to see error logs'}
+                {debugMode ? t('※ Error logs shown inline with --debug') : t('※ Run claude --debug to see error logs')}
               </Text>
             )}
             <Text dimColor>
-              <Link url="https://code.claude.com/docs/en/mcp">https://code.claude.com/docs/en/mcp</Link> for help
+              <Link url="https://code.claude.com/docs/en/mcp">https://code.claude.com/docs/en/mcp</Link>
+              {t(' for help')}
             </Text>
           </Box>
         </Box>

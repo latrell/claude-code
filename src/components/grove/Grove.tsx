@@ -15,7 +15,8 @@ import {
 } from '../../services/api/grove.js';
 import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 export type GroveDecision = 'accept_opt_in' | 'accept_opt_out' | 'defer' | 'escape' | 'skip_rendering';
 
@@ -41,39 +42,56 @@ function GracePeriodContentBody(): React.ReactNode {
   return (
     <>
       <Text>
-        An update to our Consumer Terms and Privacy Policy will take effect on <Text bold>October 8, 2025</Text>. You
-        can accept the updated terms today.
+        <T>An update to our Consumer Terms and Privacy Policy will take effect on </T>
+        <Text bold>October 8, 2025</Text>
+        <T>. You can accept the updated terms today.</T>
       </Text>
 
       <Box flexDirection="column">
-        <Text>What&apos;s changing?</Text>
+        <Text>
+          <T>What&apos;s changing?</T>
+        </Text>
 
         <Box paddingLeft={1}>
           <Text>
             <Text>· </Text>
-            <Text bold>You can help improve Claude </Text>
+            <Text bold>
+              <T>You can help improve Claude</T>
+            </Text>
             <Text>
-              — Allow the use of your chats and coding sessions to train and improve Anthropic AI models. Change anytime
-              in your Privacy Settings (<Link url={'https://claude.ai/settings/data-privacy-controls'}></Link>
-              ).
+              <Text>
+                {t(
+                  ' — Allow the use of your chats and coding sessions to train and improve Anthropic AI models. Change anytime in your Privacy Settings (',
+                )}
+              </Text>
+              <Link url={'https://claude.ai/settings/data-privacy-controls'}></Link>
+              <Text>{t(').')}</Text>
             </Text>
           </Text>
         </Box>
         <Box paddingLeft={1}>
           <Text>
             <Text>· </Text>
-            <Text bold>Updates to data retention </Text>
+            <Text bold>
+              <T>Updates to data retention</T>
+            </Text>
             <Text>
-              — To help us improve our AI models and safety protections, we&apos;re extending data retention to 5 years.
+              {t(
+                ' — To help us improve our AI models and safety protections, we\u2019re extending data retention to 5 years.',
+              )}
             </Text>
           </Text>
         </Box>
       </Box>
 
       <Text>
-        Learn more (<Link url={'https://www.anthropic.com/news/updates-to-our-consumer-terms'}></Link>) or read the
-        updated Consumer Terms (<Link url={'https://anthropic.com/legal/terms'}></Link>) and Privacy Policy (
-        <Link url={'https://anthropic.com/legal/privacy'}></Link>)
+        <T>Learn more (</T>
+        <Link url={'https://www.anthropic.com/news/updates-to-our-consumer-terms'}></Link>
+        <T>) or read the updated Consumer Terms (</T>
+        <Link url={'https://anthropic.com/legal/terms'}></Link>
+        <T>) and Privacy Policy (</T>
+        <Link url={'https://anthropic.com/legal/privacy'}></Link>
+        <T>)</T>
       </Text>
     </>
   );
@@ -82,33 +100,49 @@ function GracePeriodContentBody(): React.ReactNode {
 function PostGracePeriodContentBody(): React.ReactNode {
   return (
     <>
-      <Text>We&apos;ve updated our Consumer Terms and Privacy Policy.</Text>
+      <Text>
+        <T>We&apos;ve updated our Consumer Terms and Privacy Policy.</T>
+      </Text>
 
       <Box flexDirection="column" gap={1}>
-        <Text>What&apos;s changing?</Text>
+        <Text>
+          <T>What&apos;s changing?</T>
+        </Text>
 
         <Box flexDirection="column">
-          <Text bold>Help improve Claude</Text>
+          <Text bold>
+            <T>Help improve Claude</T>
+          </Text>
           <Text>
-            Allow the use of your chats and coding sessions to train and improve Anthropic AI models. You can change
-            this anytime in Privacy Settings
+            <T>
+              Allow the use of your chats and coding sessions to train and improve Anthropic AI models. You can change
+              this anytime in Privacy Settings
+            </T>
           </Text>
           <Link url={'https://claude.ai/settings/data-privacy-controls'}></Link>
         </Box>
 
         <Box flexDirection="column">
-          <Text bold>How this affects data retention</Text>
+          <Text bold>
+            <T>How this affects data retention</T>
+          </Text>
           <Text>
-            Turning ON the improve Claude setting extends data retention from 30 days to 5 years. Turning it OFF keeps
-            the default 30-day data retention. Delete data anytime.
+            <T>
+              Turning ON the improve Claude setting extends data retention from 30 days to 5 years. Turning it OFF keeps
+              the default 30-day data retention. Delete data anytime.
+            </T>
           </Text>
         </Box>
       </Box>
 
       <Text>
-        Learn more (<Link url={'https://www.anthropic.com/news/updates-to-our-consumer-terms'}></Link>) or read the
-        updated Consumer Terms (<Link url={'https://anthropic.com/legal/terms'}></Link>) and Privacy Policy (
-        <Link url={'https://anthropic.com/legal/privacy'}></Link>)
+        <T>Learn more (</T>
+        <Link url={'https://www.anthropic.com/news/updates-to-our-consumer-terms'}></Link>
+        <T>) or read the updated Consumer Terms (</T>
+        <Link url={'https://anthropic.com/legal/terms'}></Link>
+        <T>) and Privacy Policy (</T>
+        <Link url={'https://anthropic.com/legal/privacy'}></Link>
+        <T>)</T>
       </Text>
     </>
   );
@@ -193,17 +227,17 @@ export function GroveDialog({ showIfAlreadyViewed, location, onDone }: Props): R
   const acceptOptions = groveConfig?.domain_excluded
     ? [
         {
-          label: 'Accept terms · Help improve Claude: OFF (for emails with your domain)',
+          label: t('Accept terms · Help improve Claude: OFF (for emails with your domain)'),
           value: 'accept_opt_out',
         },
       ]
     : [
         {
-          label: 'Accept terms · Help improve Claude: ON',
+          label: t('Accept terms · Help improve Claude: ON'),
           value: 'accept_opt_in',
         },
         {
-          label: 'Accept terms · Help improve Claude: OFF',
+          label: t('Accept terms · Help improve Claude: OFF'),
           value: 'accept_opt_out',
         },
       ];
@@ -218,7 +252,7 @@ export function GroveDialog({ showIfAlreadyViewed, location, onDone }: Props): R
 
   return (
     <Dialog
-      title="Updates to Consumer Terms and Policies"
+      title={t('Updates to Consumer Terms and Policies')}
       color="professionalBlue"
       onCancel={handleCancel}
       inputGuide={exitState =>
@@ -243,15 +277,19 @@ export function GroveDialog({ showIfAlreadyViewed, location, onDone }: Props): R
 
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
-          <Text bold>Please select how you&apos;d like to continue</Text>
-          <Text>Your choice takes effect immediately upon confirmation.</Text>
+          <Text bold>
+            <T>Please select how you&apos;d like to continue</T>
+          </Text>
+          <Text>
+            <T>Your choice takes effect immediately upon confirmation.</T>
+          </Text>
         </Box>
 
         <Select
           options={[
             ...acceptOptions,
             // Only show "Not now" if in grace period
-            ...(groveConfig?.notice_is_grace_period ? [{ label: 'Not now', value: 'defer' }] : []),
+            ...(groveConfig?.notice_is_grace_period ? [{ label: t('Not now'), value: 'defer' }] : []),
           ]}
           onChange={value => onChange(value as 'accept_opt_in' | 'accept_opt_out' | 'defer')}
           onCancel={handleCancel}
@@ -289,14 +327,14 @@ export function PrivacySettingsDialog({
 
   let valueComponent = <Text color="error">false</Text>;
   if (domainExcluded) {
-    valueComponent = <Text color="error">false (for emails with your domain)</Text>;
+    valueComponent = <Text color="error">{t('false (for emails with your domain)')}</Text>;
   } else if (groveEnabled) {
     valueComponent = <Text color="success">true</Text>;
   }
 
   return (
     <Dialog
-      title="Data Privacy"
+      title={t('Data Privacy')}
       color="professionalBlue"
       onCancel={onDone}
       inputGuide={exitState =>
@@ -313,13 +351,15 @@ export function PrivacySettingsDialog({
       }
     >
       <Text>
-        Review and manage your privacy settings at{' '}
+        <T>Review and manage your privacy settings at</T>{' '}
         <Link url={'https://claude.ai/settings/data-privacy-controls'}></Link>
       </Text>
 
       <Box>
         <Box width={44}>
-          <Text bold>Help improve Claude</Text>
+          <Text bold>
+            <T>Help improve Claude</T>
+          </Text>
         </Box>
         <Box>{valueComponent}</Box>
       </Box>

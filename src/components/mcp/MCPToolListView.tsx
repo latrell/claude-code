@@ -9,7 +9,7 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Select } from '../CustomSelect/index.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import type { ServerInfo } from './types.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   server: ServerInfo;
@@ -36,9 +36,9 @@ export function MCPToolListView({ server, onSelectTool, onBack }: Props): React.
     const isOpenWorld = tool.isOpenWorld?.({}) ?? false;
 
     const annotations = [];
-    if (isReadOnly) annotations.push('read-only');
-    if (isDestructive) annotations.push('destructive');
-    if (isOpenWorld) annotations.push('open-world');
+    if (isReadOnly) annotations.push(t('read-only'));
+    if (isDestructive) annotations.push(t('destructive'));
+    if (isOpenWorld) annotations.push(t('open-world'));
 
     return {
       label: displayName,
@@ -50,8 +50,8 @@ export function MCPToolListView({ server, onSelectTool, onBack }: Props): React.
 
   return (
     <Dialog
-      title={`Tools for ${server.name}`}
-      subtitle={`${serverTools.length} ${plural(serverTools.length, 'tool')}`}
+      title={tf('Tools for {serverName}', { serverName: server.name })}
+      subtitle={tf('{count} {word}', { count: serverTools.length, word: plural(serverTools.length, 'tool') })}
       onCancel={onBack}
       inputGuide={exitState =>
         exitState.pending ? (
@@ -66,7 +66,7 @@ export function MCPToolListView({ server, onSelectTool, onBack }: Props): React.
       }
     >
       {serverTools.length === 0 ? (
-        <Text dimColor>No tools available</Text>
+        <Text dimColor>{t('No tools available')}</Text>
       ) : (
         <Select
           options={toolOptions}

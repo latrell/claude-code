@@ -50,7 +50,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
       void setClipboard(referralLink).then(raw => {
         if (raw) process.stdout.write(raw);
         logEvent('tengu_guest_passes_link_copied', {});
-        onDone(`Referral link copied to clipboard!`);
+        onDone(t('Referral link copied to clipboard!'));
       });
     }
   });
@@ -121,7 +121,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
     return (
       <Pane>
         <Box flexDirection="column" gap={1}>
-          <Text dimColor>Loading guest pass information…</Text>
+          <Text dimColor>{t('Loading guest pass information…')}</Text>
           <Text dimColor italic>
             {exitState.pending ? (
               <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
@@ -138,7 +138,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
     return (
       <Pane>
         <Box flexDirection="column" gap={1}>
-          <Text>Guest passes are not currently available.</Text>
+          <Text>{t('Guest passes are not currently available.')}</Text>
           <Text dimColor italic>
             {exitState.pending ? (
               <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
@@ -187,7 +187,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
   return (
     <Pane>
       <Box flexDirection="column" gap={1}>
-        <Text color="permission">Guest passes · {availableCount} left</Text>
+        <Text color="permission">{tf('Guest passes · {count} left', { count: availableCount })}</Text>
 
         <Box flexDirection="row" marginLeft={2}>
           {sortedPasses.slice(0, 3).map(pass => renderTicket(pass))}
@@ -211,7 +211,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
                   : 'https://support.claude.com/en/articles/12875061-claude-code-guest-passes'
               }
             >
-              Terms apply.
+              {t('Terms apply.')}
             </Link>
           </Text>
         </Box>
@@ -221,7 +221,7 @@ export function Passes({ onDone }: Props): React.ReactNode {
             {exitState.pending ? (
               <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
             ) : (
-              <>Enter to copy link · Esc to cancel</>
+              <>{t('Enter to copy link · Esc to cancel')}</>
             )}
           </Text>
         </Box>

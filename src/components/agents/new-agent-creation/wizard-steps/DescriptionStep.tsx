@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useState } from 'react';
 import { Box, Byline, KeyboardShortcutHint, Text } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { editPromptInEditor } from '../../../../utils/promptEditor.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -32,7 +33,7 @@ export function DescriptionStep(): ReactNode {
   const handleSubmit = (value: string): void => {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
-      setError('Description is required');
+      setError(t('Description is required'));
       return;
     }
 
@@ -43,7 +44,7 @@ export function DescriptionStep(): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="Description (tell Claude when to use this agent)"
+      subtitle={t('Description (tell Claude when to use this agent)')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="Type" action="enter text" />
@@ -59,14 +60,14 @@ export function DescriptionStep(): ReactNode {
       }
     >
       <Box flexDirection="column">
-        <Text>When should Claude use this agent?</Text>
+        <Text>{t('When should Claude use this agent?')}</Text>
 
         <Box marginTop={1}>
           <TextInput
             value={whenToUse}
             onChange={setWhenToUse}
             onSubmit={handleSubmit}
-            placeholder="e.g., use this agent after you're done writing code..."
+            placeholder={t("e.g., use this agent after you're done writing code...")}
             columns={80}
             cursorOffset={cursorOffset}
             onChangeCursorOffset={setCursorOffset}

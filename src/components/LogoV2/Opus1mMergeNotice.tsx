@@ -4,6 +4,7 @@ import { UP_ARROW } from '../../constants/figures.js';
 import { Box, Text } from '@anthropic/ink';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { t } from '../../i18n/t.js';
 import { AnimatedAsterisk } from './AnimatedAsterisk.js';
 
 const MAX_SHOW_COUNT = 6;
@@ -29,7 +30,7 @@ export function Opus1mMergeNotice(): React.ReactNode {
   return (
     <Box paddingLeft={2}>
       <AnimatedAsterisk char={UP_ARROW} />
-      <Text dimColor> Opus now defaults to 1M context · 5x more room, same pricing</Text>
+      <Text dimColor> {t('Opus now defaults to 1M context · 5x more room, same pricing')}</Text>
     </Box>
   );
 }

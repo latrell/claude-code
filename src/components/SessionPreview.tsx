@@ -1,5 +1,6 @@
 import type { UUID } from 'crypto';
 import React, { useCallback } from 'react';
+import { t } from '../i18n/t.js';
 import { Box, Text, Byline, KeyboardShortcutHint, LoadingState } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getAllBaseTools } from '../tools.js';
@@ -49,7 +50,7 @@ export function SessionPreview({ log, onExit, onSelect }: Props): React.ReactNod
   if (isLoading) {
     return (
       <Box flexDirection="column" padding={1}>
-        <LoadingState message="Loading session…" />
+        <LoadingState message={t('Loading session…')} />
         <Text dimColor>
           <Byline>
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />

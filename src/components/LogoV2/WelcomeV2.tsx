@@ -1,12 +1,13 @@
 import React from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
 import { env } from '../../utils/env.js';
+import { t } from '../../i18n/t.js';
 
 const WELCOME_V2_WIDTH = 58;
 
 export function WelcomeV2(): React.ReactNode {
   const [theme] = useTheme();
-  const welcomeMessage = 'Welcome to Claude Code';
+  const welcomeMessage = t('Welcome to Claude Code');
 
   if (env.terminal === 'Apple_Terminal') {
     return <AppleTerminalWelcomeV2 theme={theme} welcomeMessage={welcomeMessage} />;

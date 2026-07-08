@@ -15,9 +15,11 @@ export async function rollback(
   options?: { list?: boolean; dryRun?: boolean; safe?: boolean },
 ): Promise<void> {
   if (options?.list) {
-    console.log('Recent versions:')
-    console.log('  (version listing requires access to the release registry)')
-    console.log('  Use `claude update --list` for available versions.')
+    console.log(t('Recent versions:'))
+    console.log(
+      t('  (version listing requires access to the release registry)'),
+    )
+    console.log(t('  Use `claude update --list` for available versions.'))
     return
   }
 
@@ -26,25 +28,27 @@ export async function rollback(
       t('Safe rollback: would install the server-pinned safe version.'),
     )
     if (options.dryRun) {
-      console.log('  (dry run — no changes made)')
+      console.log(t('  (dry run — no changes made)'))
       return
     }
-    console.log('  Safe version pinning requires access to the release API.')
-    console.log('  Contact oncall for the current safe version.')
+    console.log(t('  Safe version pinning requires access to the release API.'))
+    console.log(t('  Contact oncall for the current safe version.'))
     return
   }
 
   if (!target) {
     console.error(
-      'Usage: claude rollback [target]\n\n' +
-        'Options:\n' +
-        '  -l, --list     List recent published versions\n' +
-        '  --dry-run      Show what would be installed\n' +
-        '  --safe         Roll back to server-pinned safe version\n\n' +
-        'Examples:\n' +
-        '  claude rollback 2.1.880\n' +
-        '  claude rollback --list\n' +
-        '  claude rollback --safe',
+      t(
+        'Usage: claude rollback [target]\n\n' +
+          'Options:\n' +
+          '  -l, --list     List recent published versions\n' +
+          '  --dry-run      Show what would be installed\n' +
+          '  --safe         Roll back to server-pinned safe version\n\n' +
+          'Examples:\n' +
+          '  claude rollback 2.1.880\n' +
+          '  claude rollback --list\n' +
+          '  claude rollback --safe',
+      ),
     )
     process.exitCode = 1
     return
@@ -53,7 +57,7 @@ export async function rollback(
   console.log(tf('Rolling back to version {version}...', { version: target }))
 
   if (options?.dryRun) {
-    console.log(`  (dry run — would install ${target})`)
+    console.log(tf('  (dry run — would install {target})', { target }))
     return
   }
 

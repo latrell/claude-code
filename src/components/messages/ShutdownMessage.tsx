@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { T } from '../../i18n/TText.js';
 import {
   isShutdownApproved,
@@ -23,12 +23,12 @@ export function ShutdownRequestDisplay({ request }: ShutdownRequestProps): React
       <Box borderStyle="round" borderColor="warning" flexDirection="column" paddingX={1} paddingY={1}>
         <Box marginBottom={1}>
           <Text color="warning" bold>
-            Shutdown request from {request.from}
+            <Text>{tf('Shutdown request from {from}', { from: request.from })}</Text>
           </Text>
         </Box>
         {request.reason && (
           <Box>
-            <Text>Reason: {request.reason}</Text>
+            <Text>{tf('Reason: {reason}', { reason: request.reason })}</Text>
           </Box>
         )}
       </Box>
@@ -48,7 +48,7 @@ export function ShutdownRejectedDisplay({ response }: ShutdownRejectedProps): Re
     <Box flexDirection="column" marginY={1}>
       <Box borderStyle="round" borderColor="subtle" flexDirection="column" paddingX={1} paddingY={1}>
         <Text color="subtle" bold>
-          Shutdown rejected by {response.from}
+          {tf('Shutdown rejected by {from}', { from: response.from })}
         </Text>
         <Box
           marginTop={1}
@@ -58,7 +58,7 @@ export function ShutdownRejectedDisplay({ response }: ShutdownRejectedProps): Re
           borderRight={false}
           paddingX={1}
         >
-          <Text>Reason: {response.reason}</Text>
+          <Text>{tf('Reason: {reason}', { reason: response.reason })}</Text>
         </Box>
         <Box marginTop={1}>
           <T dimColor>Teammate is continuing to work. You may request shutdown again later.</T>
@@ -99,17 +99,18 @@ export function tryRenderShutdownMessage(content: string): React.ReactNode | nul
 export function getShutdownMessageSummary(content: string): string | null {
   const request = isShutdownRequest(content);
   if (request) {
-    return `[Shutdown Request from ${request.from}]${request.reason ? ` ${request.reason}` : ''}`;
+    const summary = tf('[Shutdown Request from {from}]', { from: request.from });
+    return request.reason ? `${summary} ${request.reason}` : summary;
   }
 
   const approved = isShutdownApproved(content);
   if (approved) {
-    return `[Shutdown Approved] ${approved.from} is now exiting`;
+    return tf('[Shutdown Approved] {from} is now exiting', { from: approved.from });
   }
 
   const rejected = isShutdownRejected(content);
   if (rejected) {
-    return `[Shutdown Rejected] ${rejected.from}: ${rejected.reason}`;
+    return tf('[Shutdown Rejected] {from}: {reason}', { from: rejected.from, reason: rejected.reason });
   }
 
   return null;

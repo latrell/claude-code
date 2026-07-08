@@ -1,3 +1,4 @@
+import { t, tf } from '../../i18n/t.js';
 import chalk from 'chalk';
 import { randomBytes } from 'crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
@@ -170,9 +171,12 @@ export async function call(
   _args: string,
 ): Promise<null> {
   if (env.terminal && env.terminal in NATIVE_CSIU_TERMINALS) {
-    const message = `Shift+Enter is natively supported in ${NATIVE_CSIU_TERMINALS[env.terminal]}.
-
-No configuration needed. Just use Shift+Enter to add newlines.`;
+    const message = tf(
+      'Shift+Enter is natively supported in {terminal}.\n\nNo configuration needed. Just use Shift+Enter to add newlines.',
+      {
+        terminal: NATIVE_CSIU_TERMINALS[env.terminal],
+      },
+    );
     onDone(message);
     return null;
   }
@@ -185,26 +189,22 @@ No configuration needed. Just use Shift+Enter to add newlines.`;
     // Build platform-specific terminal suggestions
     let platformTerminals = '';
     if (currentPlatform === 'macos') {
-      platformTerminals = '   • macOS: Apple Terminal\n';
+      platformTerminals = t('   • macOS: Apple Terminal') + '\n';
     } else if (currentPlatform === 'windows') {
-      platformTerminals = '   • Windows: Windows Terminal\n';
+      platformTerminals = t('   • Windows: Windows Terminal') + '\n';
     }
     // For Linux and other platforms, we don't show native terminal options
     // since they're not currently supported
 
-    const message = `Terminal setup cannot be run from ${terminalName}.
-
-This command configures a convenient Shift+Enter shortcut for multi-line prompts.
-${chalk.dim('Note: You can already use backslash (\\\\) + return to add newlines.')}
-
-To set up the shortcut (optional):
-1. Exit tmux/screen temporarily
-2. Run /terminal-setup directly in one of these terminals:
-${platformTerminals}   • IDE: VSCode, Cursor, Windsurf, Zed
-   • Other: Alacritty
-3. Return to tmux/screen - settings will persist
-
-${chalk.dim('Note: iTerm2, WezTerm, Ghostty, Kitty, and Warp support Shift+Enter natively.')}`;
+    const message = tf(
+      'Terminal setup cannot be run from {terminal}.\n\nThis command configures a convenient Shift+Enter shortcut for multi-line prompts.\n{note1}\n\nTo set up the shortcut (optional):\n1. Exit tmux/screen temporarily\n2. Run /terminal-setup directly in one of these terminals:\n{platformTerms}   • IDE: VSCode, Cursor, Windsurf, Zed\n   • Other: Alacritty\n3. Return to tmux/screen - settings will persist\n\n{note2}',
+      {
+        terminal: terminalName,
+        note1: chalk.dim(t('Note: You can already use backslash (\\\\) + return to add newlines.')),
+        platformTerms: platformTerminals,
+        note2: chalk.dim(t('Note: iTerm2, WezTerm, Ghostty, Kitty, and Warp support Shift+Enter natively.')),
+      },
+    );
     onDone(message);
     return null;
   }
@@ -232,8 +232,8 @@ async function installBindingsForVSCodeTerminal(
       'warning',
       theme,
     )(
-      `Cannot install keybindings from a remote ${editor} session.`,
-    )}${EOL}${EOL}${editor} keybindings must be installed on your local machine, not the remote server.${EOL}${EOL}To install the Shift+Enter keybinding:${EOL}1. Open ${editor} on your local machine (not connected to remote)${EOL}2. Open the Command Palette (Cmd/Ctrl+Shift+P) → "Preferences: Open Keyboard Shortcuts (JSON)"${EOL}3. Add this keybinding (the file must be a JSON array):${EOL}${EOL}${chalk.dim(`[
+      tf('Cannot install keybindings from a remote {editor} session.', { editor }),
+    )}${EOL}${EOL}${tf('{editor} keybindings must be installed on your local machine, not the remote server.', { editor })}${EOL}${EOL}${t('To install the Shift+Enter keybinding:')}${EOL}${tf('1. Open {editor} on your local machine (not connected to remote)', { editor })}${EOL}${t('2. Open the Command Palette (Cmd/Ctrl+Shift+P) → "Preferences: Open Keyboard Shortcuts (JSON)"')}${EOL}${t('3. Add this keybinding (the file must be a JSON array):')}${EOL}${EOL}${chalk.dim(`[
   {
     "key": "shift+enter",
     "command": "workbench.action.terminal.sendSequence",
@@ -281,8 +281,8 @@ async function installBindingsForVSCodeTerminal(
           'warning',
           theme,
         )(
-          `Error backing up existing ${editor} terminal keybindings. Bailing out.`,
-        )}${EOL}${chalk.dim(`See ${formatPathLink(keybindingsPath)}`)}${EOL}${chalk.dim(`Backup path: ${formatPathLink(backupPath)}`)}${EOL}`;
+          tf('Error backing up existing {editor} terminal keybindings. Bailing out.', { editor }),
+        )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keybindingsPath)}`)}${EOL}${chalk.dim(`${t('Backup path:')} ${formatPathLink(backupPath)}`)}${EOL}`;
       }
     }
 
@@ -298,8 +298,8 @@ async function installBindingsForVSCodeTerminal(
         'warning',
         theme,
       )(
-        `Found existing ${editor} terminal Shift+Enter key binding. Remove it to continue.`,
-      )}${EOL}${chalk.dim(`See ${formatPathLink(keybindingsPath)}`)}${EOL}`;
+        tf('Found existing {editor} terminal Shift+Enter key binding. Remove it to continue.', { editor }),
+      )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keybindingsPath)}`)}${EOL}`;
     }
 
     // Create the new keybinding
@@ -320,11 +320,11 @@ async function installBindingsForVSCodeTerminal(
       'success',
       theme,
     )(
-      `Installed ${editor} terminal Shift+Enter key binding`,
-    )}${EOL}${chalk.dim(`See ${formatPathLink(keybindingsPath)}`)}${EOL}`;
+      tf('Installed {editor} terminal Shift+Enter key binding', { editor }),
+    )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keybindingsPath)}`)}${EOL}`;
   } catch (error) {
     logError(error);
-    throw new Error(`Failed to install ${editor} terminal Shift+Enter key binding`);
+    throw new Error(tf('Failed to install {editor} terminal Shift+Enter key binding', { editor }));
   }
 }
 
@@ -444,23 +444,26 @@ async function enableOptionAsMetaForTerminal(theme: ThemeName): Promise<string> 
       'success',
       theme,
     )(
-      `Configured Terminal.app settings:`,
-    )}${EOL}${color('success', theme)('- Enabled "Use Option as Meta key"')}${EOL}${color('success', theme)('- Switched to visual bell')}${EOL}${chalk.dim('Option+Enter will now enter a newline.')}${EOL}${chalk.dim('You must restart Terminal.app for changes to take effect.', theme)}${EOL}`;
+      t('Configured Terminal.app settings:'),
+    )}${EOL}${color('success', theme)(t('- Enabled "Use Option as Meta key"'))}${EOL}${color('success', theme)(t('- Switched to visual bell'))}${EOL}${chalk.dim(t('Option+Enter will now enter a newline.'))}${EOL}${chalk.dim(t('You must restart Terminal.app for changes to take effect.'), theme)}${EOL}`;
   } catch (error) {
     logError(error);
 
     // Attempt to restore from backup
     const restoreResult = await checkAndRestoreTerminalBackup();
 
-    const errorMessage = 'Failed to enable Option as Meta key for Terminal.app.';
+    const errorMessage = t('Failed to enable Option as Meta key for Terminal.app.');
     if (restoreResult.status === 'restored') {
-      throw new Error(`${errorMessage} Your settings have been restored from backup.`);
+      throw new Error(tf('{msg} Your settings have been restored from backup.', { msg: errorMessage }));
     } else if (restoreResult.status === 'failed') {
       throw new Error(
-        `${errorMessage} Restoring from backup failed, try manually with: defaults import com.apple.Terminal ${restoreResult.backupPath}`,
+        tf('{msg} Restoring from backup failed, try manually with: defaults import com.apple.Terminal {path}', {
+          msg: errorMessage,
+          path: restoreResult.backupPath,
+        }),
       );
     } else {
-      throw new Error(`${errorMessage} No backup was available to restore from.`);
+      throw new Error(tf('{msg} No backup was available to restore from.', { msg: errorMessage }));
     }
   }
 }
@@ -524,8 +527,8 @@ chars = "\\u001B\\r"`;
           'warning',
           theme,
         )(
-          'Found existing Alacritty Shift+Enter key binding. Remove it to continue.',
-        )}${EOL}${chalk.dim(`See ${formatPathLink(configPath)}`)}${EOL}`;
+          t('Found existing Alacritty Shift+Enter key binding. Remove it to continue.'),
+        )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(configPath)}`)}${EOL}`;
       }
 
       // Create backup
@@ -538,8 +541,8 @@ chars = "\\u001B\\r"`;
           'warning',
           theme,
         )(
-          'Error backing up existing Alacritty config. Bailing out.',
-        )}${EOL}${chalk.dim(`See ${formatPathLink(configPath)}`)}${EOL}${chalk.dim(`Backup path: ${formatPathLink(backupPath)}`)}${EOL}`;
+          t('Error backing up existing Alacritty config. Bailing out.'),
+        )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(configPath)}`)}${EOL}${chalk.dim(`${t('Backup path:')} ${formatPathLink(backupPath)}`)}${EOL}`;
       }
     } else {
       // Ensure config directory exists (idempotent with recursive)
@@ -556,15 +559,15 @@ chars = "\\u001B\\r"`;
     // Write the updated config
     await writeFile(configPath, updatedContent, { encoding: 'utf-8' });
 
-    return `${color('success', theme)('Installed Alacritty Shift+Enter key binding')}${EOL}${color(
+    return `${color('success', theme)(t('Installed Alacritty Shift+Enter key binding'))}${EOL}${color(
       'success',
       theme,
     )(
-      'You may need to restart Alacritty for changes to take effect',
-    )}${EOL}${chalk.dim(`See ${formatPathLink(configPath)}`)}${EOL}`;
+      t('You may need to restart Alacritty for changes to take effect'),
+    )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(configPath)}`)}${EOL}`;
   } catch (error) {
     logError(error);
-    throw new Error('Failed to install Alacritty Shift+Enter key binding');
+    throw new Error(t('Failed to install Alacritty Shift+Enter key binding'));
   }
 }
 
@@ -594,8 +597,8 @@ async function installBindingsForZed(theme: ThemeName): Promise<string> {
           'warning',
           theme,
         )(
-          'Found existing Zed Shift+Enter key binding. Remove it to continue.',
-        )}${EOL}${chalk.dim(`See ${formatPathLink(keymapPath)}`)}${EOL}`;
+          t('Found existing Zed Shift+Enter key binding. Remove it to continue.'),
+        )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keymapPath)}`)}${EOL}`;
       }
 
       // Create backup
@@ -608,8 +611,8 @@ async function installBindingsForZed(theme: ThemeName): Promise<string> {
           'warning',
           theme,
         )(
-          'Error backing up existing Zed keymap. Bailing out.',
-        )}${EOL}${chalk.dim(`See ${formatPathLink(keymapPath)}`)}${EOL}${chalk.dim(`Backup path: ${formatPathLink(backupPath)}`)}${EOL}`;
+          t('Error backing up existing Zed keymap. Bailing out.'),
+        )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keymapPath)}`)}${EOL}${chalk.dim(`${t('Backup path:')} ${formatPathLink(backupPath)}`)}${EOL}`;
       }
     }
 
@@ -643,9 +646,11 @@ async function installBindingsForZed(theme: ThemeName): Promise<string> {
     return `${color(
       'success',
       theme,
-    )('Installed Zed Shift+Enter key binding')}${EOL}${chalk.dim(`See ${formatPathLink(keymapPath)}`)}${EOL}`;
+    )(
+      t('Installed Zed Shift+Enter key binding'),
+    )}${EOL}${chalk.dim(`${t('See')} ${formatPathLink(keymapPath)}`)}${EOL}`;
   } catch (error) {
     logError(error);
-    throw new Error('Failed to install Zed Shift+Enter key binding');
+    throw new Error(t('Failed to install Zed Shift+Enter key binding'));
   }
 }

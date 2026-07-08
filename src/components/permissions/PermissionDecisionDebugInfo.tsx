@@ -4,7 +4,7 @@ import figures from 'figures';
 import React, { useMemo } from 'react';
 import { Ansi, Box, color, Text, useTheme } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js';
 import { permissionModeTitle } from '../../utils/permissions/PermissionMode.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
@@ -110,7 +110,7 @@ function SuggestedRules({ suggestions }: { suggestions: PermissionUpdate[] | und
       <Text dimColor>
         {'  '}⎿{'  '}
       </Text>
-      Suggested rules: <Ansi>{rules.map(rule => chalk.bold(permissionRuleValueToString(rule))).join(', ')}</Ansi>
+      {t('Suggested rules:')} <Ansi>{rules.map(rule => chalk.bold(permissionRuleValueToString(rule))).join(', ')}</Ansi>
     </Text>
   );
 }
@@ -152,9 +152,9 @@ function SuggestionDisplay({
     return (
       <Box flexDirection="row">
         <Box justifyContent="flex-end" minWidth={width}>
-          <Text dimColor>Suggestions </Text>
+          <Text dimColor>{t('Suggestions')} </Text>
         </Box>
-        <Text>None</Text>
+        <Text>{t('None')}</Text>
       </Box>
     );
   }
@@ -168,9 +168,9 @@ function SuggestionDisplay({
     return (
       <Box flexDirection="row">
         <Box justifyContent="flex-end" minWidth={width}>
-          <Text dimColor>Suggestion </Text>
+          <Text dimColor>{t('Suggestion')} </Text>
         </Box>
-        <Text>None</Text>
+        <Text>{t('None')}</Text>
       </Box>
     );
   }
@@ -179,7 +179,7 @@ function SuggestionDisplay({
     <Box flexDirection="column">
       <Box flexDirection="row">
         <Box justifyContent="flex-end" minWidth={width}>
-          <Text dimColor>Suggestions </Text>
+          <Text dimColor>{t('Suggestions')} </Text>
         </Box>
         <Text> </Text>
       </Box>
@@ -188,7 +188,7 @@ function SuggestionDisplay({
       {rules.length > 0 && (
         <Box flexDirection="row">
           <Box justifyContent="flex-end" minWidth={width}>
-            <Text dimColor> Rules </Text>
+            <Text dimColor>{t('Rules')} </Text>
           </Box>
           <Box flexDirection="column">
             {rules.map((rule, index) => (
@@ -204,7 +204,7 @@ function SuggestionDisplay({
       {directories.length > 0 && (
         <Box flexDirection="row">
           <Box justifyContent="flex-end" minWidth={width}>
-            <Text dimColor> Directories </Text>
+            <Text dimColor>{t('Directories')} </Text>
           </Box>
           <Box flexDirection="column">
             {directories.map((dir, index) => (
@@ -220,7 +220,7 @@ function SuggestionDisplay({
       {mode && (
         <Box flexDirection="row">
           <Box justifyContent="flex-end" minWidth={width}>
-            <Text dimColor> Mode </Text>
+            <Text dimColor>{t('Mode')} </Text>
           </Box>
           <Text>{t(permissionModeTitle(mode))}</Text>
         </Box>
@@ -269,21 +269,21 @@ export function PermissionDecisionDebugInfo({ permissionResult, toolName }: Prop
     <Box flexDirection="column">
       <Box flexDirection="row">
         <Box justifyContent="flex-end" minWidth={WIDTH}>
-          <Text dimColor>Behavior </Text>
+          <Text dimColor>{t('Behavior')} </Text>
         </Box>
         <Text>{permissionResult.behavior}</Text>
       </Box>
       {permissionResult.behavior !== 'allow' && (
         <Box flexDirection="row">
           <Box justifyContent="flex-end" minWidth={WIDTH}>
-            <Text dimColor>Message </Text>
+            <Text dimColor>{t('Message')} </Text>
           </Box>
           <Text>{permissionResult.message}</Text>
         </Box>
       )}
       <Box flexDirection="row">
         <Box justifyContent="flex-end" minWidth={WIDTH}>
-          <Text dimColor>Reason </Text>
+          <Text dimColor>{t('Reason')} </Text>
         </Box>
         {decisionReason === undefined ? (
           <Text>undefined</Text>
@@ -295,7 +295,7 @@ export function PermissionDecisionDebugInfo({ permissionResult, toolName }: Prop
       {unreachableRules.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="warning">
-            {figures.warning} Unreachable Rules ({unreachableRules.length})
+            {figures.warning} {tf('Unreachable Rules ({count})', { count: unreachableRules.length })}
           </Text>
           {unreachableRules.map((u, i) => (
             <Box key={i} flexDirection="column" marginLeft={2}>

@@ -65,7 +65,7 @@ export async function taskGetHandler(
   const listId = opts.list || DEFAULT_LIST
   const task = await getTask(listId, id)
   if (!task) {
-    console.error(`Task not found: ${id}`)
+    console.error(tf('Task not found: {id}', { id }))
     process.exitCode = 1
     return
   }
@@ -94,11 +94,17 @@ export async function taskUpdateHandler(
 
   const task = await updateTask(listId, id, updates)
   if (!task) {
-    console.error(`Task not found: ${id}`)
+    console.error(tf('Task not found: {id}', { id }))
     process.exitCode = 1
     return
   }
-  console.log(`Updated task ${id}: [${task.status}] ${task.subject}`)
+  console.log(
+    tf('Updated task {id}: [{status}] {subject}', {
+      id,
+      status: task.status,
+      subject: task.subject,
+    }),
+  )
 }
 
 export async function taskDirHandler(opts: { list?: string }): Promise<void> {
@@ -115,7 +121,7 @@ export async function logHandler(
 
   if (logId === undefined) {
     if (logs.length === 0) {
-      console.log('No recent sessions.')
+      console.log(t('No recent sessions.'))
       return
     }
     for (let i = 0; i < Math.min(logs.length, 20); i++) {
@@ -137,7 +143,7 @@ export async function logHandler(
       : logs.find(l => l.sessionId === String(logId))
 
   if (!log) {
-    console.error(`Session not found: ${logId}`)
+    console.error(tf('Session not found: {logId}', { logId }))
     process.exitCode = 1
     return
   }
@@ -150,7 +156,7 @@ export async function errorHandler(num: number | undefined): Promise<void> {
   const logs = await getRecentActivity()
   const count = num ?? 5
 
-  console.log(`Last ${count} sessions:`)
+  console.log(tf('Last {count} sessions:', { count }))
   for (let i = 0; i < Math.min(count, logs.length); i++) {
     const log = logs[i]!
     const date = log.modified
@@ -181,17 +187,24 @@ export async function exportHandler(
     try {
       const content = await readFile(source, 'utf-8')
       await writeFile(outputFile, content, 'utf-8')
-      console.log(`Exported ${source} → ${outputFile}`)
+      console.log(
+        tf('Exported {source} → {outputFile}', { source, outputFile }),
+      )
       return
     } catch {
-      console.error(`Source not found: ${source}`)
+      console.error(tf('Source not found: {source}', { source }))
       process.exitCode = 1
       return
     }
   }
 
   await writeFile(outputFile, JSON.stringify(log, null, 2), 'utf-8')
-  console.log(`Exported session ${log.sessionId} → ${outputFile}`)
+  console.log(
+    tf('Exported session {sessionId} → {outputFile}', {
+      sessionId: log.sessionId,
+      outputFile,
+    }),
+  )
 }
 
 // ─── Group D: Completion ─────────────────────────────────────────────────────
@@ -208,10 +221,10 @@ export async function completionHandler(
   if (opts.output) {
     // Generate and write to file
     await regenerateCompletionCache()
-    console.log(`Completion cache regenerated for ${shell}.`)
+    console.log(tf('Completion cache regenerated for {shell}.', { shell }))
   } else {
     // Regenerate and output to stdout
     await regenerateCompletionCache()
-    console.log(`Completion cache regenerated for ${shell}.`)
+    console.log(tf('Completion cache regenerated for {shell}.', { shell }))
   }
 }

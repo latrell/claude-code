@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { ProcessManager } from './manager.js'
 import { createApp } from './routes.js'
+import { t, tf } from '../../../../src/i18n/t.js'
 
 export async function startManager(port: number): Promise<void> {
   const manager = new ProcessManager()
@@ -14,7 +15,7 @@ export async function startManager(port: number): Promise<void> {
   const shutdown = async () => {
     if (shuttingDown) return
     shuttingDown = true
-    console.log('Shutting down...')
+    console.log(t('Shutting down...'))
     await manager.shutdownAll()
     process.exit(0)
   }
@@ -25,20 +26,23 @@ export async function startManager(port: number): Promise<void> {
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(
-        `\n  Error: port ${port} is already in use. Use --port to specify a different port.\n`,
+        tf(
+          '\n  Error: port {port} is already in use. Use --port to specify a different port.\n',
+          { port },
+        ),
       )
     } else {
-      console.error(`\n  Error: ${err.message}\n`)
+      console.error(tf('\n  Error: {message}\n', { message: err.message }))
     }
     process.exit(1)
   })
 
   console.log()
-  console.log(`  🖥️  ACP Manager`)
+  console.log(t('  🖥️  ACP Manager'))
   console.log()
-  console.log(`    URL:   http://localhost:${port}`)
+  console.log(tf('    URL:   http://localhost:{port}', { port }))
   console.log()
-  console.log(`  Press Ctrl+C to stop`)
+  console.log(t('  Press Ctrl+C to stop'))
   console.log()
 
   // Keep running

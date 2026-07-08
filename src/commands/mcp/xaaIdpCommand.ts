@@ -155,7 +155,7 @@ export function registerMcpXaaIdpCommand(mcp: Command): void {
             tf(
               'Error: settings written but keychain save failed{warning}. Re-run with --client-secret once keychain is available.',
               {
-                warning: warning ? t(' — {warning}', { warning }) : '',
+                warning: warning ? tf(' — {warning}', { warning }) : '',
               },
             ),
           )

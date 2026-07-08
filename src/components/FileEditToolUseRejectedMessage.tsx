@@ -7,7 +7,7 @@ import { Box, Text } from '@anthropic/ink';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';
 import { StructuredDiffList } from './StructuredDiffList.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 const MAX_LINES_TO_RENDER = 10;
 
@@ -37,7 +37,7 @@ export function FileEditToolUseRejectedMessage({
   const { columns } = useTerminalSize();
   const text = (
     <Box flexDirection="row">
-      <Text color="subtle">User rejected {operation} to </Text>
+      <Text color="subtle">{tf('User rejected {operation} to ', { operation })}</Text>
       <Text bold color="subtle">
         {verbose ? file_path : relative(getCwd(), file_path)}
       </Text>
@@ -61,7 +61,7 @@ export function FileEditToolUseRejectedMessage({
         <Box flexDirection="column">
           {text}
           <HighlightedCode code={truncatedContent || t('(No content)')} filePath={file_path} width={columns - 12} dim />
-          {!verbose && plusLines > 0 && <Text dimColor>… +{plusLines} lines</Text>}
+          {!verbose && plusLines > 0 && <Text dimColor>{tf('… +{count} lines', { count: plusLines })}</Text>}
         </Box>
       </MessageResponse>
     );

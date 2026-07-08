@@ -29,7 +29,7 @@ import { plural } from '../../utils/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from '../TextInput.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   event: ElicitationRequestEvent;
@@ -230,7 +230,7 @@ function ElicitationFormDialog({
   const isEditingTextField = currentFieldIsText && !focusedButton;
 
   useRegisterOverlay('elicitation');
-  useNotifyAfterTimeout('Claude Code needs your input', 'elicitation_dialog');
+  useNotifyAfterTimeout(t('Claude Code needs your input'), 'elicitation_dialog');
 
   // Sync textInputValue when the focused field changes
   const syncTextInput = useCallback(
@@ -328,7 +328,7 @@ function ElicitationFormDialog({
       return next;
     });
     // Clear "required" error when a value is provided
-    if (value !== undefined && validationErrors[fieldName] === 'This field is required') {
+    if (value !== undefined && validationErrors[fieldName] === t('This field is required')) {
       updateValidationError(fieldName);
     }
   }
@@ -633,7 +633,7 @@ function ElicitationFormDialog({
           const requiredFields = requestedSchema.required || [];
           for (const fieldName of requiredFields) {
             if (formValues[fieldName] === undefined) {
-              updateValidationError(fieldName, 'This field is required');
+              updateValidationError(fieldName, t('This field is required'));
             }
           }
           const firstBadIndex = schemaFields.findIndex(
@@ -1044,7 +1044,7 @@ function ElicitationFormDialog({
 
   return (
     <Dialog
-      title={`MCP server \u201c${serverName}\u201d requests your input`}
+      title={tf('MCP server "{serverName}" requests your input', { serverName })}
       subtitle={`\n${message}`}
       color="permission"
       onCancel={() => onResponse('cancel')}
@@ -1087,7 +1087,7 @@ function ElicitationFormDialog({
             color={focusedButton === 'accept' ? 'success' : undefined}
             dimColor={focusedButton !== 'accept'}
           >
-            {' Accept  '}
+            {t(' Accept  ')}
           </Text>
           <Text color="error">{focusedButton === 'decline' ? figures.pointer : ' '}</Text>
           <Text
@@ -1095,7 +1095,7 @@ function ElicitationFormDialog({
             color={focusedButton === 'decline' ? 'error' : undefined}
             dimColor={focusedButton !== 'decline'}
           >
-            {' Decline'}
+            {t(' Decline')}
           </Text>
         </Box>
       </Box>
@@ -1120,7 +1120,7 @@ function ElicitationURLDialog({
   const [focusedButton, setFocusedButton] = useState<'accept' | 'decline' | 'open' | 'action' | 'cancel'>('accept');
   const showCancel = waitingState?.showCancel ?? false;
 
-  useNotifyAfterTimeout('Claude Code needs your input', 'elicitation_url_dialog');
+  useNotifyAfterTimeout(t('Claude Code needs your input'), 'elicitation_url_dialog');
   useRegisterOverlay('elicitation-url');
 
   // Keep refs in sync for use in abort handler (avoids re-registering listener)
@@ -1212,10 +1212,10 @@ function ElicitationURLDialog({
   });
 
   if (phase === 'waiting') {
-    const actionLabel = waitingState?.actionLabel ?? 'Continue without waiting';
+    const actionLabel = waitingState?.actionLabel ?? t('Continue without waiting');
     return (
       <Dialog
-        title={`MCP server \u201c${serverName}\u201d \u2014 waiting for completion`}
+        title={tf('MCP server "{serverName}" — waiting for completion', { serverName })}
         subtitle={`\n${message}`}
         color="permission"
         onCancel={() => onWaitingDismiss?.('cancel')}
@@ -1246,7 +1246,7 @@ function ElicitationURLDialog({
           </Box>
           <Box marginBottom={1}>
             <Text dimColor italic>
-              Waiting for the server to confirm completion…
+              {t('Waiting for the server to confirm completion…')}
             </Text>
           </Box>
           <Box>
@@ -1256,7 +1256,7 @@ function ElicitationURLDialog({
               color={focusedButton === 'open' ? 'success' : undefined}
               dimColor={focusedButton !== 'open'}
             >
-              {' Reopen URL  '}
+              {t(' Reopen URL  ')}
             </Text>
             <Text color="success">{focusedButton === 'action' ? figures.pointer : ' '}</Text>
             <Text
@@ -1275,7 +1275,7 @@ function ElicitationURLDialog({
                   color={focusedButton === 'cancel' ? 'error' : undefined}
                   dimColor={focusedButton !== 'cancel'}
                 >
-                  {' Cancel'}
+                  {t(' Cancel')}
                 </Text>
               </>
             )}
@@ -1287,7 +1287,7 @@ function ElicitationURLDialog({
 
   return (
     <Dialog
-      title={`MCP server \u201c${serverName}\u201d wants to open a URL`}
+      title={tf('MCP server "{serverName}" wants to open a URL', { serverName })}
       subtitle={`\n${message}`}
       color="permission"
       onCancel={() => onResponse('cancel')}
@@ -1318,7 +1318,7 @@ function ElicitationURLDialog({
             color={focusedButton === 'accept' ? 'success' : undefined}
             dimColor={focusedButton !== 'accept'}
           >
-            {' Accept  '}
+            {t(' Accept  ')}
           </Text>
           <Text color="error">{focusedButton === 'decline' ? figures.pointer : ' '}</Text>
           <Text
@@ -1326,7 +1326,7 @@ function ElicitationURLDialog({
             color={focusedButton === 'decline' ? 'error' : undefined}
             dimColor={focusedButton !== 'decline'}
           >
-            {' Decline'}
+            {t(' Decline')}
           </Text>
         </Box>
       </Box>

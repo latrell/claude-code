@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { writeFile } from 'fs/promises'
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import {
   getAllowedChannels,
   hasExitedPlanModeInSession,
@@ -149,7 +150,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
   searchHint: 'present plan for approval and start coding (plan mode only)',
   maxResultSizeChars: 100_000,
   async description() {
-    return 'Prompts the user to exit plan mode and start coding'
+    return t('Prompts the user to exit plan mode and start coding')
   },
   async prompt() {
     return EXIT_PLAN_MODE_V2_TOOL_PROMPT
@@ -211,8 +212,9 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       })
       return {
         result: false,
-        message:
+        message: t(
           'You are not in plan mode. This tool is only for exiting plan mode after writing a plan. If your plan was already approved, continue with implementation.',
+        ),
         errorCode: 1,
       }
     }
@@ -233,7 +235,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // For non-teammates, require user confirmation to exit plan mode
     return {
       behavior: 'ask' as const,
-      message: 'Exit plan mode?',
+      message: t('Exit plan mode?'),
       updatedInput: input,
     }
   },
@@ -265,7 +267,10 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       // Plan is required for plan_mode_required teammates
       if (!plan) {
         throw new Error(
-          `No plan file found at ${filePath}. Please write your plan to this file before calling ExitPlanMode.`,
+          tf(
+            'No plan file found at {filePath}. Please write your plan to this file before calling ExitPlanMode.',
+            { filePath },
+          ),
         )
       }
       const agentName = getAgentName() || 'unknown'
@@ -347,7 +352,9 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     if (gateFallbackNotification) {
       context.addNotification?.({
         key: 'auto-mode-gate-plan-exit-fallback',
-        text: `plan exit → default · ${gateFallbackNotification}`,
+        text: tf('plan exit → default · {notification}', {
+          notification: gateFallbackNotification,
+        }),
         priority: 'immediate',
         color: 'warning',
         timeoutMs: 10000,
@@ -432,19 +439,10 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     if (awaitingLeaderApproval) {
       return {
         type: 'tool_result',
-        content: `Your plan has been submitted to the team lead for approval.
-
-Plan file: ${filePath}
-
-**What happens next:**
-1. Wait for the team lead to review your plan
-2. You will receive a message in your inbox with approval/rejection
-3. If approved, you can proceed with implementation
-4. If rejected, refine your plan based on the feedback
-
-**Important:** Do NOT proceed until you receive approval. Check your inbox for response.
-
-Request ID: ${requestId}`,
+        content: tf(
+          'Your plan has been submitted to the team lead for approval.\n\nPlan file: {filePath}\n\n**What happens next:**\n1. Wait for the team lead to review your plan\n2. You will receive a message in your inbox with approval/rejection\n3. If approved, you can proceed with implementation\n4. If rejected, refine your plan based on the feedback\n\n**Important:** Do NOT proceed until you receive approval. Check your inbox for response.\n\nRequest ID: {requestId}',
+          { filePath, requestId },
+        ),
         tool_use_id: toolUseID,
       }
     }
@@ -452,8 +450,9 @@ Request ID: ${requestId}`,
     if (isAgent) {
       return {
         type: 'tool_result',
-        content:
+        content: t(
           'User has approved the plan. There is nothing else needed from you now. Please respond with "ok"',
+        ),
         tool_use_id: toolUseID,
       }
     }
@@ -462,31 +461,31 @@ Request ID: ${requestId}`,
     if (!plan || plan.trim() === '') {
       return {
         type: 'tool_result',
-        content: 'User has approved exiting plan mode. You can now proceed.',
+        content: t('User has approved exiting plan mode. You can now proceed.'),
         tool_use_id: toolUseID,
       }
     }
 
     const teamHint = hasTaskTool
-      ? `\n\nIf this plan can be broken down into multiple independent tasks, consider using the ${TEAM_CREATE_TOOL_NAME} tool to create a team and parallelize the work.`
+      ? tf(
+          '\n\nIf this plan can be broken down into multiple independent tasks, consider using the {toolName} tool to create a team and parallelize the work.',
+          { toolName: TEAM_CREATE_TOOL_NAME },
+        )
       : ''
 
     // Always include the plan — extractApprovedPlan() in the Ultraplan CCR
     // flow parses the tool_result to retrieve the plan text for the local CLI.
     // Label edited plans so the model knows the user changed something.
     const planLabel = planWasEdited
-      ? 'Approved Plan (edited by user)'
-      : 'Approved Plan'
+      ? t('Approved Plan (edited by user)')
+      : t('Approved Plan')
 
     return {
       type: 'tool_result',
-      content: `User has approved your plan. You can now start coding. Start with updating your todo list if applicable
-
-Your plan has been saved to: ${filePath}
-You can refer back to it if needed during implementation.${teamHint}
-
-## ${planLabel}:
-${plan}`,
+      content: tf(
+        'User has approved your plan. You can now start coding. Start with updating your todo list if applicable\n\nYour plan has been saved to: {filePath}\nYou can refer back to it if needed during implementation.{teamHint}\n\n## {planLabel}:\n{plan}',
+        { filePath, teamHint, planLabel, plan },
+      ),
       tool_use_id: toolUseID,
     }
   },

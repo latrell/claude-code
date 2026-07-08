@@ -10,8 +10,10 @@
       "**",
       "!!**/dist",
       "!!**/.claude/workflows",
-      "!!**/*.workflow.mjs"
-    ]
+      "!!**/*.workflow.mjs",
+      "!!contributors.svg"
+    ],
+    "maxSize": 1048576
   },
   "formatter": {
     "enabled": true,

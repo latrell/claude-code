@@ -1,3 +1,4 @@
+import { t, tf } from '../../i18n/t.js';
 import React, { useMemo, useState } from 'react';
 import type { CommandResultDisplay, LocalJSXCommandContext } from '../../commands.js';
 import { type OptionWithDescription, Select } from '../../components/CustomSelect/select.js';
@@ -63,9 +64,9 @@ function RateLimitOptionsMenu({ onDone, context }: RateLimitOptionsMenuProps): R
 
         let label: string;
         if (needsToRequestFromAdmin) {
-          label = isOverageState ? 'Request more' : 'Request extra usage';
+          label = isOverageState ? t('Request more') : t('Request extra usage');
         } else {
-          label = hasExtraUsageEnabled ? 'Add funds to continue with extra usage' : 'Switch to extra usage';
+          label = hasExtraUsageEnabled ? t('Add funds to continue with extra usage') : t('Switch to extra usage');
         }
 
         actionOptions.push({
@@ -77,13 +78,13 @@ function RateLimitOptionsMenu({ onDone, context }: RateLimitOptionsMenuProps): R
 
     if (!isMax20x && !isTeamOrEnterprise && upgrade.isEnabled()) {
       actionOptions.push({
-        label: 'Upgrade your plan',
+        label: t('Upgrade your plan'),
         value: 'upgrade',
       });
     }
 
     const cancelOption: OptionWithDescription<RateLimitOptionsMenuOptionType> = {
-      label: 'Stop and wait for limit to reset',
+      label: t('Stop and wait for limit to reset'),
       value: 'cancel',
     };
 
@@ -130,7 +131,7 @@ function RateLimitOptionsMenu({ onDone, context }: RateLimitOptionsMenuProps): R
   }
 
   return (
-    <Dialog title="What do you want to do?" onCancel={handleCancel} color="suggestion">
+    <Dialog title={t('What do you want to do?')} onCancel={handleCancel} color="suggestion">
       <Select<RateLimitOptionsMenuOptionType>
         options={options}
         onChange={handleSelect}

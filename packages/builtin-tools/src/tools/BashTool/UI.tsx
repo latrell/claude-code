@@ -1,5 +1,6 @@
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import * as React from 'react';
+import { t, tf } from 'src/i18n/t.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
@@ -56,7 +57,7 @@ export function BackgroundHint({ onBackground }: { onBackground?: () => void } =
   return (
     <Box paddingLeft={5}>
       <Text dimColor>
-        <KeyboardShortcutHint shortcut={shortcut} action="在后台运行" parens />
+        <KeyboardShortcutHint shortcut={shortcut} action={t('在后台运行')} parens />
       </Text>
     </Box>
   );
@@ -129,7 +130,7 @@ export function renderToolUseProgressMessage(
   if (!lastProgress || !lastProgress.data) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>运行中…</Text>
+        <Text dimColor>{t('运行中…')}</Text>
       </MessageResponse>
     );
   }
@@ -153,7 +154,7 @@ export function renderToolUseProgressMessage(
 export function renderToolUseQueuedMessage(): React.ReactNode {
   return (
     <MessageResponse height={1}>
-      <Text dimColor>等待中…</Text>
+      <Text dimColor>{t('等待中…')}</Text>
     </MessageResponse>
   );
 }

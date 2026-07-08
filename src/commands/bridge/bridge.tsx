@@ -9,6 +9,7 @@ import { BRIDGE_LOGIN_INSTRUCTION, REMOTE_CONTROL_DISCONNECTED_MSG } from '../..
 import { Dialog, ListItem } from '@anthropic/ink';
 import { shouldShowRemoteCallout } from '../../components/RemoteCallout.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
+import { t, tf } from '../../i18n/t.js';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import {
@@ -98,7 +99,7 @@ function BridgeToggle({ onDone, name }: Props): React.ReactNode {
           replBridgeInitialName: name,
         };
       });
-      onDone('Remote Control connecting\u2026', {
+      onDone(t('Remote Control connecting\u2026'), {
         display: 'system',
       });
     })();
@@ -192,11 +193,12 @@ function BridgeDisconnectDialog({ onDone }: Props): React.ReactNode {
   const qrLines = qrText ? qrText.split('\n').filter(l => l.length > 0) : [];
 
   return (
-    <Dialog title="Remote Control" onCancel={handleContinue} hideInputGuide>
+    <Dialog title={t('Remote Control')} onCancel={handleContinue} hideInputGuide>
       <Box flexDirection="column" gap={1}>
         <Text>
-          This session is available via Remote Control
-          {displayUrl ? ` at ${displayUrl}` : ''}.
+          {displayUrl
+            ? tf('This session is available via Remote Control at {url}.', { url: displayUrl })
+            : t('This session is available via Remote Control.')}
         </Text>
         {showQR && qrLines.length > 0 && (
           <Box flexDirection="column">
@@ -207,16 +209,16 @@ function BridgeDisconnectDialog({ onDone }: Props): React.ReactNode {
         )}
         <Box flexDirection="column">
           <ListItem isFocused={focusIndex === 0}>
-            <Text>Disconnect this session</Text>
+            <Text>{t('Disconnect this session')}</Text>
           </ListItem>
           <ListItem isFocused={focusIndex === 1}>
-            <Text>{showQR ? 'Hide QR code' : 'Show QR code'}</Text>
+            <Text>{showQR ? t('Hide QR code') : t('Show QR code')}</Text>
           </ListItem>
           <ListItem isFocused={focusIndex === 2}>
-            <Text>Continue</Text>
+            <Text>{t('Continue')}</Text>
           </ListItem>
         </Box>
-        <Text dimColor>Enter to select · Esc to continue</Text>
+        <Text dimColor>{t('Enter to select · Esc to continue')}</Text>
       </Box>
     </Dialog>
   );
@@ -233,7 +235,7 @@ async function checkBridgePrerequisites(): Promise<string | null> {
   const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../../services/policyLimits/index.js');
   await waitForPolicyLimitsToLoad();
   if (!isPolicyAllowed('allow_remote_control')) {
-    return "Remote Control is disabled by your organization's policy.";
+    return t("Remote Control is disabled by your organization's policy.");
   }
 
   const disabledReason = await getBridgeDisabledReason();

@@ -1,5 +1,6 @@
 import { relative } from 'path';
 import React from 'react';
+import { t, tf } from '../../i18n/t.js';
 import { getCwdState } from '../../bootstrap/state.js';
 import { SandboxSettings } from '../../components/sandbox/SandboxSettings.js';
 import { color } from '@anthropic/ink';
@@ -22,8 +23,8 @@ export async function call(
     // WSL1 users will see this since isSupportedPlatform returns false for WSL1
     const errorMessage =
       platform === 'wsl'
-        ? 'Error: Sandboxing requires WSL2. WSL1 is not supported.'
-        : 'Error: Sandboxing is currently only supported on macOS, Linux, and WSL2.';
+        ? t('Error: Sandboxing requires WSL2. WSL1 is not supported.')
+        : t('Error: Sandboxing is currently only supported on macOS, Linux, and WSL2.');
     const message = color('error', themeName)(errorMessage);
     onDone(message);
     return null;
@@ -37,7 +38,11 @@ export async function call(
     const message = color(
       'error',
       themeName,
-    )(`Error: Sandboxing is disabled for this platform (${platform}) via the enabledPlatforms setting.`);
+    )(
+      tf('Error: Sandboxing is disabled for this platform ({platform}) via the enabledPlatforms setting.', {
+        platform,
+      }),
+    );
     onDone(message);
     return null;
   }
@@ -47,7 +52,7 @@ export async function call(
     const message = color(
       'error',
       themeName,
-    )('Error: Sandbox settings are overridden by a higher-priority configuration and cannot be changed locally.');
+    )(t('Error: Sandbox settings are overridden by a higher-priority configuration and cannot be changed locally.'));
     onDone(message);
     return null;
   }
@@ -73,7 +78,7 @@ export async function call(
         const message = color(
           'error',
           themeName,
-        )('Error: Please provide a command pattern to exclude (e.g., /sandbox exclude "npm run test:*")');
+        )(t('Error: Please provide a command pattern to exclude (e.g., /sandbox exclude "npm run test:*")'));
         onDone(message);
         return null;
       }
@@ -90,7 +95,15 @@ export async function call(
         ? relative(getCwdState(), localSettingsPath)
         : '.claude/settings.local.json';
 
-      const message = color('success', themeName)(`Added "${cleanPattern}" to excluded commands in ${relativePath}`);
+      const message = color(
+        'success',
+        themeName,
+      )(
+        tf('Added "{pattern}" to excluded commands in {configPath}', {
+          pattern: cleanPattern,
+          configPath: relativePath,
+        }),
+      );
 
       onDone(message);
       return null;
@@ -99,7 +112,7 @@ export async function call(
       const message = color(
         'error',
         themeName,
-      )(`Error: Unknown subcommand "${subcommand}". Available subcommand: exclude`);
+      )(tf('Error: Unknown subcommand "{subcommand}". Available subcommand: exclude', { subcommand }));
       onDone(message);
       return null;
     }

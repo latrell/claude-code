@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import type { Tools } from '../../../../Tool.js';
+import { t } from '../../../../i18n/t.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { useWizard } from '../../../wizard/index.js';
@@ -25,7 +26,7 @@ export function ToolsStep({ tools }: Props): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="Select tools"
+      subtitle={t('Select tools')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="Enter" action="toggle selection" />

@@ -3,6 +3,7 @@ import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { Markdown } from '../Markdown.js';
+import { t } from '../../i18n/t.js';
 
 type Props = {
   // Accept either full ThinkingBlock/ThinkingBlockParam or a minimal shape with just type and thinking
@@ -30,7 +31,7 @@ export function AssistantThinkingMessage({
   }
 
   const shouldShowFullThinking = isTranscriptMode || verbose;
-  const label = '∴ Thinking';
+  const label = t('∴ Thinking');
 
   if (!shouldShowFullThinking) {
     return (

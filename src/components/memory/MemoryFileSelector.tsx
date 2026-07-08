@@ -4,6 +4,7 @@ import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import * as React from 'react';
 import { use, useEffect, useState } from 'react';
+import { t, tf } from '../../i18n/t.js';
 import { getOriginalCwd } from '../../bootstrap/state.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text, ListItem } from '@anthropic/ink';
@@ -89,7 +90,7 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
   // Create options for the select component
   const memoryOptions = allMemoryFiles.map(file => {
     const displayPath = getDisplayPath(file.path);
-    const existsLabel = file.exists ? '' : ' (new)';
+    const existsLabel = file.exists ? '' : t(' (new)');
 
     // Calculate depth based on parent
     const depth = file.parent ? (depths.get(file.parent) ?? 0) + 1 : 0;
@@ -99,9 +100,9 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
     // Format label based on type
     let label: string;
     if (file.type === 'User' && !file.isNested && file.path === userMemoryPath) {
-      label = `User memory`;
+      label = t('User memory');
     } else if (file.type === 'Project' && !file.isNested && file.path === projectMemoryPath) {
-      label = `Project memory`;
+      label = t('Project memory');
     } else if (depth > 0) {
       // For child nodes (imported files), show indented with L
       label = `${indent}L ${displayPath}${existsLabel}`;
@@ -115,15 +116,15 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
     const isGit = projectIsInGitRepo(getOriginalCwd());
 
     if (file.type === 'User' && !file.isNested) {
-      description = 'Saved in ~/.claude/CLAUDE.md';
+      description = t('Saved in ~/.claude/CLAUDE.md');
     } else if (file.type === 'Project' && !file.isNested && file.path === projectMemoryPath) {
-      description = `${isGit ? 'Checked in at' : 'Saved in'} ./CLAUDE.md`;
+      description = isGit ? t('Checked in at ./CLAUDE.md') : t('Saved in ./CLAUDE.md');
     } else if (file.parent) {
       // For imported files (with @-import)
-      description = '@-imported';
+      description = t('@-imported');
     } else if (file.isNested) {
       // For nested files (dynamically loaded)
-      description = 'dynamically loaded';
+      description = t('dynamically loaded');
     } else {
       description = '';
     }
@@ -146,7 +147,7 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
   if (isAutoMemoryEnabled()) {
     // Always show auto-memory folder option
     folderOptions.push({
-      label: 'Open auto-memory folder',
+      label: t('Open auto-memory folder'),
       value: `${OPEN_FOLDER_PREFIX}${getAutoMemPath()}`,
       description: '',
     });
@@ -154,7 +155,7 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
     // Team memory directly below auto-memory (team dir is a subdir of auto dir)
     if (feature('TEAMMEM') && teamMemPaths!.isTeamMemoryEnabled()) {
       folderOptions.push({
-        label: 'Open team memory folder',
+        label: t('Open team memory folder'),
         value: `${OPEN_FOLDER_PREFIX}${teamMemPaths!.getTeamMemPath()}`,
         description: '',
       });
@@ -165,9 +166,9 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
       if (agent.memory) {
         const agentDir = getAgentMemoryDir(agent.agentType, agent.memory);
         folderOptions.push({
-          label: `Open ${chalk.bold(agent.agentType)} agent memory`,
+          label: tf('Open {agentType} agent memory', { agentType: chalk.bold(agent.agentType) }),
           value: `${OPEN_FOLDER_PREFIX}${agentDir}`,
-          description: `${agent.memory} scope`,
+          description: tf('{scope} scope', { scope: agent.memory }),
         });
       }
     }
@@ -259,14 +260,14 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
     <Box flexDirection="column" width="100%">
       <Box flexDirection="column" marginBottom={1}>
         <ListItem isFocused={focusedToggle === 0}>
-          <Text>Auto-memory: {autoMemoryOn ? 'on' : 'off'}</Text>
+          <Text>{tf('Auto-memory: {state}', { state: autoMemoryOn ? t('on') : t('off') })}</Text>
         </ListItem>
         {showDreamRow && (
           <ListItem isFocused={focusedToggle === 1} styled={false}>
             <Text color={focusedToggle === 1 ? 'suggestion' : undefined}>
-              Auto-dream: {autoDreamOn ? 'on' : 'off'}
+              {tf('Auto-dream: {state}', { state: autoDreamOn ? t('on') : t('off') })}
               {dreamStatus && <Text dimColor> · {dreamStatus}</Text>}
-              {!isDreamRunning && autoDreamOn && <Text dimColor> · /dream to run</Text>}
+              {!isDreamRunning && autoDreamOn && <Text dimColor> · {t('/dream to run')}</Text>}
             </Text>
           </ListItem>
         )}

@@ -25,6 +25,7 @@ import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { count } from '../../utils/array.js';
 import { plural } from '../../utils/stringUtils.js';
+import { t, tf } from '../../i18n/t.js';
 import { Divider } from '@anthropic/ink';
 
 type Props = {
@@ -51,7 +52,7 @@ type ToolBuckets = {
 function getToolBuckets(): ToolBuckets {
   return {
     READ_ONLY: {
-      name: 'Read-only tools',
+      name: t('Read-only tools'),
       toolNames: new Set([
         GlobTool.name,
         GrepTool.name,
@@ -67,22 +68,22 @@ function getToolBuckets(): ToolBuckets {
       ]),
     },
     EDIT: {
-      name: 'Edit tools',
+      name: t('Edit tools'),
       toolNames: new Set([FileEditTool.name, FileWriteTool.name, NotebookEditTool.name]),
     },
     EXECUTION: {
-      name: 'Execution tools',
+      name: t('Execution tools'),
       toolNames: new Set(
         [BashTool.name, process.env.USER_TYPE === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined),
       ),
     },
     MCP: {
-      name: 'MCP tools',
+      name: t('MCP tools'),
       toolNames: new Set(), // Dynamic - no static list
       isMcp: true,
     },
     OTHER: {
-      name: 'Other tools',
+      name: t('Other tools'),
       toolNames: new Set(), // Dynamic - catch-all for uncategorized tools
     },
   };
@@ -216,7 +217,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
   // Continue button
   navigableItems.push({
     id: 'continue',
-    label: 'Continue',
+    label: t('Continue'),
     action: handleConfirm,
     isContinue: true,
   });
@@ -224,7 +225,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
   // All tools
   navigableItems.push({
     id: 'bucket-all',
-    label: `${isAllSelected ? figures.checkboxOn : figures.checkboxOff} All tools`,
+    label: `${isAllSelected ? figures.checkboxOn : figures.checkboxOff} ${t('All tools')}`,
     action: () => {
       const allToolNames = customAgentTools.map(t => t.name);
       handleToggleTools(allToolNames, !isAllSelected);
@@ -278,7 +279,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
   const toggleButtonIndex = navigableItems.length;
   navigableItems.push({
     id: 'toggle-individual',
-    label: showIndividualTools ? 'Hide advanced options' : 'Show advanced options',
+    label: showIndividualTools ? t('Hide advanced options') : t('Show advanced options'),
     action: () => {
       setShowIndividualTools(!showIndividualTools);
       // If hiding tools and focus is on an individual tool, move focus to toggle button
@@ -298,7 +299,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
     if (mcpServerBuckets.length > 0) {
       navigableItems.push({
         id: 'mcp-servers-header',
-        label: 'MCP Servers:',
+        label: t('MCP Servers:'),
         action: () => {}, // No action - just a header
         isHeader: true,
       });
@@ -309,7 +310,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
 
         navigableItems.push({
           id: `mcp-server-${serverName}`,
-          label: `${isFullySelected ? figures.checkboxOn : figures.checkboxOff} ${serverName} (${serverTools.length} ${plural(serverTools.length, 'tool')})`,
+          label: `${isFullySelected ? figures.checkboxOn : figures.checkboxOff} ${serverName} (${serverTools.length} ${plural(serverTools.length, t('tool'))})`,
           action: () => {
             const toolNames = serverTools.map(t => t.name);
             handleToggleTools(toolNames, !isFullySelected);
@@ -320,7 +321,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
       // Add separator header before individual tools
       navigableItems.push({
         id: 'tools-header',
-        label: 'Individual Tools:',
+        label: t('Individual Tools:'),
         action: () => {},
         isHeader: true,
       });
@@ -382,7 +383,7 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
     <Box flexDirection="column" marginTop={1} tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       {/* Render Continue button */}
       <Text color={focusIndex === 0 ? 'suggestion' : undefined} bold={focusIndex === 0}>
-        {focusIndex === 0 ? `${figures.pointer} ` : '  '}[ Continue ]
+        {focusIndex === 0 ? `${figures.pointer} ` : '  '}[ {t('Continue')} ]
       </Text>
 
       {/* Separator */}
@@ -416,7 +417,12 @@ export function ToolSelector({ tools, initialTools, onComplete, onCancel }: Prop
 
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>
-          {isAllSelected ? 'All tools selected' : `${selectedSet.size} of ${customAgentTools.length} tools selected`}
+          {isAllSelected
+            ? t('All tools selected')
+            : tf('{selected} of {total} tools selected', {
+                selected: selectedSet.size,
+                total: customAgentTools.length,
+              })}
         </Text>
       </Box>
     </Box>

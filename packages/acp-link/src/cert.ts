@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { generate } from 'selfsigned'
+import { t, tf } from '../../../src/i18n/t.js'
 
 /**
  * Get all LAN IPv4 addresses
@@ -85,7 +86,12 @@ export async function getOrCreateCertificate(): Promise<TlsOptions> {
       if (daysUntilExpiry <= 7) {
         // Certificate expired or expiring soon
         console.log(
-          `⚠️  Certificate ${daysUntilExpiry <= 0 ? 'expired' : `expires in ${daysUntilExpiry} days`}, regenerating...`,
+          tf('⚠️  Certificate {status}, regenerating...', {
+            status:
+              daysUntilExpiry <= 0
+                ? t('expired')
+                : tf('expires in {days} days', { days: daysUntilExpiry }),
+          }),
         )
       } else {
         // Check if current LAN IPs are in the certificate's SAN
@@ -96,24 +102,31 @@ export async function getOrCreateCertificate(): Promise<TlsOptions> {
         const missingIPs = currentLanIPs.filter(ip => !certSanIPs.includes(ip))
 
         if (missingIPs.length === 0) {
-          console.log(`🔐 Using existing certificate from ${CERT_DIR}`)
-          console.log(`   Valid for ${daysUntilExpiry} more days`)
+          console.log(
+            tf('🔐 Using existing certificate from {dir}', { dir: CERT_DIR }),
+          )
+          console.log(
+            tf('   Valid for {days} more days', { days: daysUntilExpiry }),
+          )
           return { key: keyPem, cert: certPem }
         }
 
         // LAN IP changed, regenerate
         console.log(
-          `⚠️  LAN IP changed (missing: ${missingIPs.join(', ')}), regenerating certificate...`,
+          tf(
+            '⚠️  LAN IP changed (missing: {ips}), regenerating certificate...',
+            { ips: missingIPs.join(', ') },
+          ),
         )
       }
     } catch {
       // Failed to parse certificate, regenerate
-      console.log(`⚠️  Invalid certificate, regenerating...`)
+      console.log(t('⚠️  Invalid certificate, regenerating...'))
     }
   }
 
   // Generate new self-signed certificate
-  console.log(`🔐 Generating self-signed certificate...`)
+  console.log(t('🔐 Generating self-signed certificate...'))
 
   const attrs = [{ name: 'commonName', value: 'ACP Proxy Server' }]
 
@@ -136,7 +149,7 @@ export async function getOrCreateCertificate(): Promise<TlsOptions> {
   }
 
   if (lanIPs.length > 0) {
-    console.log(`   Including LAN IPs: ${lanIPs.join(', ')}`)
+    console.log(tf('   Including LAN IPs: {ips}', { ips: lanIPs.join(', ') }))
   }
 
   const pems = await generate(attrs, {
@@ -169,10 +182,12 @@ export async function getOrCreateCertificate(): Promise<TlsOptions> {
   writeFileSync(KEY_PATH, pems.private)
   writeFileSync(CERT_PATH, pems.cert)
 
-  console.log(`✅ Certificate saved to ${CERT_DIR}`)
-  console.log(`   Valid for ${CERT_VALIDITY_DAYS} days`)
+  console.log(tf('✅ Certificate saved to {dir}', { dir: CERT_DIR }))
+  console.log(tf('   Valid for {days} days', { days: CERT_VALIDITY_DAYS }))
   console.log(
-    `   ⚠️  First access will show a security warning - click "Advanced" → "Proceed"`,
+    t(
+      '   ⚠️  First access will show a security warning - click "Advanced" → "Proceed"',
+    ),
   )
 
   return {

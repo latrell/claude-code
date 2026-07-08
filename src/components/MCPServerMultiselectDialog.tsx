@@ -4,6 +4,7 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Text } from '@anthropic/ink';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
+import { t, tf } from '../i18n/t.js';
 import { SelectMulti } from './CustomSelect/SelectMulti.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { MCPServerDialogCopy } from './MCPServerDialogCopy.js';
@@ -63,8 +64,8 @@ export function MCPServerMultiselectDialog({ serverNames, onDone }: Props): Reac
   return (
     <>
       <Dialog
-        title={`${serverNames.length} new MCP servers found in .mcp.json`}
-        subtitle="Select any you wish to enable."
+        title={tf('{count} new MCP servers found in .mcp.json', { count: serverNames.length })}
+        subtitle={t('Select any you wish to enable.')}
         color="warning"
         onCancel={handleEscRejectAll}
         hideInputGuide
@@ -91,7 +92,7 @@ export function MCPServerMultiselectDialog({ serverNames, onDone }: Props): Reac
               action="confirm:no"
               context="Confirmation"
               fallback="Esc"
-              description="reject all"
+              description={t('reject all')}
             />
           </Byline>
         </Text>

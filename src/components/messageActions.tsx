@@ -2,6 +2,7 @@ import figures from 'figures';
 import type { RefObject } from 'react';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Box, Text } from '@anthropic/ink';
+import { t, tf } from '../i18n/t.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { logEvent } from '../services/analytics/index.js';
 import type { NormalizedUserMessage, RenderableMessage } from '../types/message.js';
@@ -95,19 +96,19 @@ type PrimaryInput = {
 };
 const str = (k: string) => (i: Record<string, unknown>) => (typeof i[k] === 'string' ? i[k] : undefined);
 const PRIMARY_INPUT: Record<string, PrimaryInput> = {
-  Read: { label: 'path', extract: str('file_path') },
-  Edit: { label: 'path', extract: str('file_path') },
-  Write: { label: 'path', extract: str('file_path') },
-  NotebookEdit: { label: 'path', extract: str('notebook_path') },
-  Bash: { label: 'command', extract: str('command') },
-  Grep: { label: 'pattern', extract: str('pattern') },
-  Glob: { label: 'pattern', extract: str('pattern') },
-  WebFetch: { label: 'url', extract: str('url') },
-  WebSearch: { label: 'query', extract: str('query') },
-  Task: { label: 'prompt', extract: str('prompt') },
-  Agent: { label: 'prompt', extract: str('prompt') },
+  Read: { label: t('path'), extract: str('file_path') },
+  Edit: { label: t('path'), extract: str('file_path') },
+  Write: { label: t('path'), extract: str('file_path') },
+  NotebookEdit: { label: t('path'), extract: str('notebook_path') },
+  Bash: { label: t('command'), extract: str('command') },
+  Grep: { label: t('pattern'), extract: str('pattern') },
+  Glob: { label: t('pattern'), extract: str('pattern') },
+  WebFetch: { label: t('url'), extract: str('url') },
+  WebSearch: { label: t('query'), extract: str('query') },
+  Task: { label: t('prompt'), extract: str('prompt') },
+  Agent: { label: t('prompt'), extract: str('prompt') },
   Tmux: {
-    label: 'command',
+    label: t('command'),
     extract: i => (Array.isArray(i.args) ? `tmux ${i.args.join(' ')}` : undefined),
   },
 };
@@ -145,7 +146,7 @@ function action<const T extends NavigableType, const K extends string>(a: {
 export const MESSAGE_ACTIONS = [
   action({
     key: 'enter',
-    label: s => (s.expanded ? 'collapse' : 'expand'),
+    label: s => (s.expanded ? t('collapse') : t('expand')),
     types: ['grouped_tool_use', 'collapsed_read_search', 'attachment', 'system'],
     stays: true,
     // Empty — `stays` handled inline by dispatch.
@@ -153,20 +154,20 @@ export const MESSAGE_ACTIONS = [
   }),
   action({
     key: 'enter',
-    label: 'edit',
+    label: t('edit'),
     types: ['user'],
     run: (m, c) => void c.edit(m),
   }),
   action({
     key: 'c',
-    label: 'copy',
+    label: t('copy'),
     types: NAVIGABLE_TYPES,
     run: (m, c) => c.copy(copyTextOf(m)),
   }),
   action({
     key: 'p',
     // `!` safe: applies() guarantees toolName ∈ PRIMARY_INPUT.
-    label: s => `copy ${PRIMARY_INPUT[s.toolName!]!.label}`,
+    label: s => tf('copy {label}', { label: PRIMARY_INPUT[s.toolName!]!.label }),
     types: ['grouped_tool_use', 'assistant'],
     applies: s => s.toolName != null && s.toolName in PRIMARY_INPUT,
     run: (m, c) => {
@@ -302,11 +303,11 @@ export function MessageActionsBar({ cursor }: { cursor: MessageActionsState }): 
           {figures.arrowUp}
           {figures.arrowDown}
         </Text>
-        <Text dimColor> navigate · </Text>
+        <Text dimColor> {t('navigate')} · </Text>
         <Text bold dimColor={false}>
           esc
         </Text>
-        <Text dimColor> back</Text>
+        <Text dimColor> {t('back')}</Text>
       </Box>
     </Box>
   );

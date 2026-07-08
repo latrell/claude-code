@@ -14,7 +14,7 @@ import {
 import type { buildMessageLookups } from '../../../utils/messages.js';
 import { MessageResponse } from '../../MessageResponse.js';
 import { HookProgressMessage } from '../HookProgressMessage.js';
-import { t } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 import { T } from '../../../i18n/TText.js';
 
 type Props = {
@@ -117,8 +117,7 @@ export function UserToolSuccessMessage({
               <MessageResponse height={1}>
                 <Text dimColor>
                   <Text color="success">{figures.tick}</Text>
-                  {' Auto-approved \u00b7 matched '}
-                  {`"${classifierRule}"`}
+                  <Text>{tf(' Auto-approved · matched "{rule}"', { rule: classifierRule })}</Text>
                 </Text>
               </MessageResponse>
             )

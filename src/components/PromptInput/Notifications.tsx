@@ -30,6 +30,7 @@ import { MemoryUsageIndicator } from '../MemoryUsageIndicator.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { TokenWarning } from '../TokenWarning.js';
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
+import { t } from '../../i18n/t.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const VoiceIndicator: typeof import('./VoiceIndicator.js').VoiceIndicator = feature('VOICE_MODE')
@@ -253,8 +254,8 @@ function NotificationContent({
         <Box>
           <Text color="error" wrap="truncate">
             {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
-              ? 'Authentication error · Try again'
-              : 'Not logged in · Run /login'}
+              ? t('Authentication error · Try again')
+              : t('Not logged in · Run /login')}
           </Text>
         </Box>
       )}

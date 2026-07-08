@@ -1,5 +1,6 @@
 import { buildCommand, numberParser } from '@stricli/core'
 import type { LocalContext } from './context.js'
+import { t } from '../../../../src/i18n/t.js'
 
 export const command = buildCommand({
   docs: {
@@ -101,7 +102,7 @@ export const command = buildCommand({
 
     // Proxy mode: agent command is required
     if (args.length === 0) {
-      console.error('Error: agent command is required (or use --manager)')
+      console.error(t('Error: agent command is required (or use --manager)'))
       process.exit(1)
     }
     const [command, ...agentArgs] = args
@@ -112,7 +113,9 @@ export const command = buildCommand({
     let token: string | undefined
     if (noAuth) {
       console.warn(
-        '⚠️  WARNING: Authentication disabled. This is dangerous for remote access!',
+        t(
+          '⚠️  WARNING: Authentication disabled. This is dangerous for remote access!',
+        ),
       )
       token = undefined
     } else {

@@ -4,7 +4,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { SkillUpdate } from '../utils/hooks/skillImprovement.js';
 import { normalizeFullWidthDigits } from '../utils/stringUtils.js';
 import { isValidResponseInput } from './FeedbackSurvey/FeedbackSurveyView.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 import { T } from '../i18n/TText.js';
 import type { FeedbackSurveyResponse } from './FeedbackSurvey/utils.js';
 
@@ -84,7 +84,7 @@ function SkillImprovementSurveyView({
     <Box flexDirection="column" marginTop={1}>
       <Box>
         <Text color="ansi:cyan">{BLACK_CIRCLE} </Text>
-        <T bold>Skill improvement suggested for &quot;{skillName}&quot;</T>
+        <Text bold>{tf('Skill improvement suggested for "{skillName}"', { skillName })}</Text>
       </Box>
 
       <Box flexDirection="column" marginLeft={2}>

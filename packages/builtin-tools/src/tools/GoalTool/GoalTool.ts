@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
@@ -86,13 +87,18 @@ function buildCompletionReport(): string {
   if (!goal) return ''
   const budget =
     goal.tokenBudget !== null
-      ? `Token usage: ${goal.tokensUsed} / ${goal.tokenBudget}`
-      : `Token usage: ${goal.tokensUsed}`
+      ? tf('Token usage: {tokensUsed} / {tokenBudget}', {
+          tokensUsed: goal.tokensUsed,
+          tokenBudget: goal.tokenBudget,
+        })
+      : tf('Token usage: {tokensUsed}', { tokensUsed: goal.tokensUsed })
   return [
-    'Goal achieved — usage report:',
+    t('Goal achieved — usage report:'),
     `  ${budget}`,
-    `  Active time: ${formatGoalElapsed(goal)}`,
-    `  Continuation turns: ${goal.turnsExecuted}`,
+    tf('  Active time: {elapsed}', { elapsed: formatGoalElapsed(goal) }),
+    tf('  Continuation turns: {turnsExecuted}', {
+      turnsExecuted: goal.turnsExecuted,
+    }),
   ].join('\n')
 }
 
@@ -133,22 +139,28 @@ export const GoalTool = buildTool({
   },
   renderToolUseMessage(input: Input) {
     const action = input.action ?? (input.status ? 'update' : 'get')
-    if (action === 'get') return 'Checking goal status…'
-    return `Updating goal: ${input.status}${input.reason ? ` — ${input.reason}` : ''}`
+    if (action === 'get') return t('Checking goal status…')
+    return tf('Updating goal: {status}{reasonSuffix}', {
+      status: input.status,
+      reasonSuffix: input.reason ? ` — ${input.reason}` : '',
+    })
   },
   renderToolResultMessage(output: Output) {
     if (!output) {
       return null
     }
-    if (output?.error) return `Goal error: ${output.error}`
+    if (output?.error) return tf('Goal error: {error}', { error: output.error })
     if (output.report) return output.report
     if (output.goal) {
-      return `Goal "${output.goal.objective}" — ${output.goal.status}`
+      return tf('Goal "{objective}" — {status}', {
+        objective: output.goal.objective,
+        status: output.goal.status,
+      })
     }
-    return output.message ?? 'Done'
+    return output.message ?? t('Done')
   },
   renderToolUseRejectedMessage() {
-    return 'Goal operation rejected'
+    return t('Goal operation rejected')
   },
   async call(input: Input): Promise<{ data: Output }> {
     const action = input.action ?? (input.status ? 'update' : 'get')
@@ -161,8 +173,9 @@ export const GoalTool = buildTool({
         return {
           data: {
             success: true,
-            message:
+            message: t(
               'No active goal. The user can set one with `/goal <objective>`.',
+            ),
           },
         }
       }
@@ -174,8 +187,9 @@ export const GoalTool = buildTool({
       return {
         data: {
           success: false,
-          error:
+          error: t(
             'The "status" field is required for update. Use "complete" or "blocked".',
+          ),
         },
       }
     }
@@ -185,7 +199,7 @@ export const GoalTool = buildTool({
       return {
         data: {
           success: false,
-          error: 'No active goal to update.',
+          error: t('No active goal to update.'),
         },
       }
     }
@@ -210,7 +224,7 @@ export const GoalTool = buildTool({
       return {
         data: {
           success: false,
-          error: 'Goal is not in a state that accepts blocked attempts.',
+          error: t('Goal is not in a state that accepts blocked attempts.'),
         },
       }
     }
@@ -221,7 +235,10 @@ export const GoalTool = buildTool({
         data: {
           success: true,
           goal: buildGoalSnapshot(),
-          message: `Goal marked as blocked after ${result.attempts} consecutive attempts. Reason: ${reason}`,
+          message: tf(
+            'Goal marked as blocked after {attempts} consecutive attempts. Reason: {reason}',
+            { attempts: result.attempts, reason },
+          ),
         },
       }
     }
@@ -230,7 +247,10 @@ export const GoalTool = buildTool({
       data: {
         success: true,
         goal: buildGoalSnapshot(),
-        message: `Blocked attempt ${result.attempts} recorded. The goal remains active — the same condition must persist for 3 consecutive turns before it is marked blocked.`,
+        message: tf(
+          'Blocked attempt {attempts} recorded. The goal remains active — the same condition must persist for 3 consecutive turns before it is marked blocked.',
+          { attempts: result.attempts },
+        ),
       },
     }
   },
@@ -239,7 +259,7 @@ export const GoalTool = buildTool({
       return {
         tool_use_id: toolUseID,
         type: 'tool_result' as const,
-        content: `Error: ${content.error}`,
+        content: tf('Error: {error}', { error: content.error }),
         is_error: true,
       }
     }
@@ -250,7 +270,7 @@ export const GoalTool = buildTool({
     return {
       tool_use_id: toolUseID,
       type: 'tool_result' as const,
-      content: parts.join('\n') || 'Done',
+      content: parts.join('\n') || t('Done'),
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

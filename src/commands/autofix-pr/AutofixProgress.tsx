@@ -1,4 +1,5 @@
 import React from 'react';
+import { t, tf } from '../../i18n/t.js';
 import { Box, Text } from '@anthropic/ink';
 import type { Theme } from '../../utils/theme.js';
 
@@ -19,13 +20,13 @@ interface AutofixProgressProps {
 }
 
 const PHASE_LABELS: Record<AutofixPhase, string> = {
-  detecting: 'Detecting repository...',
-  checking_eligibility: 'Checking remote agent eligibility...',
-  acquiring_lock: 'Acquiring monitor lock...',
-  launching: 'Launching remote session...',
-  registered: 'Session registered',
-  done: 'Autofix launched',
-  error: 'Error',
+  detecting: t('Detecting repository...'),
+  checking_eligibility: t('Checking remote agent eligibility...'),
+  acquiring_lock: t('Acquiring monitor lock...'),
+  launching: t('Launching remote session...'),
+  registered: t('Session registered'),
+  done: t('Autofix launched'),
+  error: t('Error'),
 };
 
 const PHASE_ORDER: AutofixPhase[] = [
@@ -52,7 +53,7 @@ export function AutofixProgress({ phase, target, sessionUrl, errorMessage }: Aut
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Box>
-        <Text bold>Autofix PR </Text>
+        <Text bold>{t('Autofix PR')} </Text>
         <Text color={'claude' as keyof Theme}>{target}</Text>
       </Box>
       {PHASE_ORDER.map((p, i) => {
@@ -75,7 +76,7 @@ export function AutofixProgress({ phase, target, sessionUrl, errorMessage }: Aut
       )}
       {sessionUrl && (
         <Box marginTop={1} marginLeft={2}>
-          <Text color={'subtle' as keyof Theme}>Track: </Text>
+          <Text color={'subtle' as keyof Theme}>{t('Track:')} </Text>
           <Text color={'claude' as keyof Theme}>{sessionUrl}</Text>
         </Box>
       )}

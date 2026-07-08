@@ -1,6 +1,7 @@
 import { createLogger } from './logger.js'
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from './ws-message.js'
 import { encodeWebSocketAuthProtocol } from './ws-auth.js'
+import { t, tf } from '../../../src/i18n/t.js'
 
 export interface RcsUpstreamConfig {
   rcsUrl: string // e.g. "http://localhost:3000"
@@ -184,9 +185,9 @@ export class RcsUpstreamClient {
               .replace(/\/acp\/ws.*$/, '')
               .replace(/\/$/, '')
             console.log()
-            console.log(`  🔗 Dashboard: ${webBase}/code/`)
+            console.log(tf('  🔗 Dashboard: {url}/code/', { url: webBase }))
             if (this.agentId) {
-              console.log(`     Agent ID: ${this.agentId}`)
+              console.log(tf('     Agent ID: {id}', { id: this.agentId }))
             }
             console.log()
             resolve()

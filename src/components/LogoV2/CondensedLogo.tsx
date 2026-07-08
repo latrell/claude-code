@@ -8,6 +8,7 @@ import { truncate } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
+import { t } from '../../i18n/t.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { AnimatedClawd } from './AnimatedClawd.js';
 import { Clawd } from './Clawd.js';
@@ -53,7 +54,7 @@ export function CondensedLogo(): ReactNode {
   const textWidth = Math.max(columns - 15, 20);
 
   // Truncate version to fit within available width, accounting for "Claude Code v" prefix
-  const versionPrefix = 'Claude Code v';
+  const versionPrefix = `${t('Claude Code')} v`;
   const truncatedVersion = truncate(version, Math.max(textWidth - versionPrefix.length, 6));
 
   const effortSuffix = getEffortSuffix(model, effortValue);
@@ -83,7 +84,7 @@ export function CondensedLogo(): ReactNode {
         {/* Info */}
         <Box flexDirection="column">
           <Text>
-            <Text bold>Claude Code</Text> <Text dimColor>v{truncatedVersion}</Text>
+            <Text bold>{t('Claude Code')}</Text> <Text dimColor>v{truncatedVersion}</Text>
           </Text>
           {shouldSplit ? (
             <>

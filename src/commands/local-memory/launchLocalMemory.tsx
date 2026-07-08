@@ -13,7 +13,7 @@ import {
 import { isValidKey } from '../../utils/localValidate.js';
 import TextInput from '../../components/TextInput.js';
 import { LocalMemoryView } from './LocalMemoryView.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { parseLocalMemoryArgs } from './parseArgs.js';
 import { launchCommand } from '../_shared/launchCommand.js';
 
@@ -296,8 +296,8 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
   if (step.kind === 'menu') {
     return (
       <Dialog
-        title="Local Memory"
-        subtitle={`${MENU.length} actions`}
+        title={t('Local Memory')}
+        subtitle={tf('{count} actions', { count: String(MENU.length) })}
         onCancel={() => closeWith(t('Local memory panel dismissed'))}
         color="background"
         hideInputGuide
@@ -310,7 +310,7 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
             </Box>
           ))}
           <Box marginTop={1}>
-            <Text dimColor>↑/↓ or 1-7 select · Enter run · Esc close</Text>
+            <Text dimColor>{t('↑/↓ or 1-7 select · Enter run · Esc close')}</Text>
           </Box>
         </Box>
       </Dialog>
@@ -320,11 +320,11 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
   // Confirmation prompts
   if (step.kind === 'confirm-archive') {
     return (
-      <Dialog title="Confirm Archive" onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
+      <Dialog title={t('Confirm Archive')} onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
         <Box flexDirection="column">
-          <Text>Archive store "{step.store}"? This renames it to *.archived.</Text>
+          <Text>{tf('Archive store "{store}"? This renames it to *.archived.', { store: step.store })}</Text>
           <Box marginTop={1}>
-            <Text dimColor>y/Enter = archive · n/Esc = cancel</Text>
+            <Text dimColor>{t('y/Enter = archive · n/Esc = cancel')}</Text>
           </Box>
         </Box>
       </Dialog>
@@ -332,13 +332,22 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
   }
   if (step.kind === 'confirm-overwrite') {
     return (
-      <Dialog title="Confirm Overwrite" onCancel={() => transition({ kind: 'menu' })} color="warning" hideInputGuide>
+      <Dialog
+        title={t('Confirm Overwrite')}
+        onCancel={() => transition({ kind: 'menu' })}
+        color="warning"
+        hideInputGuide
+      >
         <Box flexDirection="column">
           <Text>
-            Entry "{step.store}/{step.key}" already exists. Overwrite with new value ({step.value.length} chars)?
+            {tf('Entry "{store}/{key}" already exists. Overwrite with new value ({length} chars)?', {
+              store: step.store,
+              key: step.key,
+              length: String(step.value.length),
+            })}
           </Text>
           <Box marginTop={1}>
-            <Text dimColor>y/Enter = overwrite · n/Esc = cancel</Text>
+            <Text dimColor>{t('y/Enter = overwrite · n/Esc = cancel')}</Text>
           </Box>
         </Box>
       </Dialog>
@@ -346,13 +355,14 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
   }
 
   // collect-* steps share the same TextInput render
-  const fieldLabel = step.kind === 'collect-store' ? 'STORE NAME' : step.kind === 'collect-key' ? 'KEY NAME' : 'VALUE';
+  const fieldLabel =
+    step.kind === 'collect-store' ? t('STORE NAME') : step.kind === 'collect-key' ? t('KEY NAME') : t('VALUE');
   const placeholder =
     step.kind === 'collect-store'
-      ? 'e.g. my-notes'
+      ? t('e.g. my-notes')
       : step.kind === 'collect-key'
-        ? 'e.g. todo-2026-05-08'
-        : 'free text';
+        ? t('e.g. todo-2026-05-08')
+        : t('free text');
   const validateAndAdvance = (raw: string) => {
     const trimmed = raw.trim();
     if (step.kind === 'collect-store') {
@@ -411,7 +421,7 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
 
   return (
     <Dialog
-      title={`Local Memory · ${step.kind.replace('collect-', '').toUpperCase()}`}
+      title={t('Local Memory · input')}
       onCancel={() => transition({ kind: 'menu' })}
       color="background"
       hideInputGuide
@@ -438,11 +448,11 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
         </Box>
         {error !== null && (
           <Box marginTop={0}>
-            <Text color="warning">✗ {error}</Text>
+            <Text color="warning">{tf('✗ {msg}', { msg: error })}</Text>
           </Box>
         )}
         <Box marginTop={1}>
-          <Text dimColor>Enter = next · Esc = back</Text>
+          <Text dimColor>{t('Enter = next · Esc = back')}</Text>
         </Box>
       </Box>
     </Dialog>

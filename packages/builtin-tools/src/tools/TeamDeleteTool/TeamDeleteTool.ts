@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { t, tf } from 'src/i18n/t.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
 import type { Tool } from 'src/Tool.js'
@@ -68,7 +69,7 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
   },
 
   async description() {
-    return 'Clean up team and task directories when the swarm is complete'
+    return t('Clean up team and task directories when the swarm is complete')
   },
 
   async prompt() {
@@ -91,7 +92,9 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
   async call(input, context) {
     if (!isAgentSwarmsEnabled()) {
       throw new Error(
-        'Agent Teams 功能未启用。请确保未设置 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS_DISABLED 环境变量。',
+        t(
+          'Agent Teams 功能未启用。请确保未设置 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS_DISABLED 环境变量。',
+        ),
       )
     }
 
@@ -167,7 +170,10 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
               return {
                 data: {
                   success: false,
-                  message: `Shutdown requested for active teammate(s): ${requested.join(', ')}. Cleanup is still blocked after waiting ${waitMs}ms: ${memberNames}.`,
+                  message: tf(
+                    'Shutdown requested for active teammate(s): {requested}. Cleanup is still blocked after waiting {waitMs}ms: {memberNames}.',
+                    { requested: requested.join(', '), waitMs, memberNames },
+                  ),
                   team_name: teamName,
                 },
               }
@@ -187,8 +193,14 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
                 success: false,
                 message:
                   requested.length > 0
-                    ? `Shutdown requested for active teammate(s): ${requested.join(', ')}. Cleanup is blocked until they exit: ${memberNames}.`
-                    : `Cannot cleanup team with ${latestActiveMembers.length} active member(s): ${memberNames}. Use requestShutdown to gracefully terminate teammates first.`,
+                    ? tf(
+                        'Shutdown requested for active teammate(s): {requested}. Cleanup is blocked until they exit: {memberNames}.',
+                        { requested: requested.join(', '), memberNames },
+                      )
+                    : tf(
+                        'Cannot cleanup team with {count} active member(s): {memberNames}. Use requestShutdown to gracefully terminate teammates first.',
+                        { count: latestActiveMembers.length, memberNames },
+                      ),
                 team_name: teamName,
               },
             }
@@ -225,8 +237,10 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
       data: {
         success: true,
         message: teamName
-          ? `Cleaned up directories and worktrees for team "${teamName}"`
-          : 'No team name found, nothing to clean up',
+          ? tf('Cleaned up directories and worktrees for team "{teamName}"', {
+              teamName,
+            })
+          : t('No team name found, nothing to clean up'),
         team_name: teamName,
       },
     }

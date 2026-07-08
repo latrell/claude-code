@@ -15,6 +15,7 @@ import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';
 import { addMarketplaceSource, saveMarketplaceToSettings } from '../../utils/plugins/marketplaceManager.js';
 import { parseMarketplaceInput } from '../../utils/plugins/parseMarketplaceInput.js';
 import type { ViewState } from './types.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   inputValue: string;
@@ -50,13 +51,13 @@ export function AddMarketplace({
   const handleAdd = async () => {
     const input = inputValue.trim();
     if (!input) {
-      setError('Please enter a marketplace source');
+      setError(t('Please enter a marketplace source'));
       return;
     }
 
     const parsed = await parseMarketplaceInput(input);
     if (!parsed) {
-      setError('Invalid marketplace source format. Try: owner/repo, https://..., or ./path');
+      setError(t('Invalid marketplace source format. Try: owner/repo, https://..., or ./path'));
       return;
     }
 
@@ -95,7 +96,7 @@ export function AddMarketplace({
 
       if (cliMode) {
         // In CLI mode, set result to trigger completion
-        setResult(`Successfully added marketplace: ${name}`);
+        setResult(tf('Successfully added marketplace: {name}', { name }));
       } else {
         // In interactive mode, switch to browse view
         setViewState({ type: 'browse-marketplace', targetMarketplace: name });
@@ -109,7 +110,7 @@ export function AddMarketplace({
 
       if (cliMode) {
         // In CLI mode, set result with error to trigger completion
-        setResult(`Error: ${error.message}`);
+        setResult(tf('Error: {errorMessage}', { errorMessage: error.message }));
       } else {
         setResult(null);
       }
@@ -129,15 +130,15 @@ export function AddMarketplace({
     <Box flexDirection="column">
       <Box flexDirection="column" paddingX={1} borderStyle="round">
         <Box marginBottom={1}>
-          <Text bold>Add Marketplace</Text>
+          <Text bold>{t('Add Marketplace')}</Text>
         </Box>
         <Box flexDirection="column">
-          <Text>Enter marketplace source:</Text>
-          <Text dimColor>Examples:</Text>
-          <Text dimColor> · owner/repo (GitHub)</Text>
-          <Text dimColor> · git@github.com:owner/repo.git (SSH)</Text>
-          <Text dimColor> · https://example.com/marketplace.json</Text>
-          <Text dimColor> · ./path/to/marketplace</Text>
+          <Text>{t('Enter marketplace source:')}</Text>
+          <Text dimColor>{t('Examples:')}</Text>
+          <Text dimColor>{t(' · owner/repo (GitHub)')}</Text>
+          <Text dimColor>{t(' · git@github.com:owner/repo.git (SSH)')}</Text>
+          <Text dimColor>{t(' · https://example.com/marketplace.json')}</Text>
+          <Text dimColor>{t(' · ./path/to/marketplace')}</Text>
           <Box marginTop={1}>
             <TextInput
               value={inputValue}
@@ -154,7 +155,7 @@ export function AddMarketplace({
         {isLoading && (
           <Box marginTop={1}>
             <Spinner />
-            <Text>{progressMessage || 'Adding marketplace to configuration…'}</Text>
+            <Text>{progressMessage || t('Adding marketplace to configuration…')}</Text>
           </Box>
         )}
         {error && (
@@ -172,7 +173,7 @@ export function AddMarketplace({
         <Text dimColor italic>
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="add" />
-            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
           </Byline>
         </Text>
       </Box>

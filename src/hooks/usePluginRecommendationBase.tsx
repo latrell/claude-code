@@ -8,6 +8,7 @@ import figures from 'figures';
 import * as React from 'react';
 import { getIsRemoteMode } from '../bootstrap/state.js';
 import type { useNotifications } from '../context/notifications.js';
+import { t, tf } from '../i18n/t.js';
 import { Text } from '@anthropic/ink';
 import { logError } from '../utils/log.js';
 import { getPluginById } from '../utils/plugins/marketplaceManager.js';
@@ -64,14 +65,14 @@ export async function installPluginAndNotify(
   try {
     const pluginData = await getPluginById(pluginId);
     if (!pluginData) {
-      throw new Error(`Plugin ${pluginId} not found in marketplace`);
+      throw new Error(tf('Plugin {pluginId} not found in marketplace', { pluginId }));
     }
     await install(pluginData);
     addNotification({
       key: `${keyPrefix}-installed`,
       jsx: (
         <Text color="success">
-          {figures.tick} {pluginName} installed · restart to apply
+          {figures.tick} {tf('{name} installed · restart to apply', { name: pluginName })}
         </Text>
       ),
       priority: 'immediate',
@@ -81,7 +82,7 @@ export async function installPluginAndNotify(
     logError(error);
     addNotification({
       key: `${keyPrefix}-install-failed`,
-      jsx: <Text color="error">Failed to install {pluginName}</Text>,
+      jsx: <Text color="error">{tf('Failed to install {name}', { name: pluginName })}</Text>,
       priority: 'immediate',
       timeoutMs: 5000,
     });

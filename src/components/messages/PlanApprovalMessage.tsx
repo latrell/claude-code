@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Markdown } from '../../components/Markdown.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import { T } from '../../i18n/TText.js';
 import { Box, Text } from '@anthropic/ink';
 import { jsonParse } from '../../utils/slowOperations.js';
@@ -29,7 +29,7 @@ export function PlanApprovalRequestDisplay({ request }: PlanApprovalRequestProps
       <Box borderStyle="round" borderColor="planMode" flexDirection="column" paddingX={1}>
         <Box marginBottom={1}>
           <Text color="planMode" bold>
-            Plan Approval Request from {request.from}
+            <Text>{tf('Plan Approval Request from {from}', { from: request.from })}</Text>
           </Text>
         </Box>
         <Box
@@ -43,7 +43,7 @@ export function PlanApprovalRequestDisplay({ request }: PlanApprovalRequestProps
         >
           <Markdown>{request.planContent}</Markdown>
         </Box>
-        <Text dimColor>Plan file: {request.planFilePath}</Text>
+        <Text dimColor>{tf('Plan file: {path}', { path: request.planFilePath })}</Text>
       </Box>
     </Box>
   );
@@ -64,11 +64,11 @@ export function PlanApprovalResponseDisplay({ response, senderName }: PlanApprov
         <Box borderStyle="round" borderColor="success" flexDirection="column" paddingX={1} paddingY={1}>
           <Box>
             <Text color="success" bold>
-              ✓ Plan Approved by {senderName}
+              <Text>{tf('✓ Plan Approved by {name}', { name: senderName })}</Text>
             </Text>
           </Box>
           <Box marginTop={1}>
-            <T>You can now proceed with implementation. Your plan mode restrictions have been lifted.</T>
+            <Text>{t('You can now proceed with implementation. Your plan mode restrictions have been lifted.')}</Text>
           </Box>
         </Box>
       </Box>
@@ -80,7 +80,7 @@ export function PlanApprovalResponseDisplay({ response, senderName }: PlanApprov
       <Box borderStyle="round" borderColor="error" flexDirection="column" paddingX={1} paddingY={1}>
         <Box>
           <Text color="error" bold>
-            ✗ Plan Rejected by {senderName}
+            <Text>{tf('✗ Plan Rejected by {name}', { name: senderName })}</Text>
           </Text>
         </Box>
         {response.feedback && (
@@ -92,11 +92,11 @@ export function PlanApprovalResponseDisplay({ response, senderName }: PlanApprov
             borderRight={false}
             paddingX={1}
           >
-            <Text>Feedback: {response.feedback}</Text>
+            <Text>{tf('Feedback: {feedback}', { feedback: response.feedback })}</Text>
           </Box>
         )}
         <Box marginTop={1}>
-          <T dimColor>Please revise your plan based on the feedback and call ExitPlanMode again.</T>
+          <Text dimColor>{t('Please revise your plan based on the feedback and call ExitPlanMode again.')}</Text>
         </Box>
       </Box>
     </Box>
@@ -129,15 +129,16 @@ export function tryRenderPlanApprovalMessage(content: string, senderName: string
 function getPlanApprovalSummary(content: string): string | null {
   const request = isPlanApprovalRequest(content);
   if (request) {
-    return `[Plan Approval Request from ${request.from}]`;
+    return tf('[Plan Approval Request from {from}]', { from: request.from });
   }
 
   const response = isPlanApprovalResponse(content);
   if (response) {
     if (response.approved) {
-      return '[Plan Approved] You can now proceed with implementation';
+      return t('[Plan Approved] You can now proceed with implementation');
     } else {
-      return `[Plan Rejected] ${response.feedback || 'Please revise your plan'}`;
+      const rejectionFeedback = response.feedback || t('Please revise your plan');
+      return tf('[Plan Rejected] {feedback}', { feedback: rejectionFeedback });
     }
   }
 
@@ -148,13 +149,13 @@ function getPlanApprovalSummary(content: string): string | null {
  * Get a brief summary text for an idle notification.
  */
 function getIdleNotificationSummary(msg: IdleNotificationMessage): string {
-  const parts: string[] = ['Agent idle'];
+  const parts: string[] = [t('Agent idle')];
   if (msg.completedTaskId) {
     const status = msg.completedStatus || 'completed';
-    parts.push(`Task ${msg.completedTaskId} ${status}`);
+    parts.push(tf('Task {taskId} {status}', { taskId: msg.completedTaskId, status }));
   }
   if (msg.summary) {
-    parts.push(`Last DM: ${msg.summary}`);
+    parts.push(tf('Last DM: {summary}', { summary: msg.summary }));
   }
   return parts.join(' · ');
 }

@@ -451,7 +451,7 @@ function BashPermissionRequestInner({
     ) : toolUseConfirm.classifierCheckInProgress ? (
       <ClassifierCheckingSubtitle />
     ) : classifierWasChecking ? (
-      <Text dimColor>Requires manual approval</Text>
+      <Text dimColor>{t('Requires manual approval')}</Text>
     ) : undefined
   ) : undefined;
 
@@ -476,7 +476,7 @@ function BashPermissionRequestInner({
           <PermissionDecisionDebugInfo permissionResult={toolUseConfirm.permissionResult} toolName="Bash" />
           {toolUseContext.options.debug && (
             <Box justifyContent="flex-end" marginTop={1}>
-              <Text dimColor>Ctrl-D to hide debug info</Text>
+              <Text dimColor>{t('Ctrl-D to hide debug info')}</Text>
             </Box>
           )}
         </>

@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { Box, Byline, KeyboardShortcutHint, Text } from '@anthropic/ink';
+import { t } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -39,7 +40,7 @@ export function TypeStep(_props: Props): ReactNode {
 
   return (
     <WizardDialogLayout
-      subtitle="Agent type (identifier)"
+      subtitle={t('Agent type (identifier)')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="Type" action="enter text" />
@@ -49,13 +50,13 @@ export function TypeStep(_props: Props): ReactNode {
       }
     >
       <Box flexDirection="column">
-        <Text>Enter a unique identifier for your agent:</Text>
+        <Text>{t('Enter a unique identifier for your agent:')}</Text>
         <Box marginTop={1}>
           <TextInput
             value={agentType}
             onChange={setAgentType}
             onSubmit={handleSubmit}
-            placeholder="e.g., test-runner, tech-lead, etc"
+            placeholder={t('e.g., test-runner, tech-lead, etc')}
             columns={60}
             cursorOffset={cursorOffset}
             onChangeCursorOffset={setCursorOffset}

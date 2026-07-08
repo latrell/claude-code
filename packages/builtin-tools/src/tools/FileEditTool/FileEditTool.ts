@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, sep } from 'path'
+import { t, tf } from 'src/i18n/t.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
@@ -85,7 +86,7 @@ export const FileEditTool = buildTool({
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
-    return 'A tool for editing files'
+    return t('A tool for editing files')
   },
   async prompt() {
     return getEditToolDescription()
@@ -94,7 +95,7 @@ export const FileEditTool = buildTool({
   getToolUseSummary,
   getActivityDescription(input) {
     const summary = getToolUseSummary(input)
-    return summary ? `Editing ${summary}` : 'Editing file'
+    return summary ? tf('Editing {summary}', { summary }) : t('Editing file')
   },
   get inputSchema() {
     return inputSchema()
@@ -145,7 +146,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: '无需更改：old_string 和 new_string 完全相同。',
+        message: t('无需更改：old_string 和 new_string 完全相同。'),
         errorCode: 1,
       }
     }
@@ -162,7 +163,7 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: '文件位于权限设置中拒绝访问的目录中。',
+        message: t('文件位于权限设置中拒绝访问的目录中。'),
         errorCode: 2,
       }
     }
@@ -183,7 +184,13 @@ export const FileEditTool = buildTool({
         return {
           result: false,
           behavior: 'ask',
-          message: `File is too large to edit (${formatFileSize(size)}). Maximum editable file size is ${formatFileSize(MAX_EDIT_FILE_SIZE)}.`,
+          message: tf(
+            'File is too large to edit ({fileSize}). Maximum editable file size is {maxFileSize}.',
+            {
+              fileSize: formatFileSize(size),
+              maxFileSize: formatFileSize(MAX_EDIT_FILE_SIZE),
+            },
+          ),
           errorCode: 10,
         }
       }
@@ -223,12 +230,17 @@ export const FileEditTool = buildTool({
       // Try to find a similar file with a different extension
       const similarFilename = findSimilarFile(fullFilePath)
       const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-      let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+      let message = tf('File does not exist. {cwdNote} {cwd}.', {
+        cwdNote: FILE_NOT_FOUND_CWD_NOTE,
+        cwd: getCwd(),
+      })
 
       if (cwdSuggestion) {
-        message += ` Did you mean ${cwdSuggestion}?`
+        message += tf(' Did you mean {suggestion}?', {
+          suggestion: cwdSuggestion,
+        })
       } else if (similarFilename) {
-        message += ` Did you mean ${similarFilename}?`
+        message += tf(' Did you mean {similarFilename}?', { similarFilename })
       }
 
       return {
@@ -246,7 +258,7 @@ export const FileEditTool = buildTool({
         return {
           result: false,
           behavior: 'ask',
-          message: '无法创建新文件 - 文件已存在。',
+          message: t('无法创建新文件 - 文件已存在。'),
           errorCode: 3,
         }
       }
@@ -261,7 +273,10 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: `File is a Jupyter Notebook. Use the ${NOTEBOOK_EDIT_TOOL_NAME} to edit this file.`,
+        message: tf(
+          'File is a Jupyter Notebook. Use the {toolName} to edit this file.',
+          { toolName: NOTEBOOK_EDIT_TOOL_NAME },
+        ),
         errorCode: 5,
       }
     }
@@ -284,8 +299,9 @@ export const FileEditTool = buildTool({
           return {
             result: false,
             behavior: 'ask',
-            message:
+            message: t(
               '文件自读取以来已被修改（用户或 linter）。请在尝试写入前重新读取。',
+            ),
             errorCode: 7,
           }
         }
@@ -300,7 +316,9 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: `在文件中未找到要替换的字符串。\n字符串：${old_string}`,
+        message: tf('在文件中未找到要替换的字符串。\n字符串：{old_string}', {
+          old_string,
+        }),
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
@@ -315,7 +333,10 @@ export const FileEditTool = buildTool({
       return {
         result: false,
         behavior: 'ask',
-        message: `找到 ${matches} 处匹配的要替换的字符串，但 replace_all 为 false。要替换所有匹配项，请将 replace_all 设为 true。要仅替换一处，请提供更多上下文以唯一标识该实例。\n字符串：${old_string}`,
+        message: tf(
+          '找到 {matches} 处匹配的要替换的字符串，但 replace_all 为 false。要替换所有匹配项，请将 replace_all 设为 true。要仅替换一处，请提供更多上下文以唯一标识该实例。\n字符串：{old_string}',
+          { matches, old_string },
+        ),
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
           actualOldString,
@@ -550,21 +571,27 @@ export const FileEditTool = buildTool({
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
     const { filePath, userModified, replaceAll } = data
     const modifiedNote = userModified
-      ? '.  The user modified your proposed changes before accepting them. '
+      ? t('.  The user modified your proposed changes before accepting them. ')
       : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`,
+        content: tf(
+          'The file {filePath} has been updated{modifiedNote}. All occurrences were successfully replaced.',
+          { filePath, modifiedNote },
+        ),
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.`,
+      content: tf(
+        'The file {filePath} has been updated successfully{modifiedNote}.',
+        { filePath, modifiedNote },
+      ),
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)

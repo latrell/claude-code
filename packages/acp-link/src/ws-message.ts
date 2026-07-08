@@ -1,3 +1,5 @@
+import { t } from '../../../src/i18n/t.js'
+
 export const MAX_CLIENT_WS_PAYLOAD_BYTES = 10 * 1024 * 1024
 
 export class WsPayloadTooLargeError extends Error {
@@ -99,7 +101,7 @@ function decodeWsText(data: unknown): string {
     return Buffer.concat(data, byteLength).toString('utf8')
   }
 
-  throw new Error('Unsupported WebSocket message payload')
+  throw new Error(t('Unsupported WebSocket message payload'))
 }
 
 /**
@@ -115,7 +117,7 @@ function decodeWsText(data: unknown): string {
 export function decodeJsonWsMessage(data: unknown): JsonWsMessage {
   const parsed = JSON.parse(decodeWsText(data)) as unknown
   if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error('Invalid WebSocket message payload')
+    throw new Error(t('Invalid WebSocket message payload'))
   }
   // JSON-RPC 2.0 envelope — preserve all original fields so the router can
   // correlate request ids and forward notifications unchanged.
@@ -124,7 +126,7 @@ export function decodeJsonWsMessage(data: unknown): JsonWsMessage {
   }
   // Legacy proprietary envelope `{ type, payload? }`.
   if (!('type' in parsed) || typeof parsed.type !== 'string') {
-    throw new Error('Invalid WebSocket message payload')
+    throw new Error(t('Invalid WebSocket message payload'))
   }
   return parsed as JsonWsMessage
 }

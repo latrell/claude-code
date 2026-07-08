@@ -2,6 +2,7 @@ import { Writable, Readable } from 'node:stream'
 import { spawn } from 'node:child_process'
 import * as acp from '@agentclientprotocol/sdk'
 import type { WSContext } from 'hono/ws'
+import { tf } from '../../../../src/i18n/t.js'
 import { send, sendJsonRpcError } from './client-send.js'
 import { cancelPendingPermissions, createClient } from './acp-client.js'
 import { buildAgentEnv } from './permission-mode.js'
@@ -138,7 +139,7 @@ export async function handleConnect(ws: WSContext): Promise<void> {
       state,
       null,
       JSONRPC_INTERNAL_ERROR,
-      `Failed to connect: ${(error as Error).message}`,
+      tf('Failed to connect: {message}', { message: (error as Error).message }),
     )
   }
 }

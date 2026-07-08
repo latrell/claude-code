@@ -29,11 +29,11 @@ const REMEMBER_DIRECTORY_OPTIONS: Array<{
 }> = [
   {
     value: 'yes-session',
-    label: 'Yes, for this session',
+    label: t('Yes, for this session'),
   },
   {
     value: 'yes-remember',
-    label: 'Yes, and remember this directory',
+    label: t('Yes, and remember this directory'),
   },
   {
     value: 'no',
@@ -44,7 +44,7 @@ const REMEMBER_DIRECTORY_OPTIONS: Array<{
 function PermissionDescription(): React.ReactNode {
   return (
     <Text dimColor>
-      Claude Code will be able to read files in this directory and make edits when auto-accept edits is on.
+      {t('Claude Code will be able to read files in this directory and make edits when auto-accept edits is on.')}
     </Text>
   );
 }
@@ -75,11 +75,11 @@ function DirectoryInput({
 }): React.ReactNode {
   return (
     <Box flexDirection="column">
-      <Text>Enter the path to the directory:</Text>
+      <Text>{t('Enter the path to the directory:')}</Text>
       <Box borderDimColor borderStyle="round" marginY={1} paddingLeft={1}>
         <TextInput
           showCursor
-          placeholder={`Directory path${figures.ellipsis}`}
+          placeholder={`${t('Directory path')}${figures.ellipsis}`}
           value={value}
           onChange={onChange}
           onSubmit={onSubmit}
@@ -216,7 +216,7 @@ export function AddWorkspaceDirectory({
   return (
     <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       <Dialog
-        title="Add directory to workspace"
+        title={t('Add directory to workspace')}
         onCancel={onCancel}
         color="permission"
         isCancelActive={false}

@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { type KeyboardEvent, Box, Byline, KeyboardShortcutHint, Text } from '@anthropic/ink';
+import { t, tf } from '../../../../i18n/t.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import type { Tools } from '../../../../Tool.js';
@@ -45,9 +46,9 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
 
   const getToolsDisplay = (toolNames: string[] | undefined): string => {
     // undefined means "all tools" per PR semantic
-    if (toolNames === undefined) return 'All tools';
-    if (toolNames.length === 0) return 'None';
-    if (toolNames.length === 1) return toolNames[0] || 'None';
+    if (toolNames === undefined) return t('All tools');
+    if (toolNames.length === 0) return t('None');
+    if (toolNames.length === 1) return toolNames[0] || t('None');
     if (toolNames.length === 2) return toolNames.join(' and ');
     return `${toolNames.slice(0, -1).join(', ')}, and ${toolNames[toolNames.length - 1]}`;
   };
@@ -55,13 +56,13 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
   // Compute memory display outside JSX
   const memoryDisplayElement = isAutoMemoryEnabled() ? (
     <Text>
-      <Text bold>Memory</Text>: {getMemoryScopeDisplay(agent.memory)}
+      <Text bold>{t('Memory')}</Text>: {getMemoryScopeDisplay(agent.memory)}
     </Text>
   ) : null;
 
   return (
     <WizardDialogLayout
-      subtitle="Confirm and save"
+      subtitle={t('Confirm and save')}
       footerText={
         <Byline>
           <KeyboardShortcutHint shortcut="s/Enter" action="save" />
@@ -72,26 +73,26 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
     >
       <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
         <Text>
-          <Text bold>Name</Text>: {agent.agentType}
+          <Text bold>{t('Name')}</Text>: {agent.agentType}
         </Text>
         <Text>
-          <Text bold>Location</Text>:{' '}
+          <Text bold>{t('Location')}</Text>:{' '}
           {getNewRelativeAgentFilePath({
             source: wizardData.location!,
             agentType: agent.agentType,
           })}
         </Text>
         <Text>
-          <Text bold>Tools</Text>: {getToolsDisplay(agent.tools)}
+          <Text bold>{t('Tools')}</Text>: {getToolsDisplay(agent.tools)}
         </Text>
         <Text>
-          <Text bold>Model</Text>: {getAgentModelDisplay(agent.model)}
+          <Text bold>{t('Model')}</Text>: {getAgentModelDisplay(agent.model)}
         </Text>
         {memoryDisplayElement}
 
         <Box marginTop={1}>
           <Text>
-            <Text bold>Description</Text> (tells Claude when to use this agent):
+            <Text bold>{t('Description')}</Text> {t('(tells Claude when to use this agent):')}
           </Text>
         </Box>
         <Box marginLeft={2} marginTop={1}>
@@ -100,7 +101,7 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
 
         <Box marginTop={1}>
           <Text>
-            <Text bold>System prompt</Text>:
+            <Text bold>{t('System prompt')}</Text>:
           </Text>
         </Box>
         <Box marginLeft={2} marginTop={1}>
@@ -109,7 +110,7 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
 
         {validation.warnings.length > 0 && (
           <Box marginTop={1} flexDirection="column">
-            <Text color="warning">Warnings:</Text>
+            <Text color="warning">{t('Warnings:')}</Text>
             {validation.warnings.map((warning, i) => (
               <Text key={i} dimColor>
                 {' '}
@@ -121,7 +122,7 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
 
         {validation.errors.length > 0 && (
           <Box marginTop={1} flexDirection="column">
-            <Text color="error">Errors:</Text>
+            <Text color="error">{t('Errors:')}</Text>
             {validation.errors.map((err, i) => (
               <Text key={i} color="error">
                 {' '}
@@ -139,7 +140,8 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
 
         <Box marginTop={2}>
           <Text color="success">
-            Press <Text bold>s</Text> or <Text bold>Enter</Text> to save, <Text bold>e</Text> to save and edit
+            {t('Press')} <Text bold>s</Text> {t('or')} <Text bold>Enter</Text> {t('to save')}, <Text bold>e</Text>{' '}
+            {t('to save and edit')}
           </Text>
         </Box>
       </Box>

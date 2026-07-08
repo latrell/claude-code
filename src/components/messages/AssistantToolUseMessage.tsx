@@ -175,7 +175,7 @@ export function AssistantToolUseMessage({
           (isClassifierChecking ? (
             <MessageResponse height={1}>
               <Text dimColor>
-                {isAutoClassifier ? 'Auto classifier checking\u2026' : 'Bash classifier checking\u2026'}
+                {isAutoClassifier ? t('Auto classifier checking\u2026') : t('Bash classifier checking\u2026')}
               </Text>
             </MessageResponse>
           ) : isWaitingForPermission ? (

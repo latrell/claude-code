@@ -29,6 +29,7 @@ import { attachNdjsonFramer } from './ndjsonFramer.js'
 import { attachUdsResponseReader } from './udsResponseReader.js'
 import { logError } from './log.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
+import { t } from '../i18n/t.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -715,7 +716,7 @@ export async function sendUdsMessage(
   const { createConnection } = await import('net')
   const token = opts.authToken ?? authToken
   if (!token) {
-    throw new Error('Cannot send UDS message without auth token')
+    throw new Error(t('Cannot send UDS message without auth token'))
   }
   const outbound = withRequestAuthToken(
     {

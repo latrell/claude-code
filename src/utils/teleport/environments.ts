@@ -5,6 +5,7 @@ import { getClaudeAIOAuthTokens } from '../auth.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import { getOAuthHeaders } from './api.js'
+import { t } from '../../i18n/t.js'
 
 export type EnvironmentKind = 'anthropic_cloud' | 'byoc' | 'bridge'
 export type EnvironmentState = 'active'
@@ -39,7 +40,7 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
 
   const orgUUID = await getOrganizationUUID()
   if (!orgUUID) {
-    throw new Error('Unable to get organization UUID')
+    throw new Error(t('Unable to get organization UUID'))
   }
 
   const url = `${getOauthConfig().BASE_API_URL}/v1/environment_providers`
@@ -78,11 +79,11 @@ export async function createDefaultCloudEnvironment(
 ): Promise<EnvironmentResource> {
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (!accessToken) {
-    throw new Error('No access token available')
+    throw new Error(t('No access token available'))
   }
   const orgUUID = await getOrganizationUUID()
   if (!orgUUID) {
-    throw new Error('Unable to get organization UUID')
+    throw new Error(t('Unable to get organization UUID'))
   }
 
   const url = `${getOauthConfig().BASE_API_URL}/v1/environment_providers/cloud/create`

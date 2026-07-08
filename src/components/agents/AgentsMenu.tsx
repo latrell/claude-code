@@ -307,7 +307,7 @@ export function AgentsMenu({ tools, onExit }: Props): React.ReactNode {
               />
             </Box>
           </Dialog>
-          <AgentNavigationFooter instructions="Press ↑↓ to navigate, Enter to select, Esc to cancel" />
+          <AgentNavigationFooter instructions={t('Press \u2191\u2193 to navigate, Enter to select, Esc to cancel')} />
         </>
       );
     }

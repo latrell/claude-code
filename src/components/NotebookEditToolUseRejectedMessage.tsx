@@ -4,6 +4,7 @@ import { getCwd } from 'src/utils/cwd.js';
 import { Box, Text } from '@anthropic/ink';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';
+import { t, tf } from '../i18n/t.js';
 
 type Props = {
   notebook_path: string;
@@ -28,11 +29,11 @@ export function NotebookEditToolUseRejectedMessage({
     <MessageResponse>
       <Box flexDirection="column">
         <Box flexDirection="row">
-          <Text color="subtle">User rejected </Text>
+          <Text color="subtle">{t('User rejected ')}</Text>
           <Text bold color="subtle">
             {verbose ? notebook_path : relative(getCwd(), notebook_path)}
           </Text>
-          <Text color="subtle"> at cell {cell_id}</Text>
+          <Text color="subtle">{tf(' at cell {cell_id}', { cell_id })}</Text>
         </Box>
         {edit_mode !== 'delete' && (
           <Box marginTop={1} flexDirection="column">

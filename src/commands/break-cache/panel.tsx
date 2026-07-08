@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Box, Dialog, Text, useInput } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { callBreakCache } from './index.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type BreakCacheAction = {
   label: string;
@@ -75,8 +75,8 @@ function BreakCachePanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
 
   return (
     <Dialog
-      title="Break Cache"
-      subtitle={`${actions.length} actions`}
+      title={t('Break Cache')}
+      subtitle={tf('{count} actions', { count: String(actions.length) })}
       onCancel={() => onDone(t('Break-cache panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide
@@ -89,7 +89,7 @@ function BreakCachePanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
           </Box>
         ))}
         <Box marginTop={1}>
-          <Text dimColor>↑/↓ select · Enter run · Esc close</Text>
+          <Text dimColor>{t('↑/↓ select · Enter run · Esc close')}</Text>
         </Box>
       </Box>
     </Dialog>

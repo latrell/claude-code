@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { Text } from '@anthropic/ink';
+import { t, tf } from '../../i18n/t.js';
 import { logEvent } from '../../services/analytics/index.js';
 import {
   formatGrantAmount,
@@ -75,15 +76,15 @@ export function incrementOverageCreditUpsellSeenCount(): void {
 
 // Copy from "OC & Bulk Overages copy" doc (#6 — CLI /usage)
 function getUsageText(amount: string): string {
-  return `${amount} in extra usage for third-party apps · /extra-usage`;
+  return tf('{amount} in extra usage for third-party apps · /extra-usage', { amount });
 }
 
 // Copy from "OC & Bulk Overages copy" doc (#4 — CLI Welcome screen).
 // Char budgets: title ≤19, subtitle ≤48.
-const FEED_SUBTITLE = 'On us. Works on third-party apps · /extra-usage';
+const FEED_SUBTITLE = t('On us. Works on third-party apps · /extra-usage');
 
 function getFeedTitle(amount: string): string {
-  return `${amount} in extra usage`;
+  return tf('{amount} in extra usage', { amount });
 }
 
 type Props = { maxWidth?: number; twoLine?: boolean };
@@ -126,7 +127,7 @@ export function OverageCreditUpsell({ maxWidth, twoLine }: Props): React.ReactNo
 export function createOverageCreditFeed(): FeedConfig {
   const info = getCachedOverageCreditGrant();
   const amount = info ? formatGrantAmount(info) : null;
-  const title = amount ? getFeedTitle(amount) : 'extra usage credit';
+  const title = amount ? getFeedTitle(amount) : t('extra usage credit');
   return {
     title,
     lines: [],

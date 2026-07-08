@@ -350,8 +350,8 @@ function ThinkbackMenu({
 
   return (
     <Dialog
-      title="Think Back on 2025 with Claude Code"
-      subtitle="Generate your 2025 Claude Code Think Back (takes a few minutes to run)"
+      title={t('Think Back on 2025 with Claude Code')}
+      subtitle={t('Generate your 2025 Claude Code Think Back (takes a few minutes to run)')}
       onCancel={handleCancel}
       color="claude"
     >
@@ -359,8 +359,8 @@ function ThinkbackMenu({
         {/* Description for first-time users */}
         {!hasGenerated && (
           <Box flexDirection="column">
-            <Text>Relive your year of coding with Claude.</Text>
-            <Text dimColor>{"We'll create a personalized ASCII animation celebrating your journey."}</Text>
+            <Text>{t('Relive your year of coding with Claude.')}</Text>
+            <Text dimColor>{t("We'll create a personalized ASCII animation celebrating your journey.")}</Text>
           </Box>
         )}
 
@@ -398,9 +398,14 @@ function ThinkbackFlow({
     (message: string): void => {
       setInstallError(message);
       // Call onDone with the error message so the model can continue
-      onDone(`Error with thinkback: ${message}. Try running /plugin to manually install the think-back plugin.`, {
-        display: 'system',
-      });
+      onDone(
+        tf('Error with thinkback: {msg}. Try running /plugin to manually install the think-back plugin.', {
+          msg: message,
+        }),
+        {
+          display: 'system',
+        },
+      );
     },
     [onDone],
   );
@@ -445,8 +450,10 @@ function ThinkbackFlow({
   if (installError) {
     return (
       <Box flexDirection="column">
-        <Text color="error">Error: {installError}</Text>
-        <Text dimColor>Try running /plugin to manually install the think-back plugin.</Text>
+        <Text color="error">
+          {t('Error:')} {installError}
+        </Text>
+        <Text dimColor>{t('Try running /plugin to manually install the think-back plugin.')}</Text>
       </Box>
     );
   }
@@ -459,7 +466,7 @@ function ThinkbackFlow({
     return (
       <Box>
         <Spinner />
-        <Text>Loading thinkback skill…</Text>
+        <Text>{t('Loading thinkback skill…')}</Text>
       </Box>
     );
   }

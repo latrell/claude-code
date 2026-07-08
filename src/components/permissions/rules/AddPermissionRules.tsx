@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useCallback } from 'react';
 import { Select } from '../../../components/CustomSelect/select.js';
 import { Box, Dialog, Text } from '@anthropic/ink';
+import { t, tf } from '../../../i18n/t.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
 import type {
   PermissionBehavior,
@@ -22,20 +23,20 @@ export function optionForPermissionSaveDestination(saveDestination: EditableSett
   switch (saveDestination) {
     case 'localSettings':
       return {
-        label: 'Project settings (local)',
-        description: `Saved in ${getRelativeSettingsFilePathForSource('localSettings')}`,
+        label: t('Project settings (local)'),
+        description: tf('Saved in {path}', { path: getRelativeSettingsFilePathForSource('localSettings') }),
         value: saveDestination,
       };
     case 'projectSettings':
       return {
-        label: 'Project settings',
-        description: `Checked in at ${getRelativeSettingsFilePathForSource('projectSettings')}`,
+        label: t('Project settings'),
+        description: tf('Checked in at {path}', { path: getRelativeSettingsFilePathForSource('projectSettings') }),
         value: saveDestination,
       };
     case 'userSettings':
       return {
-        label: 'User settings',
-        description: `Saved in at ~/.claude/settings.json`,
+        label: t('User settings'),
+        description: t('Saved in at ~/.claude/settings.json'),
         value: saveDestination,
       };
   }
@@ -111,7 +112,10 @@ export function AddPermissionRules({
     [onAddRules, onCancel, ruleValues, ruleBehavior, initialContext, setToolPermissionContext],
   );
 
-  const title = `Add ${ruleBehavior} permission ${plural(ruleValues.length, 'rule')}`;
+  const title = tf('Add {behavior} permission {ruleCount}', {
+    behavior: ruleBehavior,
+    ruleCount: plural(ruleValues.length, 'rule'),
+  });
 
   return (
     <Dialog title={title} onCancel={onCancel} color="permission">
@@ -126,7 +130,7 @@ export function AddPermissionRules({
 
       <Box flexDirection="column" marginY={1}>
         <Text>
-          {ruleValues.length === 1 ? 'Where should this rule be saved?' : 'Where should these rules be saved?'}
+          {ruleValues.length === 1 ? t('Where should this rule be saved?') : t('Where should these rules be saved?')}
         </Text>
         <Select options={allOptions} onChange={onSelect} />
       </Box>
