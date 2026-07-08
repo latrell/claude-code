@@ -142,6 +142,28 @@ describe('registerConnectionFromProviderLogin', () => {
     expect(conns[0]?.kind).toBe('anthropic-api')
     expect(conns[0]?.apiKey).toBe('tok')
   })
+
+  test('re-login with cosmetic baseUrl variants updates instead of duplicating', () => {
+    registerConnectionFromProviderLogin('anthropic', {
+      ANTHROPIC_BASE_URL: 'https://gw.example.com',
+      ANTHROPIC_AUTH_TOKEN: 'tok',
+    })
+    // Same endpoint entered with an explicit /v1 suffix and trailing slash
+    registerConnectionFromProviderLogin('anthropic', {
+      ANTHROPIC_BASE_URL: 'https://gw.example.com/v1/',
+      ANTHROPIC_AUTH_TOKEN: 'tok',
+    })
+    const conns = listConnections()
+    expect(conns).toHaveLength(1)
+    expect(conns[0]?.baseUrl).toBe('https://gw.example.com/v1/')
+
+    // Genuinely different path prefix on the same host = new connection
+    registerConnectionFromProviderLogin('anthropic', {
+      ANTHROPIC_BASE_URL: 'https://gw.example.com/other/v1',
+      ANTHROPIC_AUTH_TOKEN: 'tok',
+    })
+    expect(listConnections()).toHaveLength(2)
+  })
 })
 
 describe('registerConnectionFromOAuthLogin', () => {

@@ -21,13 +21,24 @@ import {
 } from './store.js'
 import type { Connection, TierModels } from './types.js'
 
+/**
+ * Normalize a base URL for signature comparison: the same endpoint is often
+ * entered with cosmetic variations (trailing slash, explicit `/v1` suffix
+ * that SDK clients append themselves). Treating those as distinct made
+ * re-logins duplicate the connection instead of updating it.
+ */
+function normalizeBaseUrl(baseUrl: string | undefined): string {
+  if (!baseUrl) return ''
+  return baseUrl.trim().toLowerCase().replace(/\/+$/, '').replace(/\/v1$/, '')
+}
+
 function findBySignature(
   candidate: Pick<Connection, 'kind' | 'baseUrl' | 'apiKey' | 'credentialRef'>,
 ): Connection | undefined {
   return listConnections().find(
     c =>
       c.kind === candidate.kind &&
-      (c.baseUrl ?? '') === (candidate.baseUrl ?? '') &&
+      normalizeBaseUrl(c.baseUrl) === normalizeBaseUrl(candidate.baseUrl) &&
       (c.apiKey ?? '') === (candidate.apiKey ?? '') &&
       (c.credentialRef ?? '') === (candidate.credentialRef ?? ''),
   )
