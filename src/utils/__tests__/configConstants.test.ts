@@ -28,6 +28,7 @@ describe('NOTIFICATION_CHANNELS', () => {
       'terminal_bell',
       'kitty',
       'ghostty',
+      'meow',
       'notifications_disabled',
     ])
   })

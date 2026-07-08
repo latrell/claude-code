@@ -61,6 +61,8 @@ async function sendToChannel(
       case 'ghostty':
         terminal.notifyGhostty({ ...opts, title })
         return 'ghostty'
+      case 'meow':
+        return await sendMeow(opts, title)
       case 'terminal_bell':
         terminal.notifyBell()
         return 'terminal_bell'
@@ -105,6 +107,30 @@ async function sendAuto(
 
 function generateKittyId(): number {
   return Math.floor(Math.random() * 10000)
+}
+
+const MEOW_API_BASE = 'https://api.chuckfang.com'
+
+/**
+ * Push via the MeoW service (https://www.chuckfang.com/MeoW/). The nickname
+ * identifies the recipient — there is no other credential.
+ */
+async function sendMeow(
+  opts: NotificationOptions,
+  title: string,
+): Promise<string> {
+  const nickname = getGlobalConfig().meowNotifNickname?.trim()
+  if (!nickname) {
+    return 'meow_no_nickname'
+  }
+
+  const res = await fetch(`${MEOW_API_BASE}/${encodeURIComponent(nickname)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, msg: opts.message }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  return res.ok ? 'meow' : 'error'
 }
 
 async function isAppleTerminalBellDisabled(): Promise<boolean> {

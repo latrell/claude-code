@@ -51,6 +51,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description: 'Preferred notification channel',
     options: NOTIFICATION_CHANNELS,
   },
+  meowNotifNickname: {
+    source: 'global',
+    type: 'string',
+    description:
+      'Nickname for the MeoW push service (used when preferredNotifChannel is "meow")',
+  },
   autoCompactEnabled: {
     source: 'global',
     type: 'boolean',

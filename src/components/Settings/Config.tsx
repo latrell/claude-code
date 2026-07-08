@@ -47,6 +47,7 @@ import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialo
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '@anthropic/ink';
 import { Select } from '../CustomSelect/index.js';
+import TextInput from '../TextInput.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
 import {
@@ -133,6 +134,7 @@ type SubMenu =
   | 'OutputStyle'
   | 'ChannelDowngrade'
   | 'Language'
+  | 'MeowNickname'
   | 'EnableAutoUpdates';
 export function Config({
   onClose,
@@ -230,6 +232,8 @@ export function Config({
   const isDirty = React.useRef(false);
   const [showThinkingWarning, setShowThinkingWarning] = useState(false);
   const [showSubmenu, setShowSubmenu] = useState<SubMenu | null>(null);
+  const [meowNicknameInput, setMeowNicknameInput] = useState('');
+  const [meowNicknameCursorOffset, setMeowNicknameCursorOffset] = useState(0);
   const {
     query: searchQuery,
     setQuery: setSearchQuery,
@@ -753,7 +757,16 @@ export function Config({
       id: 'notifChannel',
       label: feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION') ? t('Local notifications') : t('Notifications'),
       value: globalConfig.preferredNotifChannel,
-      options: ['auto', 'iterm2', 'terminal_bell', 'iterm2_with_bell', 'kitty', 'ghostty', 'notifications_disabled'],
+      options: [
+        'auto',
+        'iterm2',
+        'terminal_bell',
+        'iterm2_with_bell',
+        'kitty',
+        'ghostty',
+        'meow',
+        'notifications_disabled',
+      ],
       type: 'enum',
       onChange(notifChannel: GlobalConfig['preferredNotifChannel']) {
         saveGlobalConfig(current => ({
@@ -766,6 +779,19 @@ export function Config({
         });
       },
     },
+    ...(globalConfig.preferredNotifChannel === 'meow'
+      ? [
+          {
+            id: 'meowNotifNickname',
+            label: t('MeoW nickname'),
+            value: globalConfig.meowNotifNickname?.trim() || t('(not set)'),
+            type: 'managedEnum' as const,
+            onChange() {
+              // Handled via toggleSetting -> 'MeowNickname' submenu
+            },
+          },
+        ]
+      : []),
     ...(feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
       ? [
           {
@@ -1279,6 +1305,9 @@ export function Config({
     if (globalConfig.preferredNotifChannel !== initialConfig.current.preferredNotifChannel) {
       formattedChanges.push(formatConfigChange('notifications', globalConfig.preferredNotifChannel));
     }
+    if (globalConfig.meowNotifNickname !== initialConfig.current.meowNotifNickname) {
+      formattedChanges.push(formatConfigChange('MeoW nickname', globalConfig.meowNotifNickname ?? ''));
+    }
     if (currentOutputStyle !== initialOutputStyle.current) {
       formattedChanges.push(formatConfigChange('output style', currentOutputStyle));
     }
@@ -1519,6 +1548,15 @@ export function Config({
           setTabsHidden(true);
           return;
       }
+    }
+
+    if (setting.id === 'meowNotifNickname') {
+      const currentNickname = getGlobalConfig().meowNotifNickname ?? '';
+      setMeowNicknameInput(currentNickname);
+      setMeowNicknameCursorOffset(currentNickname.length);
+      setShowSubmenu('MeowNickname');
+      setTabsHidden(true);
+      return;
     }
 
     if (setting.id === 'autoUpdatesChannel') {
@@ -1869,6 +1907,53 @@ export function Config({
             </Byline>
           </Text>
         </>
+      ) : showSubmenu === 'MeowNickname' ? (
+        <Dialog
+          title={t('MeoW nickname')}
+          onCancel={() => {
+            setShowSubmenu(null);
+            setTabsHidden(false);
+          }}
+          hideBorder
+          hideInputGuide
+        >
+          <Text dimColor>{t('Nickname used by the MeoW push service (chuckfang.com) to deliver notifications.')}</Text>
+          <TextInput
+            value={meowNicknameInput}
+            onChange={setMeowNicknameInput}
+            onSubmit={value => {
+              isDirty.current = true;
+              const meowNotifNickname = value.trim() || undefined;
+              saveGlobalConfig(current => ({
+                ...current,
+                meowNotifNickname,
+              }));
+              setGlobalConfig({
+                ...getGlobalConfig(),
+                meowNotifNickname,
+              });
+              setShowSubmenu(null);
+              setTabsHidden(false);
+            }}
+            placeholder={t('e.g. my-nickname')}
+            columns={60}
+            cursorOffset={meowNicknameCursorOffset}
+            onChangeCursorOffset={setMeowNicknameCursorOffset}
+            showCursor
+            focus
+          />
+          <Text dimColor>
+            <Byline>
+              <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+              <ConfigurableShortcutHint
+                action="confirm:no"
+                context="Settings"
+                fallback="Esc"
+                description={t('cancel')}
+              />
+            </Byline>
+          </Text>
+        </Dialog>
       ) : showSubmenu === 'EnableAutoUpdates' ? (
         <Dialog
           title={t('Enable Auto-Updates')}
@@ -2151,6 +2236,7 @@ function getConfigChangeLabel(setting: string): string {
     'Default view': t('Default view'),
     theme: t('Theme'),
     notifications: t('Notifications'),
+    'MeoW nickname': t('MeoW nickname'),
     'output style': t('Output style'),
     'response language': t('Language'),
     'editor mode': t('Editor mode'),
@@ -2239,6 +2325,12 @@ function NotifChannelLabel({ value }: { value: string }): React.ReactNode {
       );
     case 'iterm2_with_bell':
       return t('iTerm2 w/ Bell');
+    case 'meow':
+      return (
+        <Text>
+          MeoW <Text dimColor>(chuckfang.com)</Text>
+        </Text>
+      );
     case 'notifications_disabled':
       return t('Disabled');
     default:

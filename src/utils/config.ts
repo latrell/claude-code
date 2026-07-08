@@ -213,6 +213,11 @@ export type GlobalConfig = {
   claudeAiMcpEverConnected?: string[]
   preferredNotifChannel: NotificationChannel
   /**
+   * Nickname for the MeoW push service (https://www.chuckfang.com/MeoW/).
+   * Required when preferredNotifChannel is 'meow'.
+   */
+  meowNotifNickname?: string
+  /**
    * @deprecated. Use the Notification hook instead (docs/hooks.md).
    */
   customNotifyCommand?: string
@@ -637,6 +642,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'theme',
   'verbose',
   'preferredNotifChannel',
+  'meowNotifNickname',
   'shiftEnterKeyBindingInstalled',
   'editorMode',
   'hasUsedBackslashReturn',
