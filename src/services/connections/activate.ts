@@ -192,6 +192,7 @@ export function envForConnection(
     case 'anthropic-api': {
       env.ANTHROPIC_BASE_URL = connection.baseUrl
       env.ANTHROPIC_AUTH_TOKEN = connection.apiKey
+      env.ANTHROPIC_DEFAULT_MODEL = connectionDefault
       env.ANTHROPIC_DEFAULT_HAIKU_MODEL = tiers?.haiku
       env.ANTHROPIC_DEFAULT_SONNET_MODEL = tiers?.sonnet
       env.ANTHROPIC_DEFAULT_OPUS_MODEL = tiers?.opus
