@@ -2549,6 +2549,7 @@ const zh: Record<string, string> = {
   'Use for this session (subagents)': '本会话使用（子 agent）',
   'Set as global default (subagents)': '设为全局默认（子 agent）',
   Delete: '删除',
+  'Edit connection': '编辑连接',
   'Rename connection': '重命名连接',
   'Delete connection "{label}"? Stored credentials for it will be removed.':
     '删除连接“{label}”？其存储的凭据也将被移除。',

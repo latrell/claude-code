@@ -26,7 +26,7 @@ import {
   getDefaultAssignment,
   listConnections,
   removeConnection,
-  renameConnection,
+  upsertConnection,
 } from '../../services/connections/store.js';
 import type { AgentSlot, Connection, ConnectionKind } from '../../services/connections/types.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
@@ -35,7 +35,7 @@ import { t, tf } from '../../i18n/t.js';
 import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
 import { AddConnectionWizard } from './AddConnectionWizard.js';
-import { ConnectionForm } from './ConnectionForm.js';
+import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
 
 export type ActivationScope = 'session' | 'global';
 
@@ -75,7 +75,7 @@ type View =
       next: { slot: AgentSlot; scope: ActivationScope } | null;
     }
   | { mode: 'add' }
-  | { mode: 'rename'; connectionId: string }
+  | { mode: 'edit'; connectionId: string }
   | { mode: 'confirm-delete'; connectionId: string }
   | { mode: 'busy'; message: string }
   | { mode: 'error'; message: string; back: View };
@@ -394,7 +394,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                       },
                     ]
                   : []),
-                { label: t('Rename'), value: 'rename' },
+                { label: t('Edit'), value: 'edit' },
                 { label: t('Delete'), value: 'delete' },
                 { label: t('Back'), value: 'back' },
               ]}
@@ -413,8 +413,8 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 }
                 if (value === 'ctx') {
                   setView({ mode: 'ctx-model-pick', connectionId: connection.id });
-                } else if (value === 'rename') {
-                  setView({ mode: 'rename', connectionId: connection.id });
+                } else if (value === 'edit') {
+                  setView({ mode: 'edit', connectionId: connection.id });
                 } else if (value === 'delete') {
                   setView({ mode: 'confirm-delete', connectionId: connection.id });
                 } else {
@@ -640,27 +640,139 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           />
         );
 
-      case 'rename': {
+      case 'edit': {
         const connection = connections.find(c => c.id === view.connectionId);
         if (!connection) {
           setView({ mode: 'list' });
           return null;
         }
+
+        const isCursorManual = connection.kind === 'cursor' && !connection.credentialRef;
+        const isApiKey =
+          connection.kind === 'openai-compat' ||
+          connection.kind === 'anthropic-api' ||
+          connection.kind === 'gemini' ||
+          connection.kind === 'grok' ||
+          isCursorManual;
+        const hasPreset = Boolean(connection.presetId);
+
+        const fields: ConnectionFormField[] = [
+          {
+            key: 'label',
+            label: t('Name'),
+            required: true,
+            initialValue: connection.label,
+          },
+        ];
+
+        if (connection.kind === 'anthropic-oauth' && connection.accountEmail) {
+          fields.push({
+            key: 'accountEmail',
+            label: t('Email'),
+            initialValue: connection.accountEmail,
+            locked: true,
+          });
+        }
+
+        if (isApiKey) {
+          if (!isCursorManual) {
+            fields.push({
+              key: 'baseUrl',
+              label: t('Base URL'),
+              url: true,
+              required: connection.kind === 'openai-compat' || connection.kind === 'anthropic-api',
+              initialValue: connection.baseUrl ?? '',
+              locked: hasPreset,
+              placeholder:
+                connection.kind === 'gemini'
+                  ? t('optional — default Gemini endpoint')
+                  : connection.kind === 'grok'
+                    ? 'https://api.x.ai/v1'
+                    : 'https://api.example.com/v1',
+            });
+          }
+          fields.push({
+            key: 'apiKey',
+            label: isCursorManual ? t('Access token') : t('API Key'),
+            mask: true,
+            required: !isCursorManual,
+            initialValue: connection.apiKey ?? '',
+            placeholder: isCursorManual ? undefined : 'sk-…',
+          });
+          if (isCursorManual) {
+            fields.push({
+              key: 'machineId',
+              label: t('Machine ID'),
+              initialValue: connection.machineId ?? '',
+              placeholder: t('optional — auto-detected from the Cursor IDE'),
+            });
+          }
+          if (!hasPreset || isCursorManual) {
+            fields.push(
+              {
+                key: 'haiku',
+                label: t('Haiku'),
+                initialValue: connection.tierModels?.haiku ?? '',
+                placeholder: t('model for fast/background tasks (optional)'),
+              },
+              {
+                key: 'sonnet',
+                label: t('Sonnet'),
+                initialValue: connection.tierModels?.sonnet ?? '',
+                placeholder: t('default model (recommended)'),
+              },
+              {
+                key: 'opus',
+                label: t('Opus'),
+                initialValue: connection.tierModels?.opus ?? '',
+                placeholder: t('model for complex tasks (optional)'),
+              },
+            );
+          }
+        }
+
         return (
           <ConnectionForm
-            title={t('Rename connection')}
-            fields={[
-              {
-                key: 'label',
-                label: t('Name'),
-                required: true,
-                initialValue: connection.label,
-              },
-            ]}
-            onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
+            title={t('Edit connection')}
+            fields={fields}
+            submitError={submitError}
+            onCancel={() => {
+              setSubmitError(null);
+              setView({ mode: 'menu', connectionId: connection.id });
+            }}
             onSubmit={values => {
-              renameConnection(connection.id, values['label'] ?? connection.label);
+              const updated: Connection = {
+                ...connection,
+                label: values['label'] || connection.label,
+              };
+
+              if (isApiKey) {
+                if (!isCursorManual && !hasPreset) {
+                  updated.baseUrl = values['baseUrl'] || undefined;
+                }
+                updated.apiKey = values['apiKey'] || undefined;
+                if (isCursorManual) {
+                  updated.machineId = values['machineId'] || undefined;
+                }
+                if (!hasPreset || isCursorManual) {
+                  const haiku = values['haiku']?.trim();
+                  const sonnet = values['sonnet']?.trim();
+                  const opus = values['opus']?.trim();
+                  if (haiku || sonnet || opus) {
+                    updated.tierModels = {
+                      ...(haiku && { haiku }),
+                      ...(sonnet && { sonnet }),
+                      ...(opus && { opus }),
+                    };
+                  } else {
+                    delete updated.tierModels;
+                  }
+                }
+              }
+
+              upsertConnection(updated);
               refresh();
+              setSubmitError(null);
               setView({ mode: 'menu', connectionId: connection.id });
             }}
           />
@@ -732,7 +844,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   // unmount hook (which invalidates the previous frame for a full repaint)
   // never fires, and rows from the taller previous view linger on screen.
   const viewKey =
-    view.mode === 'menu' || view.mode === 'rename' || view.mode === 'confirm-delete' || view.mode === 'ctx-model-pick'
+    view.mode === 'menu' || view.mode === 'edit' || view.mode === 'confirm-delete' || view.mode === 'ctx-model-pick'
       ? `${view.mode}:${view.connectionId}`
       : view.mode === 'model-pick'
         ? `${view.mode}:${view.connectionId}:${view.slot}:${view.scope}`
