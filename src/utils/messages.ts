@@ -127,6 +127,7 @@ import {
   COMMAND_MESSAGE_TAG,
   COMMAND_NAME_TAG,
   LOCAL_COMMAND_CAVEAT_TAG,
+  LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
 } from '../constants/xml.js'
 import { DiagnosticTrackingService } from '../services/diagnosticTracking.js'
@@ -465,6 +466,7 @@ export function createUserMessage({
   isVisibleInTranscriptOnly,
   isVirtual,
   isCompactSummary,
+  isLocalCommandBreadcrumb,
   summarizeMetadata,
   toolUseResult,
   mcpMeta,
@@ -480,6 +482,12 @@ export function createUserMessage({
   isVisibleInTranscriptOnly?: true
   isVirtual?: true
   isCompactSummary?: true
+  /**
+   * Local slash command breadcrumb/output — UI/transcript only, stripped
+   * from API requests by normalizeMessagesForAPI. Explicit `false` opts
+   * out of the legacy content-prefix fallback filter.
+   */
+  isLocalCommandBreadcrumb?: boolean
   toolUseResult?: unknown // Matches tool's `Output` type
   /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
   mcpMeta?: {
@@ -511,6 +519,7 @@ export function createUserMessage({
     isVisibleInTranscriptOnly,
     isVirtual,
     isCompactSummary,
+    isLocalCommandBreadcrumb,
     summarizeMetadata,
     uuid: (uuid as UUID | undefined) || randomUUID(),
     timestamp: timestamp ?? new Date().toISOString(),
@@ -585,19 +594,23 @@ export function formatCommandInputTags(
 }
 
 /**
- * Builds the breadcrumb trail the SDK set_model control handler injects
- * so the model can see mid-conversation switches. Same shape the CLI's
- * /model command produces via processSlashCommand.
+ * Builds the breadcrumb trail the SDK set_model control handler injects.
+ * Same shape the CLI's /model command produces via processSlashCommand:
+ * shown in the transcript/SDK replay stream, but flagged as local command
+ * feedback so normalizeMessagesForAPI strips it from API requests.
  */
 export function createModelSwitchBreadcrumbs(
   modelArg: string,
   resolvedDisplay: string,
 ): UserMessage[] {
   return [
-    createSyntheticUserCaveatMessage(),
-    createUserMessage({ content: formatCommandInputTags('model', modelArg) }),
+    createUserMessage({
+      content: formatCommandInputTags('model', modelArg),
+      isLocalCommandBreadcrumb: true,
+    }),
     createUserMessage({
       content: `<${LOCAL_COMMAND_STDOUT_TAG}>Set model to ${resolvedDisplay}</${LOCAL_COMMAND_STDOUT_TAG}>`,
+      isLocalCommandBreadcrumb: true,
     }),
   ]
 }
@@ -822,6 +835,7 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
                 structuredContent?: Record<string, unknown>
               },
               isMeta: uMsg.isMeta === true ? true : undefined,
+              isLocalCommandBreadcrumb: uMsg.isLocalCommandBreadcrumb,
               isVisibleInTranscriptOnly:
                 uMsg.isVisibleInTranscriptOnly === true ? true : undefined,
               isVirtual:
@@ -1826,6 +1840,57 @@ export function isSystemLocalCommandMessage(
   return message.type === 'system' && message.subtype === 'local_command'
 }
 
+// Content prefixes that identify legacy (pre-isLocalCommandBreadcrumb flag)
+// local slash command breadcrumbs and output in resumed transcripts.
+// NOTE: prompt-skill metadata starts with <command-message> (see
+// formatSlashCommandLoadingMetadata) and is deliberately NOT matched —
+// skill expansions must keep reaching the API.
+const LOCAL_COMMAND_API_EXCLUDED_PREFIXES = [
+  `<${COMMAND_NAME_TAG}>`,
+  `<${LOCAL_COMMAND_STDOUT_TAG}>`,
+  `<${LOCAL_COMMAND_STDERR_TAG}>`,
+] as const
+
+/**
+ * True for user messages that are local slash command breadcrumbs/output
+ * ("❯ /model" + its <local-command-stdout>). These are UI/transcript-only
+ * feedback and must never be sent to the model.
+ *
+ * - `isLocalCommandBreadcrumb: true` → excluded (set at creation time).
+ * - `isLocalCommandBreadcrumb: false` → kept (explicit opt-out, e.g. forked
+ *   skill results wrapped in <local-command-stdout> that the model should see).
+ * - Field absent (legacy transcripts persisted before the flag existed) →
+ *   fall back to matching the breadcrumb/output tag at the very start of the
+ *   message text, so --resume of old sessions filters consistently. Only the
+ *   leading text is matched to avoid false positives on real user prose.
+ */
+export function isLocalCommandBreadcrumbMessage(message: Message): boolean {
+  if (message.type !== 'user') {
+    return false
+  }
+  if (message.isLocalCommandBreadcrumb !== undefined) {
+    return message.isLocalCommandBreadcrumb === true
+  }
+  const content = message.message?.content
+  let leadingText: string | undefined
+  if (typeof content === 'string') {
+    leadingText = content
+  } else if (Array.isArray(content)) {
+    // Breadcrumbs with preceding input blocks (pasted images) keep the
+    // breadcrumb text as the first text block (images are not text blocks).
+    const firstTextBlock = (
+      content as Array<{ type: string; text?: string }>
+    ).find(block => block.type === 'text')
+    leadingText = firstTextBlock?.text
+  }
+  if (!leadingText) {
+    return false
+  }
+  return LOCAL_COMMAND_API_EXCLUDED_PREFIXES.some(prefix =>
+    leadingText.startsWith(prefix),
+  )
+}
+
 /**
  * Strips tool_reference blocks for tools that no longer exist from tool_result content.
  * This handles the case where a session was saved with MCP tools that are no longer
@@ -2357,43 +2422,28 @@ export function normalizeMessagesForAPI(
 
   const result: (UserMessage | AssistantMessage)[] = []
   reorderedMessages
-    .filter(
-      (
-        _,
-      ): _ is
-        | UserMessage
-        | AssistantMessage
-        | AttachmentMessage
-        | SystemLocalCommandMessage => {
-        if (
-          _.type === 'progress' ||
-          (_.type === 'system' && !isSystemLocalCommandMessage(_)) ||
-          isSyntheticApiErrorMessage(_)
-        ) {
-          return false
-        }
-        return true
-      },
-    )
+    .filter((_): _ is UserMessage | AssistantMessage | AttachmentMessage => {
+      if (
+        _.type === 'progress' ||
+        // All system messages are display-only. This includes local_command
+        // breadcrumbs ("❯ /config" + <local-command-stdout>) — they stay in
+        // the UI and transcript but are never sent to the model.
+        _.type === 'system' ||
+        isSyntheticApiErrorMessage(_)
+      ) {
+        return false
+      }
+      // Local slash command breadcrumbs/output stored as user messages
+      // (local-jsx default display path, /model picker result, legacy
+      // transcripts) are local feedback — strip them from API requests.
+      if (isLocalCommandBreadcrumbMessage(_)) {
+        return false
+      }
+      return true
+    })
     .forEach(message => {
       if (!message) return []
       switch (message.type) {
-        case 'system': {
-          // local_command system messages need to be included as user messages
-          // so the model can reference previous command output in later turns
-          const userMsg = createUserMessage({
-            content: message.content as string | ContentBlockParam[],
-            uuid: message.uuid,
-            timestamp: message.timestamp as string,
-          })
-          const lastMessage = last(result)
-          if (lastMessage?.type === 'user') {
-            result[result.length - 1] = mergeUserMessages(lastMessage, userMsg)
-            return
-          }
-          result.push(userMsg)
-          return
-        }
         case 'user': {
           // Merge consecutive user messages because Bedrock doesn't support
           // multiple user messages in a row; 1P API does and merges them

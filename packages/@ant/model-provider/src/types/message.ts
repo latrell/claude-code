@@ -41,6 +41,14 @@ export type Message = {
   isCompactSummary?: boolean
   toolUseResult?: unknown
   isVisibleInTranscriptOnly?: boolean
+  /**
+   * Local slash command breadcrumb/output (e.g. "❯ /model" + its
+   * <local-command-stdout>). Rendered in the UI and persisted to the
+   * transcript, but stripped by normalizeMessagesForAPI — never sent to
+   * the model. Explicit `false` opts out of the legacy content-prefix
+   * fallback (e.g. forked skill results that must stay model-visible).
+   */
+  isLocalCommandBreadcrumb?: boolean
   attachment?: {
     type: string
     toolUseID?: string

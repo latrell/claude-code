@@ -22,6 +22,8 @@ import {
   deriveUUID,
   normalizeMessages,
   normalizeMessagesForAPI,
+  isLocalCommandBreadcrumbMessage,
+  createCommandInputMessage,
   isClassifierDenial,
   buildYoloRejectionMessage,
   buildClassifierUnavailableMessage,
@@ -788,6 +790,207 @@ describe('normalizeMessagesForAPI – thinking + tool_use same turn (CC-1215)', 
         )
       }
     }
+  })
+})
+
+// ─── Local slash command messages must never reach the API ────────────────
+
+describe('isLocalCommandBreadcrumbMessage', () => {
+  test('true for user message flagged isLocalCommandBreadcrumb', () => {
+    const msg = createUserMessage({
+      content: 'anything at all',
+      isLocalCommandBreadcrumb: true,
+    })
+    expect(isLocalCommandBreadcrumbMessage(msg)).toBe(true)
+  })
+
+  test('false for explicit opt-out even with <local-command-stdout> prefix', () => {
+    // Forked skill results wrap output in <local-command-stdout> but must
+    // stay model-visible.
+    const msg = createUserMessage({
+      content:
+        '<local-command-stdout>\nforked agent result\n</local-command-stdout>',
+      isLocalCommandBreadcrumb: false,
+    })
+    expect(isLocalCommandBreadcrumbMessage(msg)).toBe(false)
+  })
+
+  test('legacy fallback matches breadcrumb/output prefixes when flag absent', () => {
+    const breadcrumb = createUserMessage({
+      content:
+        '<command-name>/model</command-name>\n<command-message>model</command-message>',
+    })
+    const stdout = createUserMessage({
+      content:
+        '<local-command-stdout>Set model to Sonnet</local-command-stdout>',
+    })
+    const stderr = createUserMessage({
+      content: '<local-command-stderr>boom</local-command-stderr>',
+    })
+    expect(isLocalCommandBreadcrumbMessage(breadcrumb)).toBe(true)
+    expect(isLocalCommandBreadcrumbMessage(stdout)).toBe(true)
+    expect(isLocalCommandBreadcrumbMessage(stderr)).toBe(true)
+  })
+
+  test('legacy fallback matches first text block after preceding image blocks', () => {
+    const msg = createUserMessage({
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/png', data: 'aaaa' },
+        } as any,
+        {
+          type: 'text',
+          text: '<command-name>/model</command-name>',
+        },
+      ],
+    })
+    expect(isLocalCommandBreadcrumbMessage(msg)).toBe(true)
+  })
+
+  test('does not match prompt-skill metadata (<command-message> first)', () => {
+    // formatSlashCommandLoadingMetadata puts <command-message> first — skill
+    // expansions must keep reaching the API.
+    const msg = createUserMessage({
+      content:
+        '<command-message>commit</command-message>\n<command-name>/commit</command-name>',
+    })
+    expect(isLocalCommandBreadcrumbMessage(msg)).toBe(false)
+  })
+
+  test('does not match real user prose mentioning the tags mid-text', () => {
+    const msg = createUserMessage({
+      content: 'why does <command-name> appear in my transcript?',
+    })
+    expect(isLocalCommandBreadcrumbMessage(msg)).toBe(false)
+  })
+
+  test('false for non-user messages', () => {
+    const sys = createCommandInputMessage(
+      '<command-name>/config</command-name>',
+    )
+    expect(isLocalCommandBreadcrumbMessage(sys)).toBe(false)
+  })
+})
+
+describe('normalizeMessagesForAPI – local slash command filtering', () => {
+  test('strips flagged breadcrumb + stdout user messages', () => {
+    const messages: Message[] = [
+      makeUserMsg('real question'),
+      makeAssistantMsg([{ type: 'text', text: 'real answer' }]),
+      createUserMessage({
+        content:
+          '<command-name>/model</command-name>\n<command-message>model</command-message>',
+        isLocalCommandBreadcrumb: true,
+      }),
+      createUserMessage({
+        content:
+          '<local-command-stdout>Set model to Opus</local-command-stdout>',
+        isLocalCommandBreadcrumb: true,
+      }),
+      makeUserMsg('follow-up question'),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    expect(result).toHaveLength(3)
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('command-name')
+    expect(serialized).not.toContain('local-command-stdout')
+  })
+
+  test('strips local_command system messages instead of converting to user', () => {
+    const messages: Message[] = [
+      makeUserMsg('hello'),
+      makeAssistantMsg([{ type: 'text', text: 'hi' }]),
+      createCommandInputMessage('<command-name>/connect</command-name>'),
+      createCommandInputMessage(
+        '<local-command-stdout>Connections closed</local-command-stdout>',
+      ),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    expect(result).toHaveLength(2)
+    expect(result[0]!.type).toBe('user')
+    expect(result[1]!.type).toBe('assistant')
+    expect(JSON.stringify(result)).not.toContain('Connections closed')
+  })
+
+  test('legacy transcript breadcrumbs (no flag) are filtered via content fallback', () => {
+    const messages: Message[] = [
+      createUserMessage({
+        content:
+          '<command-name>/cost</command-name>\n<command-message>cost</command-message>',
+      }),
+      createUserMessage({
+        content:
+          '<local-command-stdout>Total cost: $0.42</local-command-stdout>',
+      }),
+      makeUserMsg('what did we do so far?'),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    expect(result).toHaveLength(1)
+    expect(JSON.stringify(result)).toContain('what did we do so far?')
+  })
+
+  test('keeps forked skill results (explicit isLocalCommandBreadcrumb: false)', () => {
+    const messages: Message[] = [
+      createUserMessage({
+        content:
+          '<local-command-stdout>\ncommit created: abc123\n</local-command-stdout>',
+        isLocalCommandBreadcrumb: false,
+      }),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    expect(result).toHaveLength(1)
+    expect(JSON.stringify(result)).toContain('commit created: abc123')
+  })
+
+  test('keeps isMeta messages and prompt-skill metadata', () => {
+    const messages: Message[] = [
+      createUserMessage({
+        content:
+          '<command-message>commit</command-message>\n<command-name>/commit</command-name>',
+      }),
+      createUserMessage({
+        content: 'expanded skill prompt content',
+        isMeta: true,
+      }),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    // Both survive; consecutive user messages get merged for Bedrock compat.
+    expect(result.length).toBeGreaterThanOrEqual(1)
+    const serialized = JSON.stringify(result)
+    expect(serialized).toContain('command-message')
+    expect(serialized).toContain('expanded skill prompt content')
+  })
+
+  test('merges users across a stripped local_command boundary (Bedrock alternation)', () => {
+    // user, system(local_command), user — after stripping the system message
+    // the two user messages become adjacent and must merge into one turn.
+    const messages: Message[] = [
+      makeUserMsg('first'),
+      createCommandInputMessage(
+        '<local-command-stdout>noise</local-command-stdout>',
+      ),
+      makeUserMsg('second'),
+    ]
+
+    const result = normalizeMessagesForAPI(messages)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.type).toBe('user')
+    const serialized = JSON.stringify(result[0])
+    expect(serialized).toContain('first')
+    expect(serialized).toContain('second')
+    expect(serialized).not.toContain('noise')
   })
 })
 

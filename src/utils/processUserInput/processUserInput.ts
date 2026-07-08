@@ -453,7 +453,13 @@ async function processUserInputBase(
           `/${getCommandName(cmd)} isn't available over Remote Control.`
         return {
           messages: [
-            createUserMessage({ content: inputString, uuid }),
+            // Local feedback only — flagged so normalizeMessagesForAPI
+            // strips the echoed "/command" from API requests.
+            createUserMessage({
+              content: inputString,
+              uuid,
+              isLocalCommandBreadcrumb: true,
+            }),
             createCommandInputMessage(
               `<local-command-stdout>${msg}</local-command-stdout>`,
             ),

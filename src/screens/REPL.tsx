@@ -4096,9 +4096,10 @@ export function REPL({
                 // pane — the notification above is enough feedback. Adding
                 // "❯ /config" + "⎿ dismissed" to the transcript is clutter
                 // (those messages are type:system subtype:local_command —
-                // user-visible but NOT sent to the model, so skipping them
-                // doesn't change model context). Outside fullscreen the
-                // transcript entry stays so scrollback shows what ran.
+                // user-visible; normalizeMessagesForAPI strips them from API
+                // requests, so skipping them doesn't change model context).
+                // Outside fullscreen the transcript entry stays so scrollback
+                // shows what ran.
                 if (!isFullscreenEnvEnabled()) {
                   const breadcrumbArgs = doneOptions?.displayArgs ?? commandArgs;
                   newMessages.push(

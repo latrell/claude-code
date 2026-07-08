@@ -61,6 +61,7 @@ import {
   createUserMessage,
   formatCommandInputTags,
   isCompactBoundaryMessage,
+  isLocalCommandBreadcrumbMessage,
   isSystemLocalCommandMessage,
   normalizeMessages,
   prepareUserContent,
@@ -401,6 +402,10 @@ async function executeForkedSlashCommand(
     }),
     createUserMessage({
       content: `<local-command-stdout>\n${resultText}\n</local-command-stdout>`,
+      // Forked skill results must stay model-visible: explicit `false`
+      // opts out of the legacy <local-command-stdout> prefix fallback in
+      // isLocalCommandBreadcrumbMessage.
+      isLocalCommandBreadcrumb: false,
     }),
   ];
 
@@ -675,9 +680,18 @@ export async function processSlashCommand(
   // Check if this is a compact result which handle their own synthetic caveat message ordering
   const isCompactResult = newMessages.length > 0 && newMessages[0] && isCompactBoundaryMessage(newMessages[0]);
 
+  // Skip the caveat when nothing in this turn reaches the API anyway:
+  // local_command system messages and flagged breadcrumb user messages are
+  // stripped by normalizeMessagesForAPI, and isMeta metaMessages are
+  // intentional model-visible content that needs no "ignore this" preamble.
+  // Prepending the caveat here would send it alone, referring to nothing.
+  const isApiInvisibleLocalTurn = newMessages.every(
+    m => isSystemLocalCommandMessage(m) || isLocalCommandBreadcrumbMessage(m) || m.isMeta === true,
+  );
+
   return {
     messages:
-      messageShouldQuery || newMessages.every(isSystemLocalCommandMessage) || isCompactResult
+      messageShouldQuery || isApiInvisibleLocalTurn || isCompactResult
         ? newMessages
         : [createSyntheticUserCaveatMessage(), ...newMessages],
     shouldQuery: messageShouldQuery,
@@ -770,8 +784,9 @@ async function getMessagesForSlashCommand(
             // In fullscreen the command just showed as a centered modal
             // pane — the transient notification is enough feedback. The
             // "❯ /config" + "⎿ dismissed" transcript entries are
-            // type:system subtype:local_command (user-visible but NOT sent
-            // to the model), so skipping them doesn't affect model context.
+            // type:system subtype:local_command (user-visible; stripped
+            // from API requests by normalizeMessagesForAPI), so skipping
+            // them doesn't affect model context.
             // Outside fullscreen keep them so scrollback shows what ran.
             // Only skip "<Name> dismissed" modal-close notifications —
             // commands that early-exit before showing a modal (/ultraplan
@@ -793,18 +808,24 @@ async function getMessagesForSlashCommand(
                         ...metaMessages,
                       ]
                   : [
+                      // Breadcrumb + stdout are local feedback: shown in the
+                      // UI and persisted to the transcript, but flagged so
+                      // normalizeMessagesForAPI never sends them to the model.
                       createUserMessage({
                         content: prepareUserContent({
                           inputString: formatCommandInput(command, breadcrumbArgs),
                           precedingInputBlocks,
                         }),
+                        isLocalCommandBreadcrumb: true,
                       }),
                       result
                         ? createUserMessage({
                             content: `<local-command-stdout>${result}</local-command-stdout>`,
+                            isLocalCommandBreadcrumb: true,
                           })
                         : createUserMessage({
                             content: `<local-command-stdout>${NO_CONTENT_MESSAGE}</local-command-stdout>`,
+                            isLocalCommandBreadcrumb: true,
                           }),
                       ...metaMessages,
                     ],
@@ -862,11 +883,14 @@ async function getMessagesForSlashCommand(
       }
       case 'local': {
         const displayArgs = command.isSensitive && args.trim() ? '***' : args;
+        // Local feedback breadcrumb — flagged so normalizeMessagesForAPI
+        // strips it from API requests (UI + transcript only).
         const userMessage = createUserMessage({
           content: prepareUserContent({
             inputString: formatCommandInput(command, displayArgs),
             precedingInputBlocks,
           }),
+          isLocalCommandBreadcrumb: true,
         });
 
         try {
@@ -893,6 +917,7 @@ async function getMessagesForSlashCommand(
                 ? [
                     createUserMessage({
                       content: `<local-command-stdout>${result.displayText}</local-command-stdout>`,
+                      isLocalCommandBreadcrumb: true,
                       // --resume looks at latest timestamp message to determine which message to resume from
                       // This is a perf optimization to avoid having to recaculcate the leaf node every time
                       // Since we're creating a bunch of synthetic messages for compact, it's important to set
