@@ -170,6 +170,27 @@ export function getMainLoopModel(): ModelName {
   return getDefaultMainLoopModel()
 }
 
+/**
+ * Resolve the initial main-loop model setting at startup.
+ *
+ * When the user has no explicit model override (--model flag, provider env
+ * var, or settings model), a persisted `default1mContext: true` preference
+ * (written by the /model picker when 1M is toggled on the "Default" entry)
+ * pins the resolved default model with the `[1m]` suffix so the 1M-context
+ * toggle survives restarts. Explicit overrides always win.
+ */
+export function resolveInitialMainLoopModelSetting(
+  userSpecified: ModelSetting | undefined,
+  default1mContext: boolean | undefined,
+  defaultModelSetting: string,
+): ModelSetting {
+  if (userSpecified) return userSpecified
+  if (default1mContext === true) {
+    return `${defaultModelSetting.replace(/\[1m\]/i, '')}[1m]`
+  }
+  return null
+}
+
 export function getBestModel(): ModelName {
   return getDefaultModel()
 }

@@ -204,9 +204,11 @@ import { logError } from './utils/log.js';
 import { getModelDeprecationWarning } from './utils/model/deprecation.js';
 import {
   getDefaultMainLoopModel,
+  getDefaultMainLoopModelSetting,
   getUserSpecifiedModelSetting,
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
+  resolveInitialMainLoopModelSetting,
 } from './utils/model/model.js';
 import { ensureModelStringsInitialized } from './utils/model/modelStrings.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
@@ -2798,8 +2800,25 @@ async function run(): Promise<CommanderCommand> {
 
       setMainLoopModelOverride(effectiveModel);
 
-      // Compute resolved model for hooks (use user-specified model at launch)
-      setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
+      // Compute resolved model for hooks (use user-specified model at launch).
+      // With no explicit override, a persisted default1mContext preference
+      // (Space on the Default entry in /model) restores the default model
+      // pinned with [1m] so the 1M-context toggle survives restarts.
+      const userSpecifiedModelSetting = getUserSpecifiedModelSetting() || undefined;
+      const initialModelSetting = resolveInitialMainLoopModelSetting(
+        userSpecifiedModelSetting,
+        getInitialSettings().default1mContext,
+        getDefaultMainLoopModelSetting(),
+      );
+      // Query-time model resolution goes through getMainLoopModel() →
+      // getUserSpecifiedModelSetting() → mainLoopModelOverride (not the
+      // initial AppState), so the restored 1M default must also be set as
+      // the override. Explicit overrides (--model / agent / settings) make
+      // userSpecifiedModelSetting truthy and skip this.
+      if (!userSpecifiedModelSetting && initialModelSetting) {
+        setMainLoopModelOverride(initialModelSetting);
+      }
+      setInitialMainLoopModel(initialModelSetting);
       const initialMainLoopModel = getInitialMainLoopModel();
       const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
 

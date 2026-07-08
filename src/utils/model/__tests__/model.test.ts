@@ -3,6 +3,7 @@ import {
   apiProviderToSettingsProviderKey,
   firstPartyNameToCanonical,
   getProviderScopedModelSetting,
+  resolveInitialMainLoopModelSetting,
 } from '../model'
 
 describe('provider-scoped model settings', () => {
@@ -68,6 +69,52 @@ describe('provider-scoped model settings', () => {
         GROK_MODEL: 'env-grok',
       }),
     ).toBe('env-grok')
+  })
+})
+
+describe('resolveInitialMainLoopModelSetting', () => {
+  test('explicit override wins over default1mContext', () => {
+    expect(
+      resolveInitialMainLoopModelSetting('opus', true, 'claude-fable-5'),
+    ).toBe('opus')
+    expect(
+      resolveInitialMainLoopModelSetting(
+        'sonnet[1m]',
+        undefined,
+        'claude-fable-5',
+      ),
+    ).toBe('sonnet[1m]')
+  })
+
+  test('restores default model pinned with [1m] when preference is set', () => {
+    expect(
+      resolveInitialMainLoopModelSetting(undefined, true, 'claude-fable-5'),
+    ).toBe('claude-fable-5[1m]')
+    expect(
+      resolveInitialMainLoopModelSetting(null, true, 'claude-fable-5'),
+    ).toBe('claude-fable-5[1m]')
+  })
+
+  test('does not double the [1m] suffix on an already-1M default', () => {
+    expect(
+      resolveInitialMainLoopModelSetting(undefined, true, 'claude-fable-5[1m]'),
+    ).toBe('claude-fable-5[1m]')
+  })
+
+  test('returns null (default, no 1M) when preference is unset or false', () => {
+    expect(
+      resolveInitialMainLoopModelSetting(
+        undefined,
+        undefined,
+        'claude-fable-5',
+      ),
+    ).toBeNull()
+    expect(
+      resolveInitialMainLoopModelSetting(undefined, false, 'claude-fable-5'),
+    ).toBeNull()
+    expect(
+      resolveInitialMainLoopModelSetting(null, false, 'claude-fable-5'),
+    ).toBeNull()
   })
 })
 

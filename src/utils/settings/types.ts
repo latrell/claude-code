@@ -433,6 +433,12 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Override the default model used by Claude Code'),
+      default1mContext: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable 1M context for the default model (set via Space on the Default entry in /model)',
+        ),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())

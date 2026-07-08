@@ -81,9 +81,18 @@ export function ModelPicker({
 
   const isFastMode = useAppState(s => (isFastModeEnabled() ? s.fastMode : false));
 
-  const [marked1MValues, setMarked1MValues] = useState<Set<string>>(
-    () => new Set(has1mContext(initialValue) ? [initialValue.replace(/\[1m\]/i, '')] : []),
-  );
+  const [marked1MValues, setMarked1MValues] = useState<Set<string>>(() => {
+    if (!has1mContext(initialValue)) return new Set();
+    const base = initialValue.replace(/\[1m\]/i, '');
+    const marks = [base];
+    // A restored default1mContext preference pins the resolved default model
+    // with [1m] (see resolveInitialMainLoopModelSetting). Mark the "Default"
+    // entry too so the toggle state shows where the user originally set it.
+    if (base === getDefaultMainLoopModelSetting().replace(/\[1m\]/i, '')) {
+      marks.push(NO_PREFERENCE);
+    }
+    return new Set(marks);
+  });
 
   const handleToggle1M = useCallback(() => {
     if (!focusedValue) return;
@@ -222,9 +231,18 @@ export function ModelPicker({
       // resolved at runtime). When 1M is toggled on it, pin the resolved
       // default model setting with [1m] instead of passing null.
       if (marked1MValues.has(NO_PREFERENCE)) {
+        if (!skipSettingsWrite) {
+          // Persist the preference so the 1M toggle on Default survives
+          // restarts (restored via resolveInitialMainLoopModelSetting).
+          updateSettingsForSource('userSettings', { default1mContext: true });
+        }
         const baseDefault = getDefaultMainLoopModelSetting().replace(/\[1m\]/i, '');
         onSelect(`${baseDefault}[1m]`, selectedEffort);
         return;
+      }
+      if (!skipSettingsWrite) {
+        // undefined deletes the key (updateSettingsForSource customizer).
+        updateSettingsForSource('userSettings', { default1mContext: undefined });
       }
       onSelect(null, selectedEffort);
       return;
