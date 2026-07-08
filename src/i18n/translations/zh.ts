@@ -1002,6 +1002,8 @@ const zh: Record<string, string> = {
     '协调器模式已禁用 — 返回普通模式',
   'Coordinator mode enabled — use Agent(subagent_type: "worker") to dispatch tasks':
     '协调器模式已启用 — 使用 Agent(subagent_type: "worker") 来分派任务',
+  coordinator: '协调器',
+  '/coordinator to toggle': '/coordinator 切换',
 
   // ── copy command ────────────────────────────────────────────────
   'Copied to clipboard ({charCount} characters, {lineCount} lines)\nAlso written to {filePath}':
@@ -2531,6 +2533,7 @@ const zh: Record<string, string> = {
   'Pick the model for the main agent or subagents across all connections':
     '跨所有连接为主 agent 或子 agent 选择模型',
   Connections: '连接管理',
+  Close: '关闭',
   'Connections closed': '已关闭连接管理',
   'No connections yet. Add one to manage providers and accounts.':
     '还没有任何连接。添加一个以管理提供者和账号。',

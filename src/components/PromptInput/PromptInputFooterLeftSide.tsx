@@ -398,6 +398,15 @@ function ModeIndicator({
       </Text>
     ) : null;
 
+  // Coordinator mode pill — rendered alongside the permission mode indicator
+  // so the current session mode is always visible in the footer.
+  const coordinatorPart = isCoordinator ? (
+    <Text color="planMode" key="coordinator">
+      ◉ {t('coordinator')}
+      {shouldShowModeHint && !modePart && <Text dimColor> ({t('/coordinator to toggle')})</Text>}
+    </Text>
+  ) : null;
+
   // Build parts array - exclude BackgroundTaskStatus when we have teammate pills
   // (teammate pills get their own row)
   const parts = [
@@ -480,7 +489,12 @@ function ModeIndicator({
   if (hasTeammatePills) {
     // Don't append spinner hints when viewing a completed teammate —
     // the "esc to return to team lead" hint already replaces "esc to interrupt"
-    const otherParts = [...(modePart ? [modePart] : []), ...parts, ...(isViewingCompletedTeammate ? [] : hintParts)];
+    const otherParts = [
+      ...(coordinatorPart ? [coordinatorPart] : []),
+      ...(modePart ? [modePart] : []),
+      ...parts,
+      ...(isViewingCompletedTeammate ? [] : hintParts),
+    ];
     return (
       <Box flexDirection="column">
         <Box>
@@ -519,7 +533,7 @@ function ModeIndicator({
       />
     ) : null;
 
-  if (parts.length === 0 && !tasksPart && !modePart && showHint) {
+  if (parts.length === 0 && !tasksPart && !modePart && !coordinatorPart && showHint) {
     parts.push(
       <Text dimColor key="shortcuts-hint">
         {t('? for shortcuts')}
@@ -606,7 +620,7 @@ function ModeIndicator({
   // part (e.g. the selection copy/native-select hints) grow the column
   // from 0→1 row. Always render 1 row in fullscreen; return a space when
   // empty so Yoga reserves the row without painting anything visible.
-  if (parts.length === 0 && !tasksPart && !modePart) {
+  if (parts.length === 0 && !tasksPart && !modePart && !coordinatorPart) {
     return isFullscreenEnvEnabled() ? <Text> </Text> : null;
   }
 
@@ -614,6 +628,12 @@ function ModeIndicator({
   // truncate at the tail as one string inside the Text wrapper.
   return (
     <Box height={1} overflow="hidden">
+      {coordinatorPart && (
+        <Box flexShrink={0}>
+          {coordinatorPart}
+          {(modePart || tasksPart || parts.length > 0) && <Text dimColor> · </Text>}
+        </Box>
+      )}
       {modePart && (
         <Box flexShrink={0}>
           {modePart}
