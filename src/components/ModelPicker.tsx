@@ -28,6 +28,7 @@ import {
 } from '../utils/effort.js';
 import {
   getDefaultMainLoopModel,
+  getDefaultMainLoopModelSetting,
   type ModelSetting,
   modelDisplayString,
   parseUserSpecifiedModel,
@@ -85,7 +86,7 @@ export function ModelPicker({
   );
 
   const handleToggle1M = useCallback(() => {
-    if (!focusedValue || focusedValue === NO_PREFERENCE) return;
+    if (!focusedValue) return;
     // Key on the base value so lookups in handleSelect / is1MMarked match the
     // initializer — predefined 1M options arrive with a `[1m]` suffix in
     // `focusedValue`, which would diverge from the base-value key set.
@@ -144,10 +145,7 @@ export function ModelPicker({
 
   const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
   const focusedModel = resolveOptionModel(focusedValue);
-  const is1MMarked =
-    focusedValue !== undefined &&
-    focusedValue !== NO_PREFERENCE &&
-    marked1MValues.has(focusedValue.replace(/\[1m\]/i, ''));
+  const is1MMarked = focusedValue !== undefined && marked1MValues.has(focusedValue.replace(/\[1m\]/i, ''));
   const focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
   const focusedSupportsXhigh = focusedModel ? modelSupportsXhighEffort(focusedModel) : false;
   const focusedSupportsMax = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
@@ -220,6 +218,14 @@ export function ModelPicker({
     const selectedModel = resolveOptionModel(value);
     const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
     if (value === NO_PREFERENCE) {
+      // "Default" has no model string to carry a [1m] suffix (model = null,
+      // resolved at runtime). When 1M is toggled on it, pin the resolved
+      // default model setting with [1m] instead of passing null.
+      if (marked1MValues.has(NO_PREFERENCE)) {
+        const baseDefault = getDefaultMainLoopModelSetting().replace(/\[1m\]/i, '');
+        onSelect(`${baseDefault}[1m]`, selectedEffort);
+        return;
+      }
       onSelect(null, selectedEffort);
       return;
     }
