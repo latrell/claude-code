@@ -1,9 +1,11 @@
 import type { TerminalNotification } from '@anthropic/ink'
+import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { getGlobalConfig } from '../utils/config.js'
 import { env } from '../utils/env.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { executeNotificationHooks } from '../utils/hooks.js'
 import { logError } from '../utils/log.js'
+import { isTeammate } from '../utils/teammate.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -19,6 +21,15 @@ export async function sendNotification(
   notif: NotificationOptions,
   terminal: TerminalNotification,
 ): Promise<void> {
+  // Notifications must only come from the top-level interactive session.
+  // Worker processes (tmux/swarm teammates) and headless/SDK sessions stay
+  // silent — their results are handled by the main agent, so pushing OS
+  // notifications (or re-firing user Notification hooks) from them is
+  // duplicate noise.
+  if (isTeammate() || getIsNonInteractiveSession()) {
+    return
+  }
+
   const config = getGlobalConfig()
   const channel = config.preferredNotifChannel
 
