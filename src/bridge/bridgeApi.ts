@@ -1,5 +1,6 @@
 import axios from 'axios'
 
+import { t, tf } from '../i18n/t.js'
 import { debugBody, extractErrorDetail } from './debugUtils.js'
 import { rcLog } from './rcDebugLog.js'
 import {
@@ -48,7 +49,9 @@ const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
  */
 export function validateBridgeId(id: string, label: string): string {
   if (!id || !SAFE_ID_PATTERN.test(id)) {
-    throw new Error(`Invalid ${label}: contains unsafe characters`)
+    throw new Error(
+      tf('Invalid {label}: contains unsafe characters', { label }),
+    )
   }
   return id
 }
@@ -468,37 +471,59 @@ function handleErrorStatus(
   switch (status) {
     case 401:
       throw new BridgeFatalError(
-        `${context}: Authentication failed (401)${detail ? `: ${detail}` : ''}. ${BRIDGE_LOGIN_INSTRUCTION}`,
+        tf('{context}: Authentication failed (401){detail}. {instruction}', {
+          context,
+          detail: detail ? `: ${detail}` : '',
+          instruction: BRIDGE_LOGIN_INSTRUCTION,
+        }),
         401,
         errorType,
       )
     case 403:
       throw new BridgeFatalError(
         isExpiredErrorType(errorType)
-          ? 'Remote Control session has expired. Please restart with `claude remote-control` or /remote-control.'
-          : `${context}: Access denied (403)${detail ? `: ${detail}` : ''}. Check your organization permissions.`,
+          ? t(
+              'Remote Control session has expired. Please restart with `claude remote-control` or /remote-control.',
+            )
+          : tf(
+              '{context}: Access denied (403){detail}. Check your organization permissions.',
+              { context, detail: detail ? `: ${detail}` : '' },
+            ),
         403,
         errorType,
       )
     case 404:
       throw new BridgeFatalError(
         detail ??
-          `${context}: Not found (404). Remote Control may not be available for this organization.`,
+          tf(
+            '{context}: Not found (404). Remote Control may not be available for this organization.',
+            { context },
+          ),
         404,
         errorType,
       )
     case 410:
       throw new BridgeFatalError(
         detail ??
-          'Remote Control session has expired. Please restart with `claude remote-control` or /remote-control.',
+          t(
+            'Remote Control session has expired. Please restart with `claude remote-control` or /remote-control.',
+          ),
         410,
         errorType ?? 'environment_expired',
       )
     case 429:
-      throw new Error(`${context}: Rate limited (429). Polling too frequently.`)
+      throw new Error(
+        tf('{context}: Rate limited (429). Polling too frequently.', {
+          context,
+        }),
+      )
     default:
       throw new Error(
-        `${context}: Failed with status ${status}${detail ? `: ${detail}` : ''}`,
+        tf('{context}: Failed with status {status}{detail}', {
+          context,
+          status,
+          detail: detail ? `: ${detail}` : '',
+        }),
       )
   }
 }

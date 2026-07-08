@@ -38,9 +38,9 @@ export type RemoteModel = {
 }
 
 const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
-  { value: 'opus', label: 'Opus' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'haiku', label: 'Haiku' },
+  { value: 'opus', label: t('Opus') },
+  { value: 'sonnet', label: t('Sonnet') },
+  { value: 'haiku', label: t('Haiku') },
 ]
 
 /**
@@ -52,7 +52,9 @@ const ANTHROPIC_ALIAS_MODELS: CatalogModel[] = [
 const CURSOR_CATALOG_MODELS: CatalogModel[] = CURSOR_MODELS.map(m => ({
   value: m.id,
   label: m.label,
-  ...(m.id === 'default' ? { description: 'Cursor auto-selects a model' } : {}),
+  ...(m.id === 'default'
+    ? { description: t('Cursor auto-selects a model') }
+    : {}),
 }))
 
 function defaultEntry(): CatalogModel {

@@ -3,6 +3,7 @@ import { createWriteStream, type WriteStream } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { createInterface } from 'readline'
+import { t } from '../i18n/t.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import { debugTruncate } from './debugUtils.js'
 import type {
@@ -68,24 +69,24 @@ type SessionSpawnerDeps = {
 
 /** Map tool names to human-readable verbs for the status display. */
 const TOOL_VERBS: Record<string, string> = {
-  Read: 'Reading',
-  Write: 'Writing',
-  Edit: 'Editing',
-  MultiEdit: 'Editing',
-  Bash: 'Running',
-  Glob: 'Searching',
-  Grep: 'Searching',
-  WebFetch: 'Fetching',
-  WebSearch: 'Searching',
-  Task: 'Running task',
-  FileReadTool: 'Reading',
-  FileWriteTool: 'Writing',
-  FileEditTool: 'Editing',
-  GlobTool: 'Searching',
-  GrepTool: 'Searching',
-  BashTool: 'Running',
-  NotebookEditTool: 'Editing notebook',
-  LSP: 'LSP',
+  Read: t('Reading'),
+  Write: t('Writing'),
+  Edit: t('Editing'),
+  MultiEdit: t('Editing'),
+  Bash: t('Running'),
+  Glob: t('Searching'),
+  Grep: t('Searching'),
+  WebFetch: t('Fetching'),
+  WebSearch: t('Searching'),
+  Task: t('Running task'),
+  FileReadTool: t('Reading'),
+  FileWriteTool: t('Writing'),
+  FileEditTool: t('Editing'),
+  GlobTool: t('Searching'),
+  GrepTool: t('Searching'),
+  BashTool: t('Running'),
+  NotebookEditTool: t('Editing notebook'),
+  LSP: t('LSP'),
 }
 
 function toolSummary(name: string, input: Record<string, unknown>): string {
@@ -136,7 +137,7 @@ function extractActivities(
         const b = block as Record<string, unknown>
 
         if (b.type === 'tool_use') {
-          const name = (b.name as string) ?? 'Tool'
+          const name = (b.name as string) ?? t('Tool')
           const input = (b.input as Record<string, unknown>) ?? {}
           const summary = toolSummary(name, input)
           activities.push({
@@ -168,7 +169,7 @@ function extractActivities(
       if (subtype === 'success') {
         activities.push({
           type: 'result',
-          summary: 'Session completed',
+          summary: t('Session completed'),
           timestamp: now,
         })
         onDebug(

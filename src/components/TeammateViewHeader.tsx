@@ -31,7 +31,7 @@ export function TeammateViewHeader(): React.ReactNode {
           </Text>
           <Text dimColor>
             {' · '}
-            <KeyboardShortcutHint shortcut="esc" action="return" />
+            <KeyboardShortcutHint shortcut="esc" action={t('return')} />
           </Text>
         </Box>
         <Text dimColor>{viewedTeammate.prompt}</Text>

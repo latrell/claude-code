@@ -243,7 +243,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         </Text>
         <Text>
           {tf('└ Search: {status} ({mode})', {
-            status: diagnostic.ripgrepStatus.working ? 'OK' : 'Not working',
+            status: diagnostic.ripgrepStatus.working ? t('OK') : t('Not working'),
             mode: ripgrepMode,
           })}
         </Text>
@@ -272,9 +272,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
               <T>Warning: Multiple installations found</T>
             </Text>
             {diagnostic.multipleInstallations.map((install, i) => (
-              <Text key={i}>
-                └ {install.type} at {install.path}
-              </Text>
+              <Text key={i}>{'└ ' + tf('{type} at {path}', { type: install.type, path: install.path })}</Text>
             ))}
           </>
         )}
@@ -406,7 +404,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
           </Text>
           {pluginsErrors.map((error, i) => (
             <Text key={i} dimColor>
-              {'  '}└ {error.source || 'unknown'}
+              {'  '}└ {error.source || t('unknown')}
               {'plugin' in error && error.plugin ? ` [${error.plugin}]` : ''}: {getPluginErrorMessage(error)}
             </Text>
           ))}

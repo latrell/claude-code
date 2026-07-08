@@ -24,9 +24,9 @@ const ACTION_LABEL_COLUMN_WIDTH = 26;
 
 function formatKeyList(keys: string[]): string {
   if (keys.length === 0) {
-    return 'No secrets stored.';
+    return t('No secrets stored.');
   }
-  return ['Local Vault Keys', ...keys.map(key => `- ${key}`)].join('\n');
+  return [t('Local Vault Keys'), ...keys.map(key => `- ${key}`)].join('\n');
 }
 
 // ── Interactive multi-step panel ───────────────────────────────────────────
@@ -51,26 +51,26 @@ const VAULT_MENU: Array<{
   label: string;
   description: string;
 }> = [
-  { kind: 'list', label: 'List', description: 'Show stored secret keys' },
+  { kind: 'list', label: t('List'), description: t('Show stored secret keys') },
   {
     kind: 'set',
-    label: 'Set',
-    description: 'Store a secret: KEY + VALUE (input is masked)',
+    label: t('Set'),
+    description: t('Store a secret: KEY + VALUE (input is masked)'),
   },
   {
     kind: 'get',
-    label: 'Get',
-    description: 'Look up a secret (returns masked preview)',
+    label: t('Get'),
+    description: t('Look up a secret (returns masked preview)'),
   },
   {
     kind: 'delete',
-    label: 'Delete',
-    description: 'Delete a stored secret by KEY',
+    label: t('Delete'),
+    description: t('Delete a stored secret by KEY'),
   },
   {
     kind: 'about',
-    label: 'About',
-    description: 'Show command syntax',
+    label: t('About'),
+    description: t('Show command syntax'),
   },
 ];
 
@@ -145,7 +145,7 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
           setInFlight(true);
           const key = step.key;
           void deleteSecret(key).then(removed => {
-            closeWith(removed ? `Deleted: ${key}` : `Key not found: ${key}`);
+            closeWith(removed ? tf('Deleted: {key}', { key }) : tf('Key not found: {key}', { key }));
           });
         } else {
           // confirm-overwrite — proceed with setSecret
@@ -153,8 +153,12 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
           const k = step.key;
           const v = step.value;
           void setSecret(k, v)
-            .then(() => closeWith(`Secret stored: ${k} = [REDACTED]`))
-            .catch(e => closeWith(`Failed to store ${k}: ${e instanceof Error ? e.message : String(e)}`));
+            .then(() => closeWith(tf('Secret stored: {key} = [REDACTED]', { key: k })))
+            .catch(e =>
+              closeWith(
+                tf('Failed to store {key}: {error}', { key: k, error: e instanceof Error ? e.message : String(e) }),
+              ),
+            );
         }
       } else if (ch === 'n') {
         transition({ kind: 'menu' });
@@ -186,11 +190,11 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
   const handleKeySubmit = (raw: string) => {
     const key = raw.trim();
     if (!key) {
-      setError('Key required');
+      setError(t('Key required'));
       return;
     }
     if (!isValidKey(key)) {
-      setError('Invalid key (allowed: letters/digits/._- only; no leading dot; not a Windows reserved name)');
+      setError(t('Invalid key (allowed: letters/digits/._- only; no leading dot; not a Windows reserved name)'));
       return;
     }
     if (step.kind !== 'collect-key') return;
@@ -198,9 +202,9 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
       setInFlight(true);
       void getSecret(key).then(v => {
         if (v === null) {
-          closeWith(`Key not found: ${key}`);
+          closeWith(tf('Key not found: {key}', { key }));
         } else {
-          closeWith(`Key found: ${key} = ${maskSecret(v)}`);
+          closeWith(tf('Key found: {key} = {masked}', { key, masked: maskSecret(v) }));
         }
       });
       return;
@@ -218,7 +222,7 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
   const handleValueSubmit = (rawValue: string) => {
     if (step.kind !== 'collect-value') return;
     if (rawValue.length === 0) {
-      setError('Secret value cannot be empty');
+      setError(t('Secret value cannot be empty'));
       return;
     }
     const k = step.key;
@@ -236,9 +240,11 @@ function LocalVaultPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
           });
           return;
         }
-        return setSecret(k, rawValue).then(() => closeWith(`Secret stored: ${k} = [REDACTED]`));
+        return setSecret(k, rawValue).then(() => closeWith(tf('Secret stored: {key} = [REDACTED]', { key: k })));
       })
-      .catch(e => closeWith(`Failed to store ${k}: ${e instanceof Error ? e.message : String(e)}`));
+      .catch(e =>
+        closeWith(tf('Failed to store {key}: {error}', { key: k, error: e instanceof Error ? e.message : String(e) })),
+      );
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -370,7 +376,7 @@ async function dispatchLocalVault(
     const { key, value } = parsed;
     await setSecret(key, value);
     // Never echo the value in onDone — security invariant
-    onDone(`Secret stored: ${key} = [REDACTED]`, { display: 'system' });
+    onDone(tf('Secret stored: {key} = [REDACTED]', { key }), { display: 'system' });
     return null;
   }
 
@@ -378,19 +384,26 @@ async function dispatchLocalVault(
     const { key, reveal } = parsed;
     const value = await getSecret(key);
     if (value === null) {
-      onDone(`Key not found: ${key}`, { display: 'system' });
+      onDone(tf('Key not found: {key}', { key }), { display: 'system' });
       return null;
     }
     if (reveal) {
       // Security invariant: only --reveal shows plaintext; warn user
-      onDone([`Secret revealed for: ${key}`, 'Warning: secret revealed in terminal.', `${key} = ${value}`].join('\n'), {
-        display: 'system',
-      });
+      onDone(
+        [
+          tf('Secret revealed for: {key}', { key }),
+          t('Warning: secret revealed in terminal.'),
+          `${key} = ${value}`,
+        ].join('\n'),
+        {
+          display: 'system',
+        },
+      );
       return null;
     }
     // Default: mask display
     const masked = maskSecret(value);
-    onDone(`Key found: ${key} = ${masked}`, { display: 'system' });
+    onDone(tf('Key found: {key} = {masked}', { key, masked }), { display: 'system' });
     return null;
   }
 
@@ -398,10 +411,10 @@ async function dispatchLocalVault(
     const { key } = parsed;
     const deleted = await deleteSecret(key);
     if (!deleted) {
-      onDone(`Key not found: ${key}`, { display: 'system' });
+      onDone(tf('Key not found: {key}', { key }), { display: 'system' });
       return null;
     }
-    onDone(`Deleted: ${key}`, { display: 'system' });
+    onDone(tf('Deleted: {key}', { key }), { display: 'system' });
     return null;
   }
 

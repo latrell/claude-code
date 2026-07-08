@@ -25,7 +25,7 @@ export function CtrlOToExpand(): React.ReactNode {
   }
   return (
     <Text dimColor>
-      <KeyboardShortcutHint shortcut={expandShortcut} action="expand" parens />
+      <KeyboardShortcutHint shortcut={expandShortcut} action={t('expand')} parens />
     </Text>
   );
 }

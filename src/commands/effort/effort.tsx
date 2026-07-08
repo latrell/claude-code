@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { EffortPanel } from '../../components/EffortPanel/EffortPanel.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
+import { t, tf } from '../../i18n/t.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -32,7 +33,7 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     });
     if (result.error) {
       return {
-        message: `Failed to set effort level: ${result.error.message}`,
+        message: tf('Failed to set effort level: {error}', { error: result.error.message }),
       };
     }
   }
@@ -48,12 +49,18 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     const envRaw = process.env.CLAUDE_CODE_EFFORT_LEVEL;
     if (persistable === undefined) {
       return {
-        message: `Not applied: CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides effort this session, and ${effortValue} is session-only (nothing saved)`,
+        message: tf(
+          'Not applied: CLAUDE_CODE_EFFORT_LEVEL={envRaw} overrides effort this session, and {effortValue} is session-only (nothing saved)',
+          { envRaw, effortValue },
+        ),
         effortUpdate: { value: effortValue },
       };
     }
     return {
-      message: `CLAUDE_CODE_EFFORT_LEVEL=${envRaw} overrides this session — clear it and ${effortValue} takes over`,
+      message: tf('CLAUDE_CODE_EFFORT_LEVEL={envRaw} overrides this session — clear it and {effortValue} takes over', {
+        envRaw,
+        effortValue,
+      }),
       effortUpdate: { value: effortValue },
     };
   }
@@ -61,7 +68,7 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   const description = getEffortValueDescription(effortValue);
   const suffix = persistable !== undefined ? '' : ' (this session only)';
   return {
-    message: `Set effort level to ${effortValue}${suffix}: ${description}`,
+    message: tf('Set effort level to {effortValue}{suffix}: {description}', { effortValue, suffix, description }),
     effortUpdate: { value: effortValue },
   };
 }
@@ -71,11 +78,11 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
   const effectiveValue = envOverride === null ? undefined : (envOverride ?? appStateEffort);
   if (effectiveValue === undefined) {
     const level = getDisplayedEffortLevel(model, appStateEffort);
-    return { message: `Effort level: auto (currently ${level})` };
+    return { message: tf('Effort level: auto (currently {level})', { level }) };
   }
   const description = getEffortValueDescription(effectiveValue);
   return {
-    message: `Current effort level: ${effectiveValue} (${description})`,
+    message: tf('Current effort level: {effectiveValue} ({description})', { effectiveValue, description }),
   };
 }
 
@@ -97,12 +104,14 @@ function unsetEffortLevel(): EffortCommandResult {
   if (envOverride !== undefined && envOverride !== null) {
     const envRaw = process.env.CLAUDE_CODE_EFFORT_LEVEL;
     return {
-      message: `Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL=${envRaw} still controls this session`,
+      message: tf('Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL={envRaw} still controls this session', {
+        envRaw,
+      }),
       effortUpdate: { value: undefined },
     };
   }
   return {
-    message: 'Effort level set to auto',
+    message: t('Effort level set to auto'),
     effortUpdate: { value: undefined },
   };
 }
@@ -115,7 +124,7 @@ export function executeEffort(args: string): EffortCommandResult {
 
   if (!isEffortLevel(normalized)) {
     return {
-      message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, auto`,
+      message: tf('Invalid argument: {args}. Valid options are: low, medium, high, max, auto', { args }),
     };
   }
 
@@ -156,7 +165,9 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
 
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Usage: /effort [low|medium|high|xhigh|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning beyond high, short of max; including ChatGPT Codex models\n- max: Maximum capability with deepest reasoning; maps to xhigh for ChatGPT Codex models\n- auto: Use the default effort level for your model',
+      t(
+        'Usage: /effort [low|medium|high|xhigh|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning beyond high, short of max; including ChatGPT Codex models\n- max: Maximum capability with deepest reasoning; maps to xhigh for ChatGPT Codex models\n- auto: Use the default effort level for your model',
+      ),
     );
     return;
   }

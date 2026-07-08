@@ -10,6 +10,7 @@ import {
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { estimateSkillFrontmatterTokens } from '../../skills/loadSkillsDir.js';
 import { formatTokens } from '../../utils/format.js';
 import { getSettingSourceName, type SettingSource } from '../../utils/settings/constants.js';
@@ -103,7 +104,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
   if (skills.length === 0) {
     return (
       <Dialog title={t('Skills')} subtitle={t('No skills found')} onCancel={handleCancel} hideInputGuide>
-        <Text dimColor>Create skills in .claude/skills/ or ~/.claude/skills/</Text>
+        <T dimColor>Create skills in .claude/skills/ or ~/.claude/skills/</T>
         <Text dimColor italic>
           <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" />
         </Text>
@@ -157,7 +158,7 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
   // boundary changes.
   return (
     <FuzzyPicker
-      title="Skills"
+      title={t('Skills')}
       placeholder={t('Type to filter skills\u2026')}
       items={orderedFilteredSkills}
       getKey={s => `${s.name}-${s.source}`}

@@ -7,6 +7,7 @@ import {
 } from '../../services/analytics/index.js';
 import { Select } from '../CustomSelect/select.js';
 import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { PermissionDialog } from './PermissionDialog.js';
 
 export type SandboxPermissionRequestProps = {
@@ -77,7 +78,7 @@ export function SandboxPermissionRequest({
     <PermissionDialog title={t('Network request outside of sandbox')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box>
-          <Text dimColor>Host:</Text>
+          <T dimColor>Host:</T>
           <Text> {host}</Text>
         </Box>
         <Box marginTop={1}>

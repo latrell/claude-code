@@ -2,6 +2,8 @@ import React from 'react';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import { Box, Text } from '@anthropic/ink';
+import { t } from 'src/i18n/t.js';
+import { T } from 'src/i18n/TText.js';
 import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { formatFileSize, truncate } from 'src/utils/format.js';
@@ -23,7 +25,7 @@ export function renderToolUseMessage(
 export function renderToolUseProgressMessage(): React.ReactNode {
   return (
     <MessageResponse height={1}>
-      <Text dimColor>Fetching…</Text>
+      <T dimColor>Fetching…</T>
     </MessageResponse>
   );
 }
@@ -39,7 +41,7 @@ export function renderToolResultMessage(
       <Box flexDirection="column">
         <MessageResponse height={1}>
           <Text>
-            Received <Text bold>{formattedSize}</Text> ({code} {codeText})
+            {t('Received')} <Text bold>{formattedSize}</Text> ({code} {codeText})
           </Text>
         </MessageResponse>
         <Box flexDirection="column">
@@ -51,7 +53,7 @@ export function renderToolResultMessage(
   return (
     <MessageResponse height={1}>
       <Text>
-        Received <Text bold>{formattedSize}</Text> ({code} {codeText})
+        {t('Received')} <Text bold>{formattedSize}</Text> ({code} {codeText})
       </Text>
     </MessageResponse>
   );

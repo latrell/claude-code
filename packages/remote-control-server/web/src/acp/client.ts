@@ -19,6 +19,7 @@ import type {
   ModelInfo,
   AvailableCommand,
 } from './types'
+import { t } from '../lib/i18n'
 
 function encodeWebSocketAuthProtocol(token: string): string {
   const bytes = new TextEncoder().encode(token)
@@ -711,13 +712,13 @@ export class ACPClient {
     request?: ListSessionsRequest,
   ): Promise<ListSessionsResponse> {
     if (!this.supportsSessionList) {
-      throw new Error('Listing sessions is not supported by this agent')
+      throw new Error(t('Listing sessions is not supported by this agent'))
     }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pendingSessionList) {
           this.pendingSessionList = null
-          reject(new Error('List sessions timed out'))
+          reject(new Error(t('List sessions timed out')))
         }
       }, 30000)
       this.pendingSessionList = { resolve, reject, timer }
@@ -738,7 +739,7 @@ export class ACPClient {
    */
   async loadSession(request: LoadSessionRequest): Promise<string> {
     if (!this.supportsLoadSession) {
-      throw new Error('Loading sessions is not supported by this agent')
+      throw new Error(t('Loading sessions is not supported by this agent'))
     }
     return new Promise((resolve, reject) => {
       this.pendingSessionTarget = request.sessionId
@@ -747,7 +748,7 @@ export class ACPClient {
         if (this.pendingSessionLoad) {
           this.pendingSessionTarget = null
           this.pendingSessionLoad = null
-          reject(new Error('Load session timed out'))
+          reject(new Error(t('Load session timed out')))
         }
       }, 60000)
       this.pendingSessionLoad = { resolve, reject, timer }
@@ -769,7 +770,7 @@ export class ACPClient {
    */
   async resumeSession(request: ResumeSessionRequest): Promise<string> {
     if (!this.supportsResumeSession) {
-      throw new Error('Resuming sessions is not supported by this agent')
+      throw new Error(t('Resuming sessions is not supported by this agent'))
     }
     return new Promise((resolve, reject) => {
       this.pendingSessionTarget = request.sessionId
@@ -778,7 +779,7 @@ export class ACPClient {
         if (this.pendingSessionResume) {
           this.pendingSessionTarget = null
           this.pendingSessionResume = null
-          reject(new Error('Resume session timed out'))
+          reject(new Error(t('Resume session timed out')))
         }
       }, 30000)
       this.pendingSessionResume = { resolve, reject, timer }

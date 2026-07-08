@@ -136,8 +136,16 @@ export function BridgeDialog({ onDone }: Props): React.ReactNode {
             <Text dimColor>{contextSuffix}</Text>
           </Text>
           {error && <Text color="error">{error}</Text>}
-          {verbose && environmentId && <Text dimColor>Environment: {environmentId}</Text>}
-          {verbose && sessionId && <Text dimColor>Session: {sessionId}</Text>}
+          {verbose && environmentId && (
+            <T dimColor vars={{ environmentId }}>
+              {'Environment: {environmentId}'}
+            </T>
+          )}
+          {verbose && sessionId && (
+            <T dimColor vars={{ sessionId }}>
+              {'Session: {sessionId}'}
+            </T>
+          )}
         </Box>
         {showQR && qrLines.length > 0 && (
           <Box flexDirection="column">

@@ -55,7 +55,7 @@ export function DescriptionStep(): ReactNode {
             fallback="ctrl+g"
             description="open in editor"
           />
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('go back')} />
         </Byline>
       }
     >

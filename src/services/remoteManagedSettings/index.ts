@@ -13,6 +13,7 @@
  */
 
 import axios from 'axios'
+import { t } from '../../i18n/t.js'
 import { createHash } from 'crypto'
 import { open, unlink } from 'fs/promises'
 import { getOauthConfig, OAUTH_BETA_HEADER } from '../../constants/oauth.js'
@@ -198,7 +199,7 @@ function getRemoteSettingsAuthHeaders(): {
 
   return {
     headers: {},
-    error: 'No authentication available',
+    error: t('No authentication available'),
   }
 }
 
@@ -259,7 +260,7 @@ async function fetchRemoteManagedSettings(
       // Auth errors should not be retried - return a special flag to skip retries
       return {
         success: false,
-        error: `Authentication required for remote settings`,
+        error: t('Authentication required for remote settings'),
         skipRetry: true,
       }
     }
@@ -314,7 +315,7 @@ async function fetchRemoteManagedSettings(
       )
       return {
         success: false,
-        error: 'Invalid remote settings format',
+        error: t('Invalid remote settings format'),
       }
     }
 
@@ -326,7 +327,7 @@ async function fetchRemoteManagedSettings(
       )
       return {
         success: false,
-        error: 'Invalid settings structure',
+        error: t('Invalid settings structure'),
       }
     }
 
@@ -347,13 +348,13 @@ async function fetchRemoteManagedSettings(
         // Auth errors (401, 403) should not be retried - the API key doesn't have access
         return {
           success: false,
-          error: 'Not authorized for remote settings',
+          error: t('Not authorized for remote settings'),
           skipRetry: true,
         }
       case 'timeout':
-        return { success: false, error: 'Remote settings request timeout' }
+        return { success: false, error: t('Remote settings request timeout') }
       case 'network':
-        return { success: false, error: 'Cannot connect to server' }
+        return { success: false, error: t('Cannot connect to server') }
       default:
         return { success: false, error: message }
     }

@@ -305,9 +305,14 @@ export function MCPListPanel({
       <Box paddingX={1}>
         <Text dimColor italic>
           <Byline>
-            <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         </Text>
       </Box>

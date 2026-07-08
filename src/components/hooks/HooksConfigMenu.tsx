@@ -183,7 +183,7 @@ export function HooksConfigMenu({ toolNames, onExit }: Props): React.ReactNode {
   if (hooksDisabled) {
     return (
       <Dialog
-        title="Hook Configuration - Disabled"
+        title={t('Hook Configuration - Disabled')}
         onCancel={handleExit}
         inputGuide={() => <Text>{t('Esc to close')}</Text>}
       >

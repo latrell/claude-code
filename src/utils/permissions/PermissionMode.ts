@@ -1,5 +1,6 @@
 import z from 'zod/v4'
 import { PAUSE_ICON } from '../../constants/figures.js'
+import { t } from '../../i18n/t.js'
 // Types extracted to src/types/permissions.ts to break import cycles
 import {
   EXTERNAL_PERMISSION_MODES,
@@ -42,42 +43,42 @@ const PERMISSION_MODE_CONFIG: Partial<
   Record<PermissionMode, PermissionModeConfig>
 > = {
   default: {
-    title: 'Default',
+    title: t('Default'),
     shortTitle: 'Default',
     symbol: '',
     color: 'text',
     external: 'default',
   },
   plan: {
-    title: 'Plan Mode',
+    title: t('Plan Mode'),
     shortTitle: 'Plan',
     symbol: PAUSE_ICON,
     color: 'planMode',
     external: 'plan',
   },
   acceptEdits: {
-    title: 'Accept edits',
+    title: t('Accept edits'),
     shortTitle: 'Accept',
     symbol: '⏵⏵',
     color: 'autoAccept',
     external: 'acceptEdits',
   },
   bypassPermissions: {
-    title: 'Bypass',
+    title: t('Bypass'),
     shortTitle: 'Bypass',
     symbol: '⏵⏵',
     color: 'error',
     external: 'bypassPermissions',
   },
   dontAsk: {
-    title: "Don't Ask",
+    title: t("Don't Ask"),
     shortTitle: 'DontAsk',
     symbol: '⏵⏵',
     color: 'error',
     external: 'dontAsk',
   },
   auto: {
-    title: 'Auto',
+    title: t('Auto'),
     shortTitle: 'Auto',
     symbol: '⏵⏵',
     color: 'warning' as ModeColorKey,

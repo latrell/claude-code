@@ -13,6 +13,7 @@
  */
 
 import axios from 'axios'
+import { t } from '../../i18n/t.js'
 import { createHash } from 'crypto'
 import { readFileSync as fsReadFileSync } from 'fs'
 import { unlink, writeFile } from 'fs/promises'
@@ -257,7 +258,7 @@ function getAuthHeaders(): {
 
   return {
     headers: {},
-    error: 'No authentication available',
+    error: t('No authentication available'),
   }
 }
 
@@ -307,7 +308,7 @@ async function fetchPolicyLimits(
     if (authHeaders.error) {
       return {
         success: false,
-        error: 'Authentication required for policy limits',
+        error: t('Authentication required for policy limits'),
         skipRetry: true,
       }
     }
@@ -356,7 +357,7 @@ async function fetchPolicyLimits(
       )
       return {
         success: false,
-        error: 'Invalid policy limits format',
+        error: t('Invalid policy limits format'),
       }
     }
 
@@ -372,13 +373,13 @@ async function fetchPolicyLimits(
       case 'auth':
         return {
           success: false,
-          error: 'Not authorized for policy limits',
+          error: t('Not authorized for policy limits'),
           skipRetry: true,
         }
       case 'timeout':
-        return { success: false, error: 'Policy limits request timeout' }
+        return { success: false, error: t('Policy limits request timeout') }
       case 'network':
-        return { success: false, error: 'Cannot connect to server' }
+        return { success: false, error: t('Cannot connect to server') }
       default:
         return { success: false, error: message }
     }

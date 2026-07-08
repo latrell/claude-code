@@ -117,9 +117,9 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
             <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
-              {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
-              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {agent.status === 'running' && onKillAgent && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {onBack && <KeyboardShortcutHint shortcut="←" action={t('go back')} />}
+              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action={t('close')} />
+              {agent.status === 'running' && onKillAgent && <KeyboardShortcutHint shortcut="x" action={t('stop')} />}
             </Byline>
           )
         }

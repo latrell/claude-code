@@ -7,6 +7,7 @@ import {
   isSuppressible403,
 } from './bridgeApi.js'
 import type { BridgeConfig, BridgeApiClient } from './types.js'
+import { t } from '../i18n/t.js'
 import { logForDebugging } from '../utils/debug.js'
 import { rcLog } from './rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
@@ -482,7 +483,7 @@ export async function initBridgeCore(
       )
       logEvent('tengu_bridge_repl_session_failed', {})
       await api.deregisterEnvironment(environmentId).catch(() => {})
-      onStateChange?.('failed', 'Session creation failed')
+      onStateChange?.('failed', t('Session creation failed'))
       return null
     }
 
@@ -955,7 +956,7 @@ export async function initBridgeCore(
 
     if (closeCode === 1000) {
       // Clean close — session ended normally. Tear down the bridge.
-      onStateChange?.('failed', 'session ended')
+      onStateChange?.('failed', t('session ended'))
       pollController.abort()
       triggerTeardown()
       return
@@ -1099,7 +1100,7 @@ export async function initBridgeCore(
       wakePollLoop()
       onStateChange?.(
         'reconnecting',
-        'Work item lease expired, fetching fresh token',
+        t('Work item lease expired, fetching fresh token'),
       )
     },
     async onEnvironmentLost() {
@@ -1534,7 +1535,9 @@ export async function initBridgeCore(
                 onBatchDropped: () => {
                   onStateChange?.(
                     'reconnecting',
-                    'Lost sync with Remote Control — events could not be delivered',
+                    t(
+                      'Lost sync with Remote Control — events could not be delivered',
+                    ),
                   )
                   // SI has been down ~20 min. Wake the poll loop so that when
                   // SI recovers, next poll → onWorkReceived → fresh transport
@@ -2301,13 +2304,16 @@ async function startWorkPollLoop({
           )
           onStateChange?.(
             'failed',
-            'Environment deleted and re-registration limit reached',
+            t('Environment deleted and re-registration limit reached'),
           )
           onFatalError?.()
           break
         }
 
-        onStateChange?.('reconnecting', 'environment lost, recreating session')
+        onStateChange?.(
+          'reconnecting',
+          t('environment lost, recreating session'),
+        )
         const newCreds = await onEnvironmentLost()
         // doReconnect() makes several sequential network calls (1-5s).
         // If the user triggered teardown during that window, its internal
@@ -2334,7 +2340,7 @@ async function startWorkPollLoop({
 
         onStateChange?.(
           'failed',
-          'Environment deleted and re-registration failed',
+          t('Environment deleted and re-registration failed'),
         )
         onFatalError?.()
         break
@@ -2364,7 +2370,7 @@ async function startWorkPollLoop({
           onStateChange?.(
             'failed',
             isExpiry
-              ? 'session expired · /remote-control to reconnect'
+              ? t('session expired · /remote-control to reconnect')
               : err.message,
           )
         }

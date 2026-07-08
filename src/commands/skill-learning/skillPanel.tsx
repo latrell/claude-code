@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isSkillLearningEnabled } from '../../services/skillLearning/featureCheck.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type SkillAction = {
   label: string;
@@ -97,23 +97,23 @@ function SkillPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactN
   const actions = useMemo<SkillAction[]>(
     () => [
       {
-        label: 'Status',
-        description: 'Show skill learning status for current project',
+        label: t('Status'),
+        description: t('Show skill learning status for current project'),
         run: getStatusText,
       },
       {
-        label: 'Start',
-        description: 'Enable skill learning for this session',
+        label: t('Start'),
+        description: t('Enable skill learning for this session'),
         run: startSkillLearning,
       },
       {
-        label: 'Stop',
-        description: 'Disable skill learning for this session',
+        label: t('Stop'),
+        description: t('Disable skill learning for this session'),
         run: stopSkillLearning,
       },
       {
-        label: 'About',
-        description: 'Detailed description of skill learning features',
+        label: t('About'),
+        description: t('Detailed description of skill learning features'),
         run: () => Promise.resolve(ABOUT_TEXT),
       },
     ],
@@ -144,8 +144,8 @@ function SkillPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactN
 
   return (
     <Dialog
-      title="Skill Learning"
-      subtitle={`${actions.length} actions`}
+      title={t('Skill Learning')}
+      subtitle={tf('{count} actions', { count: String(actions.length) })}
       onCancel={() => onDone(t('Skill panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide

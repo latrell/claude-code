@@ -228,13 +228,13 @@ export function AddWorkspaceDirectory({
                   <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
                 ) : (
                   <Byline>
-                    <KeyboardShortcutHint shortcut="Tab" action="complete" />
-                    <KeyboardShortcutHint shortcut="Enter" action="add" />
+                    <KeyboardShortcutHint shortcut="Tab" action={t('complete')} />
+                    <KeyboardShortcutHint shortcut="Enter" action={t('add')} />
                     <ConfigurableShortcutHint
                       action="confirm:no"
                       context="Settings"
                       fallback="Esc"
-                      description="cancel"
+                      description={t('cancel')}
                     />
                   </Byline>
                 )

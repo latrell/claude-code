@@ -5,6 +5,7 @@ import { OutputLine } from 'src/components/shell/OutputLine.js';
 import { Box, Text } from '@anthropic/ink';
 import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
+import { t } from 'src/i18n/t.js';
 import { jsonStringify } from 'src/utils/slowOperations.js';
 import type { inputSchema, Output } from './ReadMcpResourceTool.js';
 
@@ -28,7 +29,7 @@ export function renderToolResultMessage(
     return (
       <Box justifyContent="space-between" overflowX="hidden" width="100%">
         <MessageResponse height={1}>
-          <Text dimColor>(No content)</Text>
+          <Text dimColor>{t('(No content)')}</Text>
         </MessageResponse>
       </Box>
     );

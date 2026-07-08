@@ -19,7 +19,7 @@ export function General(): React.ReactNode {
           </Text>
           <Text>
             <Text bold>3. </Text>
-            <Text>Type </Text>
+            <T>Type </T>
             <Text bold>/commit</Text>
             <T> to commit changes, </T>
             <Text bold>/help</Text>

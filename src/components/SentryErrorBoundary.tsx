@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { captureException } from 'src/utils/sentry.js';
 import { logError } from 'src/utils/log.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 import { T } from '../i18n/TText.js';
 
 interface Props {
@@ -54,7 +54,7 @@ export class SentryErrorBoundary extends React.Component<Props, State> {
             React Rendering Error
           </T>
           <Text color="error">{this.state.error?.message}</Text>
-          {this.props.name && <Text dimColor>Boundary: {this.props.name}</Text>}
+          {this.props.name && <Text dimColor>{tf('Boundary: {name}', { name: this.props.name })}</Text>}
         </Box>
       );
     }

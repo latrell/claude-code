@@ -1,6 +1,7 @@
 import React from 'react';
 import { z } from 'zod/v4';
 import { tf } from 'src/i18n/t.js';
+import { T } from 'src/i18n/TText.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { FallbackToolUseRejectedMessage } from 'src/components/FallbackToolUseRejectedMessage.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
@@ -453,7 +454,7 @@ function TaskOutputResultDisplay({
       }
       return (
         <MessageResponse>
-          <Text dimColor>Read output ({expandShortcut} to expand)</Text>
+          <Text dimColor>{tf('Read output ({shortcut} to expand)', { shortcut: expandShortcut })}</Text>
         </MessageResponse>
       );
     }
@@ -461,7 +462,7 @@ function TaskOutputResultDisplay({
     if (result.retrieval_status === 'timeout' || task.status === 'running') {
       return (
         <MessageResponse>
-          <Text dimColor>Task is still running…</Text>
+          <T dimColor>Task is still running…</T>
         </MessageResponse>
       );
     }
@@ -469,14 +470,14 @@ function TaskOutputResultDisplay({
     if (result.retrieval_status === 'not_ready') {
       return (
         <MessageResponse>
-          <Text dimColor>Task is still running…</Text>
+          <T dimColor>Task is still running…</T>
         </MessageResponse>
       );
     }
 
     return (
       <MessageResponse>
-        <Text dimColor>Task not ready</Text>
+        <T dimColor>Task not ready</T>
       </MessageResponse>
     );
   }

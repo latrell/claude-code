@@ -10,6 +10,7 @@ import { toIDEDisplayName } from '../../../utils/ide.js';
 import { editPromptInEditor } from '../../../utils/promptEditor.js';
 import { Divider } from '@anthropic/ink';
 import { t, tf } from '../../../i18n/t.js';
+import { T } from '../../../i18n/TText.js';
 import TextInput from '../../TextInput.js';
 import { PermissionRequestTitle } from '../PermissionRequestTitle.js';
 import { PreviewBox } from './PreviewBox.js';
@@ -336,7 +337,7 @@ export function PreviewQuestionView({
                 maxWidth={previewMaxWidth}
               />
               <Box marginTop={1} flexDirection="row" gap={1}>
-                <Text color="suggestion">Notes:</Text>
+                <T color="suggestion">Notes:</T>
                 {isInNotesInput ? (
                   <TextInput
                     value={notesValue}

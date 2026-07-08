@@ -104,7 +104,12 @@ export function MCPAgentServerMenu({ agentServer, onCancel, onComplete }: Props)
         <Box marginLeft={3}>
           <Text dimColor>
             {t('Return here after authenticating in your browser.')}{' '}
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('go back')}
+            />
           </Text>
         </Box>
       </Box>
@@ -136,9 +141,14 @@ export function MCPAgentServerMenu({ agentServer, onCancel, onComplete }: Props)
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
-            <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+            <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('go back')}
+            />
           </Byline>
         )
       }

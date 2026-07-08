@@ -25,6 +25,7 @@
  */
 
 import axios from 'axios'
+import { t } from '../../i18n/t.js'
 import { createHash } from 'crypto'
 import { mkdir, readdir, readFile, stat, writeFile } from 'fs/promises'
 import { join, relative, sep } from 'path'
@@ -180,7 +181,7 @@ function getAuthHeaders(): {
       },
     }
   }
-  return { error: 'No OAuth token available for team memory sync' }
+  return { error: t('No OAuth token available for team memory sync') }
 }
 
 // ─── Fetch (pull) ────────────────────────────────────────────
@@ -238,7 +239,7 @@ async function fetchTeamMemoryOnce(
       })
       return {
         success: false,
-        error: 'Invalid team memory response format',
+        error: t('Invalid team memory response format'),
         skipRetry: true,
         errorType: 'parse',
       }
@@ -277,7 +278,7 @@ async function fetchTeamMemoryOnce(
       case 'auth':
         return {
           success: false,
-          error: `Not authorized for team memory sync: ${body}`,
+          error: `${t('Not authorized for team memory sync')}: ${body}`,
           skipRetry: true,
           errorType: 'auth',
           httpStatus: status,
@@ -285,13 +286,13 @@ async function fetchTeamMemoryOnce(
       case 'timeout':
         return {
           success: false,
-          error: 'Team memory sync request timeout',
+          error: t('Team memory sync request timeout'),
           errorType: 'timeout',
         }
       case 'network':
         return {
           success: false,
-          error: 'Cannot connect to server',
+          error: t('Cannot connect to server'),
           errorType: 'network',
         }
       default:
@@ -344,8 +345,9 @@ async function fetchTeamMemoryHashes(
     if (!entryChecksums || typeof entryChecksums !== 'object') {
       return {
         success: false,
-        error:
+        error: t(
           'Server did not return entryChecksums (?view=hashes unsupported)',
+        ),
         errorType: 'parse',
       }
     }
@@ -365,14 +367,18 @@ async function fetchTeamMemoryHashes(
       case 'auth':
         return {
           success: false,
-          error: 'Not authorized',
+          error: t('Not authorized'),
           errorType: 'auth',
           httpStatus: status,
         }
       case 'timeout':
-        return { success: false, error: 'Timeout', errorType: 'timeout' }
+        return { success: false, error: t('Timeout'), errorType: 'timeout' }
       case 'network':
-        return { success: false, error: 'Network error', errorType: 'network' }
+        return {
+          success: false,
+          error: t('Network error'),
+          errorType: 'network',
+        }
       default:
         return {
           success: false,
@@ -496,7 +502,7 @@ async function uploadTeamMemory(
       logForDebugging('team-memory-sync: conflict (412 Precondition Failed)', {
         level: 'info',
       })
-      return { success: false, conflict: true, error: 'ETag mismatch' }
+      return { success: false, conflict: true, error: t('ETag mismatch') }
     }
 
     const responseChecksum = response.data?.checksum
@@ -787,7 +793,7 @@ export async function pullTeamMemory(
       success: false,
       filesWritten: 0,
       entryCount: 0,
-      error: 'OAuth not available',
+      error: t('OAuth not available'),
     }
   }
 
@@ -798,7 +804,7 @@ export async function pullTeamMemory(
       success: false,
       filesWritten: 0,
       entryCount: 0,
-      error: 'No git remote found',
+      error: t('No git remote found'),
     }
   }
 
@@ -897,7 +903,7 @@ export async function pushTeamMemory(
     return {
       success: false,
       filesUploaded: 0,
-      error: 'OAuth not available',
+      error: t('OAuth not available'),
       errorType: 'no_oauth',
     }
   }
@@ -908,7 +914,7 @@ export async function pushTeamMemory(
     return {
       success: false,
       filesUploaded: 0,
-      error: 'No git remote found',
+      error: t('No git remote found'),
       errorType: 'no_repo',
     }
   }
@@ -1100,7 +1106,7 @@ export async function pushTeamMemory(
         success: false,
         filesUploaded: 0,
         conflict: true,
-        error: 'Conflict resolution failed after retries',
+        error: t('Conflict resolution failed after retries'),
       }
     }
 
@@ -1128,7 +1134,7 @@ export async function pushTeamMemory(
         success: false,
         filesUploaded: 0,
         conflict: true,
-        error: `Conflict resolution hashes probe failed: ${probe.error}`,
+        error: `${t('Conflict resolution hashes probe failed')}: ${probe.error}`,
       }
     }
     state.serverChecksums.clear()
@@ -1141,7 +1147,7 @@ export async function pushTeamMemory(
   return {
     success: false,
     filesUploaded: 0,
-    error: 'Unexpected end of conflict resolution loop',
+    error: t('Unexpected end of conflict resolution loop'),
   }
 }
 

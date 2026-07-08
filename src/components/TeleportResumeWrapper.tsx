@@ -10,7 +10,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { ResumeTask } from './ResumeTask.js';
 import { Spinner } from './Spinner.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 interface TeleportResumeWrapperProps {
   onComplete: (result: TeleportRemoteResponse) => void;
@@ -72,7 +72,7 @@ export function TeleportResumeWrapper({
           <Spinner />
           <Text bold>{t('Resuming session…')}</Text>
         </Box>
-        <Text dimColor>Loading &quot;{selectedSession.title}&quot;…</Text>
+        <Text dimColor>{tf('Loading "{title}"…', { title: selectedSession.title })}</Text>
       </Box>
     );
   }
@@ -82,12 +82,12 @@ export function TeleportResumeWrapper({
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold color="error">
-          Failed to resume session
+          {t('Failed to resume session')}
         </Text>
         <Text dimColor>{error.message}</Text>
         <Box marginTop={1}>
           <Text dimColor>
-            Press <Text bold>Esc</Text> to cancel
+            {t('Press')} <Text bold>Esc</Text> {t('to cancel')}
           </Text>
         </Box>
       </Box>

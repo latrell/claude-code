@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
+import { t } from '../i18n/t.js'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { AUTONOMY_DIR, type AutonomyTriggerKind } from './autonomyAuthority.js'
 import {
@@ -1048,7 +1049,7 @@ export function formatAutonomyFlowsList(
 ): string {
   const slice = flows.slice(0, limit)
   if (slice.length === 0) {
-    return 'No autonomy flows recorded.'
+    return t('No autonomy flows recorded.')
   }
   return slice
     .map(flow => {
@@ -1067,7 +1068,7 @@ export function formatAutonomyFlowDetail(
   flow: AutonomyFlowRecord | null | undefined,
 ): string {
   if (!flow) {
-    return 'Autonomy flow not found.'
+    return t('Autonomy flow not found.')
   }
   const stepLines = flow.stateJson?.steps.map((step, index) => {
     const runId = step.runId ?? 'none'

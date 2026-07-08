@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { t, tf } from '../i18n/t.js'
 import {
   type HeadlessBridgeOpts,
   BridgeHeadlessPermanentError,
@@ -25,7 +26,7 @@ const EXIT_CODE_TRANSIENT = 1
  */
 export async function runDaemonWorker(kind?: string): Promise<void> {
   if (!kind) {
-    console.error('Error: --daemon-worker requires a worker kind')
+    console.error(t('Error: --daemon-worker requires a worker kind'))
     process.exitCode = EXIT_CODE_PERMANENT
     return
   }
@@ -35,7 +36,7 @@ export async function runDaemonWorker(kind?: string): Promise<void> {
       await runRemoteControlWorker()
       break
     default:
-      console.error(`Error: unknown daemon worker kind '${kind}'`)
+      console.error(tf("Error: unknown daemon worker kind '{kind}'", { kind }))
       process.exitCode = EXIT_CODE_PERMANENT
   }
 }
@@ -99,10 +100,18 @@ async function runRemoteControlWorker(): Promise<void> {
     await runBridgeHeadless(opts, controller.signal)
   } catch (err) {
     if (err instanceof BridgeHeadlessPermanentError) {
-      console.error(`[remoteControl] permanent error: ${err.message}`)
+      console.error(
+        tf('[remoteControl] permanent error: {message}', {
+          message: err.message,
+        }),
+      )
       process.exitCode = EXIT_CODE_PERMANENT
     } else {
-      console.error(`[remoteControl] transient error: ${errorMessage(err)}`)
+      console.error(
+        tf('[remoteControl] transient error: {message}', {
+          message: errorMessage(err),
+        }),
+      )
       process.exitCode = EXIT_CODE_TRANSIENT
     }
   } finally {

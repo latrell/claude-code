@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Box, Text, setClipboard, useInput } from '@anthropic/ink';
 import type { ArtifactInfo } from './scanner.js';
 import { openBrowser } from 'src/utils/browser.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   artifacts: ArtifactInfo[];
@@ -45,11 +46,13 @@ export function ArtifactsMenu({ artifacts, onExit }: Props): React.ReactElement 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={0}>
       <Box marginBottom={1}>
-        <Text bold>Artifacts ({artifacts.length})</Text>
+        <T bold vars={{ count: artifacts.length }}>
+          {'Artifacts ({count})'}
+        </T>
       </Box>
 
       {artifacts.length === 0 ? (
-        <Text color="subtle">No artifacts uploaded this session. Run /use-artifacts to learn how.</Text>
+        <T color="subtle">No artifacts uploaded this session. Run /use-artifacts to learn how.</T>
       ) : (
         <Box flexDirection="column">
           {artifacts.map((a, idx) => (

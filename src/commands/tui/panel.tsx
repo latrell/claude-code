@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Box, Dialog, Text, useInput } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { callTui } from './index.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type TuiAction = {
   label: string;
@@ -25,23 +25,23 @@ function TuiPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactNod
   const actions = useMemo<TuiAction[]>(
     () => [
       {
-        label: 'Status',
-        description: 'Show marker and environment override state',
+        label: t('Status'),
+        description: t('Show marker and environment override state'),
         run: () => void runTuiAction('status', onDone),
       },
       {
-        label: 'Toggle',
-        description: 'Flip persisted TUI mode for the next session',
+        label: t('Toggle'),
+        description: t('Flip persisted TUI mode for the next session'),
         run: () => void runTuiAction('toggle', onDone),
       },
       {
-        label: 'On',
-        description: 'Enable flicker-free alternate-screen mode',
+        label: t('On'),
+        description: t('Enable flicker-free alternate-screen mode'),
         run: () => void runTuiAction('on', onDone),
       },
       {
-        label: 'Off',
-        description: 'Disable flicker-free alternate-screen mode',
+        label: t('Off'),
+        description: t('Disable flicker-free alternate-screen mode'),
         run: () => void runTuiAction('off', onDone),
       },
     ],
@@ -70,8 +70,8 @@ function TuiPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactNod
 
   return (
     <Dialog
-      title="TUI Mode"
-      subtitle={`${actions.length} actions`}
+      title={t('TUI Mode')}
+      subtitle={tf('{count} actions', { count: String(actions.length) })}
       onCancel={() => onDone(t('TUI mode panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide

@@ -15,7 +15,8 @@ import {
   setPreferTmuxOverIterm2,
   verifyIt2Setup,
 } from './backends/it2Setup.js';
-import { tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
+import { t, tf } from '../../i18n/t.js';
 
 type SetupStep =
   | 'initial'
@@ -122,7 +123,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
   function renderInitialPrompt(): React.ReactNode {
     const options: OptionWithDescription<string>[] = [
       {
-        label: 'Install it2 now',
+        label: t('Install it2 now'),
         value: 'install',
         description: packageManager
           ? `Uses ${packageManager} to install the it2 CLI tool`
@@ -132,14 +133,14 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
 
     if (tmuxAvailable) {
       options.push({
-        label: 'Use tmux instead',
+        label: t('Use tmux instead'),
         value: 'tmux',
         description: 'Opens teammates in a separate tmux session',
       });
     }
 
     options.push({
-      label: 'Cancel',
+      label: t('Cancel'),
       value: 'cancel',
       description: 'Skip teammate spawning for now',
     });
@@ -149,7 +150,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
         <Text>
           To use native iTerm2 split panes for teammates, you need the <Text bold>it2</Text> CLI tool.
         </Text>
-        <Text dimColor>This enables teammates to appear as split panes within your current window.</Text>
+        <T dimColor>This enables teammates to appear as split panes within your current window.</T>
         <Box marginTop={1}>
           <Select
             options={options}
@@ -178,9 +179,9 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
       <Box flexDirection="column" gap={1}>
         <Box>
           <Spinner />
-          <Text> Installing it2 using {packageManager}…</Text>
+          <Text>{tf('Installing it2 using {pm}…', { pm: packageManager })}</Text>
         </Box>
-        <Text dimColor>This may take a moment.</Text>
+        <T dimColor>This may take a moment.</T>
       </Box>
     );
   }
@@ -188,7 +189,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
   function renderInstallFailed(): React.ReactNode {
     const options: OptionWithDescription<string>[] = [
       {
-        label: 'Try again',
+        label: t('Try again'),
         value: 'retry',
         description: 'Retry the installation',
       },
@@ -196,24 +197,24 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
 
     if (tmuxAvailable) {
       options.push({
-        label: 'Use tmux instead',
+        label: t('Use tmux instead'),
         value: 'tmux',
         description: 'Falls back to tmux for teammate panes',
       });
     }
 
     options.push({
-      label: 'Cancel',
+      label: t('Cancel'),
       value: 'cancel',
       description: 'Skip teammate spawning for now',
     });
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="error">Installation failed</Text>
+        <T color="error">Installation failed</T>
         {error && <Text dimColor>{error}</Text>}
         <Text dimColor>
-          You can try installing manually:{' '}
+          {t('You can try installing manually:')}{' '}
           {packageManager === 'uvx'
             ? 'uv tool install it2'
             : packageManager === 'pipx'
@@ -254,7 +255,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
           ))}
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>Press Enter when ready to verify…</Text>
+          <T dimColor>Press Enter when ready to verify…</T>
         </Box>
       </Box>
     );
@@ -264,7 +265,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
     return (
       <Box>
         <Spinner />
-        <Text> Verifying it2 can communicate with iTerm2…</Text>
+        <T>Verifying it2 can communicate with iTerm2…</T>
       </Box>
     );
   }
@@ -273,7 +274,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
     return (
       <Box flexDirection="column">
         <Text color="success">✓ iTerm2 split pane support is ready</Text>
-        <Text dimColor>Teammates will now appear as split panes.</Text>
+        <T dimColor>Teammates will now appear as split panes.</T>
       </Box>
     );
   }
@@ -281,7 +282,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
   function renderFailed(): React.ReactNode {
     const options: OptionWithDescription<string>[] = [
       {
-        label: 'Try again',
+        label: t('Try again'),
         value: 'retry',
         description: 'Verify the connection again',
       },
@@ -289,26 +290,26 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
 
     if (tmuxAvailable) {
       options.push({
-        label: 'Use tmux instead',
+        label: t('Use tmux instead'),
         value: 'tmux',
         description: 'Falls back to tmux for teammate panes',
       });
     }
 
     options.push({
-      label: 'Cancel',
+      label: t('Cancel'),
       value: 'cancel',
       description: 'Skip teammate spawning for now',
     });
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="error">Verification failed</Text>
+        <T color="error">Verification failed</T>
         {error && <Text dimColor>{error}</Text>}
-        <Text>Make sure:</Text>
+        <T>Make sure:</T>
         <Box flexDirection="column" paddingLeft={2}>
-          <Text>· Python API is enabled in iTerm2 preferences</Text>
-          <Text>· You may need to restart iTerm2 after enabling</Text>
+          <Text>{t('· Python API is enabled in iTerm2 preferences')}</Text>
+          <Text>{t('· You may need to restart iTerm2 after enabling')}</Text>
         </Box>
         <Box marginTop={1}>
           <Select
@@ -347,7 +348,7 @@ export function It2SetupPrompt({ onDone, tmuxAvailable }: Props): React.ReactNod
     <Pane color="permission">
       <Box flexDirection="column" gap={1} paddingBottom={1}>
         <Text bold color="permission">
-          iTerm2 Split Pane Setup
+          {t('iTerm2 Split Pane Setup')}
         </Text>
         {renderContent()}
         {step !== 'installing' && step !== 'verifying' && step !== 'success' && (

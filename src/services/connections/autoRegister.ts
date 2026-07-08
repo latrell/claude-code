@@ -8,6 +8,7 @@
  * convenience layer and must never break a login.
  */
 
+import { t } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 import {
   getActiveOAuthAccount,
@@ -81,7 +82,7 @@ export function registerConnectionFromProviderLogin(
     if (modelType === 'openai') {
       if (env.OPENAI_AUTH_MODE === 'chatgpt') {
         upsertCandidate({
-          label: 'ChatGPT Subscription',
+          label: t('ChatGPT Subscription'),
           kind: 'chatgpt-oauth',
           credentialRef: 'default',
         })
@@ -90,7 +91,7 @@ export function registerConnectionFromProviderLogin(
       if (!env.OPENAI_API_KEY && !env.OPENAI_BASE_URL) return
       const tierModels = tiersFromEnv(env, 'OPENAI')
       upsertCandidate({
-        label: hostLabel(env.OPENAI_BASE_URL, 'OpenAI Compatible'),
+        label: hostLabel(env.OPENAI_BASE_URL, t('OpenAI Compatible')),
         kind: 'openai-compat',
         baseUrl: env.OPENAI_BASE_URL,
         apiKey: env.OPENAI_API_KEY,
@@ -102,7 +103,7 @@ export function registerConnectionFromProviderLogin(
       if (!env.GEMINI_API_KEY) return
       const tierModels = tiersFromEnv(env, 'GEMINI')
       upsertCandidate({
-        label: hostLabel(env.GEMINI_BASE_URL, 'Gemini'),
+        label: hostLabel(env.GEMINI_BASE_URL, t('Gemini')),
         kind: 'gemini',
         baseUrl: env.GEMINI_BASE_URL,
         apiKey: env.GEMINI_API_KEY,
@@ -115,7 +116,7 @@ export function registerConnectionFromProviderLogin(
       if (!apiKey) return
       const tierModels = tiersFromEnv(env, 'GROK')
       upsertCandidate({
-        label: hostLabel(env.GROK_BASE_URL, 'Grok'),
+        label: hostLabel(env.GROK_BASE_URL, t('Grok')),
         kind: 'grok',
         baseUrl: env.GROK_BASE_URL,
         apiKey,
@@ -127,7 +128,7 @@ export function registerConnectionFromProviderLogin(
     if (!env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_BASE_URL) return
     const tierModels = tiersFromEnv(env, 'ANTHROPIC')
     upsertCandidate({
-      label: hostLabel(env.ANTHROPIC_BASE_URL, 'Anthropic Compatible'),
+      label: hostLabel(env.ANTHROPIC_BASE_URL, t('Anthropic Compatible')),
       kind: 'anthropic-api',
       baseUrl: env.ANTHROPIC_BASE_URL,
       apiKey: env.ANTHROPIC_AUTH_TOKEN,
@@ -150,7 +151,7 @@ export function registerConnectionFromOAuthLogin(): void {
     const slotUuid = saveCurrentOAuthAccountToSlot()
     if (!slotUuid) return
     upsertCandidate({
-      label: account.emailAddress || 'Claude Account',
+      label: account.emailAddress || t('Claude Account'),
       kind: 'anthropic-oauth',
       credentialRef: slotUuid,
       accountEmail: account.emailAddress,

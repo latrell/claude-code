@@ -8,6 +8,7 @@
  */
 
 import * as React from 'react';
+import { t, tf } from '../../i18n/t.js';
 import type { LoadedPlugin } from '../../types/plugin.js';
 import { errorMessage } from '../../utils/errors.js';
 import { loadMcpServerUserConfig, saveMcpServerUserConfig } from '../../utils/plugins/mcpbHandler.js';
@@ -72,8 +73,8 @@ export function PluginOptionsFlow({ plugin, pluginId, onDone }: Props): React.Re
     if (Object.keys(unconfigured).length > 0) {
       result.push({
         key: 'top-level',
-        title: `Configure ${plugin.name}`,
-        subtitle: 'Plugin options',
+        title: tf('Configure {name}', { name: plugin.name }),
+        subtitle: t('Plugin options'),
         schema: unconfigured,
         load: () => loadPluginOptions(pluginId),
         save: values => savePluginOptions(pluginId, values, plugin.manifest.userConfig!),

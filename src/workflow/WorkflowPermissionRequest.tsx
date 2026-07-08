@@ -8,7 +8,7 @@ import { PermissionDialog } from 'src/components/permissions/PermissionDialog.js
 import { PermissionPrompt, type PermissionPromptOption } from 'src/components/permissions/PermissionPrompt.js';
 import type { PermissionRequestProps } from 'src/components/permissions/PermissionRequest.js';
 import { PermissionRuleExplanation } from 'src/components/permissions/PermissionRuleExplanation.js';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 type OptionValue = 'yes' | 'yes-dont-ask-again' | 'no';
 
@@ -136,7 +136,7 @@ export function WorkflowPermissionRequest({
           <Text bold color={theme.permission as keyof Theme}>
             Execute workflow: {input.workflow}
           </Text>
-          {input.args && <Text dimColor>Arguments: {input.args}</Text>}
+          {input.args && <Text dimColor>{tf('Arguments: {args}', { args: input.args })}</Text>}
         </Box>
         <PermissionRuleExplanation permissionResult={toolUseConfirm.permissionResult} toolType="command" />
         <PermissionPrompt<OptionValue> options={options} onSelect={handleSelect} onCancel={handleCancel} />

@@ -2368,12 +2368,14 @@ export async function readClientSecret(): Promise<string> {
 
   if (!process.stdin.isTTY) {
     throw new Error(
-      'No TTY available to prompt for client secret. Set MCP_CLIENT_SECRET env var instead.',
+      t(
+        'No TTY available to prompt for client secret. Set MCP_CLIENT_SECRET env var instead.',
+      ),
     )
   }
 
   return new Promise((resolve, reject) => {
-    process.stderr.write('Enter OAuth client secret: ')
+    process.stderr.write(t('Enter OAuth client secret: '))
     process.stdin.setRawMode?.(true)
     let secret = ''
     const onData = (ch: Buffer) => {

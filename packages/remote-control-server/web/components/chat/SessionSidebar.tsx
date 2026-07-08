@@ -2,6 +2,7 @@ import { cn } from '../../src/lib/utils';
 import { Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import type { SessionListItem } from '../../src/lib/types';
+import { t } from '../../src/lib/i18n';
 
 // =============================================================================
 // 会话侧边栏 — Anthropic 分段式：今天/昨天/更早 + 橙色活跃态
@@ -32,7 +33,9 @@ export function SessionSidebar({ sessions, activeId, onSelect, onNew, className 
       {/* 头部 */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-border">
         {!collapsed && (
-          <span className="text-xs font-display font-medium text-text-muted uppercase tracking-wider">会话</span>
+          <span className="text-xs font-display font-medium text-text-muted uppercase tracking-wider">
+            {t('Sessions')}
+          </span>
         )}
         <div className="flex items-center gap-1">
           {!collapsed && onNew && (
@@ -56,7 +59,7 @@ export function SessionSidebar({ sessions, activeId, onSelect, onNew, className 
 
       {/* 会话列表 — 分段 */}
       {!collapsed && (
-        <nav className="flex-1 overflow-y-auto py-2" aria-label="历史会话">
+        <nav className="flex-1 overflow-y-auto py-2" aria-label={t('Session history')}>
           {groups.map(group => (
             <div key={group.label}>
               <div className="px-3 py-1.5">
@@ -85,7 +88,7 @@ export function SessionSidebar({ sessions, activeId, onSelect, onNew, className 
           ))}
           {sessions.length === 0 && (
             <div className="flex items-center justify-center py-8">
-              <span className="text-xs text-text-muted font-display">暂无会话</span>
+              <span className="text-xs text-text-muted font-display">{t('No sessions yet')}</span>
             </div>
           )}
         </nav>
@@ -109,9 +112,9 @@ function groupByRecency(sessions: SessionListItem[]): SessionGroup[] {
   const yesterday = new Date(today.getTime() - 86400000);
 
   const groups: SessionGroup[] = [
-    { label: '今天', sessions: [] },
-    { label: '昨天', sessions: [] },
-    { label: '更早', sessions: [] },
+    { label: t('Today'), sessions: [] },
+    { label: t('Yesterday'), sessions: [] },
+    { label: t('Older'), sessions: [] },
   ];
 
   for (const session of sessions) {

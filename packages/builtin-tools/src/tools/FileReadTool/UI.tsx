@@ -8,6 +8,7 @@ import { Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/file.js';
 import { formatFileSize } from 'src/utils/format.js';
+import { t } from 'src/i18n/t.js';
 import { getPlansDirectory } from 'src/utils/plans.js';
 import { getTaskOutputDir } from 'src/utils/task/diskOutput.js';
 import type { Input, Output } from './FileReadTool.js';
@@ -169,12 +170,12 @@ export function renderToolUseErrorMessage(
 
 export function userFacingName(input: Partial<Input> | undefined): string {
   if (input?.file_path?.startsWith(getPlansDirectory())) {
-    return 'Reading Plan';
+    return t('Reading Plan');
   }
   if (input?.file_path && getAgentOutputTaskId(input.file_path)) {
-    return 'Read agent output';
+    return t('Read agent output');
   }
-  return 'Read';
+  return t('Read');
 }
 
 export function getToolUseSummary(input: Partial<Input> | undefined): string | null {

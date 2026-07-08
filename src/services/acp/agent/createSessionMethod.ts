@@ -4,6 +4,7 @@
  * budget. The barrel (./index.ts) imports this module for its side effect.
  */
 import { randomUUID } from 'node:crypto'
+import { t } from '../../../i18n/t.js'
 import type {
   NewSessionRequest,
   NewSessionResponse,
@@ -198,38 +199,41 @@ async function createSession(
     const availableModes = [
       {
         id: 'default',
-        name: 'Default',
-        description: 'Standard behavior, prompts for dangerous operations',
+        name: t('Default'),
+        description: t('Standard behavior, prompts for dangerous operations'),
       },
       {
         id: 'acceptEdits',
-        name: 'Accept Edits',
-        description: 'Auto-accept file edit operations',
+        name: t('Accept Edits'),
+        description: t('Auto-accept file edit operations'),
       },
       {
         id: 'plan',
-        name: 'Plan Mode',
-        description: 'Planning mode, no actual tool execution',
+        name: t('Plan Mode'),
+        description: t('Planning mode, no actual tool execution'),
       },
       {
         id: 'auto',
-        name: 'Auto',
-        description:
+        name: t('Auto'),
+        description: t(
           'Use a model classifier to approve/deny permission prompts.',
+        ),
       },
       ...(isBypassAvailable
         ? [
             {
               id: 'bypassPermissions' as const,
-              name: 'Bypass Permissions',
-              description: 'Skip all permission checks',
+              name: t('Bypass Permissions'),
+              description: t('Skip all permission checks'),
             },
           ]
         : []),
       {
         id: 'dontAsk',
-        name: "Don't Ask",
-        description: "Don't prompt for permissions, deny if not pre-approved",
+        name: t("Don't Ask"),
+        description: t(
+          "Don't prompt for permissions, deny if not pre-approved",
+        ),
       },
     ]
 

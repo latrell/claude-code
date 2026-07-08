@@ -30,6 +30,7 @@
 
 import { feature } from 'bun:bundle'
 import axios from 'axios'
+import { t, tf } from '../i18n/t.js'
 import {
   createV2ReplTransport,
   type ReplBridgeTransport,
@@ -192,7 +193,7 @@ export async function initEnvLessBridgeCore(
     cfg,
   )
   if (!createdSessionId) {
-    onStateChange?.('failed', 'Session creation failed — see debug log')
+    onStateChange?.('failed', t('Session creation failed — see debug log'))
     logBridgeSkip('v2_session_create_failed', undefined, true)
     return null
   }
@@ -213,7 +214,10 @@ export async function initEnvLessBridgeCore(
     cfg,
   )
   if (!credentials) {
-    onStateChange?.('failed', 'Remote credentials fetch failed — see debug log')
+    onStateChange?.(
+      'failed',
+      t('Remote credentials fetch failed — see debug log'),
+    )
     logBridgeSkip('v2_remote_creds_failed', undefined, true)
     void archiveSession(
       sessionId,
@@ -254,7 +258,10 @@ export async function initEnvLessBridgeCore(
       `[remote-bridge] v2 transport setup failed: ${errorMessage(err)}`,
       { level: 'error' },
     )
-    onStateChange?.('failed', `Transport setup failed: ${errorMessage(err)}`)
+    onStateChange?.(
+      'failed',
+      tf('Transport setup failed: {error}', { error: errorMessage(err) }),
+    )
     logBridgeSkip('v2_transport_setup_failed', undefined, true)
     void archiveSession(
       sessionId,
@@ -392,7 +399,10 @@ export async function initEnvLessBridgeCore(
             'bridge_repl_v2_proactive_refresh_failed',
           )
           if (!tornDown) {
-            onStateChange?.('failed', `Refresh failed: ${errorMessage(err)}`)
+            onStateChange?.(
+              'failed',
+              tf('Refresh failed: {error}', { error: errorMessage(err) }),
+            )
           }
         } finally {
           authRecoveryInFlight = false
@@ -488,7 +498,10 @@ export async function initEnvLessBridgeCore(
         void recoverFromAuthFailure()
         return
       }
-      onStateChange?.('failed', `Transport closed (code ${code})`)
+      onStateChange?.(
+        'failed',
+        tf('Transport closed (code {code})', { code: String(code) }),
+      )
     })
   }
 
@@ -560,7 +573,7 @@ export async function initEnvLessBridgeCore(
     // any await. Laptop wake fires both paths ~simultaneously.
     if (authRecoveryInFlight) return
     authRecoveryInFlight = true
-    onStateChange?.('reconnecting', 'JWT expired — refreshing')
+    onStateChange?.('reconnecting', t('JWT expired — refreshing'))
     logForDebugging('[remote-bridge] 401 on SSE — attempting JWT refresh')
     try {
       // Unconditionally try OAuth refresh — getAccessToken() returns expired
@@ -572,7 +585,7 @@ export async function initEnvLessBridgeCore(
       const oauthToken = getAccessToken() ?? stale
       if (!oauthToken || tornDown) {
         if (!tornDown) {
-          onStateChange?.('failed', 'JWT refresh failed: no OAuth token')
+          onStateChange?.('failed', t('JWT refresh failed: no OAuth token'))
         }
         return
       }
@@ -590,7 +603,7 @@ export async function initEnvLessBridgeCore(
       )
       if (!fresh || tornDown) {
         if (!tornDown) {
-          onStateChange?.('failed', 'JWT refresh failed after 401')
+          onStateChange?.('failed', t('JWT refresh failed after 401'))
         }
         return
       }
@@ -609,7 +622,10 @@ export async function initEnvLessBridgeCore(
       )
       logForDiagnosticsNoPII('error', 'bridge_repl_v2_jwt_refresh_failed')
       if (!tornDown) {
-        onStateChange?.('failed', `JWT refresh failed: ${errorMessage(err)}`)
+        onStateChange?.(
+          'failed',
+          tf('JWT refresh failed: {error}', { error: errorMessage(err) }),
+        )
       }
     } finally {
       authRecoveryInFlight = false

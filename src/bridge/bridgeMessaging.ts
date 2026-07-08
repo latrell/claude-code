@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { t } from '../i18n/t.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type {
   SDKControlRequest,
@@ -320,8 +321,9 @@ export type ServerControlRequestHandlers = {
   ) => { ok: true } | { ok: false; error: string }
 }
 
-const OUTBOUND_ONLY_ERROR =
-  'This session is outbound-only. Enable Remote Control locally to allow inbound control.'
+const OUTBOUND_ONLY_ERROR = t(
+  'This session is outbound-only. Enable Remote Control locally to allow inbound control.',
+)
 
 /**
  * Respond to inbound control_request messages from the server. The server

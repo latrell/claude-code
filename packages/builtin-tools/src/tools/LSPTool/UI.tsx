@@ -8,6 +8,7 @@ import { getDisplayPath } from 'src/utils/file.js';
 import { extractTag } from 'src/utils/messages.js';
 import type { Input, Output } from './LSPTool.js';
 import { getSymbolAtPosition } from './symbolContext.js';
+import { tf } from 'src/i18n/t.js';
 
 // Lookup map for operation-specific labels
 const OPERATION_LABELS: Record<Input['operation'], { singular: string; plural: string; special?: string }> = {
@@ -47,7 +48,7 @@ function LSPResultSummary({
 
   const primaryText =
     operation === 'hover' && resultCount > 0 && labelConfig.special ? (
-      <Text>Hover info {labelConfig.special}</Text>
+      <Text>{tf('Hover info {special}', { special: labelConfig.special })}</Text>
     ) : (
       <Text>
         Found <Text bold>{resultCount} </Text>

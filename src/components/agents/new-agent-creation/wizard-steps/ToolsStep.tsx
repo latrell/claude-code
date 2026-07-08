@@ -31,7 +31,12 @@ export function ToolsStep({ tools }: Props): ReactNode {
         <Byline>
           <KeyboardShortcutHint shortcut="Enter" action="toggle selection" />
           <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description={t('go back')}
+          />
         </Byline>
       }
     >

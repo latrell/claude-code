@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import TextInput from '../../components/TextInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, color, Text, useTheme } from '@anthropic/ink';
@@ -90,7 +91,7 @@ export function CheckExistingSecretStep({
         )}
       </Box>
       <Box marginLeft={3}>
-        <Text dimColor>↑/↓ to select · Enter to continue</Text>
+        <T dimColor>↑/↓ to select · Enter to continue</T>
       </Box>
     </>
   );

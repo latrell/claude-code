@@ -25,28 +25,28 @@ function BreakCachePanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.R
   const actions = useMemo<BreakCacheAction[]>(
     () => [
       {
-        label: 'Status',
-        description: 'Show pending marker, always mode, and break count',
+        label: t('Status'),
+        description: t('Show pending marker, always mode, and break count'),
         run: () => void runBreakCacheAction('status', onDone),
       },
       {
-        label: 'Once',
-        description: 'Break prompt cache on the next API call only',
+        label: t('Once'),
+        description: t('Break prompt cache on the next API call only'),
         run: () => void runBreakCacheAction('once', onDone),
       },
       {
-        label: 'Always',
-        description: 'Break prompt cache on every API call',
+        label: t('Always'),
+        description: t('Break prompt cache on every API call'),
         run: () => void runBreakCacheAction('always', onDone),
       },
       {
-        label: 'Off',
-        description: 'Disable always mode and clear pending once marker',
+        label: t('Off'),
+        description: t('Disable always mode and clear pending once marker'),
         run: () => void runBreakCacheAction('off', onDone),
       },
       {
-        label: 'Clear Once',
-        description: 'Cancel the pending one-time cache break',
+        label: t('Clear Once'),
+        description: t('Cancel the pending one-time cache break'),
         run: () => void runBreakCacheAction('--clear', onDone),
       },
     ],

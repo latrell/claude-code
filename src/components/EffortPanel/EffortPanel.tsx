@@ -230,8 +230,8 @@ function PlainContent({
   return (
     <>
       <Box marginTop={1} flexDirection="row" justifyContent="space-between">
-        <Text color="suggestion">Faster</Text>
-        <Text color="suggestion">Smarter</Text>
+        <T color="suggestion">Faster</T>
+        <T color="suggestion">Smarter</T>
       </Box>
       <Text color="subtle">{'─'.repeat(panelWidth)}</Text>
       <Box flexDirection="row">

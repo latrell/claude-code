@@ -576,14 +576,14 @@ function TranscriptModeFooter({
       width="100%"
     >
       <Text dimColor>
-        Showing detailed transcript · {toggleShortcut} to toggle
+        {tf('Showing detailed transcript · {shortcut} to toggle', { shortcut: toggleShortcut })}
         {searchBadge
-          ? ' · n/N to navigate'
+          ? t(' · n/N to navigate')
           : virtualScroll
-            ? ` · ${figures.arrowUp}${figures.arrowDown} scroll · home/end top/bottom`
+            ? tf(' · {arrows} scroll · home/end top/bottom', { arrows: figures.arrowUp + figures.arrowDown })
             : suppressShowAll
               ? ''
-              : ` · ${showAllShortcut} to ${showAllInTranscript ? 'collapse' : 'show all'}`}
+              : ` · ${showAllShortcut} ${t('to')} ${showAllInTranscript ? t('collapse') : t('show all')}`}
       </Text>
       {status ? (
         // v-for-editor render progress — transient, preempts the search
@@ -710,11 +710,11 @@ function TranscriptSearchBar({
       {off < query.length && <Text>{query.slice(off + 1)}</Text>}
       <Box flexGrow={1} />
       {indexStatus === 'building' ? (
-        <Text dimColor>indexing… </Text>
+        <Text dimColor>{t('indexing…')} </Text>
       ) : indexStatus ? (
-        <Text dimColor>indexed in {indexStatus.ms}ms </Text>
+        <Text dimColor>{tf('indexed in {ms}ms', { ms: indexStatus.ms })} </Text>
       ) : count === 0 && query ? (
-        <Text color="error">no matches </Text>
+        <Text color="error">{t('no matches')} </Text>
       ) : count > 0 ? (
         // Engine-counted (indexOf on extractSearchText). May drift from
         // render-count for ghost/phantom messages — badge is a rough
@@ -1456,12 +1456,12 @@ export function REPL({
       : toolUseConfirmQueue.length > 0
         ? `approve ${toolUseConfirmQueue[0]!.tool.name}`
         : pendingWorkerRequest
-          ? 'worker request'
+          ? t('worker request')
           : pendingSandboxRequest
-            ? 'sandbox request'
+            ? t('sandbox request')
             : isShowingLocalJSXCommand
-              ? 'dialog open'
-              : 'input needed';
+              ? t('dialog open')
+              : t('input needed');
 
   // Push status to the PID file for `claude ps`. Fire-and-forget; ps falls
   // back to transcript-tail derivation when this is missing/stale.
@@ -2767,7 +2767,7 @@ export function REPL({
               SANDBOX_NETWORK_ACCESS_TOOL_NAME,
               { host: hostPattern.host },
               randomUUID(),
-              `Allow network connection to ${hostPattern.host}?`,
+              tf('Allow network connection to {host}?', { host: hostPattern.host }),
             );
 
             const unsubscribe = bridgeCallbacks.onResponse(bridgeRequestId, response => {
@@ -2830,7 +2830,7 @@ export function REPL({
       key: 'sandbox-unavailable',
       jsx: (
         <>
-          <Text color="warning">sandbox disabled</Text>
+          <Text color="warning">{t('sandbox disabled')}</Text>
           <Text dimColor> · /sandbox</Text>
         </>
       ),
@@ -4938,13 +4938,13 @@ export function REPL({
           jsx:
             mode === 'hint_v2' ? (
               <>
-                <Text dimColor>new task? </Text>
+                <Text dimColor>{t('new task?')} </Text>
                 <Text color="suggestion">/clear</Text>
-                <Text dimColor> to save </Text>
-                <Text color="suggestion">{formattedTokens} tokens</Text>
+                <Text dimColor> {t('to save')} </Text>
+                <Text color="suggestion">{tf('{n} tokens', { n: formattedTokens })}</Text>
               </>
             ) : (
-              <Text color="warning">new task? /clear to save {formattedTokens} tokens</Text>
+              <Text color="warning">{tf('new task? /clear to save {n} tokens', { n: formattedTokens })}</Text>
             ),
           priority: 'medium',
           // Persist until submit — the hint fires at T+75min idle, user may

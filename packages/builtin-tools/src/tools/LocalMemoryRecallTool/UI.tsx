@@ -6,6 +6,7 @@ import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { jsonStringify } from 'src/utils/slowOperations.js';
 import type { Output } from './LocalMemoryRecallTool.js';
+import { tf } from 'src/i18n/t.js';
 
 // H6 fix: second `options` parameter matches Tool interface contract
 // (theme/verbose/commands). We don't currently differentiate based on
@@ -40,7 +41,7 @@ export function renderToolResultMessage(
   if (output.error) {
     return (
       <MessageResponse height={1}>
-        <Text color="error">Error: {output.error}</Text>
+        <Text color="error">{tf('Error: {error}', { error: output.error })}</Text>
       </MessageResponse>
     );
   }
@@ -55,7 +56,7 @@ export function renderToolResultMessage(
     }
     return (
       <MessageResponse height={Math.min(output.stores.length, 10)}>
-        <Text>Stores: {output.stores.join(', ')}</Text>
+        <Text>{tf('Stores: {stores}', { stores: output.stores.join(', ') })}</Text>
       </MessageResponse>
     );
   }

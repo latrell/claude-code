@@ -20,6 +20,7 @@ import { getClaudeAIOAuthTokens } from '../auth.js'
 import { enableConfigs, getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
+import { tf } from '../../i18n/t.js'
 import { sideQuery } from '../sideQuery.js'
 import { getAllSocketPaths, getSecureSocketPath } from './common.js'
 
@@ -115,7 +116,10 @@ export function createChromeContext(
       )
     },
     onToolCallDisconnected: () => {
-      return `Browser extension is not connected. Please ensure the Claude browser extension is installed and running (${EXTENSION_DOWNLOAD_URL}), and that you are logged into claude.ai with the same account as Claude Code. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: ${BUG_REPORT_URL}`
+      return tf(
+        'Browser extension is not connected. Please ensure the Claude browser extension is installed and running ({extensionUrl}), and that you are logged into claude.ai with the same account as Claude Code. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: {bugUrl}',
+        { extensionUrl: EXTENSION_DOWNLOAD_URL, bugUrl: BUG_REPORT_URL },
+      )
     },
     onExtensionPaired: (deviceId: string, name: string) => {
       saveGlobalConfig(config => {

@@ -1,5 +1,6 @@
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
+import { t } from '../i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -19,7 +20,7 @@ export function getFormatDescription(
 ): string {
   switch (type) {
     case 'toolResult':
-      return 'Plain text'
+      return t('Plain text')
     case 'structuredContent':
       return schema ? `JSON with schema: ${schema}` : 'JSON'
     case 'contentArray':

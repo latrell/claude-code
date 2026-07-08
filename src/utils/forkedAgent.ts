@@ -241,7 +241,7 @@ export async function prepareForkedCommandContext(
  */
 export function extractResultText(
   agentMessages: Message[],
-  defaultText = 'Execution completed',
+  defaultText = t('Execution completed'),
 ): string {
   const lastAssistantMessage = getLastAssistantMessage(agentMessages)
   if (!lastAssistantMessage) return defaultText

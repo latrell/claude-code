@@ -128,7 +128,7 @@ export function GenerateStep(): ReactNode {
       <WizardDialogLayout
         subtitle={subtitle}
         footerText={
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('cancel')} />
         }
       >
         <Box flexDirection="row" alignItems="center">
@@ -144,14 +144,19 @@ export function GenerateStep(): ReactNode {
       subtitle={subtitle}
       footerText={
         <Byline>
-          <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" fallback="Enter" description="submit" />
+          <ConfigurableShortcutHint
+            action="confirm:yes"
+            context="Confirmation"
+            fallback="Enter"
+            description={t('submit')}
+          />
           <ConfigurableShortcutHint
             action="chat:externalEditor"
             context="Chat"
             fallback="ctrl+g"
-            description="open in editor"
+            description={t('open in editor')}
           />
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('go back')} />
         </Byline>
       }
     >

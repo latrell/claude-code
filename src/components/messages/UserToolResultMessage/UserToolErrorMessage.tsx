@@ -11,6 +11,7 @@ import {
   PLAN_REJECTION_PREFIX,
   REJECT_MESSAGE_WITH_REASON_PREFIX,
 } from '../../../utils/messages.js';
+import { tf } from '../../../i18n/t.js';
 import { FallbackToolUseErrorMessage } from '../../FallbackToolUseErrorMessage.js';
 import { InterruptedByUser } from '../../InterruptedByUser.js';
 import { MessageResponse } from '../../MessageResponse.js';
@@ -55,7 +56,9 @@ export function UserToolErrorMessage({
   if (feature('TRANSCRIPT_CLASSIFIER') && typeof param.content === 'string' && isClassifierDenial(param.content)) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>Denied by auto mode classifier {BULLET_OPERATOR} /feedback if incorrect</Text>
+        <Text dimColor>
+          {tf('Denied by auto mode classifier {bullet} /feedback if incorrect', { bullet: BULLET_OPERATOR })}
+        </Text>
       </MessageResponse>
     );
   }

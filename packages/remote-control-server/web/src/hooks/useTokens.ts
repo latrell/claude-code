@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { t } from '../lib/i18n'
 
 export interface TokenEntry {
   id: string
@@ -24,7 +25,7 @@ function ensureDefault(tokens: TokenEntry[]): TokenEntry[] {
     // ignore
   }
   if (!uuid) return tokens
-  return [{ id: DEFAULT_ID, token: uuid, label: 'Default' }, ...tokens]
+  return [{ id: DEFAULT_ID, token: uuid, label: t('Default') }, ...tokens]
 }
 
 function loadTokens(): TokenEntry[] {
@@ -84,7 +85,7 @@ export function useTokens() {
   const addToken = useCallback(
     (token: string, label: string): string | null => {
       const trimmed = token.trim()
-      if (!trimmed) return 'Token is required'
+      if (!trimmed) return t('Token is required')
       const entry: TokenEntry = {
         id: generateId(),
         token: trimmed,
@@ -119,7 +120,7 @@ export function useTokens() {
 
   const activeToken =
     tokens.find(t => t.id === activeTokenId) ?? tokens[0] ?? null
-  const activeLabel = activeToken?.label ?? 'Default'
+  const activeLabel = activeToken?.label ?? t('Default')
   const activeTokenValue = activeToken?.token ?? null
 
   return {

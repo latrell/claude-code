@@ -783,13 +783,14 @@ export function initialPermissionModeFromCLI({
         logForDebugging('bypassPermissions mode is disabled by Statsig gate', {
           level: 'warn',
         })
-        notification =
-          'Bypass permissions mode was disabled by your organization policy'
+        notification = t(
+          'Bypass permissions mode was disabled by your organization policy',
+        )
       } else {
         logForDebugging('bypassPermissions mode is disabled by settings', {
           level: 'warn',
         })
-        notification = 'Bypass permissions mode was disabled by settings'
+        notification = t('Bypass permissions mode was disabled by settings')
       }
       continue // Skip this mode if it's disabled
     }

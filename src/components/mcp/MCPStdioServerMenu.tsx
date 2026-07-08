@@ -212,9 +212,14 @@ export function MCPStdioServerMenu({
             <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
           ) : (
             <Byline>
-              <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-              <KeyboardShortcutHint shortcut="Enter" action="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+              <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+              <ConfigurableShortcutHint
+                action="confirm:no"
+                context="Confirmation"
+                fallback="Esc"
+                description={t('back')}
+              />
             </Byline>
           )}
         </Text>

@@ -39,7 +39,12 @@ export function ColorStep(): ReactNode {
         <Byline>
           <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
           <KeyboardShortcutHint shortcut="Enter" action="select" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description={t('go back')}
+          />
         </Byline>
       }
     >

@@ -235,9 +235,14 @@ export function ResumeTask({ onSelect, onCancel, isEmbedded = false }: Props): R
       <Box flexDirection="row">
         <Text dimColor>
           <Byline>
-            <KeyboardShortcutHint shortcut="↑/↓" action="select" />
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <KeyboardShortcutHint shortcut="↑/↓" action={t('select')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         </Text>
       </Box>

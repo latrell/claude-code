@@ -107,15 +107,18 @@ const workflowsCmd = feature('WORKFLOW_SCRIPTS')
 const connectCmd: Command = {
   type: 'local-jsx',
   name: 'connect',
-  description: 'Manage provider connections and accounts (add, switch, remove)',
+  description: t(
+    'Manage provider connections and accounts (add, switch, remove)',
+  ),
   aliases: ['connections'],
   load: () => import('./commands/connect/connect.js'),
 }
 const modelsCmd: Command = {
   type: 'local-jsx',
   name: 'models',
-  description:
+  description: t(
     'Pick the model for the main agent or subagents across all connections',
+  ),
   argumentHint: '[sub]',
   load: () => import('./commands/models/models.js'),
 }
@@ -267,9 +270,9 @@ import effort from './commands/effort/index.js'
 const usageReport: Command = {
   type: 'prompt',
   name: 'insights',
-  description: 'Generate a report analyzing your Claude Code sessions',
+  description: t('Generate a report analyzing your Claude Code sessions'),
   contentLength: 0,
-  progressMessage: 'analyzing your sessions',
+  progressMessage: t('analyzing your sessions'),
   source: 'builtin',
   async getPromptForCommand(args, context) {
     const real = (await import('./commands/insights.js')).default

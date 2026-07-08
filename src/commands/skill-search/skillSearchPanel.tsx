@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isSkillSearchEnabled } from '../../services/skillSearch/featureCheck.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type SkillSearchAction = {
   label: string;
@@ -78,23 +78,23 @@ function SkillSearchPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
   const actions = useMemo<SkillSearchAction[]>(
     () => [
       {
-        label: 'Status',
-        description: 'Show whether automatic skill matching is active',
+        label: t('Status'),
+        description: t('Show whether automatic skill matching is active'),
         run: () => Promise.resolve(getStatusText()),
       },
       {
-        label: 'Start',
-        description: 'Enable automatic skill matching for this session',
+        label: t('Start'),
+        description: t('Enable automatic skill matching for this session'),
         run: startSkillSearch,
       },
       {
-        label: 'Stop',
-        description: 'Disable automatic skill matching for this session',
+        label: t('Stop'),
+        description: t('Disable automatic skill matching for this session'),
         run: stopSkillSearch,
       },
       {
-        label: 'About',
-        description: 'How automatic skill matching works',
+        label: t('About'),
+        description: t('How automatic skill matching works'),
         run: () => Promise.resolve(ABOUT_TEXT),
       },
     ],
@@ -125,8 +125,8 @@ function SkillSearchPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
 
   return (
     <Dialog
-      title="Skill Search"
-      subtitle={`${actions.length} actions`}
+      title={t('Skill Search')}
+      subtitle={tf('{count} actions', { count: String(actions.length) })}
       onCancel={() => onDone(t('Skill search panel dismissed'), { display: 'system' })}
       color="background"
       hideInputGuide

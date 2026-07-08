@@ -242,7 +242,7 @@ export async function setupGitHubActions(
         workflows.push({
           path: '.github/workflows/claude.yml',
           content: WORKFLOW_CONTENT,
-          message: 'Claude PR Assistant workflow',
+          message: t('Claude PR Assistant workflow'),
         })
       }
 
@@ -250,7 +250,7 @@ export async function setupGitHubActions(
         workflows.push({
           path: '.github/workflows/claude-code-review.yml',
           content: CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,
-          message: 'Claude Code Review workflow',
+          message: t('Claude Code Review workflow'),
         })
       }
 

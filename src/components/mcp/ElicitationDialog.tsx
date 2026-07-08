@@ -1054,25 +1054,30 @@ function ElicitationFormDialog({
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
-            <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-            {currentField && <KeyboardShortcutHint shortcut="Backspace" action="unset" />}
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
+            <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+            {currentField && <KeyboardShortcutHint shortcut="Backspace" action={t('unset')} />}
             {currentField && currentField.schema.type === 'boolean' && (
-              <KeyboardShortcutHint shortcut="Space" action="toggle" />
+              <KeyboardShortcutHint shortcut="Space" action={t('toggle')} />
             )}
             {currentField &&
               isEnumSchema(currentField.schema) &&
               (expandedAccordion ? (
-                <KeyboardShortcutHint shortcut="Space" action="select" />
+                <KeyboardShortcutHint shortcut="Space" action={t('select')} />
               ) : (
-                <KeyboardShortcutHint shortcut="→" action="expand" />
+                <KeyboardShortcutHint shortcut="→" action={t('expand')} />
               ))}
             {currentField &&
               isMultiSelectEnumSchema(currentField.schema) &&
               (expandedAccordion ? (
-                <KeyboardShortcutHint shortcut="Space" action="toggle" />
+                <KeyboardShortcutHint shortcut="Space" action={t('toggle')} />
               ) : (
-                <KeyboardShortcutHint shortcut="→" action="expand" />
+                <KeyboardShortcutHint shortcut="→" action={t('expand')} />
               ))}
           </Byline>
         )
@@ -1229,9 +1234,9 @@ function ElicitationURLDialog({
                 action="confirm:no"
                 context="Confirmation"
                 fallback="Esc"
-                description="cancel"
+                description={t('cancel')}
               />
-              <KeyboardShortcutHint shortcut="\u2190\u2192" action="switch" />
+              <KeyboardShortcutHint shortcut="\u2190\u2192" action={t('switch')} />
             </Byline>
           )
         }
@@ -1297,8 +1302,13 @@ function ElicitationURLDialog({
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
-            <KeyboardShortcutHint shortcut="\u2190\u2192" action="switch" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
+            <KeyboardShortcutHint shortcut="\u2190\u2192" action={t('switch')} />
           </Byline>
         )
       }

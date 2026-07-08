@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ToolCallEntry, ToolCallData } from '../../src/lib/types';
 import { cn } from '../../src/lib/utils';
 import { ToolPermissionButtons } from '../ai-elements/permission-request';
+import { t, tf } from '../../src/lib/i18n';
 
 // =============================================================================
 // 工具调用折叠组 — Anthropic: subtle card, left-border accent, compact layout
@@ -171,12 +172,12 @@ function buildSummary(entries: ToolCallEntry[]): string {
 
   const parts: string[] = [];
   for (const [name, count] of toolCounts) {
-    parts.push(count === 1 ? name : `${count} 次${name}`);
+    parts.push(count === 1 ? name : tf('{count}x {name}', { count, name }));
   }
 
-  if (parts.length === 0) return `${entries.length} 个工具调用`;
+  if (parts.length === 0) return tf('{n} tool calls', { n: entries.length });
   if (parts.length === 1) return parts[0];
-  return `${entries.length} 个工具: ${parts.join('、')}`;
+  return tf('{n} tools: {list}', { n: entries.length, list: parts.join(', ') });
 }
 
 /** 简化工具名称 */

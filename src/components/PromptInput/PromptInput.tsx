@@ -112,6 +112,7 @@ import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '
 import { BridgeDialog } from '../BridgeDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';
 import { getFastIconString } from '../FastIcon.js';
@@ -2487,7 +2488,7 @@ function PromptInput({
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
       {hasSuppressedDialogs && (
         <Box marginTop={1} marginLeft={2}>
-          <Text dimColor>Waiting for permission…</Text>
+          <T dimColor>Waiting for permission…</T>
         </Box>
       )}
       <PromptInputStashNotice hasStash={stashedPrompt !== undefined} />

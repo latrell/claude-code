@@ -3,6 +3,7 @@ import { Box, Dialog, Text, useAnimationFrame } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { getWorkflowService } from '../service.js';
+import { T } from '../../i18n/TText.js';
 import { t } from '../../i18n/t.js';
 import type { RunProgress } from '../progress/store.js';
 import { AgentList } from './AgentList.js';
@@ -281,7 +282,7 @@ export function WorkflowsPanel({
           onCancel={() => setConfirmKill(null)}
           color="warning"
         >
-          <Text color="subtle">Press y to confirm, or n/Esc to cancel.</Text>
+          <T color="subtle">Press y to confirm, or n/Esc to cancel.</T>
         </Dialog>
       ) : null}
     </Box>

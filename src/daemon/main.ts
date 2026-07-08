@@ -1,5 +1,6 @@
 import { type ChildProcess } from 'child_process'
 import { resolve } from 'path'
+import { t, tf } from '../i18n/t.js'
 import { buildCliLaunch, spawnCli } from '../utils/cliLaunch.js'
 import {
   writeDaemonState,
@@ -95,14 +96,17 @@ export async function daemonMain(args: string[]): Promise<void> {
       printHelp()
       break
     default:
-      console.error(`Unknown daemon subcommand: ${subcommand}`)
+      console.error(
+        tf('Unknown daemon subcommand: {subcommand}', { subcommand }),
+      )
       printHelp()
       process.exitCode = 1
   }
 }
 
 function printHelp(): void {
-  console.log(`
+  console.log(
+    t(`
 Claude Code Daemon — background process management
 
 USAGE
@@ -129,7 +133,8 @@ OPTIONS (for start)
   --sandbox                 Enable sandbox mode
   --name <name>             Session name
   -h, --help                Show this help
-`)
+`),
+  )
 }
 
 /**
@@ -138,27 +143,29 @@ OPTIONS (for start)
 async function showUnifiedStatus(): Promise<void> {
   // 1. Daemon supervisor status
   const result = queryDaemonStatus()
-  console.log('=== Daemon Supervisor ===')
+  console.log(t('=== Daemon Supervisor ==='))
   switch (result.status) {
     case 'running': {
       const s = result.state!
-      console.log(`  Status:  running`)
-      console.log(`  PID:     ${s.pid}`)
-      console.log(`  CWD:     ${s.cwd}`)
-      console.log(`  Started: ${s.startedAt}`)
-      console.log(`  Workers: ${s.workerKinds.join(', ')}`)
+      console.log(tf('  Status:  running', {}))
+      console.log(tf('  PID:     {pid}', { pid: s.pid }))
+      console.log(tf('  CWD:     {cwd}', { cwd: s.cwd }))
+      console.log(tf('  Started: {startedAt}', { startedAt: s.startedAt }))
+      console.log(
+        tf('  Workers: {workers}', { workers: s.workerKinds.join(', ') }),
+      )
       break
     }
     case 'stopped':
-      console.log('  Status: stopped')
+      console.log(t('  Status: stopped'))
       break
     case 'stale':
-      console.log('  Status: stale (cleaned up)')
+      console.log(t('  Status: stale (cleaned up)'))
       break
   }
 
   // 2. Background sessions
-  console.log('\n=== Background Sessions ===')
+  console.log(t('\n=== Background Sessions ==='))
   const bg = await import('../cli/bg.js')
   await bg.psHandler([])
 }
@@ -170,22 +177,22 @@ async function handleDaemonStop(): Promise<void> {
   const result = queryDaemonStatus()
 
   if (result.status === 'stopped') {
-    console.log('daemon is not running')
+    console.log(t('daemon is not running'))
     return
   }
 
   if (result.status === 'stale') {
-    console.log('daemon was stale (cleaned up)')
+    console.log(t('daemon was stale (cleaned up)'))
     return
   }
 
-  console.log(`stopping daemon (PID: ${result.state!.pid})...`)
+  console.log(tf('stopping daemon (PID: {pid})...', { pid: result.state!.pid }))
   const stopped = await stopDaemonByPid()
 
   if (stopped) {
-    console.log('daemon stopped')
+    console.log(t('daemon stopped'))
   } else {
-    console.log('daemon could not be stopped (may have already exited)')
+    console.log(t('daemon could not be stopped (may have already exited)'))
   }
 }
 
@@ -231,7 +238,7 @@ async function runSupervisor(args: string[]): Promise<void> {
   const config = parseSupervisorArgs(args)
   const dir = config.dir || resolve('.')
 
-  console.log(`[daemon] supervisor starting in ${dir}`)
+  console.log(tf('[daemon] supervisor starting in {dir}', { dir }))
 
   const workers: WorkerState[] = [
     {
@@ -258,7 +265,7 @@ async function runSupervisor(args: string[]): Promise<void> {
 
   // Graceful shutdown
   const shutdown = () => {
-    console.log('[daemon] supervisor shutting down...')
+    console.log(t('[daemon] supervisor shutting down...'))
     controller.abort()
     removeDaemonState()
     for (const w of workers) {
@@ -321,7 +328,7 @@ async function runSupervisor(args: string[]): Promise<void> {
       ),
   )
 
-  console.log('[daemon] supervisor stopped')
+  console.log(t('[daemon] supervisor stopped'))
 }
 
 /**
@@ -349,7 +356,7 @@ function spawnWorker(
     CLAUDE_CODE_SESSION_KIND: 'daemon-worker',
   }
 
-  console.log(`[daemon] spawning worker '${worker.kind}'`)
+  console.log(tf("[daemon] spawning worker '{kind}'", { kind: worker.kind }))
 
   const launch = buildCliLaunch([`--daemon-worker=${worker.kind}`], { env })
 
@@ -384,7 +391,9 @@ function spawnWorker(
 
     if (code === EXIT_CODE_PERMANENT) {
       console.error(
-        `[daemon] worker '${worker.kind}' exited with permanent error — parking`,
+        tf("[daemon] worker '{kind}' exited with permanent error — parking", {
+          kind: worker.kind,
+        }),
       )
       worker.parked = true
       return
@@ -396,7 +405,10 @@ function spawnWorker(
       worker.failureCount++
       if (worker.failureCount >= MAX_RAPID_FAILURES) {
         console.error(
-          `[daemon] worker '${worker.kind}' failed ${worker.failureCount} times rapidly — parking`,
+          tf(
+            "[daemon] worker '{kind}' failed {count} times rapidly — parking",
+            { kind: worker.kind, count: worker.failureCount },
+          ),
         )
         worker.parked = true
         return
@@ -408,7 +420,15 @@ function spawnWorker(
     }
 
     console.log(
-      `[daemon] worker '${worker.kind}' exited (code=${code}, signal=${sig}), restarting in ${worker.backoffMs}ms`,
+      tf(
+        "[daemon] worker '{kind}' exited (code={code}, signal={sig}), restarting in {backoffMs}ms",
+        {
+          kind: worker.kind,
+          code: String(code),
+          sig: String(sig),
+          backoffMs: worker.backoffMs,
+        },
+      ),
     )
 
     worker.restartTimer = setTimeout(() => {

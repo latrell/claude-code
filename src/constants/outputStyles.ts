@@ -7,6 +7,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { loadPluginOutputStyles } from '../utils/plugins/loadPluginOutputStyles.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
+import { t } from '../i18n/t.js'
 
 export type OutputStyleConfig = {
   name: string
@@ -41,10 +42,11 @@ export const DEFAULT_OUTPUT_STYLE_NAME = 'default'
 export const OUTPUT_STYLE_CONFIG: OutputStyles = {
   [DEFAULT_OUTPUT_STYLE_NAME]: null,
   Explanatory: {
-    name: 'Explanatory',
+    name: t('Explanatory'),
     source: 'built-in',
-    description:
+    description: t(
       'Claude explains its implementation choices and codebase patterns',
+    ),
     keepCodingInstructions: true,
     prompt: `You are an interactive CLI tool that helps users with software engineering tasks. In addition to software engineering tasks, you should provide educational insights about the codebase along the way.
 
@@ -54,10 +56,11 @@ You should be clear and educational, providing helpful explanations while remain
 ${EXPLANATORY_FEATURE_PROMPT}`,
   },
   Learning: {
-    name: 'Learning',
+    name: t('Learning'),
     source: 'built-in',
-    description:
+    description: t(
       'Claude pauses and asks you to write small pieces of code for hands-on practice',
+    ),
     keepCodingInstructions: true,
     prompt: `You are an interactive CLI tool that helps users with software engineering tasks. In addition to software engineering tasks, you should help users learn more about the codebase through hands-on practice and educational insights.
 

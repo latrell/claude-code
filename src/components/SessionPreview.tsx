@@ -53,7 +53,12 @@ export function SessionPreview({ log, onExit, onSelect }: Props): React.ReactNod
         <LoadingState message={t('Loading session…')} />
         <Text dimColor>
           <Byline>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         </Text>
       </Box>
@@ -93,8 +98,13 @@ export function SessionPreview({ log, onExit, onSelect }: Props): React.ReactNod
         </Text>
         <Text dimColor>
           <Byline>
-            <KeyboardShortcutHint shortcut="Enter" action="resume" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <KeyboardShortcutHint shortcut="Enter" action={t('resume')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         </Text>
       </Box>

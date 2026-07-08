@@ -15,7 +15,8 @@
 import * as React from 'react';
 import { Box, Text, useInput } from '@anthropic/ink';
 import { saveWorkspaceKey } from '../../services/auth/saveWorkspaceKey.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,13 +59,19 @@ function maskKeyInput(value: string): string {
 function validateKey(value: string): string | null {
   if (value.length === 0) return null; // no input yet — no error shown
   if (!value.startsWith(PREFIX)) {
-    return `Key must start with "${PREFIX}"`;
+    return tf('Key must start with "{prefix}"', { prefix: PREFIX });
   }
   if (value.length < MIN_KEY_LENGTH) {
-    return `Key too short (${value.length}/${MIN_KEY_LENGTH} chars minimum)`;
+    return tf('Key too short ({current}/{minimum} chars minimum)', {
+      current: String(value.length),
+      minimum: String(MIN_KEY_LENGTH),
+    });
   }
   if (value.length > MAX_KEY_LENGTH) {
-    return `Key too long (${value.length}/${MAX_KEY_LENGTH} chars maximum)`;
+    return tf('Key too long ({current}/{maximum} chars maximum)', {
+      current: String(value.length),
+      maximum: String(MAX_KEY_LENGTH),
+    });
   }
   return null;
 }
@@ -142,16 +149,16 @@ export function WorkspaceKeyInput({
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box marginBottom={0}>
-        <Text bold>Enter workspace API key (sk-ant-api03-*):</Text>
+        <T bold>Enter workspace API key (sk-ant-api03-*):</T>
       </Box>
 
       <Box marginTop={0} marginBottom={0}>
-        <Text dimColor>{'  Obtain from: https://console.anthropic.com/settings/keys'}</Text>
+        <Text dimColor>{t('  Obtain from: https://console.anthropic.com/settings/keys')}</Text>
       </Box>
 
       <Box marginTop={1} marginBottom={0}>
         <Text>{'  > '}</Text>
-        {value.length > 0 ? <Text>{masked}</Text> : <Text dimColor>{'[paste key here]'}</Text>}
+        {value.length > 0 ? <Text>{masked}</Text> : <Text dimColor>{t('[paste key here]')}</Text>}
       </Box>
 
       {displayError !== null && (
@@ -165,7 +172,7 @@ export function WorkspaceKeyInput({
 
       {saving && (
         <Box marginTop={0}>
-          <Text dimColor>{'  Saving...'}</Text>
+          <Text dimColor>{t('  Saving...')}</Text>
         </Box>
       )}
 
@@ -203,7 +210,7 @@ export function WorkspaceKeyInputContainer({ onSaved, onCancel }: WorkspaceKeyIn
         await saveWorkspaceKey(key);
         onSaved();
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to save key — unknown error';
+        const msg = err instanceof Error ? err.message : t('Failed to save key \u2014 unknown error');
         setSaveError(msg);
         setSaving(false);
       }

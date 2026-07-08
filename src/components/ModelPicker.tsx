@@ -330,8 +330,13 @@ export function ModelPicker({
             <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
           ) : (
             <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="select:cancel" context="Select" fallback="Esc" description="exit" />
+              <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+              <ConfigurableShortcutHint
+                action="select:cancel"
+                context="Select"
+                fallback="Esc"
+                description={t('exit')}
+              />
             </Byline>
           )}
         </Text>

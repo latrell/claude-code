@@ -52,12 +52,18 @@ function CollapseStatus(): React.ReactNode {
         </Text>
       );
     } else if (h.emptySpawnWarningEmitted) {
-      line2 = <Text color="warning">Collapse idle: {h.totalEmptySpawns} consecutive empty runs</Text>;
+      line2 = (
+        <T color="warning" vars={{ total: h.totalEmptySpawns }}>
+          {'Collapse idle: {total} consecutive empty runs'}
+        </T>
+      );
     }
 
     return (
       <>
-        <Text dimColor>Context strategy: collapse ({summary})</Text>
+        <T dimColor vars={{ summary }}>
+          {'Context strategy: collapse ({summary})'}
+        </T>
         {line2}
       </>
     );
@@ -253,7 +259,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
             {/* Show available (deferred) tools */}
             {hasDeferredMcpTools && mcpTools.some(t => !t.isLoaded) && (
               <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>Available</Text>
+                <T dimColor>Available</T>
                 {mcpTools
                   .filter(t => !t.isLoaded)
                   .map((tool, i) => (
@@ -285,7 +291,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
             </Box>
             {/* Always-loaded + deferred-but-loaded tools */}
             <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>Loaded</Text>
+              <T dimColor>Loaded</T>
               {systemTools?.map((tool, i) => (
                 <Box key={`sys-${i}`}>
                   <Text>└ {tool.name}: </Text>
@@ -304,7 +310,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
             {/* Deferred (not yet loaded) tools */}
             {hasDeferredBuiltinTools && deferredBuiltinTools.some(t => !t.isLoaded) && (
               <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>Available</Text>
+                <T dimColor>Available</T>
                 {deferredBuiltinTools
                   .filter(t => !t.isLoaded)
                   .map((tool, i) => (
@@ -392,27 +398,27 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
             <Box flexDirection="column" marginLeft={1}>
               <Box>
-                <Text>Tool calls: </Text>
+                <T>Tool calls: </T>
                 <Text dimColor>{formatTokens(messageBreakdown.toolCallTokens)} tokens</Text>
               </Box>
 
               <Box>
-                <Text>Tool results: </Text>
+                <T>Tool results: </T>
                 <Text dimColor>{formatTokens(messageBreakdown.toolResultTokens)} tokens</Text>
               </Box>
 
               <Box>
-                <Text>Attachments: </Text>
+                <T>Attachments: </T>
                 <Text dimColor>{formatTokens(messageBreakdown.attachmentTokens)} tokens</Text>
               </Box>
 
               <Box>
-                <Text>Assistant messages (non-tool): </Text>
+                <T>Assistant messages (non-tool): </T>
                 <Text dimColor>{formatTokens(messageBreakdown.assistantMessageTokens)} tokens</Text>
               </Box>
 
               <Box>
-                <Text>User messages (non-tool-result): </Text>
+                <T>User messages (non-tool-result): </T>
                 <Text dimColor>{formatTokens(messageBreakdown.userMessageTokens)} tokens</Text>
               </Box>
             </Box>

@@ -25,6 +25,7 @@ import { formatDuration } from '../../utils/format.js';
 import { formatModelPricing, getOpus46CostTier } from '../../utils/modelCost.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 import { tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 function applyFastMode(enable: boolean, setAppState: (f: (prev: AppState) => AppState) => void): void {
   clearFastModeCooldown();
@@ -125,9 +126,9 @@ export function FastModePicker({
         exitState.pending ? (
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : isUnavailable ? (
-          <Text>Esc to cancel</Text>
+          <T>Esc to cancel</T>
         ) : (
-          <Text>Tab to toggle · Enter to confirm · Esc to cancel</Text>
+          <T>Tab to toggle · Enter to confirm · Esc to cancel</T>
         )
       }
     >
@@ -139,7 +140,7 @@ export function FastModePicker({
         <>
           <Box flexDirection="column" gap={0} marginLeft={2}>
             <Box flexDirection="row" gap={2}>
-              <Text bold>Fast mode</Text>
+              <T bold>Fast mode</T>
               <Text color={enableFastMode ? 'fastMode' : undefined} bold={enableFastMode}>
                 {enableFastMode ? 'ON ' : 'OFF'}
               </Text>

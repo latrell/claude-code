@@ -94,7 +94,7 @@ export function TeleportStash({ onStashAndContinue, onCancel }: TeleportStashPro
         </Text>
         <Box marginTop={1}>
           <T dimColor>Press </T>
-          <Text bold>Escape</Text>
+          <T bold>Escape</T>
           <T dimColor> to cancel</T>
         </Box>
       </Box>

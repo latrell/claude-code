@@ -25,6 +25,7 @@ import { ChatInput } from './chat/ChatInput';
 import { PermissionPanel } from './chat/PermissionPanel';
 import { ModelSelectorPopover } from './model-selector';
 import { useCommands } from '../src/hooks/useCommands';
+import { t } from '../src/lib/i18n';
 
 // Image compression options
 // Claude API has a 5MB limit, so we target 2MB to be safe
@@ -41,7 +42,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
   // Parse the data URL: data:[<mediatype>][;base64],<data>
   const commaIndex = dataUrl.indexOf(',');
   if (commaIndex === -1) {
-    throw new Error('Invalid data URL: missing comma separator');
+    throw new Error(t('Invalid data URL: missing comma separator'));
   }
 
   const header = dataUrl.slice(0, commaIndex);
@@ -80,12 +81,12 @@ interface ChatInterfaceProps {
 // =============================================================================
 
 const PERMISSION_MODES = [
-  { value: 'default', label: '默认', description: '手动审批权限请求' },
-  { value: 'acceptEdits', label: '自动接受编辑', description: '自动允许文件编辑操作' },
-  { value: 'bypassPermissions', label: '跳过权限', description: '跳过所有权限检查' },
-  { value: 'plan', label: '规划模式', description: '仅规划，不执行工具' },
-  { value: 'dontAsk', label: '不询问', description: '不弹出询问，自动拒绝' },
-  { value: 'auto', label: '自动判断', description: 'AI 自动判断是否批准' },
+  { value: 'default', label: t('Default'), description: t('Manually approve permission requests') },
+  { value: 'acceptEdits', label: t('Auto-accept edits'), description: t('Auto-allow file edit operations') },
+  { value: 'bypassPermissions', label: t('Bypass permissions'), description: t('Skip all permission checks') },
+  { value: 'plan', label: t('Plan mode'), description: t('Plan only, do not execute tools') },
+  { value: 'dontAsk', label: t("Don't ask"), description: t("Don't ask, auto-reject") },
+  { value: 'auto', label: t('Auto'), description: t('AI decides whether to approve') },
 ] as const;
 
 function PermissionModeSelector({ mode, onModeChange }: { mode: string; onModeChange: (mode: string) => void }) {
@@ -239,7 +240,7 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
           type: 'tool_call',
           toolCall: {
             id: request.toolCall.toolCallId,
-            title: request.toolCall.title || 'Permission Request',
+            title: request.toolCall.title || t('Permission Request'),
             status: 'waiting_for_confirmation',
             permissionRequest: {
               requestId: request.requestId,
@@ -425,9 +426,9 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
             type: 'tool_call',
             toolCall: {
               id: update.toolCallId,
-              title: update.title || 'Tool call not found',
+              title: update.title || t('Tool call not found'),
               status: 'error',
-              content: [{ type: 'content', content: { type: 'text', text: 'Tool call not found' } }],
+              content: [{ type: 'content', content: { type: 'text', text: t('Tool call not found') } }],
             },
           };
           return [...prev, failedEntry];
@@ -759,7 +760,7 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
               const commaIndex = result.indexOf(',');
               resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
             };
-            reader.onerror = () => reject(new Error('FileReader error: ' + reader.error?.message));
+            reader.onerror = () => reject(new Error(t('FileReader error: ') + reader.error?.message));
             reader.readAsDataURL(finalBlob);
           });
 
@@ -810,8 +811,8 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
         onPermissionRespond={(requestId, optionId, optionKind) => {
           handlePermissionResponse(requestId, optionId, optionKind as PermissionOption['kind'] | null);
         }}
-        emptyTitle={sessionReady ? '开始对话' : undefined}
-        emptyDescription={sessionReady ? '输入消息开始与 ACP agent 聊天' : undefined}
+        emptyTitle={sessionReady ? t('Start conversation') : undefined}
+        emptyDescription={sessionReady ? t('Type a message to start chatting with ACP agent') : undefined}
       />
 
       {/* Permission panel — fixed above input */}
@@ -856,10 +857,10 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
                   onClick={handleNewSession}
                 >
                   <Plus className="h-3 w-3" />
-                  新会话
+                  {t('New Session')}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>New Thread</TooltipContent>
+              <TooltipContent>{t('New Thread')}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -868,7 +869,7 @@ export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
           isLoading={isLoading}
           onInterrupt={handleCancel}
           disabled={!sessionReady}
-          placeholder={sessionReady ? '给 Claude 发送消息…' : '等待会话...'}
+          placeholder={sessionReady ? t('Send message to Claude...') : t('Waiting for session...')}
           supportsImages={supportsImages}
           commands={availableCommands.length > 0 ? availableCommands : undefined}
         />

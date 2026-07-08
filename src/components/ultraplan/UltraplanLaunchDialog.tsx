@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Box, Text, Link } from '@anthropic/ink';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '../design-system/Dialog.js';
+import { t } from '../../i18n/t.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { CCR_TERMS_URL } from '../../commands/ultraplan.js';
@@ -92,15 +93,15 @@ export function UltraplanLaunchDialog({ onChoice }: UltraplanLaunchDialogProps):
 
   const options = [
     {
-      label: 'Run ultraplan',
+      label: t('Run ultraplan'),
       value: 'run' as const,
       description: runDescription,
     },
-    { label: 'Not now', value: 'cancel' as const },
+    { label: t('Not now'), value: 'cancel' as const },
   ];
 
   return (
-    <Dialog title="Run ultraplan in the cloud?" subtitle={dialogConfig.timeEstimate} onCancel={handleCancel}>
+    <Dialog title={t('Run ultraplan in the cloud?')} subtitle={dialogConfig.timeEstimate} onCancel={handleCancel}>
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text dimColor>{dialogConfig.dialogBody}</Text>

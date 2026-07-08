@@ -1534,7 +1534,7 @@ export function useTypeahead({
         e.preventDefault();
         addNotification({
           key: 'thinking-toggle-hint',
-          jsx: <Text dimColor>Use {thinkingToggleShortcut} to toggle thinking</Text>,
+          jsx: <Text dimColor>{tf('Use {shortcut} to toggle thinking', { shortcut: thinkingToggleShortcut })}</Text>,
           priority: 'immediate',
           timeoutMs: 3000,
         });

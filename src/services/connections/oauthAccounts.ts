@@ -19,6 +19,7 @@ import {
   saveGlobalConfig,
   type AccountInfo,
 } from '../../utils/config.js'
+import { t } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
 
@@ -199,7 +200,7 @@ export function activateOAuthAccountSlot(accountUuid: string): {
 
   storage[ACTIVE_KEY] = slot.tokens
   if (!writeStorage(storage)) {
-    return { success: false, error: 'Failed to write secure storage' }
+    return { success: false, error: t('Failed to write secure storage') }
   }
 
   setAccountInConfig(slot.account)

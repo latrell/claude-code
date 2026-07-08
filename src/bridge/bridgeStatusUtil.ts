@@ -3,6 +3,7 @@ import { isSelfHostedBridge, getBridgeBaseUrl } from './bridgeConfig.js'
 import { stringWidth } from '@anthropic/ink'
 import { formatDuration, truncateToWidth } from '../utils/format.js'
 import { getGraphemeSegmenter } from '../utils/intl.js'
+import { t, tf } from '../i18n/t.js'
 
 /** Bridge status state machine states. */
 export type StatusState =
@@ -112,11 +113,7 @@ export function computeShimmerSegments(
 
 /** Computed bridge status label and color from connection state. */
 export type BridgeStatusInfo = {
-  label:
-    | 'Remote Control failed'
-    | 'Remote Control reconnecting'
-    | 'Remote Control active'
-    | 'Remote Control connecting\u2026'
+  label: string
   color: 'error' | 'warning' | 'success'
 }
 
@@ -132,26 +129,26 @@ export function getBridgeStatus({
   sessionActive: boolean
   reconnecting: boolean
 }): BridgeStatusInfo {
-  if (error) return { label: 'Remote Control failed', color: 'error' }
+  if (error) return { label: t('Remote Control failed'), color: 'error' }
   if (reconnecting)
-    return { label: 'Remote Control reconnecting', color: 'warning' }
+    return { label: t('Remote Control reconnecting'), color: 'warning' }
   if (sessionActive || connected)
-    return { label: 'Remote Control active', color: 'success' }
-  return { label: 'Remote Control connecting\u2026', color: 'warning' }
+    return { label: t('Remote Control active'), color: 'success' }
+  return { label: t('Remote Control connecting\u2026'), color: 'warning' }
 }
 
 /** Footer text shown when bridge is idle (Ready state). */
 export function buildIdleFooterText(url: string): string {
-  return `Code everywhere with the Claude app or ${url}`
+  return tf('Code everywhere with the Claude app or {url}', { url })
 }
 
 /** Footer text shown when a session is active (Connected state). */
 export function buildActiveFooterText(url: string): string {
-  return `Continue coding in the Claude app or ${url}`
+  return tf('Continue coding in the Claude app or {url}', { url })
 }
 
 /** Footer text shown when the bridge has failed. */
-export const FAILED_FOOTER_TEXT = 'Something went wrong, please try again'
+export const FAILED_FOOTER_TEXT = t('Something went wrong, please try again')
 
 /**
  * Wrap text in an OSC 8 terminal hyperlink. Zero visual width for layout purposes.

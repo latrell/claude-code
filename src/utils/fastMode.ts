@@ -74,7 +74,7 @@ function getDisabledReasonMessage(
 
 export function getFastModeUnavailableReason(): string | null {
   if (!isFastModeEnabled()) {
-    return 'Fast mode is not available'
+    return t('Fast mode is not available')
   }
 
   const statigReason = getFeatureValue_CACHED_MAY_BE_STALE(
@@ -93,7 +93,9 @@ export function getFastModeUnavailableReason(): string | null {
     !isInBundledMode() &&
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_sandcastle', false)
   ) {
-    return 'Fast mode requires the native binary · Install from: https://claude.com/product/claude-code'
+    return t(
+      'Fast mode requires the native binary · Install from: https://claude.com/product/claude-code',
+    )
   }
 
   // Not available in the SDK unless explicitly opted in via --settings.
@@ -106,7 +108,7 @@ export function getFastModeUnavailableReason(): string | null {
   ) {
     const flagFastMode = getSettingsForSource('flagSettings')?.fastMode
     if (!flagFastMode) {
-      const reason = 'Fast mode is not available in the Agent SDK'
+      const reason = t('Fast mode is not available in the Agent SDK')
       logForDebugging(`Fast mode unavailable: ${reason}`)
       return reason
     }
@@ -114,7 +116,9 @@ export function getFastModeUnavailableReason(): string | null {
 
   // Only available for 1P (not Bedrock/Vertex/Foundry)
   if (getAPIProvider() !== 'firstParty') {
-    const reason = 'Fast mode is not available on Bedrock, Vertex, or Foundry'
+    const reason = t(
+      'Fast mode is not available on Bedrock, Vertex, or Foundry',
+    )
     logForDebugging(`Fast mode unavailable: ${reason}`)
     return reason
   }
@@ -269,23 +273,25 @@ export const onFastModeOverageRejection = overageRejection.subscribe
 function getOverageDisabledMessage(reason: string | null): string {
   switch (reason) {
     case 'out_of_credits':
-      return 'Fast mode disabled · extra usage credits exhausted'
+      return t('Fast mode disabled · extra usage credits exhausted')
     case 'org_level_disabled':
     case 'org_service_level_disabled':
-      return 'Fast mode disabled · extra usage disabled by your organization'
+      return t('Fast mode disabled · extra usage disabled by your organization')
     case 'org_level_disabled_until':
-      return 'Fast mode disabled · extra usage spending cap reached'
+      return t('Fast mode disabled · extra usage spending cap reached')
     case 'member_level_disabled':
-      return 'Fast mode disabled · extra usage disabled for your account'
+      return t('Fast mode disabled · extra usage disabled for your account')
     case 'seat_tier_level_disabled':
     case 'seat_tier_zero_credit_limit':
     case 'member_zero_credit_limit':
-      return 'Fast mode disabled · extra usage not available for your plan'
+      return t('Fast mode disabled · extra usage not available for your plan')
     case 'overage_not_provisioned':
     case 'no_limits_configured':
-      return 'Fast mode requires extra usage billing · /extra-usage to enable'
+      return t(
+        'Fast mode requires extra usage billing · /extra-usage to enable',
+      )
     default:
-      return 'Fast mode disabled · extra usage not available'
+      return t('Fast mode disabled · extra usage not available')
   }
 }
 

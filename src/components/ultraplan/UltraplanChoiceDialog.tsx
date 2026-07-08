@@ -184,17 +184,17 @@ export function UltraplanChoiceDialog({
   const options: Array<{ label: string; value: ChoiceValue; description: string }> = React.useMemo(
     () => [
       {
-        label: 'Implement here',
+        label: t('Implement here'),
         value: 'here' as const,
         description: 'Inject plan into the current conversation',
       },
       {
-        label: 'Start new session',
+        label: t('Start new session'),
         value: 'fresh' as const,
         description: 'Clear conversation and start with only the plan',
       },
       {
-        label: 'Cancel',
+        label: t('Cancel'),
         value: 'cancel' as const,
         description: "Don't implement — save plan and return",
       },

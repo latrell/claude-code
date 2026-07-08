@@ -38,6 +38,7 @@ import {
 import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { t } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 import { KeychainUnavailableError, tryKeychain } from './keychain.js'
 
@@ -406,8 +407,10 @@ export async function getSecret(key: string): Promise<string | null> {
   // Instruct user to re-set secrets encrypted under the old format.
   if (typeof vaultData['_salt'] !== 'string') {
     throw new LocalVaultDecryptionError(
-      'vault was created with an older format (no KDF salt). ' +
-        'Please re-set your secrets using /local-vault set to upgrade to the secure format',
+      t('vault was created with an older format (no KDF salt). ') +
+        t(
+          'Please re-set your secrets using /local-vault set to upgrade to the secure format',
+        ),
     )
   }
 

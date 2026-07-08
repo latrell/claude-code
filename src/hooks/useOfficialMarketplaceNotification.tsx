@@ -1,5 +1,6 @@
 import type { Notification } from '../context/notifications.js';
 import { Text } from '@anthropic/ink';
+import { T } from '../i18n/TText.js';
 import { logForDebugging } from '../utils/debug.js';
 import { checkAndInstallOfficialMarketplace } from '../utils/plugins/officialMarketplaceStartupCheck.js';
 import { useStartupNotification } from './notifs/useStartupNotification.js';
@@ -18,7 +19,7 @@ export function useOfficialMarketplaceNotification(): void {
       logForDebugging('Showing marketplace config save failure notification');
       notifs.push({
         key: 'marketplace-config-save-failed',
-        jsx: <Text color="error">Failed to save marketplace retry info · Check ~/.claude.json permissions</Text>,
+        jsx: <T color="error">Failed to save marketplace retry info · Check ~/.claude.json permissions</T>,
         priority: 'immediate',
         timeoutMs: 10000,
       });
@@ -36,7 +37,7 @@ export function useOfficialMarketplaceNotification(): void {
       logForDebugging('Showing marketplace installation failure notification');
       notifs.push({
         key: 'marketplace-install-failed',
-        jsx: <Text color="warning">Failed to install Anthropic marketplace · Will retry on next startup</Text>,
+        jsx: <T color="warning">Failed to install Anthropic marketplace · Will retry on next startup</T>,
         priority: 'immediate',
         timeoutMs: 8000,
       });

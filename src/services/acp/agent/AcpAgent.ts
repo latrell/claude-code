@@ -55,6 +55,7 @@ import {
 } from '../../../utils/sessionStoragePortable.js'
 import { getOriginalCwd } from '../../../bootstrap/state.js'
 import type { AcpSession } from './sessionTypes.js'
+import { t } from '../../../i18n/t.js'
 
 // ── Agent class ───────────────────────────────────────────────────
 //
@@ -87,7 +88,7 @@ export class AcpAgent implements Agent {
       authMethods: [],
       agentInfo: {
         name: 'claude-code',
-        title: 'Claude Code',
+        title: t('Claude Code'),
         version:
           typeof (globalThis as unknown as Record<string, unknown>).MACRO ===
             'object' &&

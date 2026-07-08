@@ -13,7 +13,7 @@ import type { EnvironmentResource } from '../utils/teleport/environments.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint, LoadingState } from '@anthropic/ink';
-import { t } from '../i18n/t.js';
+import { t, tf } from '../i18n/t.js';
 
 const DIALOG_TITLE = 'Select Remote Environment';
 const SETUP_HINT = `Configure environments at: https://claude.ai/code`;
@@ -83,7 +83,7 @@ export function RemoteEnvironmentDialog({ onDone }: Props): React.ReactNode {
   if (loadingState === 'loading') {
     return (
       <Dialog title={DIALOG_TITLE} onCancel={onDone} hideInputGuide>
-        <LoadingState message="Loading environments…" />
+        <LoadingState message={t('Loading environments...')} />
       </Dialog>
     );
   }
@@ -92,7 +92,7 @@ export function RemoteEnvironmentDialog({ onDone }: Props): React.ReactNode {
   if (error) {
     return (
       <Dialog title={DIALOG_TITLE} onCancel={onDone}>
-        <Text color="error">Error: {error}</Text>
+        <Text color="error">{tf('Error: {error}', { error })}</Text>
       </Dialog>
     );
   }
@@ -180,7 +180,7 @@ function MultipleEnvironmentsContent({
     <Dialog title={DIALOG_TITLE} subtitle={subtitle} onCancel={onCancel} hideInputGuide>
       <Text dimColor>{SETUP_HINT}</Text>
       {loadingState === 'updating' ? (
-        <LoadingState message="Updating…" />
+        <LoadingState message={t('Updating...')} />
       ) : (
         <Select
           options={environments.map(env => ({

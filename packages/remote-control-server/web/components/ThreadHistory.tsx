@@ -6,17 +6,18 @@ import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { cn } from '../src/lib/utils';
+import { t } from '../src/lib/i18n';
 
 // Reference: Zed's TimeBucket in thread_history.rs
 type TimeBucket = 'today' | 'yesterday' | 'thisWeek' | 'pastWeek' | 'all';
 
 // Reference: Zed's Display impl for TimeBucket
 const BUCKET_LABELS: Record<TimeBucket, string> = {
-  today: 'Today',
-  yesterday: 'Yesterday',
-  thisWeek: 'This Week',
-  pastWeek: 'Past Week',
-  all: 'All', // Zed uses "All", not "Older"
+  today: t('Today'),
+  yesterday: t('Yesterday'),
+  thisWeek: t('This Week'),
+  pastWeek: t('Past Week'),
+  all: t('All'), // Zed uses "All", not "Older"
 };
 
 // Reference: Zed's TimeBucket::from_dates (line 1028-1051)
@@ -63,7 +64,7 @@ function getISOWeekYear(date: Date): { week: number; year: number } {
 // Reference: Zed's formatted_time in HistoryEntryElement (line 904-921)
 // Exact format: Xd, Xh ago, Xm ago, Just now, Unknown
 function formatRelativeTime(date: Date | null): string {
-  if (!date) return 'Unknown'; // Zed uses "Unknown" for missing updatedAt
+  if (!date) return t('Unknown'); // Zed uses "Unknown" for missing updatedAt
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -74,7 +75,7 @@ function formatRelativeTime(date: Date | null): string {
   if (diffDays > 0) return `${diffDays}d`;
   if (diffHours > 0) return `${diffHours}h ago`;
   if (diffMinutes > 0) return `${diffMinutes}m ago`;
-  return 'Just now';
+  return t('Just now');
 }
 
 interface ThreadHistoryProps {
@@ -103,7 +104,7 @@ export function ThreadHistory({ client, onSelectSession }: ThreadHistoryProps) {
 
   const loadSessions = useCallback(async () => {
     if (!client.supportsSessionList) {
-      setError('Session list not supported by this agent');
+      setError(t('Session list not supported by this agent'));
       setIsLoading(false);
       return;
     }
@@ -184,7 +185,7 @@ export function ThreadHistory({ client, onSelectSession }: ThreadHistoryProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 text-center">
         <Clock className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">Session history is not supported by this agent.</p>
+        <p className="text-muted-foreground">{t('Session history is not supported by this agent.')}</p>
       </div>
     );
   }
@@ -197,7 +198,7 @@ export function ThreadHistory({ client, onSelectSession }: ThreadHistoryProps) {
       <div className="flex items-center gap-2 p-2 border-b border-border">
         <Search className="h-4 w-4 text-muted-foreground shrink-0" />
         <Input
-          placeholder="Search threads..."
+          placeholder={t('Search threads...')}
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           className="h-8 border-0 focus-visible:ring-0 shadow-none"
@@ -214,19 +215,19 @@ export function ThreadHistory({ client, onSelectSession }: ThreadHistoryProps) {
         {!error && isLoading && sessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <RefreshCw className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-            <p className="text-muted-foreground text-sm">Loading threads...</p>
+            <p className="text-muted-foreground text-sm">{t('Loading threads...')}</p>
           </div>
         )}
 
         {!error && !isLoading && sessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <p className="text-muted-foreground text-sm">You don't have any past threads yet.</p>
+            <p className="text-muted-foreground text-sm">{t("You don't have any past threads yet.")}</p>
           </div>
         )}
 
         {!error && sessions.length > 0 && groupedSessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <p className="text-muted-foreground text-sm">No threads match your search.</p>
+            <p className="text-muted-foreground text-sm">{t('No threads match your search.')}</p>
           </div>
         )}
 
@@ -266,7 +267,7 @@ export function ThreadHistory({ client, onSelectSession }: ThreadHistoryProps) {
                   >
                     {/* min-w-0 + truncate ensures long titles are clipped with ellipsis */}
                     <span className="text-sm truncate flex-1 min-w-0">
-                      {session.title && session.title.trim() ? session.title : 'New Thread'}
+                      {session.title && session.title.trim() ? session.title : t('New Thread')}
                     </span>
                     <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
                       {isLoadingThis ? <RefreshCw className="h-3 w-3 animate-spin" /> : formatRelativeTime(date)}

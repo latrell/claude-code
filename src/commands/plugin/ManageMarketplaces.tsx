@@ -33,7 +33,8 @@ import { isMarketplaceAutoUpdate } from '../../utils/plugins/schemas.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { plural } from '../../utils/stringUtils.js';
 import type { ViewState } from './types.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   setViewState: (state: ViewState) => void;
@@ -161,9 +162,9 @@ export function ManageMarketplaces({
         }
       } catch (err) {
         if (setError) {
-          setError(err instanceof Error ? err.message : 'Failed to load marketplaces');
+          setError(err instanceof Error ? err.message : t('Failed to load marketplaces'));
         }
-        setProcessError(err instanceof Error ? err.message : 'Failed to load marketplaces');
+        setProcessError(err instanceof Error ? err.message : t('Failed to load marketplaces'));
       } finally {
         setLoading(false);
       }
@@ -366,7 +367,7 @@ export function ManageMarketplaces({
         value: 'browse',
       },
       {
-        label: 'Update marketplace',
+        label: t('Update marketplace'),
         secondaryLabel: marketplace.lastUpdated
           ? `(last updated ${new Date(marketplace.lastUpdated).toLocaleDateString()})`
           : undefined,
@@ -377,12 +378,12 @@ export function ManageMarketplaces({
     // Only show auto-update toggle if auto-updater is not globally disabled
     if (!shouldSkipPluginAutoupdate()) {
       options.push({
-        label: marketplace.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
+        label: marketplace.autoUpdate ? t('Disable auto-update') : t('Enable auto-update'),
         value: 'toggle-auto-update',
       });
     }
 
-    options.push({ label: 'Remove marketplace', value: 'remove' });
+    options.push({ label: t('Remove marketplace'), value: 'remove' });
 
     return options;
   };
@@ -401,7 +402,7 @@ export function ManageMarketplaces({
       // Update selected marketplace reference
       setSelectedMarketplace(prev => (prev ? { ...prev, autoUpdate: newAutoUpdate } : prev));
     } catch (err) {
-      setProcessError(err instanceof Error ? err.message : 'Failed to update setting');
+      setProcessError(err instanceof Error ? err.message : t('Failed to update setting'));
     }
   };
 
@@ -553,14 +554,14 @@ export function ManageMarketplaces({
   );
 
   if (loading) {
-    return <Text>Loading marketplaces…</Text>;
+    return <T>Loading marketplaces…</T>;
   }
 
   if (marketplaceStates.length === 0) {
     return (
       <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Manage marketplaces</Text>
+          <T bold>Manage marketplaces</T>
         </Box>
 
         {/* Add Marketplace option */}
@@ -674,7 +675,7 @@ export function ManageMarketplaces({
         {/* Processing indicator */}
         {isUpdating && (
           <Box marginTop={1} flexDirection="column">
-            <Text color="claude">Updating marketplace…</Text>
+            <T color="claude">Updating marketplace…</T>
             {progressMessage && <Text dimColor>{progressMessage}</Text>}
           </Box>
         )}
@@ -752,7 +753,7 @@ export function ManageMarketplaces({
   return (
     <Box flexDirection="column">
       <Box marginBottom={1}>
-        <Text bold>Manage marketplaces</Text>
+        <T bold>Manage marketplaces</T>
       </Box>
 
       {/* Add Marketplace option */}
@@ -807,7 +808,7 @@ export function ManageMarketplaces({
       {hasPendingChanges() && (
         <Box marginTop={1} flexDirection="column">
           <Text>
-            <Text bold>Pending changes:</Text> <Text dimColor>Enter to apply</Text>
+            <T bold>Pending changes:</T> <T dimColor>Enter to apply</T>
           </Text>
           {updateCount > 0 && (
             <Text>
@@ -825,7 +826,7 @@ export function ManageMarketplaces({
       {/* Processing indicator */}
       {isProcessing && (
         <Box marginTop={1}>
-          <Text color="claude">Processing changes…</Text>
+          <T color="claude">Processing changes…</T>
         </Box>
       )}
 

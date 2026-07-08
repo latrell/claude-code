@@ -17,6 +17,7 @@ import {
 } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
 import type { Theme } from '../../utils/theme.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
+import { t } from '../../i18n/t.js';
 import { shouldHideTasksFooter } from './taskStatusUtils.js';
 
 type Props = {
@@ -159,7 +160,7 @@ export function BackgroundTaskStatus({
         {showRightArrow && <Text dimColor> {figures.arrowRight}</Text>}
         <Text dimColor>
           {' · '}
-          <KeyboardShortcutHint shortcut="shift + ↓" action="expand" />
+          <KeyboardShortcutHint shortcut="shift + ↓" action={t('expand')} />
         </Text>
       </>
     );

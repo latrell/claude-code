@@ -4,9 +4,10 @@ import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { ThemeName } from 'src/utils/theme.js';
 import type { Output } from './ExitWorktreeTool.js';
+import { t, tf } from 'src/i18n/t.js';
 
 export function renderToolUseMessage(): React.ReactNode {
-  return 'Exiting worktree…';
+  return t('Exiting worktree…');
 }
 
 export function renderToolResultMessage(
@@ -14,7 +15,7 @@ export function renderToolResultMessage(
   _progressMessagesForMessage: ProgressMessage<ToolProgressData>[],
   _options: { theme: ThemeName },
 ): React.ReactNode {
-  const actionLabel = output.action === 'keep' ? 'Kept worktree' : 'Removed worktree';
+  const actionLabel = output.action === 'keep' ? t('Kept worktree') : t('Removed worktree');
   return (
     <Box flexDirection="column">
       <Text>
@@ -26,7 +27,7 @@ export function renderToolResultMessage(
           </>
         ) : null}
       </Text>
-      <Text dimColor>Returned to {output.originalCwd}</Text>
+      <Text dimColor>{tf('Returned to {cwd}', { cwd: output.originalCwd })}</Text>
     </Box>
   );
 }

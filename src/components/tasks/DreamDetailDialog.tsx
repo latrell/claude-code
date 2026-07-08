@@ -6,7 +6,8 @@ import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { DreamTaskState } from '../../tasks/DreamTask/DreamTask.js';
 import { plural } from '../../utils/stringUtils.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   task: DeepImmutable<DreamTaskState>;
@@ -46,7 +47,7 @@ export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): Reac
   return (
     <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       <Dialog
-        title="Memory consolidation"
+        title={t('Memory consolidation')}
         subtitle={
           <Text dimColor>
             {elapsedTime} · reviewing {task.sessionsReviewing} {plural(task.sessionsReviewing, 'session')}
@@ -65,16 +66,16 @@ export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): Reac
             <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
-              {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
-              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {onBack && <KeyboardShortcutHint shortcut="←" action={t('go back')} />}
+              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action={t('close')} />
+              {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action={t('stop')} />}
             </Byline>
           )
         }
       >
         <Box flexDirection="column" gap={1}>
           <Text>
-            <Text bold>Status:</Text>{' '}
+            <T bold>Status: </T>{' '}
             {task.status === 'running' ? (
               <Text color="background">running</Text>
             ) : task.status === 'completed' ? (

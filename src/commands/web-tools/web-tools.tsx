@@ -7,6 +7,7 @@ import { useIsInsideModal } from '../../context/modalContext.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../../utils/settings/settings.js';
 import type { LocalJSXCommandCall, LocalJSXCommandContext } from '../../types/command.js';
 import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,16 +36,16 @@ type ViewState = { kind: 'main' } | { kind: 'config'; adapter: AdapterMeta };
 // ── Data ───────────────────────────────────────────────────────────────────
 
 const SEARCH_ADAPTERS: AdapterMeta[] = [
-  { key: 'tavily', label: 'Tavily', description: 'Tavily Search API (default)', hasConfig: true },
-  { key: 'api', label: 'Anthropic API', description: 'Anthropic server-side web search', hasConfig: false },
-  { key: 'bing', label: 'Bing', description: 'Scrape Bing HTML results', hasConfig: false },
-  { key: 'brave', label: 'Brave', description: 'Brave Search API (needs API key)', hasConfig: true },
-  { key: 'exa', label: 'Exa', description: 'Exa AI search (MCP endpoint)', hasConfig: true },
+  { key: 'tavily', label: t('Tavily'), description: t('Tavily Search API (default)'), hasConfig: true },
+  { key: 'api', label: t('Anthropic API'), description: t('Anthropic server-side web search'), hasConfig: false },
+  { key: 'bing', label: t('Bing'), description: t('Scrape Bing HTML results'), hasConfig: false },
+  { key: 'brave', label: t('Brave'), description: t('Brave Search API (needs API key)'), hasConfig: true },
+  { key: 'exa', label: t('Exa'), description: t('Exa AI search (MCP endpoint)'), hasConfig: true },
 ];
 
 const FETCH_ADAPTERS: AdapterMeta[] = [
-  { key: 'tavily', label: 'Tavily Extract', description: 'Use Tavily /extract (default)', hasConfig: true },
-  { key: 'http', label: 'HTTP Direct', description: 'Fetch URL directly via HTTP', hasConfig: true },
+  { key: 'tavily', label: t('Tavily Extract'), description: t('Use Tavily /extract (default)'), hasConfig: true },
+  { key: 'http', label: t('HTTP Direct'), description: t('Fetch URL directly via HTTP'), hasConfig: true },
 ];
 
 // ── Config field definitions ───────────────────────────────────────────────
@@ -128,7 +129,7 @@ function MainView({
           return (
             <Box key={adapter.key} flexDirection="row">
               <Text color={isSelected ? 'success' : undefined}>
-                {isCursor ? '›' : ' '}
+                {isCursor ? '\u203A' : ' '}
                 <Text color={isSelected ? 'success' : undefined}> {isSelected ? '\u25CF' : '\u25CB'} </Text>
               </Text>
               <Text
@@ -145,8 +146,10 @@ function MainView({
         })}
       </Box>
       <Box marginTop={1} flexDirection="row" gap={2}>
-        <Text dimColor>{'\u2191\u2193'} navigate · Space select · Enter config · Esc close</Text>
-        <Text dimColor>Tab switch tab</Text>
+        <Text dimColor>
+          {'\u2191\u2193'} navigate{'\u00B7'} Space select{'\u00B7'} Enter config{'\u00B7'} Esc close
+        </Text>
+        <T dimColor>Tab switch tab</T>
       </Box>
     </Box>
   );
@@ -160,7 +163,7 @@ function getConfigFields(adapter: AdapterMeta): ConfigField[] {
     case 'tavily':
       fields.push({
         key: 'tavilyEndpointUrl',
-        label: 'Endpoint URL',
+        label: t('Endpoint URL'),
         placeholder: 'https://tavily.claude-code-best.win',
         maskInput: false,
         getValue: s => s.tavilyEndpointUrl ?? 'https://tavily.claude-code-best.win',
@@ -170,7 +173,7 @@ function getConfigFields(adapter: AdapterMeta): ConfigField[] {
     case 'brave':
       fields.push({
         key: 'braveApiKey',
-        label: 'API Key',
+        label: t('API Key'),
         placeholder: 'BSA...',
         maskInput: true,
         getValue: s => s.braveApiKey ?? '',
@@ -180,7 +183,7 @@ function getConfigFields(adapter: AdapterMeta): ConfigField[] {
     case 'exa':
       fields.push({
         key: 'exaApiKey',
-        label: 'API Key',
+        label: t('API Key'),
         placeholder: 'exa-...',
         maskInput: true,
         getValue: s => s.exaApiKey ?? '',
@@ -188,7 +191,7 @@ function getConfigFields(adapter: AdapterMeta): ConfigField[] {
       });
       fields.push({
         key: 'exaEndpointUrl',
-        label: 'Endpoint URL',
+        label: t('Endpoint URL'),
         placeholder: 'https://mcp.exa.ai/mcp',
         maskInput: false,
         getValue: s => s.exaEndpointUrl ?? 'https://mcp.exa.ai/mcp',
@@ -198,7 +201,7 @@ function getConfigFields(adapter: AdapterMeta): ConfigField[] {
     case 'http':
       fields.push({
         key: 'webFetchHttpTimeoutMs',
-        label: 'Timeout (ms)',
+        label: t('Timeout (ms)'),
         placeholder: '60000',
         maskInput: false,
         getValue: s => String(s.webFetchHttpTimeoutMs ?? 60000),
@@ -263,7 +266,7 @@ function NoConfigView({
       <Box flexDirection="column" marginTop={1}>
         <Text>{adapter.description}</Text>
         <Box marginTop={1}>
-          <Text dimColor>No additional configuration needed.</Text>
+          <T dimColor>No additional configuration needed.</T>
         </Box>
       </Box>
       <Box flexDirection="column" marginTop={1}>
@@ -288,7 +291,9 @@ function NoConfigView({
         </Box>
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>{'\u2191\u2193'} navigate · Enter confirm · Esc back</Text>
+        <Text dimColor>
+          {'\u2191\u2193'} navigate{'\u00B7'} Enter confirm{'\u00B7'} Esc back
+        </Text>
       </Box>
     </Box>
   );
@@ -418,7 +423,7 @@ function ConfigFieldsEditor({
 
           return (
             <Box key={field.key} flexDirection="row">
-              <Text>{isCursor ? '›' : ' '} </Text>
+              <Text>{isCursor ? '\u203A' : ' '} </Text>
               <Text dimColor>{field.label}: </Text>
               <Text
                 backgroundColor={isCursor ? 'suggestion' : undefined}
@@ -435,7 +440,7 @@ function ConfigFieldsEditor({
           );
         })}
         <Box marginTop={1}>
-          <Text>{cursor === saveRow ? '›' : ' '} </Text>
+          <Text>{cursor === saveRow ? '\u203A' : ' '} </Text>
           <Text
             backgroundColor={cursor === saveRow ? 'suggestion' : undefined}
             color={cursor === saveRow ? 'inverseText' : undefined}
@@ -445,7 +450,7 @@ function ConfigFieldsEditor({
           </Text>
         </Box>
         <Box>
-          <Text>{cursor === backRow ? '›' : ' '} </Text>
+          <Text>{cursor === backRow ? '\u203A' : ' '} </Text>
           <Text
             backgroundColor={cursor === backRow ? 'suggestion' : undefined}
             color={cursor === backRow ? 'inverseText' : undefined}
@@ -457,8 +462,8 @@ function ConfigFieldsEditor({
       <Box marginTop={1}>
         <Text dimColor>
           {editing
-            ? '\u2190\u2192 move cursor · Type to edit · Enter confirm · Esc cancel edit'
-            : '\u2191\u2193 navigate · Enter edit field · Esc go back'}
+            ? '\u2190\u2192 move cursor \u00B7 Type to edit \u00B7 Enter confirm \u00B7 Esc cancel edit'
+            : '\u2191\u2193 navigate \u00B7 Enter edit field \u00B7 Esc go back'}
         </Text>
       </Box>
     </Box>
@@ -543,13 +548,13 @@ function WebToolsPanel({
   const current = currentTab === 'search' ? currentSearch : currentFetch;
 
   return (
-    <Tabs title="Web Tools" contentHeight={contentHeight}>
-      <Tab key="search" title="Search">
+    <Tabs title={t('Web Tools')} contentHeight={contentHeight}>
+      <Tab key="search" title={t('Search')}>
         <MainView
           tab={currentTab}
           adapters={SEARCH_ADAPTERS}
           current={currentSearch}
-          fieldLabel="Choose a web search backend:"
+          fieldLabel={t('Choose a web search backend:')}
           onConfigure={handleConfigure}
           onSwitchTab={setCurrentTab}
           onSelectAdapter={handleSelectAdapter}
@@ -557,12 +562,12 @@ function WebToolsPanel({
           contentHeight={contentHeight}
         />
       </Tab>
-      <Tab key="fetch" title="Fetch">
+      <Tab key="fetch" title={t('Fetch')}>
         <MainView
           tab={currentTab}
           adapters={FETCH_ADAPTERS}
           current={currentFetch}
-          fieldLabel="Choose a web fetch backend:"
+          fieldLabel={t('Choose a web fetch backend:')}
           onConfigure={handleConfigure}
           onSwitchTab={setCurrentTab}
           onSelectAdapter={handleSelectAdapter}

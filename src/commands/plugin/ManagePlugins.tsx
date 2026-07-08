@@ -72,6 +72,7 @@ import {
 } from '../../utils/settings/settings.js';
 import { jsonParse } from '../../utils/slowOperations.js';
 import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { plural } from '../../utils/stringUtils.js';
 import { formatErrorMessage, getErrorGuidance } from './PluginErrors.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
@@ -367,7 +368,9 @@ function PluginComponentsDisplay({
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Text bold>{t('Components:')}</Text>
-        <Text dimColor>Error: {error}</Text>
+        <T dimColor vars={{ error }}>
+          {'Error: {error}'}
+        </T>
       </Box>
     );
   }
@@ -1402,14 +1405,14 @@ export function ManagePlugins({
     const menuItems: Array<{ label: string; action: () => void }> = [];
 
     menuItems.push({
-      label: isEnabled ? 'Disable plugin' : 'Enable plugin',
+      label: isEnabled ? t('Disable plugin') : t('Enable plugin'),
       action: () => void handleSingleOperation(isEnabled ? 'disable' : 'enable'),
     });
 
     // Update/Uninstall options — not available for built-in plugins
     if (!isBuiltin) {
       menuItems.push({
-        label: selectedPlugin.pendingUpdate ? 'Unmark for update' : 'Mark for update',
+        label: selectedPlugin.pendingUpdate ? t('Unmark for update') : t('Mark for update'),
         action: async () => {
           try {
             const localError = await checkIfLocalPlugin(selectedPlugin.plugin.name, selectedPlugin.marketplace);
@@ -1439,7 +1442,7 @@ export function ManagePlugins({
 
       if (selectedPluginHasMcpb) {
         menuItems.push({
-          label: 'Configure',
+          label: t('Configure'),
           action: async () => {
             setIsLoadingConfig(true);
             try {
@@ -1458,7 +1461,7 @@ export function ManagePlugins({
               }
 
               if (!mcpbPath) {
-                setProcessError('No MCPB file found in plugin');
+                setProcessError(t('No MCPB file found in plugin'));
                 setIsLoadingConfig(false);
                 return;
               }
@@ -1494,7 +1497,7 @@ export function ManagePlugins({
         Object.keys(selectedPlugin.plugin.manifest.userConfig).length > 0
       ) {
         menuItems.push({
-          label: 'Configure options',
+          label: t('Configure options'),
           action: () => {
             setViewState({
               type: 'configuring-options',
@@ -1505,19 +1508,19 @@ export function ManagePlugins({
       }
 
       menuItems.push({
-        label: 'Update now',
+        label: t('Update now'),
         action: () => void handleSingleOperation('update'),
       });
 
       menuItems.push({
-        label: 'Uninstall',
+        label: t('Uninstall'),
         action: () => void handleSingleOperation('uninstall'),
       });
     }
 
     if (selectedPlugin.plugin.manifest.homepage) {
       menuItems.push({
-        label: 'Open homepage',
+        label: t('Open homepage'),
         action: () => void openBrowser(selectedPlugin.plugin.manifest.homepage!),
       });
     }
@@ -1527,13 +1530,13 @@ export function ManagePlugins({
         // Generic label — manifest.repository can be GitLab, Bitbucket,
         // Azure DevOps, etc. (gh-31598). pluginDetailsHelpers.tsx:74 keeps
         // 'View on GitHub' because that path has an explicit isGitHub check.
-        label: 'View repository',
+        label: t('View repository'),
         action: () => void openBrowser(selectedPlugin.plugin.manifest.repository!),
       });
     }
 
     menuItems.push({
-      label: 'Back to plugin list',
+      label: t('Back to plugin list'),
       action: () => {
         setViewState('plugin-list');
         setSelectedPlugin(null);
@@ -1913,7 +1916,9 @@ export function ManagePlugins({
         <Box marginBottom={1} flexDirection="column">
           <Text color="error">{tf('Removed from marketplace · reason: {reason}', { reason: fp.reason })}</Text>
           <Text>{fp.text}</Text>
-          <Text dimColor>Flagged on {new Date(fp.flaggedAt).toLocaleDateString()}</Text>
+          <T dimColor vars={{ date: new Date(fp.flaggedAt).toLocaleDateString() }}>
+            {'Flagged on {date}'}
+          </T>
         </Box>
 
         <Box marginTop={1} flexDirection="column">
@@ -2445,7 +2450,9 @@ export function ManagePlugins({
       {/* No search results */}
       {filteredItems.length === 0 && searchQuery && (
         <Box marginBottom={1}>
-          <Text dimColor>No items match &quot;{searchQuery}&quot;</Text>
+          <T dimColor vars={{ query: searchQuery }}>
+            {'No items match "{query}"'}
+          </T>
         </Box>
       )}
 

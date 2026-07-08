@@ -3,7 +3,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { Box, Text } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   instructions?: ReactNode;
@@ -12,9 +12,9 @@ type Props = {
 export function WizardNavigationFooter({
   instructions = (
     <Byline>
-      <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-      <KeyboardShortcutHint shortcut="Enter" action="select" />
-      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+      <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+      <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('go back')} />
     </Byline>
   ),
 }: Props): ReactNode {

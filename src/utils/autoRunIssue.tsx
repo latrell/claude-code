@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
+import { tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 type Props = {
   onRun: () => void;
@@ -31,7 +33,7 @@ export function AutoRunIssueNotification({ onRun, onCancel, reason }: Props): Re
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
-        <Text bold>Running feedback capture...</Text>
+        <T bold>Running feedback capture...</T>
       </Box>
       <Box>
         <Text dimColor>
@@ -39,7 +41,7 @@ export function AutoRunIssueNotification({ onRun, onCancel, reason }: Props): Re
         </Text>
       </Box>
       <Box>
-        <Text dimColor>Reason: {reason}</Text>
+        <Text dimColor>{tf('Reason: {reason}', { reason })}</Text>
       </Box>
     </Box>
   );

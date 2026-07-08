@@ -1,5 +1,6 @@
 import type { ConnectionState } from '../../src/acp/types';
 import { cn } from '../../src/lib/utils';
+import { t } from '../../src/lib/i18n';
 
 // Shared styles for connection state dots
 const connectionDotStyles: Record<ConnectionState, string> = {
@@ -11,10 +12,10 @@ const connectionDotStyles: Record<ConnectionState, string> = {
 
 // Shared labels for connection states
 const connectionStateLabels: Record<ConnectionState, string> = {
-  disconnected: 'Disconnected',
-  connecting: 'Connecting...',
-  connected: 'Connected',
-  error: 'Error',
+  disconnected: t('Disconnected'),
+  connecting: t('Connecting...'),
+  connected: t('Connected'),
+  error: t('Error'),
 };
 
 /**

@@ -7,7 +7,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { useMergedTools } from '../../hooks/useMergedTools.js';
 import { Box, Text } from '@anthropic/ink';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { Tools } from '../../Tool.js';
 import {
   type ResolvedAgent,
@@ -164,14 +164,14 @@ export function AgentsMenu({ tools, onExit }: Props): React.ReactNode {
       const isEditable =
         agentToUse.source !== 'built-in' && agentToUse.source !== 'plugin' && agentToUse.source !== 'flagSettings';
       const menuItems = [
-        { label: 'View agent', value: 'view' },
+        { label: t('View agent'), value: 'view' },
         ...(isEditable
           ? [
-              { label: 'Edit agent', value: 'edit' },
-              { label: 'Delete agent', value: 'delete' },
+              { label: t('Edit agent'), value: 'edit' },
+              { label: t('Delete agent'), value: 'delete' },
             ]
           : []),
-        { label: 'Back', value: 'back' },
+        { label: t('Back'), value: 'back' },
       ];
 
       const handleMenuSelect = (value: string): void => {
@@ -268,24 +268,24 @@ export function AgentsMenu({ tools, onExit }: Props): React.ReactNode {
 
     case 'delete-confirm': {
       const deleteOptions = [
-        { label: 'Yes, delete', value: 'yes' },
-        { label: 'No, cancel', value: 'no' },
+        { label: t('Yes, delete'), value: 'yes' },
+        { label: t('No, cancel'), value: 'no' },
       ];
 
       return (
         <>
           <Dialog
-            title="Delete agent"
+            title={t('Delete agent')}
             onCancel={() => {
               if ('previousMode' in modeState) setModeState(modeState.previousMode);
             }}
             color="error"
           >
             <Text>
-              Are you sure you want to delete the agent <Text bold>{modeState.agent.agentType}</Text>?
+              {tf('Are you sure you want to delete the agent {agentType}?', { agentType: modeState.agent.agentType })}
             </Text>
             <Box marginTop={1}>
-              <Text dimColor>Source: {modeState.agent.source}</Text>
+              <Text dimColor>{tf('Source: {source}', { source: modeState.agent.source })}</Text>
             </Box>
             <Box marginTop={1}>
               <Select

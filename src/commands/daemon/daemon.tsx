@@ -1,3 +1,4 @@
+import { t } from '../../i18n/t.js';
 import type { LocalJSXCommandOnDone, LocalJSXCommandContext } from '../../types/command.js';
 
 /**
@@ -16,7 +17,9 @@ export async function call(
 
   // attach is interactive/blocking — not available inside the REPL
   if (sub === 'attach') {
-    onDone('Use `claude daemon attach` from the CLI. Attach is not available inside the REPL.', { display: 'system' });
+    onDone(t('Use `claude daemon attach` from the CLI. Attach is not available inside the REPL.'), {
+      display: 'system',
+    });
     return null;
   }
 

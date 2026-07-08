@@ -55,7 +55,7 @@ export function CompactSummary({ message, screen }: Props): React.ReactNode {
                       action="app:toggleTranscript"
                       context="Global"
                       fallback="ctrl+o"
-                      description="expand history"
+                      description={t('expand history')}
                       parens
                     />
                   </Text>
@@ -90,7 +90,7 @@ export function CompactSummary({ message, screen }: Props): React.ReactNode {
                   action="app:toggleTranscript"
                   context="Global"
                   fallback="ctrl+o"
-                  description="view summary"
+                  description={t('view summary')}
                   parens
                 />
               </Text>

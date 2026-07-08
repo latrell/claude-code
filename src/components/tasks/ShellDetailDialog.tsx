@@ -102,9 +102,9 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
             <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
-              {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
-              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {shell.status === 'running' && onKillShell && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {onBack && <KeyboardShortcutHint shortcut="←" action={t('go back')} />}
+              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action={t('close')} />
+              {shell.status === 'running' && onKillShell && <KeyboardShortcutHint shortcut="x" action={t('stop')} />}
             </Byline>
           )
         }

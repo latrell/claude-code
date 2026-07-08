@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { type GroveDecision, GroveDialog, PrivacySettingsDialog } from '../../components/grove/Grove.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -39,14 +39,14 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
   async function onDoneWithSettingsCheck() {
     const updatedSettingsResult = await getGroveSettings();
     if (!updatedSettingsResult.success) {
-      onDone('Unable to retrieve updated privacy settings', {
+      onDone(t('Unable to retrieve updated privacy settings'), {
         display: 'system',
       });
       return;
     }
     const updatedSettings = updatedSettingsResult.data;
     const groveStatus = updatedSettings.grove_enabled ? 'true' : 'false';
-    onDone(`"Help improve Claude" set to ${groveStatus}.`);
+    onDone(tf('"Help improve Claude" set to {status}.', { status: groveStatus }));
     if (settings.grove_enabled !== null && settings.grove_enabled !== updatedSettings.grove_enabled) {
       logEvent('tengu_grove_policy_toggled', {
         state: updatedSettings.grove_enabled as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

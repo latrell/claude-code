@@ -19,6 +19,7 @@
 
 import { isEnvDefinedFalsy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { t } from '../../../i18n/t.js'
 // Direct module path (not the '@ant/model-provider' barrel) so importing this
 // low-level catalog from context.ts doesn't pull in the heavy converter/stream
 // adapter graph the barrel re-exports. modelMapping.ts is a pure function file.
@@ -47,7 +48,7 @@ export const CURSOR_MODELS: CursorModelInfo[] = [
   // Cursor's Auto tier. The chat endpoint only accepts the serverModelName
   // `default` — `auto` is a catalog idAlias that 404s ("AI Model Not Found")
   // if sent verbatim; resolveCursorModel normalizes it for legacy configs.
-  { id: 'default', label: 'Auto (Cursor picks)' },
+  { id: 'default', label: t('Auto (Cursor picks)') },
   {
     id: 'composer-2.5',
     label: 'Composer 2.5',

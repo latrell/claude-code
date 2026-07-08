@@ -67,7 +67,12 @@ export function ConfirmStep({ tools, existingAgents, onSave, onSaveAndEdit, erro
         <Byline>
           <KeyboardShortcutHint shortcut="s/Enter" action="save" />
           <KeyboardShortcutHint shortcut="e" action="edit in your editor" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description={t('cancel')}
+          />
         </Byline>
       }
     >

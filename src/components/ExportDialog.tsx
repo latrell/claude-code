@@ -93,8 +93,13 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
     if (showFilenameInput) {
       return (
         <Byline>
-          <KeyboardShortcutHint shortcut="Enter" action="save" />
-          <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
+          <KeyboardShortcutHint shortcut="Enter" action={t('save')} />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description={t('go back')}
+          />
         </Byline>
       );
     }
@@ -103,7 +108,9 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
       return <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>;
     }
 
-    return <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />;
+    return (
+      <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('cancel')} />
+    );
   }
 
   // Use Settings context so 'n' key doesn't cancel (allows typing 'n' in filename input)
@@ -114,8 +121,8 @@ export function ExportDialog({ content, defaultFilename, onDone }: ExportDialogP
 
   return (
     <Dialog
-      title="Export Conversation"
-      subtitle="Select export method:"
+      title={t('Export Conversation')}
+      subtitle={t('Select export method:')}
       color="permission"
       onCancel={handleCancel}
       inputGuide={renderInputGuide}

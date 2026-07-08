@@ -13,6 +13,7 @@ import { Byline, Dialog } from '@anthropic/ink';
 import { DiffDetailView } from './DiffDetailView.js';
 import { DiffFileList } from './DiffFileList.js';
 import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   messages: Message[];
@@ -227,7 +228,7 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
           <Byline>
             {sources.length > 1 && <Text>←/→ source</Text>}
             <Text>↑/↓ select</Text>
-            <Text>Enter view</Text>
+            <T>Enter view</T>
             <Text>{dismissShortcut} close</Text>
           </Byline>
         ) : (

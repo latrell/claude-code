@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { t } from '../../../i18n/t.js';
+import { t, tf } from '../../../i18n/t.js';
 import { Select } from '../../CustomSelect/select.js';
 import { usePermissionRequestLogging } from '../hooks.js';
 import { PermissionDialog } from '../PermissionDialog.js';
@@ -43,20 +43,20 @@ export function ReviewArtifactPermissionRequest({
   return (
     <PermissionDialog color="permission" title={t('Review artifact?')} workerBadge={workerBadge}>
       <Box flexDirection="column" marginTop={1} paddingX={1}>
-        <Text>Claude wants to review{title ? `: ${title}` : ' an artifact'}.</Text>
+        <Text>{tf('Claude wants to review{title}.', { title: title ? `: ${title}` : ' an artifact' })}</Text>
 
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>
             {annotationCount} annotation{annotationCount !== 1 ? 's' : ''} will be presented.
           </Text>
-          {summary ? <Text dimColor>Summary: {summary}</Text> : null}
+          {summary ? <Text dimColor>{tf('Summary: {summary}', { summary })}</Text> : null}
         </Box>
 
         <Box marginTop={1}>
           <Select
             options={[
-              { label: 'Yes, show review', value: 'yes' as const },
-              { label: 'No, skip', value: 'no' as const },
+              { label: t('Yes, show review'), value: 'yes' as const },
+              { label: t('No, skip'), value: 'no' as const },
             ]}
             onChange={handleResponse}
             onCancel={() => handleResponse('no')}

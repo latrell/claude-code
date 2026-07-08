@@ -5,6 +5,7 @@ import type { ChatInputMessage, UserMessageImage } from '../../src/lib/types';
 import type { AvailableCommand } from '../../src/acp/types';
 import { CommandMenu } from './CommandMenu';
 import imageCompression from 'browser-image-compression';
+import { t, tf } from '../../src/lib/i18n';
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -36,7 +37,7 @@ export function ChatInput({
   isLoading = false,
   onInterrupt,
   disabled = false,
-  placeholder = '给 Claude 发送消息…',
+  placeholder = t('Send message to Claude...'),
   supportsImages = false,
   commands,
   className,
@@ -206,7 +207,7 @@ export function ChatInput({
                     type="button"
                     onClick={() => removeImage(i)}
                     className="absolute -top-1.5 -right-1.5 min-h-[32px] min-w-[32px] h-5 w-5 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-muted hover:text-text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label={`Remove image ${i + 1}`}
+                    aria-label={tf('Remove image {n}', { n: i + 1 })}
                   >
                     {'\u00D7'}
                   </button>
@@ -227,7 +228,7 @@ export function ChatInput({
                   disabled={disabled}
                 >
                   <Paperclip className="h-4 w-4" />
-                  <span className="sr-only">Attach file</span>
+                  <span className="sr-only">{t('Attach file')}</span>
                 </button>
                 <input
                   ref={fileInputRef}
@@ -252,7 +253,7 @@ export function ChatInput({
                     : 'text-text-muted hover:text-text-secondary hover:bg-surface-1/50',
                 )}
                 disabled={disabled}
-                title="命令列表"
+                title={t('Command list')}
               >
                 <Slash className="h-4 w-4" />
               </button>
@@ -298,7 +299,7 @@ export function ChatInput({
 
       {/* 提示文本 */}
       <div className="text-center mt-1.5">
-        <span className="text-[11px] text-text-muted font-display">Enter 发送，Shift+Enter 换行</span>
+        <span className="text-[11px] text-text-muted font-display">{t('Enter to send, Shift+Enter for new line')}</span>
       </div>
     </div>
   );
@@ -329,7 +330,7 @@ async function processImageFiles(files: File[]): Promise<UserMessageImage[]> {
           const commaIdx = result.indexOf(',');
           resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
         };
-        reader.onerror = () => reject(new Error('FileReader error'));
+        reader.onerror = () => reject(new Error(t('FileReader error')));
         reader.readAsDataURL(blob);
       });
 

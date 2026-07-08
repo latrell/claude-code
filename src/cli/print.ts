@@ -1,4 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+import { t, tf } from '../i18n/t.js'
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
@@ -799,7 +800,9 @@ export async function runHeadless(
 
   if (options.outputFormat === 'stream-json' && !options.verbose) {
     process.stderr.write(
-      'Error: When using --print, --output-format=stream-json requires --verbose\n',
+      t(
+        'Error: When using --print, --output-format=stream-json requires --verbose\n',
+      ),
     )
     gracefulShutdownSync(1)
     return
@@ -5273,8 +5276,9 @@ async function loadInitialMessages(
         typeof options.resume === 'string' ? options.resume : '',
       )
       if (!parsedSessionId) {
-        let errorMessage =
-          'Error: --resume requires a valid session ID when used with --print. Usage: claude -p --resume <session-id>'
+        let errorMessage = t(
+          'Error: --resume requires a valid session ID when used with --print. Usage: claude -p --resume <session-id>',
+        )
         if (typeof options.resume === 'string') {
           errorMessage += `. Session IDs must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000). Provided value "${options.resume}" is not a valid UUID`
         }
@@ -5418,7 +5422,7 @@ async function loadInitialMessages(
       const errorMessage =
         error instanceof Error
           ? `Failed to resume session: ${error.message}`
-          : 'Failed to resume session with --print mode'
+          : t('Failed to resume session with --print mode')
       emitLoadError(errorMessage, options.outputFormat)
       gracefulShutdownSync(1)
       return { messages: [] }

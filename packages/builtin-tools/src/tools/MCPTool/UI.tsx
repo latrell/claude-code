@@ -6,6 +6,8 @@ import { ProgressBar } from '@anthropic/ink';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { linkifyUrlsInText, OutputLine } from 'src/components/shell/OutputLine.js';
 import { Ansi, Box, Text, stringWidth } from '@anthropic/ink';
+import { t } from 'src/i18n/t.js';
+import { T } from 'src/i18n/TText.js';
 import { createHyperlink } from 'src/utils/hyperlink.js';
 import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
@@ -64,7 +66,7 @@ export function renderToolUseProgressMessage(
   if (!lastProgress?.data) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>Running…</Text>
+        <T dimColor>Running…</T>
       </MessageResponse>
     );
   }
@@ -74,7 +76,7 @@ export function renderToolUseProgressMessage(
   if (progress === undefined) {
     return (
       <MessageResponse height={1}>
-        <Text dimColor>Running…</Text>
+        <T dimColor>Running…</T>
       </MessageResponse>
     );
   }
@@ -97,7 +99,7 @@ export function renderToolUseProgressMessage(
 
   return (
     <MessageResponse height={1}>
-      <Text dimColor>{progressMessage ?? `Processing… ${progress}`}</Text>
+      <Text dimColor>{progressMessage ?? `${t('Processing…')} ${progress}`}</Text>
     </MessageResponse>
   );
 }

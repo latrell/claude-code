@@ -22,6 +22,7 @@ import type {
 } from '../../types/permissions.js'
 import type { Tool as ToolType, ToolUseContext } from '../../Tool.js'
 import type { AssistantMessage } from '../../types/message.js'
+import { t } from '../../i18n/t.js'
 import { hasPermissionsToUseTool } from '../../utils/permissions/permissions.js'
 import { toolInfoFromToolUse } from './bridge.js'
 
@@ -106,10 +107,10 @@ export function createAcpCanUseTool(
       console.error('[ACP Permissions] Pipeline error:', err)
       return {
         behavior: 'deny',
-        message: 'Permission pipeline failed',
+        message: t('Permission pipeline failed'),
         decisionReason: {
           type: 'other',
-          reason: 'Permission pipeline failed',
+          reason: t('Permission pipeline failed'),
         },
         toolUseID,
       }
@@ -131,12 +132,16 @@ export function createAcpCanUseTool(
     }
 
     const options: Array<PermissionOption> = [
-      { kind: 'allow_always', name: 'Always Allow', optionId: 'allow_always' },
-      { kind: 'allow_once', name: 'Allow', optionId: 'allow' },
-      { kind: 'reject_once', name: 'Reject', optionId: 'reject' },
+      {
+        kind: 'allow_always',
+        name: t('Always Allow'),
+        optionId: 'allow_always',
+      },
+      { kind: 'allow_once', name: t('Allow'), optionId: 'allow' },
+      { kind: 'reject_once', name: t('Reject'), optionId: 'reject' },
       {
         kind: 'reject_always',
-        name: 'Always Reject',
+        name: t('Always Reject'),
         optionId: 'reject_always',
       },
     ]
@@ -155,7 +160,7 @@ export function createAcpCanUseTool(
         onPermissionCancelled?.()
         return {
           behavior: 'deny',
-          message: 'Permission request cancelled by client',
+          message: t('Permission request cancelled by client'),
           decisionReason: { type: 'mode', mode: 'default' },
           toolUseID,
         }
@@ -178,14 +183,14 @@ export function createAcpCanUseTool(
       // Default: deny
       return {
         behavior: 'deny',
-        message: 'Permission denied by client',
+        message: t('Permission denied by client'),
         decisionReason: { type: 'mode', mode: 'default' },
       }
     } catch (err) {
       console.error('[ACP Permissions] Client request error:', err)
       return {
         behavior: 'deny',
-        message: 'Permission request failed',
+        message: t('Permission request failed'),
         decisionReason: { type: 'mode', mode: 'default' },
       }
     }
@@ -206,25 +211,25 @@ async function handleExitPlanMode(
   const options: Array<PermissionOption> = [
     {
       kind: 'allow_always',
-      name: 'Yes, and use "auto" mode',
+      name: t('Yes, and use "auto" mode'),
       optionId: 'auto',
     },
     {
       kind: 'allow_always',
-      name: 'Yes, and auto-accept edits',
+      name: t('Yes, and auto-accept edits'),
       optionId: 'acceptEdits',
     },
     {
       kind: 'allow_once',
-      name: 'Yes, and manually approve edits',
+      name: t('Yes, and manually approve edits'),
       optionId: 'default',
     },
-    { kind: 'reject_once', name: 'No, keep planning', optionId: 'plan' },
+    { kind: 'reject_once', name: t('No, keep planning'), optionId: 'plan' },
   ]
   if (isBypassModeAvailable?.() === true) {
     options.unshift({
       kind: 'allow_always',
-      name: 'Yes, and bypass permissions',
+      name: t('Yes, and bypass permissions'),
       optionId: 'bypassPermissions',
     })
   }
@@ -254,7 +259,7 @@ async function handleExitPlanMode(
     onPermissionCancelled?.()
     return {
       behavior: 'deny',
-      message: 'Tool use aborted',
+      message: t('Tool use aborted'),
       decisionReason: { type: 'mode', mode: 'default' },
     }
   }
@@ -295,7 +300,7 @@ async function handleExitPlanMode(
 
   return {
     behavior: 'deny',
-    message: 'User rejected request to exit plan mode.',
+    message: t('User rejected request to exit plan mode.'),
     decisionReason: { type: 'mode', mode: 'plan' },
   }
 }

@@ -8,6 +8,8 @@ import { Divider } from '@anthropic/ink';
 import { PermissionRequestTitle } from '../PermissionRequestTitle.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
+import { t } from '../../../i18n/t.js';
+import { T } from '../../../i18n/TText.js';
 
 type Props = {
   questions: Question[];
@@ -33,7 +35,7 @@ export function SubmitQuestionsView({
       <Divider color="inactive" />
       <Box flexDirection="column" borderTop borderColor="inactive" paddingTop={0}>
         <QuestionNavigationBar questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} />
-        <PermissionRequestTitle title="Review your answers" color="text" />
+        <PermissionRequestTitle title={t('Review your answers')} color="text" />
         <Box flexDirection="column" marginTop={1} minHeight={minContentHeight}>
           {!allQuestionsAnswered && (
             <Box marginBottom={1}>
@@ -64,16 +66,16 @@ export function SubmitQuestionsView({
           )}
 
           <PermissionRuleExplanation permissionResult={permissionResult} toolType="tool" />
-          <Text color="inactive">Ready to submit your answers?</Text>
+          <T color="inactive">Ready to submit your answers?</T>
           <Box marginTop={1}>
             <Select
               options={[
                 {
                   type: 'text' as const,
-                  label: 'Submit answers',
+                  label: t('Submit answers'),
                   value: 'submit',
                 },
-                { type: 'text' as const, label: 'Cancel', value: 'cancel' },
+                { type: 'text' as const, label: t('Cancel'), value: 'cancel' },
               ]}
               onChange={value => onFinalResponse(value as 'submit' | 'cancel')}
               onCancel={() => onFinalResponse('cancel')}

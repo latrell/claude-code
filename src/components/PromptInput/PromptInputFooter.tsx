@@ -27,6 +27,8 @@ import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
 // Inline pipe status is shown only after /pipes sets pipeIpc.statusVisible.
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
 import { PromptInputHelpMenu } from './PromptInputHelpMenu.js';
+import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   apiKeyStatus: VerificationStatus;
@@ -393,7 +395,7 @@ function PipeStatusInline(): React.ReactNode {
               dimColor={!isConnected && !isCursor}
             >
               {isSelected ? '☑' : '☐'} {name}
-              {isConnected ? '' : ' [offline]'}
+              {isConnected ? '' : t(' [offline]')}
               {label ? ` (${label})` : ''}
             </Text>
           </Box>
@@ -401,7 +403,7 @@ function PipeStatusInline(): React.ReactNode {
       })}
       {allPipes.length === 0 && (
         <Box height={1} paddingLeft={2}>
-          <Text dimColor>No other pipes found. Start another instance.</Text>
+          <T dimColor>No other pipes found. Start another instance.</T>
         </Box>
       )}
     </Box>

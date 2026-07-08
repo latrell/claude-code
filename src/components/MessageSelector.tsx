@@ -29,6 +29,7 @@ import {
 } from '../utils/messages.js';
 import { type OptionWithDescription, Select } from './CustomSelect/select.js';
 import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 import { Spinner } from './Spinner.js';
 
 function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
@@ -134,11 +135,11 @@ export function MessageSelector({
   function getRestoreOptions(canRestoreCode: boolean): OptionWithDescription<RestoreOption>[] {
     const baseOptions: OptionWithDescription<RestoreOption>[] = canRestoreCode
       ? [
-          { value: 'both', label: 'Restore code and conversation' },
-          { value: 'conversation', label: 'Restore conversation' },
-          { value: 'code', label: 'Restore code' },
+          { value: 'both', label: t('Restore code and conversation') },
+          { value: 'conversation', label: t('Restore conversation') },
+          { value: 'code', label: t('Restore code') },
         ]
-      : [{ value: 'conversation', label: 'Restore conversation' }];
+      : [{ value: 'conversation', label: t('Restore conversation') }];
 
     const summarizeInputProps = {
       type: 'input' as const,
@@ -150,20 +151,20 @@ export function MessageSelector({
     };
     baseOptions.push({
       value: 'summarize',
-      label: 'Summarize from here',
+      label: t('Summarize from here'),
       ...summarizeInputProps,
       onChange: setSummarizeFromFeedback,
     });
     if (process.env.USER_TYPE === 'ant') {
       baseOptions.push({
         value: 'summarize_up_to',
-        label: 'Summarize up to here',
+        label: t('Summarize up to here'),
         ...summarizeInputProps,
         onChange: setSummarizeUpToFeedback,
       });
     }
 
-    baseOptions.push({ value: 'nevermind', label: 'Never mind' });
+    baseOptions.push({ value: 'nevermind', label: t('Never mind') });
     return baseOptions;
   }
 
@@ -386,13 +387,13 @@ export function MessageSelector({
     <Box flexDirection="column" width="100%">
       <Divider color="suggestion" />
       <Box flexDirection="column" marginX={1} gap={1}>
-        <Text bold color="suggestion">
+        <T bold color="suggestion">
           Rewind
-        </Text>
+        </T>
 
         {error && (
           <>
-            <Text color="error">Error: {error}</Text>
+            <Text color="error">{tf('Error: {error}', { error })}</Text>
           </>
         )}
         {!hasMessagesToSelect && (
@@ -403,8 +404,9 @@ export function MessageSelector({
         {!error && messageToRestore && hasMessagesToSelect && (
           <>
             <Text>
-              Confirm you want to restore {!diffStatsForRestore && 'the conversation '}to the point before you sent this
-              message:
+              {tf('Confirm you want to restore {what}to the point before you sent this message:', {
+                what: !diffStatsForRestore ? 'the conversation ' : '',
+              })}
             </Text>
             <Box
               flexDirection="column"
@@ -429,7 +431,7 @@ export function MessageSelector({
             {isRestoring && isSummarizeOption(restoringOption) ? (
               <Box flexDirection="row" gap={1}>
                 <Spinner />
-                <Text>Summarizing…</Text>
+                <T>Summarizing…</T>
               </Box>
             ) : (
               <Select

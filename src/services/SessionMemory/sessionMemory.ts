@@ -41,6 +41,7 @@ import { sequential } from '../../utils/sequential.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTokenUsage, tokenCountWithEstimation } from '../../utils/tokens.js'
 import { logEvent } from '../analytics/index.js'
+import { t } from '../../i18n/t.js'
 import { isAutoCompactEnabled } from '../compact/autoCompact.js'
 import {
   buildSessionMemoryUpdatePrompt,
@@ -396,7 +397,7 @@ export async function manuallyExtractSessionMemory(
   toolUseContext: ToolUseContext,
 ): Promise<ManualExtractionResult> {
   if (messages.length === 0) {
-    return { success: false, error: 'No messages to summarize' }
+    return { success: false, error: t('No messages to summarize') }
   }
   markExtractionStarted()
 

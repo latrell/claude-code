@@ -5,6 +5,7 @@ import { Link, Text } from '@anthropic/ink';
 import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '@claude-code-best/builtin-tools/tools/MCPTool/UI.js';
 import type { MCPToolResult } from '../../utils/mcpValidation.js';
 import { truncateToWidth } from '../format.js';
+import { t } from '../../i18n/t.js';
 import { trackClaudeInChromeTabId } from './common.js';
 
 export type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -201,55 +202,55 @@ export function renderChromeToolResultMessage(
   let summary: string | null = null;
   switch (toolName) {
     case 'navigate':
-      summary = 'Navigation completed';
+      summary = t('Navigation completed');
       break;
     case 'tabs_create_mcp':
-      summary = 'Tab created';
+      summary = t('Tab created');
       break;
     case 'tabs_context_mcp':
-      summary = 'Tabs read';
+      summary = t('Tabs read');
       break;
     case 'form_input':
-      summary = 'Input completed';
+      summary = t('Input completed');
       break;
     case 'computer':
-      summary = 'Action completed';
+      summary = t('Action completed');
       break;
     case 'resize_window':
-      summary = 'Window resized';
+      summary = t('Window resized');
       break;
     case 'find':
-      summary = 'Search completed';
+      summary = t('Search completed');
       break;
     case 'gif_creator':
-      summary = 'GIF action completed';
+      summary = t('GIF action completed');
       break;
     case 'read_console_messages':
-      summary = 'Console messages retrieved';
+      summary = t('Console messages retrieved');
       break;
     case 'read_network_requests':
-      summary = 'Network requests retrieved';
+      summary = t('Network requests retrieved');
       break;
     case 'shortcuts_list':
-      summary = 'Shortcuts retrieved';
+      summary = t('Shortcuts retrieved');
       break;
     case 'shortcuts_execute':
-      summary = 'Shortcut executed';
+      summary = t('Shortcut executed');
       break;
     case 'javascript_tool':
-      summary = 'Script executed';
+      summary = t('Script executed');
       break;
     case 'read_page':
-      summary = 'Page read';
+      summary = t('Page read');
       break;
     case 'upload_image':
-      summary = 'Image uploaded';
+      summary = t('Image uploaded');
       break;
     case 'get_page_text':
-      summary = 'Page text retrieved';
+      summary = t('Page text retrieved');
       break;
     case 'update_plan':
-      summary = 'Plan updated';
+      summary = t('Plan updated');
       break;
   }
 

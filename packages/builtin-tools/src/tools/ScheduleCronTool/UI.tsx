@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { Text } from '@anthropic/ink';
+import { T } from 'src/i18n/TText.js';
 import { truncate } from 'src/utils/format.js';
 import type { CreateOutput } from './CronCreateTool.js';
 import type { DeleteOutput } from './CronDeleteTool.js';
@@ -48,7 +49,7 @@ export function renderListResultMessage(output: ListOutput): React.ReactNode {
   if (output.jobs.length === 0) {
     return (
       <MessageResponse>
-        <Text dimColor>No scheduled jobs</Text>
+        <T dimColor>No scheduled jobs</T>
       </MessageResponse>
     );
   }

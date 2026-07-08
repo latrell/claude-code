@@ -86,8 +86,8 @@ export function MCPServerMultiselectDialog({ serverNames, onDone }: Props): Reac
       <Box paddingX={1}>
         <Text dimColor italic>
           <Byline>
-            <KeyboardShortcutHint shortcut="Space" action="select" />
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
+            <KeyboardShortcutHint shortcut="Space" action={t('select')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
             <ConfigurableShortcutHint
               action="confirm:no"
               context="Confirmation"

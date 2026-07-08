@@ -11,6 +11,7 @@
 
 import { feature } from 'bun:bundle'
 import axios from 'axios'
+import { t } from '../../i18n/t.js'
 import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import pickBy from 'lodash-es/pickBy.js'
 import { dirname } from 'path'
@@ -240,7 +241,7 @@ function getSettingsSyncAuthHeaders(): {
 
   return {
     headers: {},
-    error: 'No OAuth token available',
+    error: t('No OAuth token available'),
   }
 }
 
@@ -283,7 +284,7 @@ async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
       logForDiagnosticsNoPII('warn', 'settings_sync_fetch_invalid_format')
       return {
         success: false,
-        error: 'Invalid settings sync response format',
+        error: t('Invalid settings sync response format'),
       }
     }
 
@@ -299,13 +300,13 @@ async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
       case 'auth':
         return {
           success: false,
-          error: 'Not authorized for settings sync',
+          error: t('Not authorized for settings sync'),
           skipRetry: true,
         }
       case 'timeout':
-        return { success: false, error: 'Settings sync request timeout' }
+        return { success: false, error: t('Settings sync request timeout') }
       case 'network':
-        return { success: false, error: 'Cannot connect to server' }
+        return { success: false, error: t('Cannot connect to server') }
       default:
         return { success: false, error: message }
     }

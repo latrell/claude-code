@@ -1,3 +1,5 @@
+import { t, tf } from '../i18n/t.js'
+
 // Minimal cron expression parsing and next-run calculation.
 //
 // Supports the standard 5-field cron subset:
@@ -244,7 +246,7 @@ export function cronToHuman(cron: string, opts?: { utc?: boolean }): string {
     dayOfWeek === '*'
   ) {
     const n = parseInt(everyMinMatch[1]!, 10)
-    return n === 1 ? 'Every minute' : `Every ${n} minutes`
+    return n === 1 ? t('Every minute') : tf('Every {n} minutes', { n })
   }
 
   // Every hour: 0 * * * *
@@ -256,8 +258,10 @@ export function cronToHuman(cron: string, opts?: { utc?: boolean }): string {
     dayOfWeek === '*'
   ) {
     const m = parseInt(minute, 10)
-    if (m === 0) return 'Every hour'
-    return `Every hour at :${m.toString().padStart(2, '0')}`
+    if (m === 0) return t('Every hour')
+    return tf('Every hour at :{minute}', {
+      minute: m.toString().padStart(2, '0'),
+    })
   }
 
   // Every N hours: 0 step/N * * *
@@ -271,8 +275,15 @@ export function cronToHuman(cron: string, opts?: { utc?: boolean }): string {
   ) {
     const n = parseInt(everyHourMatch[1]!, 10)
     const m = parseInt(minute, 10)
-    const suffix = m === 0 ? '' : ` at :${m.toString().padStart(2, '0')}`
-    return n === 1 ? `Every hour${suffix}` : `Every ${n} hours${suffix}`
+    const minuteStr = m.toString().padStart(2, '0')
+    if (n === 1) {
+      return m === 0
+        ? t('Every hour')
+        : tf('Every hour at :{minute}', { minute: minuteStr })
+    }
+    return m === 0
+      ? tf('Every {n} hours', { n })
+      : tf('Every {n} hours at :{minute}', { n, minute: minuteStr })
   }
 
   // --- Remaining cases reference hour+minute: branch on utc ----------------
@@ -284,7 +295,7 @@ export function cronToHuman(cron: string, opts?: { utc?: boolean }): string {
 
   // Daily at specific time: M H * * *
   if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    return `Every day at ${fmtTime(m, h)}`
+    return tf('Every day at {time}', { time: fmtTime(m, h) })
   }
 
   // Specific day of week: M H * * D
@@ -302,12 +313,13 @@ export function cronToHuman(cron: string, opts?: { utc?: boolean }): string {
     } else {
       dayName = DAY_NAMES[dayIndex]
     }
-    if (dayName) return `Every ${dayName} at ${fmtTime(m, h)}`
+    if (dayName)
+      return tf('Every {day} at {time}', { day: dayName, time: fmtTime(m, h) })
   }
 
   // Weekdays: M H * * 1-5
   if (dayOfMonth === '*' && month === '*' && dayOfWeek === '1-5') {
-    return `Weekdays at ${fmtTime(m, h)}`
+    return tf('Weekdays at {time}', { time: fmtTime(m, h) })
   }
 
   return cron

@@ -3,6 +3,7 @@ import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, Text } from '@anthropic/ink';
 import { useDebouncedDigitInput } from './useDebouncedDigitInput.js';
 import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 export type TranscriptShareResponse = 'yes' | 'no' | 'dont_ask_again';
 
@@ -40,7 +41,9 @@ export function TranscriptSharePrompt({ onSelect, inputValue, setInputValue }: P
       </Box>
 
       <Box marginLeft={2}>
-        <Text dimColor>Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys</Text>
+        <T dimColor vars={{ url: 'https://code.claude.com/docs/en/data-usage#session-quality-surveys' }}>
+          {'Learn more: {url}'}
+        </T>
       </Box>
 
       <Box marginLeft={2}>

@@ -12,7 +12,7 @@ import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { toInkColor } from '../../utils/ink.js';
 import { renderToolActivity } from './renderToolActivity.js';
 import { describeTeammateActivity } from './taskStatusUtils.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type Props = {
   teammate: DeepImmutable<InProcessTeammateTaskState>;
@@ -110,11 +110,11 @@ export function InProcessTeammateDetailDialog({
             <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
-              {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
-              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {teammate.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {onBack && <KeyboardShortcutHint shortcut="←" action={t('go back')} />}
+              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action={t('close')} />
+              {teammate.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action={t('stop')} />}
               {teammate.status === 'running' && onForeground && (
-                <KeyboardShortcutHint shortcut="f" action="foreground" />
+                <KeyboardShortcutHint shortcut="f" action={t('foreground')} />
               )}
             </Byline>
           )

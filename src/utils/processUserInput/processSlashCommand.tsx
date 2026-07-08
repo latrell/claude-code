@@ -259,7 +259,7 @@ async function executeForkedSlashCommand(
       })) {
         agentMessages.push(message);
       }
-      const resultText = extractResultText(agentMessages, 'Command completed');
+      const resultText = extractResultText(agentMessages, t('Command completed'));
       logForDebugging(`Background forked command /${commandName} completed (agent ${agentId})`);
       // Enqueue the worker's result before finalizing the autonomy run so the
       // <scheduled-task-result> notification is observed before any follow-up
@@ -382,7 +382,7 @@ async function executeForkedSlashCommand(
     setToolJSX(null);
   }
 
-  let resultText = extractResultText(agentMessages, 'Command completed');
+  let resultText = extractResultText(agentMessages, t('Command completed'));
 
   logForDebugging(`Forked slash command /${command.name} completed with agent ${agentId}`);
 
@@ -440,7 +440,7 @@ export async function processSlashCommand(
   const parsed = parseSlashCommand(inputString);
   if (!parsed) {
     logEvent('tengu_input_slash_missing', {});
-    const errorMessage = 'Commands are in the form `/command [args]`';
+    const errorMessage = t('Commands are in the form `/command [args]`');
     return {
       messages: [
         createSyntheticUserCaveatMessage(),
@@ -477,7 +477,7 @@ export async function processSlashCommand(
         input: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
 
-      const unknownMessage = `Unknown skill: ${commandName}`;
+      const unknownMessage = tf('Unknown skill: {name}', { name: commandName });
       return {
         messages: [
           createSyntheticUserCaveatMessage(),
@@ -490,7 +490,9 @@ export async function processSlashCommand(
           }),
           // gh-32591: preserve args so the user can copy/resubmit without
           // retyping. System warning is UI-only (filtered before API).
-          ...(parsedArgs ? [createSystemMessage(`Args from unknown skill: ${parsedArgs}`, 'warning')] : []),
+          ...(parsedArgs
+            ? [createSystemMessage(tf('Args from unknown skill: {args}', { args: parsedArgs }), 'warning')]
+            : []),
         ],
         shouldQuery: false,
         resultText: unknownMessage,
@@ -720,7 +722,10 @@ async function getMessagesForSlashCommand(
           }),
         }),
         createUserMessage({
-          content: `This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "${commandName}" skill for you.`,
+          content: tf(
+            'This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "{name}" skill for you.',
+            { name: commandName },
+          ),
         }),
       ],
       shouldQuery: false,
@@ -1104,19 +1109,24 @@ async function getMessagesForPromptSlashCommand(
   // the real skill content when they invoke the Skill tool.
   if (feature('COORDINATOR_MODE') && isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE) && !context.agentId) {
     const metadata = formatCommandLoadingMetadata(command, args);
-    const parts: string[] = [`Skill "/${command.name}" is available for workers.`];
+    const parts: string[] = [tf('Skill "/{name}" is available for workers.', { name: command.name })];
     if (command.description) {
-      parts.push(`Description: ${command.description}`);
+      parts.push(tf('Description: {description}', { description: command.description }));
     }
     if (command.whenToUse) {
-      parts.push(`When to use: ${command.whenToUse}`);
+      parts.push(tf('When to use: {whenToUse}', { whenToUse: command.whenToUse }));
     }
     const skillAllowedTools = command.allowedTools ?? [];
     if (skillAllowedTools.length > 0) {
-      parts.push(`This skill grants workers additional tool permissions: ${skillAllowedTools.join(', ')}`);
+      parts.push(
+        tf('This skill grants workers additional tool permissions: {tools}', { tools: skillAllowedTools.join(', ') }),
+      );
     }
     parts.push(
-      `\nInstruct a worker to use this skill by including "Use the /${command.name} skill" in your Agent prompt. The worker has access to the Skill tool and will receive the skill's content and permissions when it invokes it.`,
+      tf(
+        '\nInstruct a worker to use this skill by including "Use the /{name} skill" in your Agent prompt. The worker has access to the Skill tool and will receive the skill\'s content and permissions when it invokes it.',
+        { name: command.name },
+      ),
     );
     const summaryContent: ContentBlockParam[] = [{ type: 'text', text: parts.join('\n') }];
     return {

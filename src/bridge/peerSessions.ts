@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { t } from '../i18n/t.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { validateBridgeId } from './bridgeApi.js'
@@ -56,17 +57,17 @@ export async function postInterClaudeMessage(
   try {
     const handle = getReplBridgeHandle()
     if (!handle) {
-      return { ok: false, error: 'Bridge not connected' }
+      return { ok: false, error: t('Bridge not connected') }
     }
 
     const normalizedTarget = target.trim()
     if (!normalizedTarget) {
-      return { ok: false, error: 'No target session specified' }
+      return { ok: false, error: t('No target session specified') }
     }
 
     const accessToken = getBridgeAccessToken()
     if (!accessToken) {
-      return { ok: false, error: 'No access token available' }
+      return { ok: false, error: t('No access token available') }
     }
 
     const compatTarget = toCompatSessionId(normalizedTarget)

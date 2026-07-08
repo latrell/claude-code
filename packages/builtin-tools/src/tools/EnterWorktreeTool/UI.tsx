@@ -3,10 +3,11 @@ import { Box, Text } from '@anthropic/ink';
 import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { ThemeName } from 'src/utils/theme.js';
+import { t } from 'src/i18n/t.js';
 import type { Output } from './EnterWorktreeTool.js';
 
 export function renderToolUseMessage(): React.ReactNode {
-  return 'Creating worktree…';
+  return t('Creating worktree…');
 }
 
 export function renderToolResultMessage(

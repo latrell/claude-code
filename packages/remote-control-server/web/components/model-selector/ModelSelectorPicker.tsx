@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '../ui/command';
 import type { ModelInfo } from '../../src/acp/types';
 import { cn } from '../../src/lib/utils';
+import { t } from '../../src/lib/i18n';
 
 interface ModelSelectorPickerProps {
   models: ModelInfo[];
@@ -57,9 +58,9 @@ export function ModelSelectorPicker({
 
   return (
     <Command shouldFilter={false} value={selectedValue} onValueChange={setSelectedValue}>
-      {showSearch && <CommandInput placeholder="Select a model…" value={search} onValueChange={setSearch} />}
+      {showSearch && <CommandInput placeholder={t('Select a model\u2026')} value={search} onValueChange={setSearch} />}
       <CommandList>
-        <CommandEmpty>No models found.</CommandEmpty>
+        <CommandEmpty>{t('No models found.')}</CommandEmpty>
         <CommandGroup>
           {filteredModels.map(model => (
             <CommandItem

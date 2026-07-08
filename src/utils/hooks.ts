@@ -2033,7 +2033,9 @@ export function getPreToolHookBlockingMessage(
  * @returns Formatted message to give feedback to the model
  */
 export function getStopHookMessage(blockingError: HookBlockingError): string {
-  return `Stop hook feedback:\n${blockingError.blockingError}`
+  return tf('Stop hook feedback:\n{error}', {
+    error: blockingError.blockingError,
+  })
 }
 
 /**
@@ -2044,7 +2046,9 @@ export function getStopHookMessage(blockingError: HookBlockingError): string {
 export function getTeammateIdleHookMessage(
   blockingError: HookBlockingError,
 ): string {
-  return `TeammateIdle hook feedback:\n${blockingError.blockingError}`
+  return tf('TeammateIdle hook feedback:\n{error}', {
+    error: blockingError.blockingError,
+  })
 }
 
 /**
@@ -2055,7 +2059,9 @@ export function getTeammateIdleHookMessage(
 export function getTaskCreatedHookMessage(
   blockingError: HookBlockingError,
 ): string {
-  return `TaskCreated hook feedback:\n${blockingError.blockingError}`
+  return tf('TaskCreated hook feedback:\n{error}', {
+    error: blockingError.blockingError,
+  })
 }
 
 /**
@@ -2066,7 +2072,9 @@ export function getTaskCreatedHookMessage(
 export function getTaskCompletedHookMessage(
   blockingError: HookBlockingError,
 ): string {
-  return `TaskCompleted hook feedback:\n${blockingError.blockingError}`
+  return tf('TaskCompleted hook feedback:\n{error}', {
+    error: blockingError.blockingError,
+  })
 }
 
 /**
@@ -2077,7 +2085,9 @@ export function getTaskCompletedHookMessage(
 export function getUserPromptSubmitHookBlockingMessage(
   blockingError: HookBlockingError,
 ): string {
-  return `UserPromptSubmit operation blocked by hook:\n${blockingError.blockingError}`
+  return tf('UserPromptSubmit operation blocked by hook:\n{error}', {
+    error: blockingError.blockingError,
+  })
 }
 /**
  * Common logic for executing hooks

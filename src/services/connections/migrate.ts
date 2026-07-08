@@ -19,6 +19,7 @@ import { join } from 'path'
 import { readCCBProviderAuthData } from '../../utils/ccbProviderAuth.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { t } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 import {
   getActiveOAuthAccount,
@@ -148,7 +149,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
     if (openaiEnv.OPENAI_AUTH_MODE === 'chatgpt') {
       if (!hasChatGPTConnection) {
         candidates.push({
-          label: 'ChatGPT Subscription',
+          label: t('ChatGPT Subscription'),
           kind: 'chatgpt-oauth',
           credentialRef: 'default',
         })
@@ -156,7 +157,10 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
     } else if (openaiEnv.OPENAI_API_KEY || openaiEnv.OPENAI_BASE_URL) {
       const tierModels = tierModelsFromEnv(openaiEnv, 'OPENAI')
       candidates.push({
-        label: labelForBaseUrl(openaiEnv.OPENAI_BASE_URL, 'OpenAI Compatible'),
+        label: labelForBaseUrl(
+          openaiEnv.OPENAI_BASE_URL,
+          t('OpenAI Compatible'),
+        ),
         kind: 'openai-compat',
         baseUrl: openaiEnv.OPENAI_BASE_URL,
         apiKey: openaiEnv.OPENAI_API_KEY,
@@ -171,7 +175,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   if (geminiEnv?.GEMINI_API_KEY) {
     const tierModels = tierModelsFromEnv(geminiEnv, 'GEMINI')
     candidates.push({
-      label: labelForBaseUrl(geminiEnv.GEMINI_BASE_URL, 'Gemini'),
+      label: labelForBaseUrl(geminiEnv.GEMINI_BASE_URL, t('Gemini')),
       kind: 'gemini',
       baseUrl: geminiEnv.GEMINI_BASE_URL,
       apiKey: geminiEnv.GEMINI_API_KEY,
@@ -184,7 +188,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   if (grokEnv?.GROK_API_KEY || grokEnv?.XAI_API_KEY) {
     const tierModels = tierModelsFromEnv(grokEnv, 'GROK')
     candidates.push({
-      label: labelForBaseUrl(grokEnv.GROK_BASE_URL, 'Grok'),
+      label: labelForBaseUrl(grokEnv.GROK_BASE_URL, t('Grok')),
       kind: 'grok',
       baseUrl: grokEnv.GROK_BASE_URL,
       apiKey: grokEnv.GROK_API_KEY ?? grokEnv.XAI_API_KEY,
@@ -202,7 +206,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
     // scoped cursor-auth.<scope>.json file, referenced by credentialRef.
     const tierModels = tierModelsFromEnv(cursorEnv, 'CURSOR')
     candidates.push({
-      label: 'Cursor Account',
+      label: t('Cursor Account'),
       kind: 'cursor',
       credentialRef: cursorEnv.CURSOR_CREDENTIAL_SCOPE,
       tierModels,
@@ -211,7 +215,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   } else if (cursorEnv?.CURSOR_API_KEY || cursorEnv?.CURSOR_ACCESS_TOKEN) {
     const tierModels = tierModelsFromEnv(cursorEnv, 'CURSOR')
     candidates.push({
-      label: 'Cursor',
+      label: t('Cursor'),
       kind: 'cursor',
       apiKey: cursorEnv.CURSOR_API_KEY ?? cursorEnv.CURSOR_ACCESS_TOKEN,
       machineId: cursorEnv.CURSOR_MACHINE_ID,
@@ -231,7 +235,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       candidates.push({
         label: labelForBaseUrl(
           settingsEnv.ANTHROPIC_BASE_URL,
-          'Anthropic Compatible',
+          t('Anthropic Compatible'),
         ),
         kind: 'anthropic-api',
         baseUrl: settingsEnv.ANTHROPIC_BASE_URL,
@@ -253,7 +257,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       const slotUuid = saveCurrentOAuthAccountToSlot()
       if (slotUuid) {
         candidates.push({
-          label: account.emailAddress || 'Claude Account',
+          label: account.emailAddress || t('Claude Account'),
           kind: 'anthropic-oauth',
           credentialRef: slotUuid,
           accountEmail: account.emailAddress,
@@ -268,7 +272,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   try {
     if (!hasChatGPTConnection && existsSync(chatgptAuthFilePath())) {
       candidates.push({
-        label: 'ChatGPT Subscription',
+        label: t('ChatGPT Subscription'),
         kind: 'chatgpt-oauth',
         credentialRef: 'default',
       })

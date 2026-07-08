@@ -15,6 +15,7 @@
 
 import { feature } from 'bun:bundle'
 import { hostname } from 'os'
+import { t, tf } from '../i18n/t.js'
 import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type { SDKControlResponse } from '../entrypoints/sdk/controlTypes.js'
@@ -148,7 +149,7 @@ export async function initReplBridge(
   // instead of a misleading policy error from a stale/wrong-org cache.
   if (!getBridgeAccessToken()) {
     logBridgeSkip('no_oauth', '[bridge:repl] Skipping: no OAuth tokens')
-    onStateChange?.('failed', '/login')
+    onStateChange?.('failed', t('/login'))
     return null
   }
 
@@ -159,7 +160,7 @@ export async function initReplBridge(
       'policy_denied',
       '[bridge:repl] Skipping: allow_remote_control policy not allowed',
     )
-    onStateChange?.('failed', "disabled by your organization's policy")
+    onStateChange?.('failed', t("disabled by your organization's policy"))
     return null
   }
 
@@ -223,7 +224,7 @@ export async function initReplBridge(
         'oauth_expired_unrefreshable',
         '[bridge:repl] Skipping: OAuth token expired and refresh failed (re-login required)',
       )
-      onStateChange?.('failed', '/login')
+      onStateChange?.('failed', t('/login'))
       // Persist for the next process. Increments failCount when re-discovering
       // the same dead token (matched by expiresAt); resets to 1 for a different
       // token. Once count reaches 3, step 2a's early-return fires and this path
@@ -398,7 +399,7 @@ export async function initReplBridge(
     : await getOrganizationUUID()
   if (!orgUUID) {
     logBridgeSkip('no_org_uuid', '[bridge:repl] Skipping: no org UUID')
-    onStateChange?.('failed', '/login')
+    onStateChange?.('failed', t('/login'))
     return null
   }
 
@@ -423,7 +424,7 @@ export async function initReplBridge(
         `[bridge:repl] Skipping: ${versionError}`,
         true,
       )
-      onStateChange?.('failed', 'run `claude update` to upgrade')
+      onStateChange?.('failed', t('run `claude update` to upgrade'))
       return null
     }
     logForDebugging(
@@ -464,7 +465,7 @@ export async function initReplBridge(
   const versionError = checkBridgeMinVersion()
   if (versionError) {
     logBridgeSkip('version_too_old', `[bridge:repl] Skipping: ${versionError}`)
-    onStateChange?.('failed', 'run `claude update` to upgrade')
+    onStateChange?.('failed', t('run `claude update` to upgrade'))
     return null
   }
 

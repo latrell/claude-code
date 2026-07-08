@@ -1,4 +1,5 @@
 // toolInfoFromToolUse — large switch mapping each known tool name to ACP ToolInfo.
+import { t, tf } from '../../../i18n/t.js'
 import type { ToolInfo } from './types.js'
 import { toAbsolutePath } from './paths.js'
 import { toDisplayPath } from '../utils.js'
@@ -83,7 +84,9 @@ export function toolInfoFromToolUse(
       const displayPath = filePath ? toDisplayPath(filePath, cwd) : undefined
       const absWritePath = toAbsolutePath(filePath, cwd)
       return {
-        title: displayPath ? `Write ${displayPath}` : 'Write',
+        title: displayPath
+          ? tf('Write {path}', { path: displayPath })
+          : t('Write'),
         kind: 'edit',
         content: absWritePath
           ? [
@@ -111,7 +114,9 @@ export function toolInfoFromToolUse(
       const displayPath = filePath ? toDisplayPath(filePath, cwd) : undefined
       const absEditPath = toAbsolutePath(filePath, cwd)
       return {
-        title: displayPath ? `Edit ${displayPath}` : 'Edit',
+        title: displayPath
+          ? tf('Edit {path}', { path: displayPath })
+          : t('Edit'),
         kind: 'edit',
         content: absEditPath
           ? [
@@ -131,7 +136,7 @@ export function toolInfoFromToolUse(
       const globPath = (input?.path as string | undefined) ?? ''
       const pattern = (input?.pattern as string | undefined) ?? ''
       const absGlobPath = toAbsolutePath(globPath, cwd)
-      let label = 'Find'
+      let label = t('Find')
       if (globPath) label += ` \`${globPath}\``
       if (pattern) label += ` \`${pattern}\``
       return {
@@ -145,7 +150,7 @@ export function toolInfoFromToolUse(
     case 'Grep': {
       const grepPattern = (input?.pattern as string | undefined) ?? ''
       const grepPath = (input?.path as string | undefined) ?? ''
-      let label = 'grep'
+      let label = t('grep')
       if (input?.['-i']) label += ' -i'
       if (input?.['-n']) label += ' -n'
       if (input?.['-A'] !== undefined) label += ` -A ${input['-A'] as number}`
@@ -171,7 +176,7 @@ export function toolInfoFromToolUse(
       const url = (input?.url as string | undefined) ?? ''
       const fetchPrompt = input?.prompt as string | undefined
       return {
-        title: url ? `Fetch ${url}` : 'Fetch',
+        title: url ? tf('Fetch {url}', { url }) : t('Fetch'),
         kind: 'fetch',
         content: fetchPrompt
           ? [
@@ -185,7 +190,7 @@ export function toolInfoFromToolUse(
     }
 
     case 'WebSearch': {
-      const query = (input?.query as string | undefined) ?? 'Web search'
+      const query = (input?.query as string | undefined) ?? t('Web search')
       let label = `"${query}"`
       const allowed = input?.allowed_domains as string[] | undefined
       const blocked = input?.blocked_domains as string[] | undefined
@@ -204,8 +209,10 @@ export function toolInfoFromToolUse(
       const todos = input?.todos as Array<{ content: string }> | undefined
       return {
         title: Array.isArray(todos)
-          ? `Update TODOs: ${todos.map(t => t.content).join(', ')}`
-          : 'Update TODOs',
+          ? tf('Update TODOs: {items}', {
+              items: todos.map(t => t.content).join(', '),
+            })
+          : t('Update TODOs'),
         kind: 'think',
         content: [],
       }
@@ -216,7 +223,7 @@ export function toolInfoFromToolUse(
         | string
         | undefined
       return {
-        title: 'Ready to code?',
+        title: t('Ready to code?'),
         kind: 'switch_mode',
         content: plan
           ? [
@@ -231,7 +238,7 @@ export function toolInfoFromToolUse(
 
     default:
       return {
-        title: name || 'Unknown Tool',
+        title: name || t('Unknown Tool'),
         kind: 'other',
         content: [],
       }

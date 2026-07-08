@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Box, Link, Text } from '@anthropic/ink';
 import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
+import { t } from 'src/i18n/t.js';
 import type { ArtifactOutput } from './ArtifactTool.js';
 
 export function renderToolResultMessage(
@@ -21,7 +22,7 @@ export function renderToolResultMessage(
     <Box flexDirection="column">
       <Box>
         <Text>
-          <Text color="success">↑</Text> Artifact uploaded:{' '}
+          <Text color="success">↑</Text> {t('Artifact uploaded: ')}
           <Link url={content.url}>
             <Text color="warning">{content.url}</Text>
           </Link>
@@ -29,7 +30,10 @@ export function renderToolResultMessage(
       </Box>
       {content.expiresAt ? (
         <Box>
-          <Text dimColor>expires: {content.expiresAt}</Text>
+          <Text dimColor>
+            {t('expires: ')}
+            {content.expiresAt}
+          </Text>
         </Box>
       ) : null}
     </Box>

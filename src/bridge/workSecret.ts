@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { t } from '../i18n/t.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import type { WorkSecret } from './types.js'
 
@@ -22,11 +23,11 @@ export function decodeWorkSecret(secret: string): WorkSecret {
     obj.session_ingress_token.length === 0
   ) {
     throw new Error(
-      'Invalid work secret: missing or empty session_ingress_token',
+      t('Invalid work secret: missing or empty session_ingress_token'),
     )
   }
   if (typeof obj.api_base_url !== 'string') {
-    throw new Error('Invalid work secret: missing api_base_url')
+    throw new Error(t('Invalid work secret: missing api_base_url'))
   }
   return parsed as WorkSecret
 }

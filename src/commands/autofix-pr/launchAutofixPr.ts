@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { feature } from 'bun:bundle'
+import { t } from '../../i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -112,7 +113,7 @@ export const callAutofixPr: LocalJSXCommandCall = async (
     if (parsed.action === 'stop') {
       const m = getActiveMonitor()
       if (!m) {
-        onDone('No active autofix monitor.', { display: 'system' })
+        onDone(t('No active autofix monitor.'), { display: 'system' })
         return null
       }
       clearActiveMonitor()

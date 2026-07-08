@@ -4085,7 +4085,7 @@ async function run(): Promise<CommanderCommand> {
             } catch (e) {
               return await exitWithError(
                 root,
-                `Assistant installation failed: ${e instanceof Error ? e.message : e}`,
+                t('Assistant installation failed') + ': ' + (e instanceof Error ? e.message : String(e)),
                 () => gracefulShutdown(1),
               );
             }

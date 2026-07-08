@@ -1,4 +1,5 @@
 import { Text } from '@anthropic/ink';
+import { T } from '../i18n/TText.js';
 import { isClaudeAISubscriber } from '../utils/auth.js';
 import { isChromeExtensionInstalled, shouldEnableClaudeInChrome } from '../utils/claudeInChrome/setup.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
@@ -23,7 +24,7 @@ export function useChromeExtensionNotification(): void {
     if (process.env.USER_TYPE !== 'ant' && !isClaudeAISubscriber()) {
       return {
         key: 'chrome-requires-subscription',
-        jsx: <Text color="error">Claude in Chrome requires a claude.ai subscription</Text>,
+        jsx: <T color="error">Claude in Chrome requires a claude.ai subscription</T>,
         priority: 'immediate',
         timeoutMs: 5000,
       };
@@ -34,7 +35,11 @@ export function useChromeExtensionNotification(): void {
       // Skip notification on Homespace since Chrome setup requires different steps (see go/hsproxy)
       return {
         key: 'chrome-extension-not-detected',
-        jsx: <Text color="warning">Chrome extension not detected · https://claude.ai/chrome to install</Text>,
+        jsx: (
+          <T color="warning" vars={{ url: 'https://claude.ai/chrome' }}>
+            {'Chrome extension not detected · {url} to install'}
+          </T>
+        ),
         // TODO(hackyon): Lower the priority if the claude-in-chrome integration is no longer opt-in
         priority: 'immediate',
         timeoutMs: 3000,

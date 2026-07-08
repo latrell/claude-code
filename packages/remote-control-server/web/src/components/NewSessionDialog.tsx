@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Environment, Session } from '../types';
 import { apiCreateSession } from '../api/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
+import { t } from '../lib/i18n';
 
 interface NewSessionDialogProps {
   open: boolean;
@@ -34,7 +35,7 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
       const session = await apiCreateSession(body);
       onCreated(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create session');
+      setError(err instanceof Error ? err.message : t('Failed to create session'));
     } finally {
       setCreating(false);
     }
@@ -49,32 +50,32 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
     >
       <DialogContent className="max-w-md rounded-2xl border-border bg-surface-1 p-6 shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-lg font-semibold text-text-primary">New Session</DialogTitle>
+          <DialogTitle className="font-display text-lg font-semibold text-text-primary">{t('New Session')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-text-secondary">Title (optional)</label>
+            <label className="mb-1 block text-sm text-text-secondary">{t('Title (optional)')}</label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="My session"
+              placeholder={t('My session')}
               className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-text-secondary">Environment</label>
+            <label className="mb-1 block text-sm text-text-secondary">{t('Environment')}</label>
             <select
               value={envId}
               onChange={e => setEnvId(e.target.value)}
               className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
             >
-              <option value="">-- None --</option>
+              <option value="">{t('-- None --')}</option>
               {environments.map(env => (
                 <option key={env.id} value={env.id}>
-                  {env.machine_name || env.id} ({env.branch || 'no branch'})
+                  {env.machine_name || env.id} ({env.branch || t('no branch')})
                 </option>
               ))}
             </select>
@@ -88,14 +89,14 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
             onClick={onClose}
             className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
           >
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             onClick={handleCreate}
             disabled={creating}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50 transition-colors"
           >
-            {creating ? 'Creating...' : 'Create'}
+            {creating ? t('Creating...') : t('Create')}
           </button>
         </DialogFooter>
       </DialogContent>

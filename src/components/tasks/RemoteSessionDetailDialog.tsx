@@ -14,6 +14,7 @@ import { ASK_USER_QUESTION_TOOL_NAME } from '@claude-code-best/builtin-tools/too
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/constants.js';
 import { openBrowser } from '../../utils/browser.js';
 import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { errorMessage } from '../../utils/errors.js';
 import { formatDuration, truncateToWidth } from '../../utils/format.js';
 import { toInternalMessages } from '../../utils/messages/mappers.js';
@@ -121,13 +122,13 @@ function UltraplanSessionDetail({ session, onDone, onBack, onKill }: Omit<Props,
 
   if (confirmingStop) {
     return (
-      <Dialog title="Stop ultraplan?" onCancel={() => setConfirmingStop(false)} color="background">
+      <Dialog title={t('Stop ultraplan?')} onCancel={() => setConfirmingStop(false)} color="background">
         <Box flexDirection="column" gap={1}>
-          <Text dimColor>This will terminate the Claude Code on the web session.</Text>
+          <T dimColor>This will terminate the Claude Code on the web session.</T>
           <Select
             options={[
-              { label: 'Terminate session', value: 'stop' as const },
-              { label: 'Back', value: 'back' as const },
+              { label: t('Terminate session'), value: 'stop' as const },
+              { label: t('Back'), value: 'back' as const },
             ]}
             onChange={v => {
               if (v === 'stop') {
@@ -362,8 +363,8 @@ function ReviewSessionDetail({ session, onDone, onBack, onKill }: Omit<Props, 't
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
-            <KeyboardShortcutHint shortcut="Enter" action="select" />
-            <KeyboardShortcutHint shortcut="Esc" action="go back" />
+            <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+            <KeyboardShortcutHint shortcut="Esc" action={t('go back')} />
           </Byline>
         )
       }
@@ -465,9 +466,9 @@ export function RemoteSessionDetailDialog({ session, toolUseContext, onDone, onB
             <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
           ) : (
             <Byline>
-              {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
-              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {!isTeleporting && <KeyboardShortcutHint shortcut="t" action="teleport" />}
+              {onBack && <KeyboardShortcutHint shortcut="←" action={t('go back')} />}
+              <KeyboardShortcutHint shortcut="Esc/Enter/Space" action={t('close')} />
+              {!isTeleporting && <KeyboardShortcutHint shortcut="t" action={t('teleport')} />}
             </Byline>
           )
         }

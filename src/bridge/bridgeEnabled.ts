@@ -13,6 +13,7 @@ import { isSelfHostedBridge } from './bridgeConfig.js'
 import * as authModule from '../utils/auth.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { lt } from '../utils/semver.js'
+import { t, tf } from '../i18n/t.js'
 
 /**
  * Runtime check for bridge mode entitlement.
@@ -83,20 +84,26 @@ export async function getBridgeDisabledReason(): Promise<string | null> {
       return null
     }
     if (!isClaudeAISubscriber()) {
-      return 'Remote Control requires a claude.ai subscription. Run `claude auth login` to sign in with your claude.ai account.'
+      return t(
+        'Remote Control requires a claude.ai subscription. Run `claude auth login` to sign in with your claude.ai account.',
+      )
     }
     if (!hasProfileScope()) {
-      return 'Remote Control requires a full-scope login token. Long-lived tokens (from `claude setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `claude auth login` to use Remote Control.'
+      return t(
+        'Remote Control requires a full-scope login token. Long-lived tokens (from `claude setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `claude auth login` to use Remote Control.',
+      )
     }
     if (!getOauthAccountInfo()?.organizationUuid) {
-      return 'Unable to determine your organization for Remote Control eligibility. Run `claude auth login` to refresh your account information.'
+      return t(
+        'Unable to determine your organization for Remote Control eligibility. Run `claude auth login` to refresh your account information.',
+      )
     }
     if (!(await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))) {
-      return 'Remote Control is not yet enabled for your account.'
+      return t('Remote Control is not yet enabled for your account.')
     }
     return null
   }
-  return 'Remote Control is not available in this build.'
+  return t('Remote Control is not available in this build.')
 }
 
 // try/catch: main.tsx:5698 calls isBridgeEnabled() while defining the Commander
@@ -179,7 +186,10 @@ export function checkBridgeMinVersion(): string | null {
       minVersion: string
     }>('tengu_bridge_min_version', { minVersion: '0.0.0' })
     if (config.minVersion && lt(MACRO.VERSION, config.minVersion)) {
-      return `Your version of Claude Code (${MACRO.VERSION}) is too old for Remote Control.\nVersion ${config.minVersion} or higher is required. Run \`claude update\` to update.`
+      return tf(
+        'Your version of Claude Code ({version}) is too old for Remote Control.\nVersion {minVersion} or higher is required. Run `claude update` to update.',
+        { version: MACRO.VERSION, minVersion: config.minVersion },
+      )
     }
   }
   return null

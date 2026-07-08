@@ -1135,7 +1135,7 @@ export function formatAutonomyRunsList(
 ): string {
   const slice = runs.slice(0, limit)
   if (slice.length === 0) {
-    return 'No autonomy runs recorded.'
+    return t('No autonomy runs recorded.')
   }
   return slice
     .map(run => {

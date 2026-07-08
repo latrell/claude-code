@@ -1,4 +1,5 @@
 // XML tag names used to mark skill/command metadata in messages
+import { t } from '../i18n/t.js'
 export const COMMAND_NAME_TAG = 'command-name'
 export const COMMAND_MESSAGE_TAG = 'command-message'
 export const COMMAND_ARGS_TAG = 'command-args'
@@ -63,7 +64,7 @@ export const CROSS_SESSION_MESSAGE_TAG = 'cross-session-message'
 export const FORK_BOILERPLATE_TAG = 'fork-boilerplate'
 // Prefix before the directive text, stripped by the renderer. Keep in sync
 // across buildChildMessage (generates) and UserForkBoilerplateMessage (parses).
-export const FORK_DIRECTIVE_PREFIX = 'Your directive: '
+export const FORK_DIRECTIVE_PREFIX = t('Your directive: ')
 
 // Common argument patterns for slash commands that request help
 export const COMMON_HELP_ARGS = ['help', '-h', '--help']

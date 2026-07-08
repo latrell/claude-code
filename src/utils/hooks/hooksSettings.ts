@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { t } from '../../i18n/t.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { AppState } from '../../state/AppState.js'
@@ -170,20 +171,20 @@ export function getHooksForEvent(
 export function hookSourceDescriptionDisplayString(source: HookSource): string {
   switch (source) {
     case 'userSettings':
-      return 'User settings (~/.claude/settings.json)'
+      return t('User settings (~/.claude/settings.json)')
     case 'projectSettings':
-      return 'Project settings (.claude/settings.json)'
+      return t('Project settings (.claude/settings.json)')
     case 'localSettings':
-      return 'Local settings (.claude/settings.local.json)'
+      return t('Local settings (.claude/settings.local.json)')
     case 'pluginHook':
       // TODO: Get the actual plugin hook file paths instead of using glob pattern
       // We should capture the specific plugin paths during hook registration and display them here
       // e.g., "Plugin hooks (~/.claude/plugins/repos/source/example-plugin/example-plugin/hooks/hooks.json)"
-      return 'Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)'
+      return t('Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)')
     case 'sessionHook':
-      return 'Session hooks (in-memory, temporary)'
+      return t('Session hooks (in-memory, temporary)')
     case 'builtinHook':
-      return 'Built-in hooks (registered internally by Claude Code)'
+      return t('Built-in hooks (registered internally by Claude Code)')
     default:
       return source as string
   }
@@ -192,17 +193,17 @@ export function hookSourceDescriptionDisplayString(source: HookSource): string {
 export function hookSourceHeaderDisplayString(source: HookSource): string {
   switch (source) {
     case 'userSettings':
-      return 'User Settings'
+      return t('User Settings')
     case 'projectSettings':
-      return 'Project Settings'
+      return t('Project Settings')
     case 'localSettings':
-      return 'Local Settings'
+      return t('Local Settings')
     case 'pluginHook':
-      return 'Plugin Hooks'
+      return t('Plugin Hooks')
     case 'sessionHook':
-      return 'Session Hooks'
+      return t('Session Hooks')
     case 'builtinHook':
-      return 'Built-in Hooks'
+      return t('Built-in Hooks')
     default:
       return source as string
   }
@@ -211,17 +212,17 @@ export function hookSourceHeaderDisplayString(source: HookSource): string {
 export function hookSourceInlineDisplayString(source: HookSource): string {
   switch (source) {
     case 'userSettings':
-      return 'User'
+      return t('User')
     case 'projectSettings':
-      return 'Project'
+      return t('Project')
     case 'localSettings':
-      return 'Local'
+      return t('Local')
     case 'pluginHook':
-      return 'Plugin'
+      return t('Plugin')
     case 'sessionHook':
-      return 'Session'
+      return t('Session')
     case 'builtinHook':
-      return 'Built-in'
+      return t('Built-in')
     default:
       return source as string
   }

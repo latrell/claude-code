@@ -4,6 +4,7 @@ import { cn, esc } from '../../src/lib/utils';
 import { MessageResponse } from '../ai-elements/message';
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '../ai-elements/reasoning';
 import { ChevronDown } from 'lucide-react';
+import { t } from '../../src/lib/i18n';
 
 // 用户消息折叠最大高度（px）
 const COLLAPSED_MAX_HEIGHT = 200;
@@ -63,7 +64,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
                   onClick={() => setExpanded(true)}
                   className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-display font-medium text-white/90 hover:bg-white/15 transition-colors"
                 >
-                  <span>展开</span>
+                  <span>{t('Expand')}</span>
                   <ChevronDown className="h-3 w-3" />
                 </button>
               </div>
@@ -100,7 +101,7 @@ export function AssistantBubble({ entry, isStreaming }: AssistantBubbleProps) {
       {/* 内容 — 无卡片背景，直接排版 */}
       <div className="flex-1 min-w-0 space-y-4">
         {/* Sender label */}
-        <span className="text-sm font-semibold text-text-primary font-display">Claude</span>
+        <span className="text-sm font-semibold text-text-primary font-display">{t('Claude')}</span>
         {entry.chunks.map((chunk, i) => {
           if (chunk.type === 'thought') {
             const isLastChunk = i === entry.chunks.length - 1;
@@ -143,7 +144,7 @@ function ImageThumbnail({ image }: { image: UserMessageImage }) {
         }
       }}
     >
-      <img src={dataUrl} alt="Uploaded image" className="h-20 w-20 object-cover" />
+      <img src={dataUrl} alt={t('Uploaded image')} className="h-20 w-20 object-cover" />
     </button>
   );
 }

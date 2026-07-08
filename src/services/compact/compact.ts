@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
+import { t } from '../../i18n/t.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const sessionTranscriptModule = feature('KAIROS')
@@ -1149,7 +1150,7 @@ function addErrorNotificationIfNeeded(
   ) {
     context.addNotification?.({
       key: 'error-compacting-conversation',
-      text: 'Error compacting conversation',
+      text: t('Error compacting conversation'),
       priority: 'immediate',
       color: 'error',
     })
@@ -1159,7 +1160,7 @@ function addErrorNotificationIfNeeded(
 export function createCompactCanUseTool(): CanUseToolFn {
   return async () => ({
     behavior: 'deny' as const,
-    message: 'Tool use is not allowed during compaction',
+    message: t('Tool use is not allowed during compaction'),
     decisionReason: {
       type: 'other' as const,
       reason: 'compaction agent should only produce text summary',

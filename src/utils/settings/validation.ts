@@ -1,5 +1,6 @@
 import type { ConfigScope } from 'src/services/mcp/types.js'
 import type { ZodError, ZodIssue } from 'zod/v4'
+import { t, tf } from '../../i18n/t.js'
 import { jsonParse } from '../slowOperations.js'
 import { plural } from '../stringUtils.js'
 import { validatePermissionRule } from './permissionValidation.js'
@@ -138,7 +139,7 @@ export function formatZodError(
 
     if (isInvalidValueIssue(issue)) {
       expected = enumValues?.map(v => `"${v}"`).join(', ')
-      message = `Invalid value. Expected one of: ${expected}`
+      message = tf('Invalid value. Expected one of: {expected}', { expected })
     } else if (isInvalidTypeIssue(issue)) {
       const receivedType =
         extractReceivedFromMessage(issue.message) ??
@@ -148,15 +149,23 @@ export function formatZodError(
         receivedType === 'null' &&
         path === ''
       ) {
-        message = 'Invalid or malformed JSON'
+        message = t('Invalid or malformed JSON')
       } else {
-        message = `Expected ${issue.expected}, but received ${receivedType}`
+        message = tf('Expected {expected}, but received {received}', {
+          expected: issue.expected,
+          received: receivedType,
+        })
       }
     } else if (isUnrecognizedKeysIssue(issue)) {
       const keys = issue.keys.join(', ')
-      message = `Unrecognized ${plural(issue.keys.length, 'field')}: ${keys}`
+      message = tf('Unrecognized {fieldCount}: {keys}', {
+        fieldCount: plural(issue.keys.length, 'field'),
+        keys,
+      })
     } else if (isTooSmallIssue(issue)) {
-      message = `Number must be greater than or equal to ${issue.minimum}`
+      message = tf('Number must be greater than or equal to {minimum}', {
+        minimum: String(issue.minimum),
+      })
       expected = String(issue.minimum)
     }
 

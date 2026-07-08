@@ -108,9 +108,14 @@ export function MCPServerDesktopImportDialog({ servers, scope, onDone }: Props):
       <Box paddingX={1}>
         <Text dimColor italic>
           <Byline>
-            <KeyboardShortcutHint shortcut="Space" action="select" />
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <KeyboardShortcutHint shortcut="Space" action={t('select')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         </Text>
       </Box>

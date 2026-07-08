@@ -199,8 +199,8 @@ export function ThemePicker({
                   <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
                 ) : (
                   <Byline>
-                    <KeyboardShortcutHint shortcut="Enter" action="select" />
-                    <KeyboardShortcutHint shortcut="Esc" action="cancel" />
+                    <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+                    <KeyboardShortcutHint shortcut="Esc" action={t('cancel')} />
                   </Byline>
                 )}
               </Text>

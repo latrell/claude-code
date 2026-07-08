@@ -11,6 +11,7 @@ import { getSystemContext, getUserContext } from '../../context.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { type KeyboardEvent, type ScrollBoxHandle, ScrollBox } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
+import { T } from '../../i18n/TText.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
 import { createAbortController } from '../../utils/abortController.js';
@@ -106,7 +107,7 @@ function BtwSideQuestion({ question, context, onDone }: BtwComponentProps): Reac
           ) : (
             <Box>
               <SpinnerGlyph frame={frame} messageColor="warning" />
-              <Text color="warning">Answering...</Text>
+              <T color="warning">Answering...</T>
             </Box>
           )}
         </ScrollBox>

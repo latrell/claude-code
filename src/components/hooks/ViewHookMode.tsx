@@ -18,7 +18,7 @@ type Props = {
 
 export function ViewHookMode({ selectedHook, eventSupportsMatcher, onCancel }: Props): React.ReactNode {
   return (
-    <Dialog title="Hook details" onCancel={onCancel} inputGuide={() => <Text>{t('Esc to go back')}</Text>}>
+    <Dialog title={t('Hook details')} onCancel={onCancel} inputGuide={() => <Text>{t('Esc to go back')}</Text>}>
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text>

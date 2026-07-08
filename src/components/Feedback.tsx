@@ -36,6 +36,7 @@ import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from './TextInput.js';
 import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 // This value was determined experimentally by testing the URL length limit
 const GITHUB_URL_LIMIT = 7250;
@@ -439,7 +440,7 @@ export function Feedback({
           <Box marginTop={1}>
             <Text>
               {t('Press ')}
-              <Text bold>Enter </Text>
+              <T bold>Enter </T>
               {t(' to open your browser and draft a GitHub issue, or any other key to close.')}
             </Text>
           </Box>

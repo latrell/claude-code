@@ -7,6 +7,7 @@ import { isClaudeAISubscriber } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME, openInChrome } from '../../utils/claudeInChrome/common.js';
 import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import { isChromeExtensionInstalled } from '../../utils/claudeInChrome/setup.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
@@ -90,7 +91,7 @@ function ClaudeInChromeMenu({
 
   if (!isExtensionInstalled && !isHomespace) {
     options.push({
-      label: 'Install Chrome extension',
+      label: t('Install Chrome extension'),
       value: 'install-extension',
     });
   }
@@ -99,7 +100,7 @@ function ClaudeInChromeMenu({
     {
       label: (
         <>
-          <Text>Manage permissions</Text>
+          <T>Manage permissions</T>
           <Text dimColor>{requiresExtensionSuffix}</Text>
         </>
       ),
@@ -108,7 +109,7 @@ function ClaudeInChromeMenu({
     {
       label: (
         <>
-          <Text>Reconnect extension</Text>
+          <T>Reconnect extension</T>
           <Text dimColor>{requiresExtensionSuffix}</Text>
         </>
       ),
@@ -123,18 +124,18 @@ function ClaudeInChromeMenu({
   const isDisabled = isWSL || ((process.env.USER_TYPE as string) !== 'ant' && !isClaudeAISubscriber);
 
   return (
-    <Dialog title="Claude in Chrome (Beta)" onCancel={() => onDone()} color="chromeYellow">
+    <Dialog title={t('Claude in Chrome (Beta)')} onCancel={() => onDone()} color="chromeYellow">
       <Box flexDirection="column" gap={1}>
-        <Text>
+        <T>
           Claude in Chrome works with the Chrome extension to let you control your browser directly from Claude Code.
           Navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network
           requests.
-        </Text>
+        </T>
 
-        {isWSL && <Text color="error">Claude in Chrome is not supported in WSL at this time.</Text>}
+        {isWSL && <T color="error">Claude in Chrome is not supported in WSL at this time.</T>}
 
         {(process.env.USER_TYPE as string) !== 'ant' && !isClaudeAISubscriber && (
-          <Text color="error">Claude in Chrome requires a claude.ai subscription.</Text>
+          <T color="error">Claude in Chrome requires a claude.ai subscription.</T>
         )}
 
         {!isDisabled && (
@@ -142,38 +143,35 @@ function ClaudeInChromeMenu({
             {!isHomespace && (
               <Box flexDirection="column">
                 <Text>
-                  Status: {isConnected ? <Text color="success">Enabled</Text> : <Text color="inactive">Disabled</Text>}
+                  {t('Status: ')}
+                  {isConnected ? <T color="success">Enabled</T> : <T color="inactive">Disabled</T>}
                 </Text>
                 <Text>
                   Extension:{' '}
-                  {isExtensionInstalled ? (
-                    <Text color="success">Installed</Text>
-                  ) : (
-                    <Text color="warning">Not detected</Text>
-                  )}
+                  {isExtensionInstalled ? <T color="success">Installed</T> : <T color="warning">Not detected</T>}
                 </Text>
               </Box>
             )}
             <Select key={selectKey} options={options} onChange={handleAction} hideIndexes />
 
-            {showInstallHint && (
-              <Text color="warning">Once installed, select {'"Reconnect extension"'} to connect.</Text>
-            )}
+            {showInstallHint && <T color="warning">Once installed, select "Reconnect extension" to connect.</T>}
 
             <Text>
-              <Text dimColor>Usage: </Text>
+              <T dimColor>Usage: </T>
               <Text>claude --chrome</Text>
-              <Text dimColor> or </Text>
+              <T dimColor> or </T>
               <Text>claude --no-chrome</Text>
             </Text>
 
-            <Text dimColor>
+            <T dimColor>
               Site-level permissions are inherited from the Chrome extension. Manage permissions in the Chrome extension
               settings to control which sites Claude can browse, click, and type on.
-            </Text>
+            </T>
           </>
         )}
-        <Text dimColor>Learn more: https://code.claude.com/docs/en/chrome</Text>
+        <T dimColor vars={{ url: 'https://code.claude.com/docs/en/chrome' }}>
+          {'Learn more: {url}'}
+        </T>
       </Box>
     </Dialog>
   );

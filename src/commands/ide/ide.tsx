@@ -79,7 +79,7 @@ function IDEScreen({
         description: showWorkspace ? formatWorkspaceFolders(ide.workspaceFolders) : undefined,
       };
     })
-    .concat([{ label: 'None', value: 'None', description: undefined }]);
+    .concat([{ label: t('None'), value: 'None', description: undefined }]);
 
   if (showAutoConnectDialog) {
     return <IdeAutoConnectDialog onComplete={() => handleSelectIDE(selectedValue)} />;

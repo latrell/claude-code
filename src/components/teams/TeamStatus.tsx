@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Text } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   teamsSelected: boolean;
@@ -27,7 +28,7 @@ export function TeamStatus({ teamsSelected, showHint }: Props): React.ReactNode 
     showHint && teamsSelected ? (
       <>
         <Text dimColor>· </Text>
-        <Text dimColor>Enter to view</Text>
+        <T dimColor>Enter to view</T>
       </>
     ) : null;
 

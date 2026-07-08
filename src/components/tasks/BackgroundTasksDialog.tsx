@@ -471,9 +471,9 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               onCancel={goBackToList}
               inputGuide={() => (
                 <Byline>
-                  <KeyboardShortcutHint shortcut="←" action="go back" />
-                  <KeyboardShortcutHint shortcut="Esc" action="close" />
-                  {onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+                  <KeyboardShortcutHint shortcut="←" action={t('go back')} />
+                  <KeyboardShortcutHint shortcut="Esc" action={t('close')} />
+                  {onKill && <KeyboardShortcutHint shortcut="x" action={t('stop')} />}
                 </Byline>
               )}
             >
@@ -551,10 +551,10 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
   );
 
   const actions = [
-    <KeyboardShortcutHint key="upDown" shortcut="↑/↓" action="select" />,
-    <KeyboardShortcutHint key="enter" shortcut="Enter" action="view" />,
+    <KeyboardShortcutHint key="upDown" shortcut="↑/↓" action={t('select')} />,
+    <KeyboardShortcutHint key="enter" shortcut="Enter" action={t('view')} />,
     ...(currentSelection?.type === 'in_process_teammate' && currentSelection.status === 'running'
-      ? [<KeyboardShortcutHint key="foreground" shortcut="f" action="foreground" />]
+      ? [<KeyboardShortcutHint key="foreground" shortcut="f" action={t('foreground')} />]
       : []),
     ...((currentSelection?.type === 'local_bash' ||
       currentSelection?.type === 'local_agent' ||
@@ -564,12 +564,12 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
       currentSelection?.type === 'dream' ||
       currentSelection?.type === 'remote_agent') &&
     currentSelection.status === 'running'
-      ? [<KeyboardShortcutHint key="kill" shortcut="x" action="stop" />]
+      ? [<KeyboardShortcutHint key="kill" shortcut="x" action={t('stop')} />]
       : []),
     ...(agentTasks.some(t => t.status === 'running')
-      ? [<KeyboardShortcutHint key="kill-all" shortcut={killAgentsShortcut} action="stop all agents" />]
+      ? [<KeyboardShortcutHint key="kill-all" shortcut={killAgentsShortcut} action={t('stop all agents')} />]
       : []),
-    <KeyboardShortcutHint key="esc" shortcut="←/Esc" action="close" />,
+    <KeyboardShortcutHint key="esc" shortcut="←/Esc" action={t('close')} />,
   ];
 
   const handleCancel = () => onDone(t('Background tasks dialog dismissed'), { display: 'system' });

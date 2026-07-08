@@ -141,7 +141,7 @@ export async function autoModeCritiqueHandler(options: {
     })
   } catch (error) {
     process.stderr.write(
-      'Failed to analyze rules: ' + errorMessage(error) + '\n',
+      t('Failed to analyze rules: ') + errorMessage(error) + '\n',
     )
     process.exitCode = 1
     return

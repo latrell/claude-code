@@ -30,6 +30,7 @@ import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';
 import type { Tool, ToolUseContext } from '../../Tool.js';
 import { logForDebugging } from '../debug.js';
+import { t, tf } from '../../i18n/t.js';
 import { detectImageFormatFromBase64 } from '../imageResizer.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';
 import { registerEscHotkey } from './escHotkey.js';
@@ -252,8 +253,8 @@ export function buildSessionContext(): ComputerUseSessionContext {
         });
         tuc().sendOSNotification?.({
           message: escRegistered
-            ? 'Claude is using your computer · press Esc to stop'
-            : 'Claude is using your computer · press Ctrl+C to stop',
+            ? tf('Claude is using your computer {bullet} press Esc to stop', { bullet: '\u00b7' })
+            : tf('Claude is using your computer {bullet} press Ctrl+C to stop', { bullet: '\u00b7' }),
           notificationType: 'computer_use_enter',
         });
       }
@@ -346,12 +347,12 @@ async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissi
       // If already aborted, addEventListener won't fire — reject now so the
       // promise doesn't hang waiting for a user who Ctrl+C'd.
       if (signal.aborted) {
-        reject(new Error('Computer Use permission dialog aborted'));
+        reject(new Error(t('Computer Use permission dialog aborted')));
         return;
       }
       const onAbort = (): void => {
         signal.removeEventListener('abort', onAbort);
-        reject(new Error('Computer Use permission dialog aborted'));
+        reject(new Error(t('Computer Use permission dialog aborted')));
       };
       signal.addEventListener('abort', onAbort);
 

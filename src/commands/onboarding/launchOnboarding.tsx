@@ -9,6 +9,7 @@ import { ThemePicker } from '../../components/ThemePicker.js';
 import { getGlobalConfig, saveCurrentProjectConfig, saveGlobalConfig } from '../../utils/config.js';
 import type { ThemeSetting } from '../../utils/theme.js';
 import { t } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 
 /**
  * /onboarding [subcommand]
@@ -82,7 +83,7 @@ function StatusView({
 }): React.ReactNode {
   return (
     <Box flexDirection="column" paddingLeft={1}>
-      <Text bold>Onboarding status</Text>
+      <T bold>Onboarding status</T>
       <Text>
         - Theme: <Text bold>{theme}</Text>
       </Text>

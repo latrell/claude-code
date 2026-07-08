@@ -3,6 +3,7 @@ import figures from 'figures';
 import * as React from 'react';
 import { COMMAND_MESSAGE_TAG } from '../../constants/xml.js';
 import { Box, Text } from '@anthropic/ink';
+import { tf } from '../../i18n/t.js';
 import { extractTag } from '../../utils/messages.js';
 
 type Props = {
@@ -30,7 +31,7 @@ export function UserCommandMessage({ addMargin, param: { text } }: Props): React
       >
         <Text>
           <Text color="subtle">{figures.pointer} </Text>
-          <Text color="text">Skill({commandMessage})</Text>
+          <Text color="text">{tf('Skill({command})', { command: commandMessage })}</Text>
         </Text>
       </Box>
     );

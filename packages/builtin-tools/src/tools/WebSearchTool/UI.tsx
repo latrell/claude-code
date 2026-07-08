@@ -5,6 +5,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { ProgressMessage } from 'src/types/message.js';
 import { truncate } from 'src/utils/format.js';
 import type { Output, SearchResult, WebSearchProgress } from './WebSearchTool.js';
+import { tf } from 'src/i18n/t.js';
 
 function getSearchSummary(results: (SearchResult | string | null | undefined)[]): {
   searchCount: number;
@@ -74,7 +75,7 @@ export function renderToolUseProgressMessage(progressMessages: ProgressMessage<W
     case 'query_update':
       return (
         <MessageResponse>
-          <Text dimColor>Searching: {data.query}</Text>
+          <Text dimColor>{tf('Searching: {query}', { query: data.query })}</Text>
         </MessageResponse>
       );
     case 'search_results_received':

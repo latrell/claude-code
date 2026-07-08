@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle'
 import { randomUUID } from 'crypto'
 import { hostname, tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
+import { t, tf } from '../i18n/t.js'
 import { getRemoteSessionUrl } from '../constants/product.js'
 import { shutdownDatadog } from '../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
@@ -511,7 +512,7 @@ export async function runBridgeLoop(
           // Also skip for timeout-killed sessions — the timeout watchdog
           // already logged a clear timeout message.
           if (!wasTimedOut && !loopSignal.aborted) {
-            failureMessage = stderrSummary ?? 'Process exited with error'
+            failureMessage = stderrSummary ?? t('Process exited with error')
             logger.logSessionFailed(sessionId, failureMessage)
             logError(new Error(`Bridge session failed: ${failureMessage}`))
           }
@@ -1968,7 +1969,7 @@ NOTES
   - You must be logged in with a Claude account that has a subscription
   - Run \`claude\` first in the directory to accept the workspace trust dialog
 ${serverNote}`
-  console.log(help)
+  console.log(t(help))
 }
 
 const TITLE_MAX_LEN = 80
@@ -2087,7 +2088,9 @@ export async function bridgeMain(args: string[]): Promise<void> {
       sleep(500, undefined, { unref: true }),
     ]).catch(() => {})
     console.error(
-      'Error: Multi-session Remote Control is not enabled for your account yet.',
+      t(
+        'Error: Multi-session Remote Control is not enabled for your account yet.',
+      ),
     )
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(1)
@@ -2137,10 +2140,12 @@ export async function bridgeMain(args: string[]): Promise<void> {
       output: process.stdout,
     })
     console.log(
-      '\nRemote Control lets you access this CLI session from the web (claude.ai/code)\nor the Claude app, so you can pick up where you left off on any device.\n\nYou can disconnect remote access anytime by running /remote-control again.\n',
+      t(
+        '\nRemote Control lets you access this CLI session from the web (claude.ai/code)\nor the Claude app, so you can pick up where you left off on any device.\n\nYou can disconnect remote access anytime by running /remote-control again.\n',
+      ),
     )
     const answer = await new Promise<string>(resolve => {
-      rl.question('Enable Remote Control? (y/n) ', resolve)
+      rl.question(t('Enable Remote Control? (y/n) '), resolve)
     })
     rl.close()
     saveGlobalConfig(current => {
@@ -2168,7 +2173,9 @@ export async function bridgeMain(args: string[]): Promise<void> {
     const found = await readBridgePointerAcrossWorktrees(dir)
     if (!found) {
       console.error(
-        `Error: No recent session found in this directory or its worktrees. Run \`claude remote-control\` to start a new one.`,
+        t(
+          'Error: No recent session found in this directory or its worktrees. Run `claude remote-control` to start a new one.',
+        ),
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
@@ -2176,9 +2183,14 @@ export async function bridgeMain(args: string[]): Promise<void> {
     const { pointer, dir: pointerDir } = found
     const ageMin = Math.round(pointer.ageMs / 60_000)
     const ageStr = ageMin < 60 ? `${ageMin}m` : `${Math.round(ageMin / 60)}h`
-    const fromWt = pointerDir !== dir ? ` from worktree ${pointerDir}` : ''
+    const fromWt =
+      pointerDir !== dir ? tf(' from worktree {dir}', { dir: pointerDir }) : ''
     console.error(
-      `Resuming session ${pointer.sessionId} (${ageStr} ago)${fromWt}\u2026`,
+      tf('Resuming session {sessionId} ({ageStr} ago){fromWt}\u2026', {
+        sessionId: pointer.sessionId,
+        ageStr,
+        fromWt,
+      }),
     )
     resumeSessionId = pointer.sessionId
     // Track where the pointer came from so the #20460 exit(1) paths below
@@ -2198,7 +2210,9 @@ export async function bridgeMain(args: string[]): Promise<void> {
     !baseUrl.includes('127.0.0.1')
   ) {
     console.error(
-      'Error: Remote Control base URL uses HTTP. Only HTTPS or localhost HTTP is allowed.',
+      t(
+        'Error: Remote Control base URL uses HTTP. Only HTTPS or localhost HTTP is allowed.',
+      ),
     )
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(1)
@@ -2233,7 +2247,9 @@ export async function bridgeMain(args: string[]): Promise<void> {
     : undefined
   if (savedSpawnMode === 'worktree' && !worktreeAvailable) {
     console.error(
-      'Warning: Saved spawn mode is worktree but this directory is not a git repository. Falling back to same-dir.',
+      t(
+        'Warning: Saved spawn mode is worktree but this directory is not a git repository. Falling back to same-dir.',
+      ),
     )
     savedSpawnMode = undefined
     saveCurrentProjectConfig(current => {
@@ -2259,14 +2275,22 @@ export async function bridgeMain(args: string[]): Promise<void> {
       output: process.stdout,
     })
     console.log(
-      `\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from Claude Code on Web or your Mobile app. Learn more here: https://code.claude.com/docs/en/remote-control\n\n` +
-        `Spawn mode for this project:\n` +
-        `  [1] same-dir \u2014 sessions share the current directory (default)\n` +
-        `  [2] worktree \u2014 each session gets an isolated git worktree\n\n` +
-        `This can be changed later or explicitly set with --spawn=same-dir or --spawn=worktree.\n`,
+      t(
+        '\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from Claude Code on Web or your Mobile app. Learn more here: https://code.claude.com/docs/en/remote-control\n\n',
+      ) +
+        t('Spawn mode for this project:\n') +
+        t(
+          '  [1] same-dir \u2014 sessions share the current directory (default)\n',
+        ) +
+        t(
+          '  [2] worktree \u2014 each session gets an isolated git worktree\n\n',
+        ) +
+        t(
+          'This can be changed later or explicitly set with --spawn=same-dir or --spawn=worktree.\n',
+        ),
     )
     const answer = await new Promise<string>(resolve => {
-      rl.question('Choose [1/2] (default: 1): ', resolve)
+      rl.question(t('Choose [1/2] (default: 1): '), resolve)
     })
     rl.close()
     const chosen: 'same-dir' | 'worktree' =
@@ -2629,8 +2653,10 @@ export async function bridgeMain(args: string[]): Promise<void> {
       })
       logger.logStatus(
         newMode === 'worktree'
-          ? 'Spawn mode: worktree (new sessions get isolated git worktrees)'
-          : 'Spawn mode: same-dir (new sessions share the current directory)',
+          ? t('Spawn mode: worktree (new sessions get isolated git worktrees)')
+          : t(
+              'Spawn mode: same-dir (new sessions share the current directory)',
+            ),
       )
       logger.setSpawnModeDisplay(newMode)
       logger.refreshDisplay()
@@ -2847,7 +2873,9 @@ export async function runBridgeHeadless(
     !baseUrl.includes('127.0.0.1')
   ) {
     throw new BridgeHeadlessPermanentError(
-      'Remote Control base URL uses HTTP. Only HTTPS or localhost HTTP is allowed.',
+      t(
+        'Remote Control base URL uses HTTP. Only HTTPS or localhost HTTP is allowed.',
+      ),
     )
   }
   const sessionIngressUrl =

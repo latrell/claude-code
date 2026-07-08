@@ -10,6 +10,7 @@ import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
 import { env } from '../utils/env.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
+import { t } from '../i18n/t.js';
 
 type Props = {
   onBackgroundSession: () => void;
@@ -76,7 +77,7 @@ export function SessionBackgroundHint({ onBackgroundSession, isLoading }: Props)
   return (
     <Box paddingLeft={2}>
       <Text dimColor>
-        <KeyboardShortcutHint shortcut={shortcut} action="background" />
+        <KeyboardShortcutHint shortcut={shortcut} action={t('background')} />
       </Text>
     </Box>
   );

@@ -836,14 +836,14 @@ export function PluginSettings({ onComplete, args, showMcpRedirectMessage }: Plu
   return (
     <Pane color="suggestion">
       <Tabs
-        title="Plugins"
+        title={t('Plugins')}
         selectedTab={activeTab}
         onTabChange={handleTabChange}
         color="suggestion"
         disableNavigation={childSearchActive}
         banner={showMcpRedirectMessage && activeTab === 'installed' ? <McpRedirectBanner /> : undefined}
       >
-        <Tab id="discover" title="Discover">
+        <Tab id="discover" title={t('Discover')}>
           {viewState.type === 'browse-marketplace' ? (
             <BrowseMarketplace
               error={error}
@@ -868,7 +868,7 @@ export function PluginSettings({ onComplete, args, showMcpRedirectMessage }: Plu
             />
           )}
         </Tab>
-        <Tab id="installed" title="Installed">
+        <Tab id="installed" title={t('Installed')}>
           <ManagePlugins
             setViewState={setViewState}
             setResult={setResult}
@@ -879,7 +879,7 @@ export function PluginSettings({ onComplete, args, showMcpRedirectMessage }: Plu
             action={viewState.type === 'manage-plugins' ? viewState.action : undefined}
           />
         </Tab>
-        <Tab id="marketplaces" title="Marketplaces">
+        <Tab id="marketplaces" title={t('Marketplaces')}>
           <ManageMarketplaces
             setViewState={setViewState}
             error={error}

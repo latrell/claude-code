@@ -1,6 +1,7 @@
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { feature } from 'bun:bundle'
 import chalk from 'chalk'
+import { t, tf } from './i18n/t.js'
 import {
   addToTotalCostState,
   addToTotalLinesChanged,
@@ -182,7 +183,10 @@ function formatCost(cost: number, maxDecimalPlaces: number = 4): string {
 function formatModelUsage(): string {
   const modelUsageMap = getModelUsage()
   if (Object.keys(modelUsageMap).length === 0) {
-    return 'Usage:                 0 input, 0 output, 0 cache read, 0 cache write'
+    return tf(
+      'Usage: {input} input, {output} output, {cacheRead} cache read, {cacheWrite} cache write',
+      { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' },
+    )
   }
 
   // Accumulate usage by short name
@@ -210,13 +214,19 @@ function formatModelUsage(): string {
     accumulated.costUSD += usage.costUSD
   }
 
-  let result = 'Usage by model:'
+  let result = t('Usage by model:')
   for (const [shortName, usage] of Object.entries(usageByShortName)) {
     const usageString =
-      `  ${formatNumber(usage.inputTokens)} input, ` +
-      `${formatNumber(usage.outputTokens)} output, ` +
-      `${formatNumber(usage.cacheReadInputTokens)} cache read, ` +
-      `${formatNumber(usage.cacheCreationInputTokens)} cache write` +
+      `  ` +
+      tf(
+        '{input} input, {output} output, {cacheRead} cache read, {cacheWrite} cache write',
+        {
+          input: formatNumber(usage.inputTokens),
+          output: formatNumber(usage.outputTokens),
+          cacheRead: formatNumber(usage.cacheReadInputTokens),
+          cacheWrite: formatNumber(usage.cacheCreationInputTokens),
+        },
+      ) +
       (usage.webSearchRequests > 0
         ? `, ${formatNumber(usage.webSearchRequests)} web search`
         : '') +
@@ -230,16 +240,16 @@ export function formatTotalCost(): string {
   const costDisplay =
     formatCost(getTotalCostUSD()) +
     (hasUnknownModelCost()
-      ? ' (costs may be inaccurate due to usage of unknown models)'
+      ? ' ' + t('(costs may be inaccurate due to usage of unknown models)')
       : '')
 
   const modelUsageDisplay = formatModelUsage()
 
   return chalk.dim(
-    `Total cost:            ${costDisplay}\n` +
-      `Total duration (API):  ${formatDuration(getTotalAPIDuration())}
-Total duration (wall): ${formatDuration(getTotalDuration())}
-Total code changes:    ${getTotalLinesAdded()} ${getTotalLinesAdded() === 1 ? 'line' : 'lines'} added, ${getTotalLinesRemoved()} ${getTotalLinesRemoved() === 1 ? 'line' : 'lines'} removed
+    `${t('Total cost')}:            ${costDisplay}\n` +
+      `${t('Total duration (API)')}:  ${formatDuration(getTotalAPIDuration())}
+${t('Total duration (wall)')}: ${formatDuration(getTotalDuration())}
+${t('Total code changes')}:    ${getTotalLinesAdded()} ${getTotalLinesAdded() === 1 ? t('line') : t('lines')} ${t('added')}, ${getTotalLinesRemoved()} ${getTotalLinesRemoved() === 1 ? t('line') : t('lines')} ${t('removed')}
 ${modelUsageDisplay}`,
   )
 }

@@ -20,6 +20,7 @@ import { readEditContext } from 'src/utils/readEditContext.js';
 import { firstLineOf } from 'src/utils/stringUtils.js';
 import type { ThemeName } from 'src/utils/theme.js';
 import type { FileEditOutput } from './types.js';
+import { t } from 'src/i18n/t.js';
 import { findActualString, getPatchForEdit } from './utils.js';
 
 export function userFacingName(
@@ -34,19 +35,19 @@ export function userFacingName(
     | undefined,
 ): string {
   if (!input) {
-    return 'Update';
+    return t('Update');
   }
   if (input.file_path?.startsWith(getPlansDirectory())) {
-    return 'Updated plan';
+    return t('Updated plan');
   }
   // Hashline edits always modify an existing file (line-ref based)
   if (input.edits != null) {
-    return 'Update';
+    return t('Update');
   }
   if (input.old_string === '') {
-    return 'Create';
+    return t('Create');
   }
-  return 'Update';
+  return t('Update');
 }
 
 export function getToolUseSummary(

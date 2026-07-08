@@ -6,6 +6,7 @@ import '../utils/performanceShim.js';
 import { feature } from 'bun:bundle';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { installNodeFetchTimeoutFix } from '../utils/fetchTimeouts.js';
+import { t } from '../i18n/t.js';
 
 // Runtime fallback for MACRO.* when not injected by build/dev defines.
 // This happens when running cli.tsx directly (not via `bun run dev` or built dist/).
@@ -242,7 +243,7 @@ async function main(): Promise<void> {
     const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../services/policyLimits/index.js');
     await waitForPolicyLimitsToLoad();
     if (!isPolicyAllowed('allow_remote_control')) {
-      exitWithError("Error: Remote Control is disabled by your organization's policy.");
+      exitWithError(t("Error: Remote Control is disabled by your organization's policy."));
     }
 
     await bridgeMain(args.slice(1));

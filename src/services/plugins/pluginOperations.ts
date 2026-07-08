@@ -18,6 +18,7 @@ import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
 import { isENOENT, toError } from '../../utils/errors.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import { logError } from '../../utils/log.js'
+import { t } from '../../i18n/t.js'
 import {
   clearAllCaches,
   markPluginVersionOrphaned,
@@ -783,7 +784,7 @@ export async function disableAllPluginsOp(): Promise<PluginOperationResult> {
   const enabledPlugins = getPluginEditableScopes()
 
   if (enabledPlugins.size === 0) {
-    return { success: true, message: 'No enabled plugins to disable' }
+    return { success: true, message: t('No enabled plugins to disable') }
   }
 
   const disabled: string[] = []

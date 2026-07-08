@@ -1,8 +1,9 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { useSettings } from '../../hooks/useSettings.js';
-import { Box, Text, useAnimationFrame } from '@anthropic/ink';
+import { Box, useAnimationFrame } from '@anthropic/ink';
 import { interpolateColor, toRGBColor } from '../Spinner/utils.js';
+import { T } from '../../i18n/TText.js';
 
 type Props = {
   voiceState: 'idle' | 'recording' | 'processing';
@@ -22,7 +23,7 @@ export function VoiceIndicator(props: Props): React.ReactNode {
 function VoiceIndicatorImpl({ voiceState }: Props): React.ReactNode {
   switch (voiceState) {
     case 'recording':
-      return <Text dimColor>listening…</Text>;
+      return <T dimColor>listening…</T>;
     case 'processing':
       return <ProcessingShimmer />;
     case 'idle':
@@ -36,7 +37,7 @@ function VoiceIndicatorImpl({ voiceState }: Props): React.ReactNode {
 // 30-80ms, compounding re-renders during an already-busy window.
 export function VoiceWarmupHint(): React.ReactNode {
   if (!feature('VOICE_MODE')) return null;
-  return <Text dimColor>keep holding…</Text>;
+  return <T dimColor>keep holding…</T>;
 }
 
 function ProcessingShimmer(): React.ReactNode {
@@ -45,7 +46,7 @@ function ProcessingShimmer(): React.ReactNode {
   const [ref, time] = useAnimationFrame(reducedMotion ? null : 50);
 
   if (reducedMotion) {
-    return <Text color="warning">Voice: processing…</Text>;
+    return <T color="warning">Voice: processing…</T>;
   }
 
   const elapsedSec = time / 1000;
@@ -54,7 +55,7 @@ function ProcessingShimmer(): React.ReactNode {
 
   return (
     <Box ref={ref}>
-      <Text color={color}>Voice: processing…</Text>
+      <T color={color}>Voice: processing…</T>
     </Box>
   );
 }

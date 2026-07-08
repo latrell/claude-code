@@ -32,16 +32,16 @@ const ACTION_LABEL_COLUMN_WIDTH = 26;
 
 function formatStoreList(stores: string[]): string {
   if (stores.length === 0) {
-    return 'No memory stores found.';
+    return t('No memory stores found.');
   }
-  return ['Local Memory Stores', ...stores.map(store => `- ${store}`)].join('\n');
+  return [t('Local Memory Stores'), ...stores.map(store => `- ${store}`)].join('\n');
 }
 
 function formatEntryList(store: string, keys: string[]): string {
   if (keys.length === 0) {
-    return `No entries in "${store}".`;
+    return tf('No entries in "{store}".', { store });
   }
-  return [`Entries in "${store}"`, ...keys.map(key => `- ${key}`)].join('\n');
+  return [tf('Entries in "{store}"', { store }), ...keys.map(key => `- ${key}`)].join('\n');
 }
 
 // ── Interactive multi-step panel ───────────────────────────────────────────
@@ -77,36 +77,36 @@ const MENU: Array<{
   label: string;
   description: string;
 }> = [
-  { kind: 'list', label: 'List', description: 'Show all stores' },
+  { kind: 'list', label: t('List'), description: t('Show all stores') },
   {
     kind: 'create',
-    label: 'Create',
-    description: 'Create a new memory store',
+    label: t('Create'),
+    description: t('Create a new memory store'),
   },
   {
     kind: 'store',
-    label: 'Store',
-    description: 'Write an entry: store name + key + value',
+    label: t('Store'),
+    description: t('Write an entry: store name + key + value'),
   },
   {
     kind: 'fetch',
-    label: 'Fetch',
-    description: 'Read an entry by store name + key',
+    label: t('Fetch'),
+    description: t('Read an entry by store name + key'),
   },
   {
     kind: 'entries',
-    label: 'Entries',
-    description: 'List entry keys in a store',
+    label: t('Entries'),
+    description: t('List entry keys in a store'),
   },
   {
     kind: 'archive',
-    label: 'Archive',
-    description: 'Archive a store (rename to *.archived)',
+    label: t('Archive'),
+    description: t('Archive a store (rename to *.archived)'),
   },
   {
     kind: 'about',
-    label: 'About',
-    description: 'Show command syntax',
+    label: t('About'),
+    description: t('Show command syntax'),
   },
 ];
 
@@ -146,12 +146,12 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
           return;
         }
         if (!store) {
-          setError('Internal: missing store');
+          setError(t('Internal: missing store'));
           return;
         }
         if (action === 'create') {
           createStore(store);
-          closeWith(`Store created: ${store}`);
+          closeWith(tf('Store created: {store}', { store }));
           return;
         }
         if (action === 'entries') {
@@ -161,25 +161,25 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
         }
         if (action === 'archive') {
           archiveStore(store);
-          closeWith(`Archived store: ${store}`);
+          closeWith(tf('Archived store: {store}', { store }));
           return;
         }
         if (action === 'fetch') {
           if (!key) {
-            setError('Internal: missing key');
+            setError(t('Internal: missing key'));
             return;
           }
           const v = getEntry(store, key);
           if (v === null) {
-            closeWith(`Entry not found: ${store}/${key}`);
+            closeWith(tf('Entry not found: {store}/{key}', { store, key }));
             return;
           }
-          closeWith(`Entry fetched: ${store}/${key}\n\n${v}`);
+          closeWith(tf('Entry fetched: {store}/{key}\n\n{value}', { store, key, value: v }));
           return;
         }
         if (action === 'store') {
           if (!key || value === undefined) {
-            setError('Internal: missing key or value');
+            setError(t('Internal: missing key or value'));
             return;
           }
           // Confirm overwrite if key already exists (safety prompt)
@@ -193,7 +193,7 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
             return;
           }
           setEntry(store, key, value);
-          closeWith(`Stored ${store}/${key} (${value.length} chars)`);
+          closeWith(tf('Stored {store}/{key} ({length} chars)', { store, key, length: String(value.length) }));
           return;
         }
       } catch (e) {
@@ -367,11 +367,11 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
     const trimmed = raw.trim();
     if (step.kind === 'collect-store') {
       if (!trimmed) {
-        setError('Store name required');
+        setError(t('Store name required'));
         return;
       }
       if (!isValidStoreName(trimmed)) {
-        setError('Invalid store name (no /, \\, :, null byte, or leading dot; max 255 chars)');
+        setError(t('Invalid store name (no /, \\, :, null byte, or leading dot; max 255 chars)'));
         return;
       }
       // Action-specific completion
@@ -393,11 +393,11 @@ function LocalMemoryPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.
     }
     if (step.kind === 'collect-key') {
       if (!trimmed) {
-        setError('Key required');
+        setError(t('Key required'));
         return;
       }
       if (!isValidKey(trimmed)) {
-        setError('Invalid key (allowed: letters/digits/._- only; no leading dot; not a Windows reserved name)');
+        setError(t('Invalid key (allowed: letters/digits/._- only; no leading dot; not a Windows reserved name)'));
         return;
       }
       if (step.action === 'fetch') {
@@ -472,14 +472,14 @@ async function dispatchLocalMemory(
   if (parsed.action === 'create') {
     const { store } = parsed;
     createStore(store);
-    onDone(`Store created: ${store}`, { display: 'system' });
+    onDone(tf('Store created: {store}', { store }), { display: 'system' });
     return null;
   }
 
   if (parsed.action === 'store') {
     const { store, key, value } = parsed;
     setEntry(store, key, value);
-    onDone(`Stored entry "${key}" in store "${store}".`, { display: 'system' });
+    onDone(tf('Stored entry "{key}" in store "{store}".', { key, store }), { display: 'system' });
     return null;
   }
 
@@ -487,10 +487,10 @@ async function dispatchLocalMemory(
     const { store, key } = parsed;
     const value = getEntry(store, key);
     if (value === null) {
-      onDone(`Entry not found: ${store}/${key}`, { display: 'system' });
+      onDone(tf('Entry not found: {store}/{key}', { store, key }), { display: 'system' });
       return null;
     }
-    onDone(`Entry fetched: ${store}/${key}\n${value}`, { display: 'system' });
+    onDone(tf('Entry fetched: {store}/{key}\n{value}', { store, key, value }), { display: 'system' });
     return null;
   }
 
@@ -504,7 +504,7 @@ async function dispatchLocalMemory(
   if (parsed.action === 'archive') {
     const { store } = parsed;
     archiveStore(store);
-    onDone(`Archived store: ${store}`, { display: 'system' });
+    onDone(tf('Archived store: {store}', { store }), { display: 'system' });
     return null;
   }
 

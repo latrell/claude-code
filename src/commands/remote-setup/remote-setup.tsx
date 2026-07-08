@@ -10,7 +10,8 @@ import {
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { openBrowser } from '../../utils/browser.js';
 import { getGhAuthStatus } from '../../utils/github/ghAuthStatus.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { T } from '../../i18n/TText.js';
 import {
   createDefaultEnvironment,
   getCodeWebUrl,
@@ -57,13 +58,13 @@ async function checkLoginState(): Promise<CheckResult> {
 function errorMessage(err: ImportTokenError, codeUrl: string): string {
   switch (err.kind) {
     case 'not_signed_in':
-      return `Login failed. Please visit ${codeUrl} and login using the GitHub App`;
+      return tf('Login failed. Please visit {url} and login using the GitHub App', { url: codeUrl });
     case 'invalid_token':
-      return 'GitHub rejected that token. Run `gh auth login` and try again.';
+      return t('GitHub rejected that token. Run `gh auth login` and try again.');
     case 'server':
-      return `Server error (${err.status}). Try again in a moment.`;
+      return tf('Server error ({status}). Try again in a moment.', { status: err.status });
     case 'network':
-      return "Couldn't reach the server. Check your connection.";
+      return t("Couldn't reach the server. Check your connection.");
   }
 }
 
@@ -91,8 +92,14 @@ function Web({ onDone }: { onDone: LocalJSXCommandOnDone }) {
           });
           onDone(
             result.status === 'gh_not_installed'
-              ? `GitHub CLI not found. Install it via https://cli.github.com/, then run \`gh auth login\`, or connect GitHub on the web: ${url}`
-              : `GitHub CLI not authenticated. Run \`gh auth login\` and try again, or connect GitHub on the web: ${url}`,
+              ? tf(
+                  'GitHub CLI not found. Install it via https://cli.github.com/, then run `gh auth login`, or connect GitHub on the web: {url}',
+                  { url },
+                )
+              : tf(
+                  'GitHub CLI not authenticated. Run `gh auth login` and try again, or connect GitHub on the web: {url}',
+                  { url },
+                ),
           );
           return;
         }
@@ -136,28 +143,28 @@ function Web({ onDone }: { onDone: LocalJSXCommandOnDone }) {
     logEvent('tengu_remote_setup_result', {
       result: 'success' as SafeString,
     });
-    onDone(`Connected as ${result.result.github_username}. Opened ${url}`);
+    onDone(tf('Connected as {username}. Opened {url}', { username: result.result.github_username, url }));
   };
 
   if (step.name === 'checking') {
-    return <LoadingState message="Checking login status…" />;
+    return <LoadingState message={t('Checking login status…')} />;
   }
 
   if (step.name === 'uploading') {
-    return <LoadingState message="Connecting GitHub to Claude…" />;
+    return <LoadingState message={t('Connecting GitHub to Claude…')} />;
   }
 
   const token = step.token;
   return (
-    <Dialog title="Connect Claude on the web to GitHub?" onCancel={handleCancel} hideInputGuide>
+    <Dialog title={t('Connect Claude on the web to GitHub?')} onCancel={handleCancel} hideInputGuide>
       <Box flexDirection="column">
-        <Text>Claude on the web requires connecting to your GitHub account to clone and push code on your behalf.</Text>
-        <Text dimColor>Your local credentials are used to authenticate with GitHub</Text>
+        <T>Claude on the web requires connecting to your GitHub account to clone and push code on your behalf.</T>
+        <T dimColor>Your local credentials are used to authenticate with GitHub</T>
       </Box>
       <Select
         options={[
-          { label: 'Continue', value: 'send' },
-          { label: 'Cancel', value: 'cancel' },
+          { label: t('Continue'), value: 'send' },
+          { label: t('Cancel'), value: 'cancel' },
         ]}
         onChange={value => {
           if (value === 'send') {

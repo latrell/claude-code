@@ -19,6 +19,7 @@ import type { ProgressMessage } from 'src/types/message.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { getPatchForDisplay } from 'src/utils/diff.js';
 import { getDisplayPath } from 'src/utils/file.js';
+import { t } from 'src/i18n/t.js';
 import { logError } from 'src/utils/log.js';
 import { getPlansDirectory } from 'src/utils/plans.js';
 import { openForScan, readCapped } from 'src/utils/readEditContext.js';
@@ -80,9 +81,9 @@ function FileWriteToolCreatedMessage({
 
 export function userFacingName(input: Partial<{ file_path: string; content: string }> | undefined): string {
   if (input?.file_path?.startsWith(getPlansDirectory())) {
-    return 'Updated plan';
+    return t('Updated plan');
   }
-  return 'Write';
+  return t('Write');
 }
 
 /** Gates fullscreen click-to-expand. Only `create` truncates (to

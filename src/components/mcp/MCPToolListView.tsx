@@ -58,9 +58,14 @@ export function MCPToolListView({ server, onSelectTool, onBack }: Props): React.
           <Text>{tf('Press {key} again to exit', { key: exitState.keyName })}</Text>
         ) : (
           <Byline>
-            <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-            <KeyboardShortcutHint shortcut="Enter" action="select" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+            <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+            <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('back')}
+            />
           </Byline>
         )
       }

@@ -3,6 +3,7 @@ import { MessageResponse } from '../../components/MessageResponse.js';
 import { Text } from '@anthropic/ink';
 import { truncateToWidth } from '../format.js';
 import type { MCPToolResult } from '../mcpValidation.js';
+import { t } from '../../i18n/t.js';
 
 type CuToolInput = Record<string, unknown> & {
   coordinate?: [number, number];
@@ -20,20 +21,20 @@ function fmtCoord(c: [number, number] | undefined): string {
 }
 
 const RESULT_SUMMARY: Readonly<Partial<Record<string, string>>> = {
-  screenshot: 'Captured',
-  zoom: 'Captured',
-  request_access: 'Access updated',
-  left_click: 'Clicked',
-  right_click: 'Clicked',
-  middle_click: 'Clicked',
-  double_click: 'Clicked',
-  triple_click: 'Clicked',
-  type: 'Typed',
-  key: 'Pressed',
-  hold_key: 'Pressed',
-  scroll: 'Scrolled',
-  left_click_drag: 'Dragged',
-  open_application: 'Opened',
+  screenshot: t('Captured'),
+  zoom: t('Captured'),
+  request_access: t('Access updated'),
+  left_click: t('Clicked'),
+  right_click: t('Clicked'),
+  middle_click: t('Clicked'),
+  double_click: t('Clicked'),
+  triple_click: t('Clicked'),
+  type: t('Typed'),
+  key: t('Pressed'),
+  hold_key: t('Pressed'),
+  scroll: t('Scrolled'),
+  left_click_drag: t('Dragged'),
+  open_application: t('Opened'),
 };
 
 /**

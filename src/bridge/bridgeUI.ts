@@ -7,6 +7,7 @@ import {
 } from '../constants/figures.js'
 import { stringWidth } from '@anthropic/ink'
 import { logForDebugging } from '../utils/debug.js'
+import { t, tf } from '../i18n/t.js'
 import {
   buildActiveFooterText,
   buildBridgeConnectUrl,
@@ -51,7 +52,7 @@ export function createBridgeLogger(options: {
 
   // Status state machine
   let currentState: StatusState = 'idle'
-  let currentStateText = 'Ready'
+  let currentStateText = t('Ready')
   let repoName = ''
   let branch = ''
   let debugLogPath = ''
@@ -162,7 +163,7 @@ export function createBridgeLogger(options: {
       suffix += chalk.dim(' \u00b7 ') + chalk.dim(branch)
     }
     writeStatus(
-      `${chalk.yellow(frame)} ${chalk.yellow('Connecting')}${suffix}\n`,
+      `${chalk.yellow(frame)} ${chalk.yellow(t('Connecting'))}${suffix}\n`,
     )
   }
 
@@ -232,15 +233,15 @@ export function createBridgeLogger(options: {
     if (sessionMax > 1) {
       const modeHint =
         spawnMode === 'worktree'
-          ? 'New sessions will be created in an isolated worktree'
-          : 'New sessions will be created in the current directory'
+          ? t('New sessions will be created in an isolated worktree')
+          : t('New sessions will be created in the current directory')
       writeStatus(
         `    ${chalk.dim(`Capacity: ${sessionActive}/${sessionMax} \u00b7 ${modeHint}`)}\n`,
       )
       for (const [, info] of sessionDisplayInfo) {
         const titleText = info.title
           ? truncatePrompt(info.title, 35)
-          : chalk.dim('Attached')
+          : chalk.dim(t('Attached'))
         const titleLinked = wrapWithOsc8Link(titleText, info.url)
         const act = info.activity
         const showAct = act && act.type !== 'result' && act.type !== 'error'
@@ -256,10 +257,16 @@ export function createBridgeLogger(options: {
     if (sessionMax === 1) {
       const modeText =
         spawnMode === 'single-session'
-          ? 'Single session \u00b7 exits when complete'
+          ? t('Single session \u00b7 exits when complete')
           : spawnMode === 'worktree'
-            ? `Capacity: ${sessionActive}/1 \u00b7 New sessions will be created in an isolated worktree`
-            : `Capacity: ${sessionActive}/1 \u00b7 New sessions will be created in the current directory`
+            ? tf(
+                'Capacity: {active}/1 \u00b7 New sessions will be created in an isolated worktree',
+                { active: sessionActive },
+              )
+            : tf(
+                'Capacity: {active}/1 \u00b7 New sessions will be created in the current directory',
+                { active: sessionActive },
+              )
       writeStatus(`    ${chalk.dim(modeText)}\n`)
     }
 
@@ -311,7 +318,7 @@ export function createBridgeLogger(options: {
         write(chalk.dim(`Environment ID: `) + `${environmentId}\n`)
       }
       if (config.sandbox) {
-        write(chalk.dim(`Sandbox: `) + `${chalk.green('Enabled')}\n`)
+        write(chalk.dim(`${t('Sandbox: ')}`) + `${chalk.green(t('Enabled'))}\n`)
       }
       write('\n')
 
@@ -332,14 +339,14 @@ export function createBridgeLogger(options: {
     logSessionComplete(sessionId: string, durationMs: number): void {
       printLog(
         chalk.dim(`[${timestamp()}]`) +
-          ` Session ${chalk.green('completed')} (${formatDuration(durationMs)}) ${chalk.dim(sessionId)}\n`,
+          ` Session ${chalk.green(t('completed'))} (${formatDuration(durationMs)}) ${chalk.dim(sessionId)}\n`,
       )
     },
 
     logSessionFailed(sessionId: string, error: string): void {
       printLog(
         chalk.dim(`[${timestamp()}]`) +
-          ` Session ${chalk.red('failed')}: ${error} ${chalk.dim(sessionId)}\n`,
+          ` Session ${chalk.red(t('failed'))}: ${error} ${chalk.dim(sessionId)}\n`,
       )
     },
 
@@ -360,7 +367,7 @@ export function createBridgeLogger(options: {
     logReconnected(disconnectedMs: number): void {
       printLog(
         chalk.dim(`[${timestamp()}]`) +
-          ` ${chalk.green('Reconnected')} after ${formatDuration(disconnectedMs)}\n`,
+          ` ${chalk.green(t('Reconnected'))} after ${formatDuration(disconnectedMs)}\n`,
       )
     },
 
@@ -377,7 +384,7 @@ export function createBridgeLogger(options: {
       stopConnecting()
 
       currentState = 'idle'
-      currentStateText = 'Ready'
+      currentStateText = t('Ready')
       lastToolSummary = null
       lastToolTime = 0
       activeSessionUrl = null
@@ -388,7 +395,7 @@ export function createBridgeLogger(options: {
     setAttached(sessionId: string): void {
       stopConnecting()
       currentState = 'attached'
-      currentStateText = 'Connected'
+      currentStateText = t('Connected')
       lastToolSummary = null
       lastToolTime = 0
       // Multi-session: keep footer/QR on the environment connect URL so users
@@ -420,7 +427,7 @@ export function createBridgeLogger(options: {
         BRIDGE_SPINNER_FRAMES[connectingTick % BRIDGE_SPINNER_FRAMES.length]!
       connectingTick++
       writeStatus(
-        `${chalk.yellow(frame)} ${chalk.yellow('Reconnecting')} ${chalk.dim('\u00b7')} ${chalk.dim(`retrying in ${delayStr}`)} ${chalk.dim('\u00b7')} ${chalk.dim(`disconnected ${elapsedStr}`)}\n`,
+        `${chalk.yellow(frame)} ${chalk.yellow(t('Reconnecting'))} ${chalk.dim('\u00b7')} ${chalk.dim(`retrying in ${delayStr}`)} ${chalk.dim('\u00b7')} ${chalk.dim(`disconnected ${elapsedStr}`)}\n`,
       )
     },
 
@@ -438,7 +445,7 @@ export function createBridgeLogger(options: {
       }
 
       writeStatus(
-        `${chalk.red(BRIDGE_FAILED_INDICATOR)} ${chalk.red('Remote Control Failed')}${suffix}\n`,
+        `${chalk.red(BRIDGE_FAILED_INDICATOR)} ${chalk.red(t('Remote Control Failed'))}${suffix}\n`,
       )
       writeStatus(`${chalk.dim(FAILED_FOOTER_TEXT)}\n`)
 

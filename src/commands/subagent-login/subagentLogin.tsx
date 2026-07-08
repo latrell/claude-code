@@ -13,7 +13,7 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
 function SubagentLogin(props: { onDone: LocalJSXCommandOnDone }): React.ReactNode {
   return (
     <Dialog
-      title="Subagent Login"
+      title={t('Subagent Login')}
       onCancel={() => props.onDone(t('Subagent login interrupted'))}
       color="permission"
       inputGuide={exitState =>
@@ -27,7 +27,9 @@ function SubagentLogin(props: { onDone: LocalJSXCommandOnDone }): React.ReactNod
       <Box flexDirection="column">
         <ConsoleOAuthFlow
           onDone={() => props.onDone(t('Subagent login successful'))}
-          startingMessage="Configure a provider/account for Agent sub-sessions. The main session login will not be changed."
+          startingMessage={t(
+            'Configure a provider/account for Agent sub-sessions. The main session login will not be changed.',
+          )}
           scope={SUBAGENT_CREDENTIAL_SCOPE}
         />
       </Box>

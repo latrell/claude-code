@@ -67,7 +67,7 @@ export type TeleportProgressCallback = (step: TeleportProgressStep) => void;
  */
 function createTeleportResumeSystemMessage(branchError: Error | null): SystemMessage {
   if (branchError === null) {
-    return createSystemMessage('Session resumed', 'suggestion');
+    return createSystemMessage(t('Session resumed'), 'suggestion');
   }
   const formattedError =
     branchError instanceof TeleportOperationError ? branchError.formattedMessage : branchError.message;
@@ -180,9 +180,9 @@ export async function validateGitState(): Promise<void> {
   if (!isClean) {
     logEvent('tengu_teleport_error_git_not_clean', {});
     const error = new TeleportOperationError(
-      'Git working directory is not clean. Please commit or stash your changes before using --teleport.',
+      t('Git working directory is not clean. Please commit or stash your changes before using --teleport.'),
       chalk.red(
-        'Error: Git working directory is not clean. Please commit or stash your changes before using --teleport.\n',
+        t('Error: Git working directory is not clean. Please commit or stash your changes before using --teleport.\n'),
       ),
     );
     throw error;
@@ -537,8 +537,8 @@ export async function teleportResumeCodeSession(
       }
       case 'error':
         throw new TeleportOperationError(
-          repoValidation.errorMessage || 'Failed to validate session repository',
-          chalk.red(`Error: ${repoValidation.errorMessage || 'Failed to validate session repository'}\n`),
+          repoValidation.errorMessage || t('Failed to validate session repository'),
+          chalk.red(`Error: ${repoValidation.errorMessage || t('Failed to validate session repository')}\n`),
         );
       default: {
         const _exhaustive: never = repoValidation.status;
@@ -696,8 +696,11 @@ export async function teleportFromSessionsAPI(
         sessionId: sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
       throw new TeleportOperationError(
-        `${sessionId} not found.`,
-        `${sessionId} not found.\n${chalk.dim('Run /status in Claude Code to check your account.')}`,
+        tf('{id} not found.', { id: sessionId }),
+        tf('{id} not found.\n{help}', {
+          id: sessionId,
+          help: chalk.dim(t('Run /status in Claude Code to check your account.')),
+        }),
       );
     }
 
@@ -961,7 +964,7 @@ export async function teleportToRemote(options: {
       }
 
       const requestBody = {
-        title: options.title || options.description || 'Remote task',
+        title: options.title || options.description || t('Remote task'),
         events: [],
         session_context: {
           sources: gitSource ? [gitSource] : [],
@@ -1018,7 +1021,7 @@ export async function teleportToRemote(options: {
       sessionBranch = options.reuseOutcomeBranch;
     } else {
       const generated = await generateTitleAndBranch(
-        options.description || initialMessage || 'Background task',
+        options.description || initialMessage || t('Background task'),
         signal,
       );
       sessionTitle = options.title || generated.title;
@@ -1117,23 +1120,23 @@ export async function teleportToRemote(options: {
         const failBundle = bundle as { success: false; error: string; failReason?: string };
         logError(new Error(`Bundle upload failed: ${failBundle.error}`));
         // Only steer users to GitHub setup when there's a remote to clone from.
-        const setup = repoInfo ? '. Please setup GitHub on https://claude.ai/code' : '';
+        const setup = repoInfo ? t('. Please setup GitHub on https://claude.ai/code') : '';
         let msg: string;
         switch (failBundle.failReason) {
           case 'empty_repo':
-            msg = 'Repository has no commits — run `git add . && git commit -m "initial"` then retry';
+            msg = t('Repository has no commits — run `git add . && git commit -m "initial"` then retry');
             break;
           case 'too_large':
-            msg = `Repo is too large to teleport${setup}`;
+            msg = tf('Repo is too large to teleport{setup}', { setup });
             break;
           case 'git_error':
-            msg = `Failed to create git bundle (${failBundle.error})${setup}`;
+            msg = tf('Failed to create git bundle ({error}){setup}', { error: failBundle.error, setup });
             break;
           case undefined:
-            msg = `Bundle upload failed: ${failBundle.error}${setup}`;
+            msg = tf('Bundle upload failed: {error}{setup}', { error: failBundle.error, setup });
             break;
           default: {
-            msg = `Bundle upload failed: ${failBundle.error}`;
+            msg = tf('Bundle upload failed: {error}', { error: failBundle.error });
           }
         }
         options.onBundleFail?.(msg);

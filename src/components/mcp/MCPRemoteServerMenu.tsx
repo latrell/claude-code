@@ -431,7 +431,7 @@ export function MCPRemoteServerMenu({
                 <Text color="success">{t('(Copied!)')}</Text>
               ) : (
                 <Text dimColor>
-                  <KeyboardShortcutHint shortcut="c" action="copy" parens />
+                  <KeyboardShortcutHint shortcut="c" action={t('copy')} parens />
                 </Text>
               )}
             </Box>
@@ -484,7 +484,7 @@ export function MCPRemoteServerMenu({
                 <Text color="success">{t('(Copied!)')}</Text>
               ) : (
                 <Text dimColor>
-                  <KeyboardShortcutHint shortcut="c" action="copy" parens />
+                  <KeyboardShortcutHint shortcut="c" action={t('copy')} parens />
                 </Text>
               )}
             </Box>
@@ -498,7 +498,12 @@ export function MCPRemoteServerMenu({
             {t(' after authenticating in your browser.')}
           </Text>
           <Text dimColor italic>
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('back')}
+            />
           </Text>
         </Box>
       </Box>
@@ -520,7 +525,7 @@ export function MCPRemoteServerMenu({
                     <Text color="success">{t('(Copied!)')}</Text>
                   ) : (
                     <Text dimColor>
-                      <KeyboardShortcutHint shortcut="c" action="copy" parens />
+                      <KeyboardShortcutHint shortcut="c" action={t('copy')} parens />
                     </Text>
                   )}
                 </Box>
@@ -538,7 +543,7 @@ export function MCPRemoteServerMenu({
                   action="confirm:no"
                   context="Confirmation"
                   fallback="Esc"
-                  description="back"
+                  description={t('back')}
                 />
               </Text>
             </Box>
@@ -559,7 +564,7 @@ export function MCPRemoteServerMenu({
                   action="confirm:no"
                   context="Confirmation"
                   fallback="Esc"
-                  description="back"
+                  description={t('back')}
                 />
               </Text>
             </Box>
@@ -797,9 +802,14 @@ export function MCPRemoteServerMenu({
             <>{tf('Press {key} again to exit', { key: exitState.keyName })}</>
           ) : (
             <Byline>
-              <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
-              <KeyboardShortcutHint shortcut="Enter" action="select" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
+              <KeyboardShortcutHint shortcut="↑↓" action={t('navigate')} />
+              <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+              <ConfigurableShortcutHint
+                action="confirm:no"
+                context="Confirmation"
+                fallback="Esc"
+                description={t('back')}
+              />
             </Byline>
           )}
         </Text>

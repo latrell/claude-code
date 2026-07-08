@@ -338,7 +338,10 @@ async function deployAnthropicOAuth(connection: Connection): Promise<{
   error?: string
 }> {
   if (!connection.credentialRef) {
-    return { success: false, error: 'Connection has no linked OAuth account' }
+    return {
+      success: false,
+      error: t('Connection has no linked OAuth account'),
+    }
   }
   const result = activateOAuthAccountSlot(connection.credentialRef)
   if (!result.success) return result

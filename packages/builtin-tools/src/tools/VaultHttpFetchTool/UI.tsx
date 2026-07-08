@@ -6,6 +6,7 @@ import type { ToolProgressData } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { jsonStringify } from 'src/utils/slowOperations.js';
 import type { Output } from './VaultHttpFetchTool.js';
+import { tf } from 'src/i18n/t.js';
 
 // H6 fix: second `options` parameter matches Tool interface contract.
 export function renderToolUseMessage(
@@ -39,7 +40,7 @@ export function renderToolResultMessage(
   if (output.error) {
     return (
       <MessageResponse height={1}>
-        <Text color="error">VaultHttpFetch: {output.error}</Text>
+        <Text color="error">{tf('VaultHttpFetch: {error}', { error: output.error })}</Text>
       </MessageResponse>
     );
   }

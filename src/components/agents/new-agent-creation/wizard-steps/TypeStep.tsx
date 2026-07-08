@@ -45,7 +45,7 @@ export function TypeStep(_props: Props): ReactNode {
         <Byline>
           <KeyboardShortcutHint shortcut="Type" action="enter text" />
           <KeyboardShortcutHint shortcut="Enter" action="continue" />
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="go back" />
+          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description={t('go back')} />
         </Byline>
       }
     >

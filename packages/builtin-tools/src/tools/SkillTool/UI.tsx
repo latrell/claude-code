@@ -12,13 +12,14 @@ import { Box, Text } from '@anthropic/ink';
 import type { Tools } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { buildSubagentLookups, EMPTY_LOOKUPS } from 'src/utils/messages.js';
+import { t, tf } from 'src/i18n/t.js';
 import { plural } from 'src/utils/stringUtils.js';
 import type { inputSchema, Output, Progress } from './SkillTool.js';
 
 type Input = z.infer<ReturnType<typeof inputSchema>>;
 
 const MAX_PROGRESS_MESSAGES_TO_SHOW = 3;
-const INITIALIZING_TEXT = 'Initializing…';
+const INITIALIZING_TEXT = t('Initializing…');
 
 export function renderToolResultMessage(output: Output): React.ReactNode {
   // Handle forked skill result
@@ -32,7 +33,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
     );
   }
 
-  const parts: string[] = ['Successfully loaded skill'];
+  const parts: string[] = [t('Successfully loaded skill')];
 
   // Show tools count (only for inline skills)
   if ('allowedTools' in output && output.allowedTools && output.allowedTools.length > 0) {
@@ -117,7 +118,10 @@ export function renderToolUseProgressMessage(
         </SubAgentProvider>
         {hiddenCount > 0 && (
           <Text dimColor>
-            +{hiddenCount} more tool {plural(hiddenCount, 'use')}
+            {tf('+{n} more tool {unit}', {
+              n: hiddenCount,
+              unit: hiddenCount === 1 ? t('use') : t('uses'),
+            })}
           </Text>
         )}
       </Box>

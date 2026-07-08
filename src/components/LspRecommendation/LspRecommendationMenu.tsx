@@ -57,7 +57,7 @@ export function LspRecommendationMenu({
       value: 'yes',
     },
     {
-      label: 'No, not now',
+      label: t('No, not now'),
       value: 'no',
     },
     {
@@ -69,7 +69,7 @@ export function LspRecommendationMenu({
       value: 'never',
     },
     {
-      label: 'Disable all LSP recommendations',
+      label: t('Disable all LSP recommendations'),
       value: 'disable',
     },
   ];

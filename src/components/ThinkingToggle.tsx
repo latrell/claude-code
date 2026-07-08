@@ -7,6 +7,7 @@ import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink';
 import { t, tf } from '../i18n/t.js';
+import { T } from '../i18n/TText.js';
 
 export type Props = {
   currentValue: boolean;
@@ -22,13 +23,13 @@ export function ThinkingToggle({ currentValue, onSelect, onCancel, isMidConversa
   const options = [
     {
       value: 'true',
-      label: 'Enabled',
-      description: 'Claude will think before responding',
+      label: t('Enabled'),
+      description: t('Claude will think before responding'),
     },
     {
       value: 'false',
-      label: 'Disabled',
-      description: 'Claude will respond without extended thinking',
+      label: t('Disabled'),
+      description: t('Claude will respond without extended thinking'),
     },
   ];
 
@@ -69,19 +70,19 @@ export function ThinkingToggle({ currentValue, onSelect, onCancel, isMidConversa
     <Pane color="permission">
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
-          <Text color="remember" bold>
+          <T color="remember" bold>
             Toggle thinking mode
-          </Text>
+          </T>
           <Text dimColor>{t('Enable or disable thinking for this session.')}</Text>
         </Box>
 
         {confirmationPending !== null ? (
           <Box flexDirection="column" marginBottom={1} gap={1}>
-            <Text color="warning">
+            <T color="warning">
               Changing thinking mode mid-conversation will increase latency and may reduce quality. For best results,
               set this at the start of a session.
-            </Text>
-            <Text color="warning">Do you want to proceed?</Text>
+            </T>
+            <T color="warning">Do you want to proceed?</T>
           </Box>
         ) : (
           <Box flexDirection="column" marginBottom={1}>
@@ -102,12 +103,22 @@ export function ThinkingToggle({ currentValue, onSelect, onCancel, isMidConversa
         ) : confirmationPending !== null ? (
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('cancel')}
+            />
           </Byline>
         ) : (
           <Byline>
             <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="exit" />
+            <ConfigurableShortcutHint
+              action="confirm:no"
+              context="Confirmation"
+              fallback="Esc"
+              description={t('exit')}
+            />
           </Byline>
         )}
       </Text>
