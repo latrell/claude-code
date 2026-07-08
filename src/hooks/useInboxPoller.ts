@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useInterval } from 'usehooks-ts'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import { TEAMMATE_MESSAGE_TAG } from '../constants/xml.js'
+import { tf } from '../i18n/t.js'
 import { useTerminalNotification } from '@anthropic/ink'
 import { sendNotification } from '../services/notifier.js'
 import {
@@ -355,7 +356,10 @@ export function useInboxPoller({
       if (firstParsed && !isLoading && !focusedInputDialog) {
         void sendNotification(
           {
-            message: `${firstParsed.agent_id} needs permission for ${firstParsed.tool_name}`,
+            message: tf('{agentId} needs permission for {toolName}', {
+              agentId: firstParsed.agent_id,
+              toolName: firstParsed.tool_name,
+            }),
             notificationType: 'worker_permission_prompt',
           },
           terminal,
@@ -453,7 +457,10 @@ export function useInboxPoller({
         if (firstRequest && !isLoading && !focusedInputDialog) {
           void sendNotification(
             {
-              message: `${firstRequest.workerName} needs network access to ${firstRequest.host}`,
+              message: tf('{workerName} needs network access to {host}', {
+                workerName: firstRequest.workerName,
+                host: firstRequest.host,
+              }),
               notificationType: 'worker_permission_prompt',
             },
             terminal,

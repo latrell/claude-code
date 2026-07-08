@@ -380,7 +380,7 @@ export function ConsoleOAuthFlow({
         setOAuthStatus({ state: 'success' });
         void sendNotification(
           {
-            message: 'Claude Code login successful',
+            message: t('Claude Code login successful'),
             notificationType: 'auth_success',
           },
           terminal,

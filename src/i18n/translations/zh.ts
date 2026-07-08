@@ -3164,6 +3164,17 @@ const zh: Record<string, string> = {
   'Claude Code needs your attention': 'Claude Code 需要您的关注',
   'Claude needs your permission to use {toolName}':
     'Claude 需要您允许使用 {toolName}',
+  'Claude is waiting for your input': 'Claude 正在等待您的输入',
+  'Claude Code login successful': 'Claude Code 登录成功',
+  'Claude is using your computer {bullet} press Esc to stop':
+    'Claude 正在使用您的计算机 {bullet} 按 Esc 停止',
+  'Claude is using your computer {bullet} press Ctrl+C to stop':
+    'Claude 正在使用您的计算机 {bullet} 按 Ctrl+C 停止',
+  'Claude is done using your computer': 'Claude 已结束使用您的计算机',
+  '{agentId} needs permission for {toolName}':
+    '{agentId} 需要您允许使用 {toolName}',
+  '{workerName} needs network access to {host}':
+    '{workerName} 需要访问网络主机 {host}',
   Suggestions: '建议',
   Suggestion: '建议',
   Rules: '规则',

@@ -2,6 +2,7 @@ import type { ToolUseContext } from '../../Tool.js'
 
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
+import { t } from '../../i18n/t.js'
 import { withResolvers } from '../withResolvers.js'
 import { isLockHeldLocally, releaseComputerUseLock } from './computerUseLock.js'
 import { unregisterEscHotkey } from './escHotkey.js'
@@ -79,7 +80,7 @@ export async function cleanupComputerUseAfterTurn(
 
   if (await releaseComputerUseLock()) {
     ctx.sendOSNotification?.({
-      message: 'Claude is done using your computer',
+      message: t('Claude is done using your computer'),
       notificationType: 'computer_use_exit',
     })
   }
