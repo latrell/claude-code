@@ -190,7 +190,12 @@ export function formatConnectionsList(): string {
 
 /**
  * Model to pass when activating a connection from CLI flags.
- * Prefer an explicit --model, else the registry default for this connection.
+ * Prefer an explicit --model, else the registry default for this connection,
+ * else the connection catalog default (tier sonnet / first models entry).
+ *
+ * Always returning a concrete model (when the connection has one) ensures
+ * the main-loop override wins over a stale providerModels.<key>.model left
+ * by a previous global default (e.g. ChatGPT).
  */
 export function modelForCliActivation(
   connection: Connection,
@@ -202,5 +207,5 @@ export function modelForCliActivation(
   if (assignment?.connectionId === connection.id && assignment.model) {
     return assignment.model
   }
-  return undefined
+  return connection.tierModels?.sonnet ?? connection.models?.[0]
 }

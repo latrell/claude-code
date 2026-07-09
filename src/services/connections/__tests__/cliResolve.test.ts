@@ -184,8 +184,20 @@ describe('modelForCliActivation', () => {
     expect(modelForCliActivation(conn, 'main')).toBe('deepseek-reasoner')
   })
 
-  test('returns undefined when default is for a different connection', () => {
-    const conn = sampleConnection()
+  test('falls back to connection catalog when no registry default', () => {
+    const conn = sampleConnection({
+      models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+      tierModels: { sonnet: 'deepseek-v4-pro' },
+    })
+    upsertConnection(conn)
+    expect(modelForCliActivation(conn, 'main')).toBe('deepseek-v4-pro')
+  })
+
+  test('returns undefined when connection has no catalog model', () => {
+    const conn = sampleConnection({
+      models: undefined,
+      tierModels: undefined,
+    })
     upsertConnection(conn)
     setDefaultAssignment('main', {
       connectionId: 'other',

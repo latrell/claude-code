@@ -119,7 +119,12 @@ export function envForConnection(
 
   switch (connection.kind) {
     case 'openai-compat': {
-      env.OPENAI_AUTH_MODE = undefined // never inherit ChatGPT auth mode
+      // Empty string (not undefined): applyConfigEnvironmentVariables →
+      // injectCCBProviderAuthEnv only fills keys that are undefined, so a
+      // prior global ChatGPT default (OPENAI_AUTH_MODE=chatgpt in
+      // ccb-provider-auth.json) would otherwise be re-injected after a
+      // session-scoped openai-compat activation and keep showing ChatGPT.
+      env.OPENAI_AUTH_MODE = ''
       env.OPENAI_BASE_URL = connection.baseUrl
       env.OPENAI_API_KEY = connection.apiKey
       // The explicitly picked model travels through the main loop model, so

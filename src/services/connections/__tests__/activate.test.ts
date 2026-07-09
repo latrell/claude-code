@@ -291,7 +291,8 @@ function cursorOAuthConn(credentialRef = 'cur-oauth'): Connection {
 describe('envForConnection', () => {
   test('openai-compat clears auth mode and stale OPENAI_MODEL', () => {
     const env = envForConnection(openaiConn(), 'deepseek-reasoner')
-    expect(env.OPENAI_AUTH_MODE).toBeUndefined()
+    // Empty string (not undefined) blocks injectCCBProviderAuthEnv re-injection
+    expect(env.OPENAI_AUTH_MODE).toBe('')
     expect(env.OPENAI_MODEL).toBeUndefined()
     expect(env.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
     expect(env.OPENAI_API_KEY).toBe('sk-a')
@@ -441,8 +442,30 @@ describe('activateConnectionForSession (main slot)', () => {
     expect(process.env.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
     expect(process.env.OPENAI_API_KEY).toBe('sk-a')
     expect(process.env.OPENAI_MODEL).toBeUndefined()
-    expect(process.env.OPENAI_AUTH_MODE).toBeUndefined()
+    // Empty string (not deleted) so injectCCBProviderAuthEnv cannot
+    // re-inject a global ChatGPT OPENAI_AUTH_MODE from ccb-provider-auth.json.
+    expect(process.env.OPENAI_AUTH_MODE).toBe('')
     expect(getAPIProvider({}, process.env)).toBe('openai')
+  })
+
+  test('openai-compat: empty OPENAI_AUTH_MODE blocks auth-file re-injection', async () => {
+    const { writeCCBProviderAuthEnv, injectCCBProviderAuthEnv } = await import(
+      '../../../utils/ccbProviderAuth.js'
+    )
+    writeCCBProviderAuthEnv('openai', { OPENAI_AUTH_MODE: 'chatgpt' })
+    upsertConnection(openaiConn())
+
+    const result = await activateConnectionForSession(
+      openaiConn(),
+      'main',
+      null,
+    )
+    expect(result.success).toBe(true)
+    expect(process.env.OPENAI_AUTH_MODE).toBe('')
+
+    // Simulate applyConfigEnvironmentVariables after session activation
+    injectCCBProviderAuthEnv('openai')
+    expect(process.env.OPENAI_AUTH_MODE).toBe('')
   })
 
   test('switching between two openai-compat accounts swaps credentials', async () => {

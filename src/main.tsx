@@ -1641,6 +1641,10 @@ async function run(): Promise<CommanderCommand> {
       const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
       const cliModelForActivation =
         typeof options.model === 'string' && options.model !== 'default' ? options.model : undefined;
+      // Model returned by --provider connection activation; applied later when
+      // the main-loop model override is resolved (must beat stale
+      // providerModels left by a previous global default).
+      let cliActivatedMainModel: string | null | undefined;
 
       if (cliProvider || (cliSubagentProvider && cliSubagentProvider !== 'unset')) {
         if (!connectionsCliModule || !connectionsActivateModule) {
@@ -1672,6 +1676,8 @@ async function run(): Promise<CommanderCommand> {
             );
             process.exit(1);
           }
+          // null = use provider default (clears stale providerModels model)
+          cliActivatedMainModel = result.mainLoopModel;
         }
 
         if (cliSubagentProvider && cliSubagentProvider !== 'unset') {
@@ -2712,7 +2718,17 @@ async function run(): Promise<CommanderCommand> {
 
       // Special case the default model with the null keyword
       // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
-      const userSpecifiedModel = options.model === 'default' ? getDefaultMainLoopModel() : options.model;
+      // --provider connection activation supplies the model when --model is absent, so a
+      // stale providerModels.<key>.model from a previous global default (e.g. ChatGPT)
+      // cannot win. null means "use the connection's provider default".
+      const userSpecifiedModel =
+        options.model === 'default'
+          ? getDefaultMainLoopModel()
+          : options.model !== undefined
+            ? options.model
+            : cliActivatedMainModel !== undefined
+              ? cliActivatedMainModel
+              : undefined;
       const userSpecifiedFallbackModel = fallbackModel === 'default' ? getDefaultMainLoopModel() : fallbackModel;
 
       // Reuse preSetupCwd unless setup() chdir'd (worktreeEnabled). Saves a
@@ -2815,9 +2831,15 @@ async function run(): Promise<CommanderCommand> {
       }
 
       // Compute effective model early so hooks can run in parallel with MCP
-      // If user didn't specify a model but agent has one, use the agent's model
+      // If user didn't specify a model but agent has one, use the agent's model.
+      // Treat null (provider default from --provider activation) as specified —
+      // do not let an agent model override it.
       let effectiveModel = userSpecifiedModel;
-      if (!effectiveModel && mainThreadAgentDefinition?.model && mainThreadAgentDefinition.model !== 'inherit') {
+      if (
+        effectiveModel === undefined &&
+        mainThreadAgentDefinition?.model &&
+        mainThreadAgentDefinition.model !== 'inherit'
+      ) {
         effectiveModel = parseUserSpecifiedModel(mainThreadAgentDefinition.model);
       }
 
