@@ -180,6 +180,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   const [refreshTick, setRefreshTick] = useState(0);
   const [remoteModels, setRemoteModels] = useState<RemoteModel[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Holds the "Custom model…" text field value so activation only fires on
+  // Enter (Select's onChange with '__custom__'), not on every keystroke.
+  const [customModelInput, setCustomModelInput] = useState('');
 
   // Idempotent import of legacy provider/credential config on first open
   useEffect(() => {
@@ -201,6 +204,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   // context windows are recorded onto the connection, so the registry is
   // re-read once the fetch resolves.
   useEffect(() => {
+    // Reset the custom-model field between picker visits so a value typed in
+    // one picker can't leak into another.
+    setCustomModelInput('');
     if (view.mode !== 'model-pick' && view.mode !== 'ctx-model-pick') {
       // Keep the empty-array identity stable — a fresh [] on every view
       // change forces a pointless extra re-render of the active view.
@@ -459,11 +465,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
             value: '__custom__' as PickValue,
             type: 'input' as const,
             placeholder: t('type a model id, Enter to confirm'),
-            onChange: (custom: string) => {
-              const trimmed = custom.trim();
-              if (!trimmed) return;
-              pickModel(trimmed);
-            },
+            onChange: setCustomModelInput,
           },
           { label: t('Back'), value: '__back__' as PickValue },
         ];
@@ -480,7 +482,11 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   setView({ mode: 'menu', connectionId: connection.id });
                   return;
                 }
-                if (value === '__custom__') return; // handled by input onChange
+                if (value === '__custom__') {
+                  const trimmed = customModelInput.trim();
+                  if (trimmed) pickModel(trimmed);
+                  return;
+                }
                 pickModel(value === '__default__' ? null : value);
               }}
             />
@@ -510,16 +516,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
             value: '__custom__' as CtxPickValue,
             type: 'input' as const,
             placeholder: t('type a model id, Enter to confirm'),
-            onChange: (custom: string) => {
-              const trimmed = custom.trim();
-              if (!trimmed) return;
-              setView({
-                mode: 'context-window',
-                connectionId: connection.id,
-                model: trimmed,
-                next: null,
-              });
-            },
+            onChange: setCustomModelInput,
           },
           { label: t('Back'), value: '__back__' as CtxPickValue },
         ];
@@ -538,7 +535,17 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   setView({ mode: 'menu', connectionId: connection.id });
                   return;
                 }
-                if (value === '__custom__') return; // handled by input onChange
+                if (value === '__custom__') {
+                  const trimmed = customModelInput.trim();
+                  if (!trimmed) return;
+                  setView({
+                    mode: 'context-window',
+                    connectionId: connection.id,
+                    model: trimmed,
+                    next: null,
+                  });
+                  return;
+                }
                 setView({
                   mode: 'context-window',
                   connectionId: connection.id,

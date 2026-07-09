@@ -2,11 +2,15 @@ import chalk from 'chalk';
 import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { ModelPicker } from '../../components/ModelPicker.js';
+import { ModelsPicker } from '../../components/connections/ModelsPicker.js';
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js';
+import { getSessionAssignment } from '../../services/connections/sessionAssignments.js';
+import { findConnection, getDefaultAssignment } from '../../services/connections/store.js';
+import type { Connection, ConnectionKind } from '../../services/connections/types.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import type { EffortLevel } from '../../utils/effort.js';
@@ -25,8 +29,32 @@ import {
   renderDefaultModelSetting,
 } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
+import { getAPIProvider } from '../../utils/model/providers.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { stripSignatureBlocks } from '../../utils/messages.js';
 import { t, tf } from '../../i18n/t.js';
+
+/**
+ * Third-party connection kinds whose effective model is resolved from provider
+ * env vars (OPENAI/GEMINI/GROK_DEFAULT_*_MODEL), NOT from AppState.mainLoopModel.
+ * When one of these is the active main provider, the Anthropic-family /model
+ * list can't change the model, so /model must list the connection's own models.
+ */
+const ENV_MAPPED_KINDS: readonly ConnectionKind[] = ['openai-compat', 'gemini', 'grok'];
+
+/**
+ * The connection backing the current main-agent provider, if it is an
+ * env-mapped third-party kind. Session assignment wins over the global default,
+ * mirroring how the connection was activated.
+ */
+function activeEnvMappedConnection(): Connection | undefined {
+  if (getAPIProvider() === 'firstParty') return undefined;
+  const assignment = getSessionAssignment('main') ?? getDefaultAssignment('main');
+  if (!assignment) return undefined;
+  const connection = findConnection(assignment.connectionId);
+  if (!connection) return undefined;
+  return ENV_MAPPED_KINDS.includes(connection.kind) ? connection : undefined;
+}
 
 function ModelPickerWrapper({
   onDone,
@@ -278,7 +306,7 @@ function ShowModelAndClose({ onDone }: { onDone: (result?: string) => void }): R
   return null;
 }
 
-export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   args = args?.trim() || '';
   if (COMMON_INFO_ARGS.includes(args)) {
     logEvent('tengu_model_command_inline_help', {
@@ -298,6 +326,34 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
       args: args as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
     return <SetModelAndClose args={args} onDone={onDone} />;
+  }
+
+  // For env-mapped third-party providers, AppState.mainLoopModel is ignored at
+  // send time, so the Anthropic-family ModelPicker can't switch the model. List
+  // the active connection's own models instead (selection activates it).
+  const connection = activeEnvMappedConnection();
+  if (connection) {
+    return (
+      <ModelsPicker
+        connectionId={connection.id}
+        onDone={message => onDone(message ?? t('Model picker closed'), { display: 'system' })}
+        onMainModelChange={model => {
+          context.setAppState(prev => ({
+            ...prev,
+            mainLoopModel: model,
+            mainLoopModelForSession: null,
+          }));
+        }}
+        onAuthChanged={() => {
+          context.onChangeAPIKey();
+          context.setMessages(stripSignatureBlocks);
+          context.setAppState(prev => ({
+            ...prev,
+            authVersion: prev.authVersion + 1,
+          }));
+        }}
+      />
+    );
   }
 
   return <ModelPickerWrapper onDone={onDone} />;

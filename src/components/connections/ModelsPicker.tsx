@@ -33,6 +33,12 @@ type Props = {
   onMainModelChange: (model: string | null) => void;
   onAuthChanged: () => void;
   initialSlot?: AgentSlot;
+  /**
+   * When set, the picker only lists this connection's models. Used by /model
+   * to scope the menu to the active third-party provider so the selection
+   * actually applies (env-mapped providers ignore AppState.mainLoopModel).
+   */
+  connectionId?: string;
 };
 
 function buildItems(connections: Connection[], remoteModels: Record<string, RemoteModel[]>): ModelPickItem[] {
@@ -81,6 +87,7 @@ export function ModelsPicker({
   onMainModelChange,
   onAuthChanged,
   initialSlot = 'main',
+  connectionId,
 }: Props): React.ReactNode {
   const [slot, setSlot] = useState<AgentSlot>(initialSlot);
   const [query, setQuery] = useState('');
@@ -94,7 +101,8 @@ export function ModelsPicker({
   // connections, so the registry is re-read after each fetch resolves.
   useEffect(() => {
     importLegacyConnections();
-    const initial = listConnections();
+    const scope = (all: Connection[]) => (connectionId ? all.filter(c => c.id === connectionId) : all);
+    const initial = scope(listConnections());
     setConnections(initial);
     let cancelled = false;
     for (const connection of initial) {
@@ -104,13 +112,13 @@ export function ModelsPicker({
       void fetchAndRecordRemoteModels(connection).then(models => {
         if (cancelled || models.length === 0) return;
         setRemoteModels(prev => ({ ...prev, [connection.id]: models }));
-        setConnections(listConnections());
+        setConnections(scope(listConnections()));
       });
     }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [connectionId]);
 
   const allItems = useMemo(() => buildItems(connections, remoteModels), [connections, remoteModels]);
 
