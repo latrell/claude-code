@@ -5,6 +5,7 @@ import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { isBridgeEnabled } from 'src/bridge/bridgeEnabled.js'
+import { isMeowChannelConfigured, sendMeowPush } from 'src/services/notifier.js'
 
 const PUSH_NOTIFICATION_TOOL_NAME = 'PushNotification'
 
@@ -39,18 +40,23 @@ export const PushNotificationTool = buildTool({
     return "Send a push notification to the user's mobile device"
   },
   async prompt() {
-    return `Send a push notification to the user's mobile device via Remote Control.
+    return `Send a push notification to the user's mobile device.
+
+Delivery follows the user's configured notification channel: MeoW push when the channel is set to MeoW, otherwise Remote Control.
 
 Use this when:
 - A long-running task completes and the user may not be watching
 - A permission prompt is waiting and you need user input
 - Something urgent requires the user's attention
 
-Requires Remote Control to be configured. Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifEnabled, agentPushNotifEnabled).`
+Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifEnabled, agentPushNotifEnabled).`
   },
 
   isEnabled() {
-    return isBridgeEnabled()
+    if (isBridgeEnabled()) {
+      return true
+    }
+    return isMeowChannelConfigured()
   },
   isConcurrencySafe() {
     return true
@@ -83,7 +89,25 @@ Requires Remote Control to be configured. Respects user notification settings (t
   async call(input: PushInput, context) {
     const appState = context.getAppState()
 
-    // Try bridge delivery first (for remote/mobile viewers)
+    // Follow the user's configured notification channel: MeoW takes over
+    // delivery entirely when selected in /config.
+    if (isMeowChannelConfigured()) {
+      const sent = await sendMeowPush(input.title, input.body)
+      logForDebugging(
+        `[PushNotification] MeoW delivery ${sent ? 'succeeded' : 'failed'}: ${input.title}`,
+      )
+      if (sent) {
+        return { data: { sent: true } }
+      }
+      return {
+        data: {
+          sent: false,
+          error: 'MeoW push failed. Notification not delivered.',
+        },
+      }
+    }
+
+    // Try bridge delivery (for remote/mobile viewers)
     if (appState.replBridgeEnabled) {
       if (feature('BRIDGE_MODE')) {
         try {

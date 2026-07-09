@@ -135,13 +135,48 @@ async function sendMeow(
     return 'meow_no_nickname'
   }
 
-  const res = await fetch(`${MEOW_API_BASE}/${encodeURIComponent(nickname)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, msg: opts.message }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  return res.ok ? 'meow' : 'error'
+  return (await sendMeowPush(title, opts.message)) ? 'meow' : 'error'
+}
+
+export function isMeowChannelConfigured(): boolean {
+  const config = getGlobalConfig()
+  return (
+    config.preferredNotifChannel === 'meow' &&
+    Boolean(config.meowNotifNickname?.trim())
+  )
+}
+
+export async function sendMeowPush(
+  title: string,
+  message: string,
+): Promise<boolean> {
+  const nickname = getGlobalConfig().meowNotifNickname?.trim()
+  if (!nickname) {
+    return false
+  }
+
+  try {
+    const res = await fetch(
+      `${MEOW_API_BASE}/${encodeURIComponent(nickname)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, msg: message }),
+        signal: AbortSignal.timeout(10_000),
+      },
+    )
+    if (!res.ok) {
+      return false
+    }
+    // MeoW returns HTTP 200 even for business failures (unknown nickname,
+    // rate limit); success is only signalled by body `data === true`.
+    const body = (await res.json().catch(() => null)) as {
+      data?: unknown
+    } | null
+    return body?.data === true
+  } catch {
+    return false
+  }
 }
 
 async function isAppleTerminalBellDisabled(): Promise<boolean> {
