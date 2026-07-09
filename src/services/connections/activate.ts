@@ -44,6 +44,7 @@ import {
 import type { SettingsJson } from '../../utils/settings/types.js'
 import { activateOAuthAccountSlot } from './oauthAccounts.js'
 import { setSessionAssignment } from './sessionAssignments.js'
+import { setSessionProviderEnvOverlay } from './sessionEnvOverlay.js'
 import { setDefaultAssignment, touchConnectionUsage } from './store.js'
 import { kindToModelType, type AgentSlot, type Connection } from './types.js'
 
@@ -380,7 +381,14 @@ export async function activateConnectionForSession(
     if (!checked.success) return checked
   }
 
-  applyEnvToProcess(envForConnection(connection, model))
+  const env = envForConnection(connection, model)
+  applyEnvToProcess(env)
+  // Record the delta so managedEnv re-applies it after every later config
+  // env application — otherwise applyConfigEnvironmentVariables() at trust
+  // time restores the global default on top of this activation (settings.env
+  // Object.assign overwrites, and injectCCBProviderAuthEnv backfills e.g. a
+  // global OPENAI_AUTH_MODE=chatgpt into keys this activation deleted).
+  setSessionProviderEnvOverlay(env)
   setProviderCliOverride(kindToProviderName(connection.kind))
   await clearProviderClientCaches()
   touchConnectionUsage(connection.id)

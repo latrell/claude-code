@@ -25,6 +25,7 @@ import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL }
 import { SUBAGENT_CREDENTIAL_SCOPE } from '../utils/model/subagentProvider.js';
 import type { ProviderLoginConfig } from '../utils/settings/types.js';
 import { writeCCBProviderAuthEnv, type CCBProvider } from '../utils/ccbProviderAuth.js';
+import { setSessionProviderEnvOverlay } from '../services/connections/sessionEnvOverlay.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
@@ -204,6 +205,10 @@ export function ConsoleOAuthFlow({
   const applyGlobalEnv = useCallback(
     (env: Record<string, string | undefined>) => {
       if (scope !== 'global') return;
+      // A fresh /login supersedes any session-scoped --provider / /connect
+      // activation — drop its env overlay so managedEnv doesn't re-assert the
+      // old connection's credentials over the ones we're deploying now.
+      setSessionProviderEnvOverlay(null);
       for (const [k, v] of Object.entries(env)) {
         if (v === undefined) {
           delete process.env[k];

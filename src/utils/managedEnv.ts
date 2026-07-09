@@ -1,3 +1,4 @@
+import { applySessionProviderEnvOverlay } from '../services/connections/sessionEnvOverlay.js'
 import { isRemoteManagedSettingsEligible } from '../services/remoteManagedSettings/syncCache.js'
 import { clearCACertsCache } from './caCerts.js'
 import { getGlobalConfig } from './config.js'
@@ -176,6 +177,11 @@ export function applySafeConfigEnvironmentVariables(): void {
       process.env[key] = value
     }
   }
+
+  // A session connection activation (--provider / /connect session scope)
+  // owns its provider env keys — re-assert them over anything the config
+  // sources above just applied.
+  applySessionProviderEnvOverlay()
 }
 
 /**
@@ -195,6 +201,14 @@ export function applyConfigEnvironmentVariables(): void {
   // Only sets keys that are NOT already present in process.env — explicit env
   // vars and settings.env take priority.
   injectCCBProviderAuthEnv(getSettings_DEPRECATED()?.modelType)
+
+  // A session connection activation (--provider / /connect session scope)
+  // owns its provider env keys. Re-assert its delta LAST: the settings.env
+  // Object.assign above overwrites unconditionally, and the auth-file
+  // injection backfills keys the activation deleted (e.g. a global
+  // OPENAI_AUTH_MODE=chatgpt would otherwise route a deepseek session's
+  // requests to ChatGPT).
+  applySessionProviderEnvOverlay()
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()

@@ -34,6 +34,11 @@ export async function performLogout({ clearOnboarding = false }): Promise<void> 
   const { clearAllConnectionsOnLogout } = await import('../../services/connections/logoutCleanup.js');
   await clearAllConnectionsOnLogout();
 
+  // Drop any session-scoped connection activation overlay so managedEnv
+  // doesn't re-assert the logged-out connection's env on the next re-apply.
+  const { setSessionProviderEnvOverlay } = await import('../../services/connections/sessionEnvOverlay.js');
+  setSessionProviderEnvOverlay(null);
+
   // Wipe all secure storage data on logout
   const secureStorage = getSecureStorage();
   secureStorage.delete();

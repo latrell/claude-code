@@ -1637,8 +1637,11 @@ async function run(): Promise<CommanderCommand> {
       // Apply CLI --provider / --subagent-provider (process-scoped, not persisted).
       // Values are /connect registry names (id, label, or presetId).
       // --subagent-provider unset forces the subagent to inherit the main connection.
-      const cliProvider = (options as Record<string, unknown>)['provider'] as string | undefined;
-      const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
+      // Commander stores multi-word flags camelCased: --subagent-provider lands on
+      // options.subagentProvider ONLY. Reading the kebab-case key returns
+      // undefined and once made this flag a silent no-op.
+      const cliProvider = (options as { provider?: string }).provider;
+      const cliSubagentProvider = (options as { subagentProvider?: string }).subagentProvider;
       const cliModelForActivation =
         typeof options.model === 'string' && options.model !== 'default' ? options.model : undefined;
       // Model returned by --provider connection activation; applied later when
@@ -3644,7 +3647,11 @@ async function run(): Promise<CommanderCommand> {
             taskBudget: options.taskBudget ? { total: options.taskBudget } : undefined,
             systemPrompt,
             appendSystemPrompt,
-            userSpecifiedModel: effectiveModel,
+            // null (= --provider activation's "use the connection default")
+            // maps to undefined here: print.ts normalizes the absent case
+            // back to null internally, and default-model resolution reads the
+            // activation env either way.
+            userSpecifiedModel: effectiveModel ?? undefined,
             fallbackModel: userSpecifiedFallbackModel,
             teleport,
             sdkUrl,

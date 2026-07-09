@@ -264,6 +264,27 @@ describe('CLI --subagent-provider override', () => {
     }
   })
 
+  test('unset also suppresses providerModels subagentModel fallback', () => {
+    setSubagentProviderCliOverride('unset')
+    try {
+      // A stale ChatGPT-era subagent model under the same provider key must
+      // not be packaged into a runtime config when the user asked subagents
+      // to fully inherit the main connection.
+      const config = getSubagentProviderRuntimeConfig(
+        {
+          modelType: 'openai',
+          providerModels: {
+            openai: { subagentModel: 'gpt-5.5-codex' },
+          },
+        },
+        {},
+      )
+      expect(config).toBeUndefined()
+    } finally {
+      setSubagentProviderCliOverride(undefined)
+    }
+  })
+
   test('undefined clears the override', () => {
     setSubagentProviderCliOverride('openai')
     setSubagentProviderCliOverride(undefined)

@@ -206,3 +206,19 @@ describe('modelForCliActivation', () => {
     expect(modelForCliActivation(conn, 'main')).toBeUndefined()
   })
 })
+
+describe('main.tsx CLI flag wiring contract', () => {
+  // Commander stores multi-word flags camelCased: --subagent-provider lands
+  // on options.subagentProvider and options['subagent-provider'] is ALWAYS
+  // undefined. A regression here silently turns both --subagent-provider
+  // values (a connection name, or `unset`) into no-ops, so subagents keep
+  // using a stale global default (e.g. ChatGPT) while the main agent shows
+  // the --provider connection.
+  test('main.tsx reads the camelCase subagentProvider option key', async () => {
+    const mainSource = await Bun.file(
+      new URL('../../../main.tsx', import.meta.url),
+    ).text()
+    expect(mainSource).not.toContain("['subagent-provider']")
+    expect(mainSource).toContain('.subagentProvider')
+  })
+})

@@ -218,6 +218,12 @@ export function getSubagentProviderRuntimeConfig(
   > = getInitialSettings(),
   envSource: Record<string, string | undefined> = process.env,
 ): ProviderRuntimeConfig | undefined {
+  // --subagent-provider unset = fully inherit the main connection. Without
+  // this early return, a stale providerModels.<key>.subagentModel from a
+  // previous global default (e.g. a ChatGPT-era model id) would still be
+  // packaged into a runtime config and applied to the session's connection.
+  if (_subagentClearOverride) return undefined
+
   const subagentProvider = getSubagentProviderConfig(settings, envSource)
   const provider = getEffectiveSubagentProvider(settings, envSource)
   const providerKey = apiProviderToSettingsProviderKey(provider)

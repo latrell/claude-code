@@ -108,6 +108,11 @@ _setSettingsWriterForTest(value => {
 })
 const { getSubagentProviderConfig, setSubagentProviderConfigOverride } =
   await import('../../../utils/model/subagentProvider.js')
+const {
+  applySessionProviderEnvOverlay,
+  getSessionProviderEnvOverlay,
+  setSessionProviderEnvOverlay,
+} = await import('../sessionEnvOverlay.js')
 const { getAPIProvider, setProviderCliOverride } = await import(
   '../../../utils/model/providers.js'
 )
@@ -185,6 +190,7 @@ beforeEach(() => {
   userSettingsState = {}
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
+  setSessionProviderEnvOverlay(null)
 })
 
 afterEach(() => {
@@ -205,6 +211,7 @@ afterEach(() => {
   setOauthAccount(undefined)
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
+  setSessionProviderEnvOverlay(null)
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -466,6 +473,41 @@ describe('activateConnectionForSession (main slot)', () => {
     // Simulate applyConfigEnvironmentVariables after session activation
     injectCCBProviderAuthEnv('openai')
     expect(process.env.OPENAI_AUTH_MODE).toBe('')
+  })
+
+  test('records the env delta as the session overlay for re-application', async () => {
+    upsertConnection(openaiConn())
+    const result = await activateConnectionForSession(
+      openaiConn(),
+      'main',
+      'deepseek-reasoner',
+    )
+    expect(result.success).toBe(true)
+
+    const overlay = getSessionProviderEnvOverlay()
+    expect(overlay?.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
+    expect(overlay?.OPENAI_API_KEY).toBe('sk-a')
+    expect(overlay?.OPENAI_AUTH_MODE).toBe('')
+    expect(overlay).toHaveProperty('OPENAI_MODEL', undefined)
+
+    // Simulate the trust-time applyConfigEnvironmentVariables restoring a
+    // ChatGPT global default over the session activation…
+    process.env.OPENAI_AUTH_MODE = 'chatgpt'
+    process.env.OPENAI_BASE_URL = 'https://global.example.com'
+    process.env.OPENAI_MODEL = 'gpt-5.5'
+    // …and the overlay re-assertion that now runs right after it.
+    applySessionProviderEnvOverlay()
+
+    expect(process.env.OPENAI_AUTH_MODE).toBe('')
+    expect(process.env.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
+    expect(process.env.OPENAI_MODEL).toBeUndefined()
+    expect(process.env.OPENAI_DEFAULT_SONNET_MODEL).toBe('deepseek-chat')
+  })
+
+  test('subagent-slot activation does not record a session env overlay', async () => {
+    upsertConnection(openaiConn())
+    await activateConnectionForSession(openaiConn(), 'subagent', null)
+    expect(getSessionProviderEnvOverlay()).toBeNull()
   })
 
   test('switching between two openai-compat accounts swaps credentials', async () => {

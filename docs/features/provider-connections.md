@@ -37,7 +37,9 @@ ccb --provider deepseek --subagent-provider zhipu
 ccb connect
 ```
 
-解析顺序：精确 id → 不区分大小写 id → 不区分大小写 label → 不区分大小写 presetId。重名时报错并提示用 id 消歧。`--subagent-provider unset` 表示子 agent 继承主连接。
+解析顺序：精确 id → 不区分大小写 id → 不区分大小写 label → 不区分大小写 presetId。重名时报错并提示用 id 消歧。`--subagent-provider unset` 表示子 agent 完全继承主连接（同时屏蔽 `settings.subagentProvider`、`SUBAGENT_*` 环境变量和 `providerModels.<key>.subagentModel` 的全局子 agent 默认）。
+
+会话激活的 env 增量会记录为 session overlay（`sessionEnvOverlay.ts`），在每次 `applyConfigEnvironmentVariables()`（信任对话框、print 模式、settings 变更、`/provider`）之后重放，保证全局默认（如 `ccb-provider-auth.json` 里的 `OPENAI_AUTH_MODE=chatgpt`、`settings.env` 的 `ANTHROPIC_BASE_URL`）不会覆盖会话内激活的连接。`/login` 和 `/logout` 会清除 overlay。
 
 ### `/connect` — 连接管理面板
 

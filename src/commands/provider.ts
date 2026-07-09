@@ -1,10 +1,23 @@
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
-import { getAPIProvider } from '../utils/model/providers.js'
+import {
+  getAPIProvider,
+  setProviderCliOverride,
+} from '../utils/model/providers.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
 import { t, tf } from '../i18n/t.js'
+
+/**
+ * Sync the process-scoped provider override with a /provider switch.
+ * getAPIProvider() gives the CLI override (--provider flag or a /connect
+ * session activation) top priority, so only writing settings.modelType would
+ * leave /provider silently ineffective for the current session.
+ */
+function syncProviderCliOverride(arg: string): void {
+  setProviderCliOverride(arg as Parameters<typeof setProviderCliOverride>[0])
+}
 
 function getEnvVarForProvider(provider: string): string {
   switch (provider) {
@@ -54,6 +67,9 @@ const call: LocalCommandCall = async (args, _context) => {
   // unset - clear settings, fallback to env vars
   if (arg === 'unset') {
     updateSettingsForSource('userSettings', { modelType: undefined })
+    // Also drop any --provider / session-activation override so the cleared
+    // settings actually take effect for this session
+    setProviderCliOverride(undefined)
     // Also clear all provider-specific env vars to prevent conflicts
     delete process.env.CLAUDE_CODE_USE_BEDROCK
     delete process.env.CLAUDE_CODE_USE_VERTEX
@@ -88,6 +104,11 @@ const call: LocalCommandCall = async (args, _context) => {
       }),
     }
   }
+
+  // From here on the switch WILL happen (with or without a credentials
+  // warning below) — sync the session override up front so it also applies
+  // when a startup --provider flag installed a higher-priority override.
+  syncProviderCliOverride(arg)
 
   // Check env vars when switching to openai (including settings.env)
   if (arg === 'openai') {
