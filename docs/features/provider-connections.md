@@ -22,6 +22,23 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
 ## 命令
 
+### CLI：`--provider` / `--subagent-provider` / `connect`
+
+启动时可用连接名称（`/connect` 配置的 id、label 或 presetId）指定主/子 agent 使用的连接，进程级生效、不写盘：
+
+```bash
+# 主 agent 用 deepseek 连接，子 agent 继承主连接
+ccb --provider deepseek --subagent-provider unset
+
+# 主/子各用不同连接
+ccb --provider deepseek --subagent-provider zhipu
+
+# 打印已配置连接列表后退出
+ccb connect
+```
+
+解析顺序：精确 id → 不区分大小写 id → 不区分大小写 label → 不区分大小写 presetId。重名时报错并提示用 id 消歧。`--subagent-provider unset` 表示子 agent 继承主连接。
+
 ### `/connect` — 连接管理面板
 
 - 列表展示所有连接，标记全局默认（主/子 agent）与本会话使用中的连接。
@@ -91,6 +108,7 @@ src/services/connections/
   migrate.ts             # 旧存储幂等导入
   sessionAssignments.ts  # 会话槽位记录（轻量模块，供底层查找使用）
   activate.ts            # 会话级/全局激活引擎
+  cliResolve.ts          # CLI --provider/--subagent-provider/`connect` 解析与列表格式化
   modelCatalog.ts        # 每连接模型目录（静态 + /v1/models、Gemini ListModels 动态拉取）
   contextWindows.ts      # 模型上下文窗口：解析/格式化/查找/持久化
   autoRegister.ts        # /login 成功后的自动注册

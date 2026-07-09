@@ -73,18 +73,21 @@ describe('t', () => {
     mockLanguage = '简体中文'
     expect(
       t(
-        'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+        'Main-agent connection for this process (connection id/label/preset from /connect). Process-scoped, not persisted.',
       ),
     ).toBe(
-      '此进程的 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset）。进程级生效，不持久化。',
+      '此进程的主 agent 连接（/connect 的连接 id/名称/预设）。进程级生效，不持久化。',
     )
     expect(
       t(
-        'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.',
+        'Subagent connection for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
       ),
     ).toBe(
-      '此进程的子智能体 API 提供商（anthropic/openai/gemini/grok/unset）。进程级生效，不持久化。',
+      '此进程的子 agent 连接（/connect 的连接 id/名称/预设，或 unset 继承主连接）。进程级生效，不持久化。',
     )
+    expect(
+      t('Print configured provider connections (from /connect) and exit'),
+    ).toBe('打印已配置的提供者连接（来自 /connect）并退出')
   })
 
   test('translates startup/REPL first-screen strings', () => {
@@ -200,11 +203,13 @@ describe('t', () => {
   test('translates CLI validation strings', () => {
     mockLanguage = '简体中文'
     expect(
-      tf('Invalid --provider value: "{provider}". Valid: {values}', {
-        provider: 'bad',
-        values: 'anthropic, openai',
-      }),
-    ).toBe('无效的 --provider 值："bad"。有效值：anthropic, openai')
+      tf(
+        'Unknown connection "{ref}". Run `ccb connect` to list configured connections.',
+        {
+          ref: 'bad',
+        },
+      ),
+    ).toBe('未知连接 "bad"。运行 `ccb connect` 查看已配置的连接。')
     expect(
       t('Error: --no-session-persistence can only be used with --print mode.'),
     ).toBe('错误：--no-session-persistence 只能与 --print 模式一起使用。')

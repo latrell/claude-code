@@ -2294,10 +2294,22 @@ const zh: Record<string, string> = {
     '错误：claude ssh 不支持 headless（-p/--print）模式\n',
   'Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n':
     '警告：3 秒内未收到 stdin 数据，将在没有输入的情况下继续。如果正在从慢速命令管道输入，请显式重定向 stdin：使用 < /dev/null 跳过，或等待更久。\n',
-  'Invalid --provider value: "{provider}". Valid: {values}':
-    '无效的 --provider 值："{provider}"。有效值：{values}',
-  'Invalid --subagent-provider value: "{provider}". Valid: {values}':
-    '无效的 --subagent-provider 值："{provider}"。有效值：{values}',
+  'Failed to activate connection "{name}": {error}\n':
+    '激活连接 "{name}" 失败：{error}\n',
+  'Failed to activate subagent connection "{name}": {error}\n':
+    '激活子 agent 连接 "{name}" 失败：{error}\n',
+  'Error: --provider/--subagent-provider require PROVIDER_CONNECTIONS.\n':
+    '错误：--provider/--subagent-provider 需要启用 PROVIDER_CONNECTIONS。\n',
+  'unknown error': '未知错误',
+  'Connection name is empty': '连接名称为空',
+  'No connections configured. Use /connect to add one, then pass its name.':
+    '尚未配置连接。请先用 /connect 添加，再传入连接名称。',
+  'No connections configured. Use /connect in an interactive session to add one.':
+    '尚未配置连接。请在交互会话中用 /connect 添加。',
+  'Unknown connection "{ref}". Run `ccb connect` to list configured connections.':
+    '未知连接 "{ref}"。运行 `ccb connect` 查看已配置的连接。',
+  'Ambiguous connection "{ref}" matches multiple entries. Use the connection id:\n{list}':
+    '连接 "{ref}" 匹配多条记录。请使用连接 id 消歧：\n{list}',
   'Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n':
     '错误：Fallback 模型不能与主模型相同。请为 --fallback-model 指定不同的模型。\n',
   'Error: Invalid input format "{format}".':
@@ -2522,10 +2534,12 @@ const zh: Record<string, string> = {
     '↑↓/Tab 切换 · 在最后字段按 Enter 保存 · Esc 返回',
 
   // ── CLI option descriptions ───────────────────────────────────
-  'API provider for this process (anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset). Process-scoped, not persisted.':
-    '此进程的 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry/unset）。进程级生效，不持久化。',
-  'Subagent API provider for this process (anthropic/openai/gemini/grok/unset). Process-scoped, not persisted.':
-    '此进程的子智能体 API 提供商（anthropic/openai/gemini/grok/unset）。进程级生效，不持久化。',
+  'Main-agent connection for this process (connection id/label/preset from /connect). Process-scoped, not persisted.':
+    '此进程的主 agent 连接（/connect 的连接 id/名称/预设）。进程级生效，不持久化。',
+  'Subagent connection for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.':
+    '此进程的子 agent 连接（/connect 的连接 id/名称/预设，或 unset 继承主连接）。进程级生效，不持久化。',
+  'Print configured provider connections (from /connect) and exit':
+    '打印已配置的提供者连接（来自 /connect）并退出',
 
   // ── Provider connections (/connect + /models) ─────────────────
   'Manage provider connections and accounts (add, switch, remove)':

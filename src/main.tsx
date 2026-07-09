@@ -106,8 +106,18 @@ import { jsonParse, writeFileSync_DEPRECATED } from './utils/slowOperations.js';
 import { computeInitialTeamContext } from './utils/swarm/reconnection.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
-import { setProviderCliOverride } from './utils/model/providers.js';
 import { setSubagentProviderCliOverride } from './utils/model/subagentProvider.js';
+/* eslint-disable @typescript-eslint/no-require-imports */
+const connectionsCliModule = feature('PROVIDER_CONNECTIONS')
+  ? (require('./services/connections/cliResolve.js') as typeof import('./services/connections/cliResolve.js'))
+  : null;
+const connectionsActivateModule = feature('PROVIDER_CONNECTIONS')
+  ? (require('./services/connections/activate.js') as typeof import('./services/connections/activate.js'))
+  : null;
+const connectionsMigrateModule = feature('PROVIDER_CONNECTIONS')
+  ? (require('./services/connections/migrate.js') as typeof import('./services/connections/migrate.js'))
+  : null;
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 // Lazy require to avoid circular dependency: teammate.ts -> AppState.tsx -> ... -> main.tsx
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1503,15 +1513,15 @@ async function run(): Promise<CommanderCommand> {
       [] as string[],
     )
     .option(
-      '--provider <provider>',
+      '--provider <name>',
       t(
-        'API provider for this process (anthropic/openai/gemini/grok/cursor/bedrock/vertex/foundry/unset). Process-scoped, not persisted.',
+        'Main-agent connection for this process (connection id/label/preset from /connect). Process-scoped, not persisted.',
       ),
     )
     .option(
-      '--subagent-provider <provider>',
+      '--subagent-provider <name>',
       t(
-        'Subagent API provider for this process (anthropic/openai/gemini/grok/cursor/unset). Process-scoped, not persisted.',
+        'Subagent connection for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
       ),
     )
     .option('--disable-slash-commands', t('Disable all skills'), () => true)
@@ -1624,61 +1634,74 @@ async function run(): Promise<CommanderCommand> {
         includePartialMessages,
       } = options;
 
-      // Apply CLI --provider override (process-scoped, not persisted)
+      // Apply CLI --provider / --subagent-provider (process-scoped, not persisted).
+      // Values are /connect registry names (id, label, or presetId).
+      // --subagent-provider unset forces the subagent to inherit the main connection.
       const cliProvider = (options as Record<string, unknown>)['provider'] as string | undefined;
-      if (cliProvider) {
-        const validMainProviders = [
-          'anthropic',
-          'openai',
-          'gemini',
-          'grok',
-          'cursor',
-          'bedrock',
-          'vertex',
-          'foundry',
-          'unset',
-        ];
-        if (!validMainProviders.includes(cliProvider)) {
-          console.warn(
-            chalk.yellow(
-              tf('Invalid --provider value: "{provider}". Valid: {values}', {
-                provider: cliProvider,
-                values: validMainProviders.join(', '),
-              }),
-            ),
+      const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
+      const cliModelForActivation =
+        typeof options.model === 'string' && options.model !== 'default' ? options.model : undefined;
+
+      if (cliProvider || (cliSubagentProvider && cliSubagentProvider !== 'unset')) {
+        if (!connectionsCliModule || !connectionsActivateModule) {
+          process.stderr.write(chalk.red(t('Error: --provider/--subagent-provider require PROVIDER_CONNECTIONS.\n')));
+          process.exit(1);
+        }
+        connectionsMigrateModule?.importLegacyConnections();
+
+        if (cliProvider) {
+          const resolved = connectionsCliModule.resolveConnectionRef(cliProvider);
+          if (!resolved.ok) {
+            process.stderr.write(chalk.red(`${resolved.error}\n`));
+            process.exit(1);
+          }
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection, 'main', cliModelForActivation);
+          const result = await connectionsActivateModule.activateConnectionForSession(
+            resolved.connection,
+            'main',
+            model,
           );
-        } else {
-          // bedrock/vertex/foundry are env-only; set the env var
-          if (['bedrock', 'vertex', 'foundry'].includes(cliProvider)) {
-            const envVar =
-              cliProvider === 'bedrock'
-                ? 'CLAUDE_CODE_USE_BEDROCK'
-                : cliProvider === 'vertex'
-                  ? 'CLAUDE_CODE_USE_VERTEX'
-                  : 'CLAUDE_CODE_USE_FOUNDRY';
-            process.env[envVar] = '1';
-          } else {
-            setProviderCliOverride(cliProvider as Parameters<typeof setProviderCliOverride>[0]);
+          if (!result.success) {
+            process.stderr.write(
+              chalk.red(
+                tf('Failed to activate connection "{name}": {error}\n', {
+                  name: cliProvider,
+                  error: result.error ?? t('unknown error'),
+                }),
+              ),
+            );
+            process.exit(1);
+          }
+        }
+
+        if (cliSubagentProvider && cliSubagentProvider !== 'unset') {
+          const resolved = connectionsCliModule.resolveConnectionRef(cliSubagentProvider);
+          if (!resolved.ok) {
+            process.stderr.write(chalk.red(`${resolved.error}\n`));
+            process.exit(1);
+          }
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection, 'subagent');
+          const result = await connectionsActivateModule.activateConnectionForSession(
+            resolved.connection,
+            'subagent',
+            model,
+          );
+          if (!result.success) {
+            process.stderr.write(
+              chalk.red(
+                tf('Failed to activate subagent connection "{name}": {error}\n', {
+                  name: cliSubagentProvider,
+                  error: result.error ?? t('unknown error'),
+                }),
+              ),
+            );
+            process.exit(1);
           }
         }
       }
 
-      // Apply CLI --subagent-provider override (process-scoped, not persisted)
-      const cliSubagentProvider = (options as Record<string, unknown>)['subagent-provider'] as string | undefined;
-      if (cliSubagentProvider) {
-        const validSubagentProviders = ['anthropic', 'openai', 'gemini', 'grok', 'cursor', 'unset'];
-        if (!validSubagentProviders.includes(cliSubagentProvider)) {
-          console.warn(
-            chalk.yellow(
-              tf('Invalid --subagent-provider value: "{provider}". Valid: {values}', {
-                provider: cliSubagentProvider,
-                values: validSubagentProviders.join(', '),
-              }),
-            ),
-          );
-        } else {
-          setSubagentProviderCliOverride(cliSubagentProvider as Parameters<typeof setSubagentProviderCliOverride>[0]);
-        }
+      if (cliSubagentProvider === 'unset') {
+        setSubagentProviderCliOverride('unset');
       }
 
       if (options.prefill) {
@@ -5136,6 +5159,23 @@ async function run(): Promise<CommanderCommand> {
         },
       );
   }
+
+  // ccb connect — print configured provider connections and exit
+  program
+    .command('connect')
+    .description(t('Print configured provider connections (from /connect) and exit'))
+    .action(async () => {
+      if (connectionsMigrateModule) {
+        connectionsMigrateModule.importLegacyConnections();
+      }
+      if (connectionsCliModule) {
+        process.stdout.write(`${connectionsCliModule.formatConnectionsList()}\n`);
+      } else {
+        const { formatConnectionsList } = await import('./services/connections/cliResolve.js');
+        process.stdout.write(`${formatConnectionsList()}\n`);
+      }
+      process.exit(0);
+    });
 
   // claude auth
 
