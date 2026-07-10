@@ -23,7 +23,7 @@ const inputSchema = lazySchema(() =>
 type InputSchema = ReturnType<typeof inputSchema>
 type PushInput = z.infer<InputSchema>
 
-type PushOutput = { sent: boolean }
+type PushOutput = { sent: boolean; error?: string }
 
 export const PushNotificationTool = buildTool({
   name: PUSH_NOTIFICATION_TOOL_NAME,
@@ -81,11 +81,32 @@ Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifE
       type: 'tool_result',
       content: content.sent
         ? 'Notification sent.'
-        : 'Failed to send notification.',
+        : (content.error ?? 'Failed to send notification.'),
     }
   },
 
   async call(input: PushInput, context) {
+    // Runtime main-agent gate. Tool-availability filtering
+    // (ALL_AGENT_DISALLOWED_TOOLS) covers AgentTool subagents, but
+    // cache-safe forks (createSubagentContext — extract_memories,
+    // verification agent, prompt suggestion, away summary, ...) inherit
+    // the parent's full tool list because tools are part of the prompt
+    // cache key and cannot be filtered there. agentId is only set for
+    // subagents/forks (see ToolUseContext); the main thread leaves it
+    // undefined.
+    if (context.agentId !== undefined) {
+      logForDebugging(
+        `[PushNotification] blocked: subagent/fork context (agentId=${context.agentId}) tried to push: ${input.title}`,
+      )
+      return {
+        data: {
+          sent: false,
+          error:
+            'Push notifications can only be sent by the main agent. Subagent results are reported to the main agent automatically — do not notify the user directly.',
+        },
+      }
+    }
+
     const appState = context.getAppState()
 
     // Follow the user's configured notification channel: MeoW takes over
