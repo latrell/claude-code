@@ -15,6 +15,7 @@ export function renderToolResultMessage(
   _progressMessagesForMessage: ProgressMessage<ToolProgressData>[],
   _options: { theme: ThemeName },
 ): React.ReactNode {
+  if (!output) return null;
   const actionLabel = output.action === 'keep' ? t('Kept worktree') : t('Removed worktree');
   return (
     <Box flexDirection="column">
