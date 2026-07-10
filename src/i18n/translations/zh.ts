@@ -4220,6 +4220,3053 @@ const zh: Record<string, string> = {
   'Process exited with error': '进程异常退出',
   'This session is outbound-only. Enable Remote Control locally to allow inbound control.':
     '此会话仅支持出站。请在本地启用远程控制以允许入站控制。',
+
+  // ── Batch-filled missing translations (auto-generated sweep) ────
+  'Select Assistant Session': '选择助手会话',
+  'Multiple sessions found. Select one to attach:':
+    '找到多个会话。请选择要连接的会话：',
+  '↑↓ navigate · Enter select · Esc cancel': '↑↓ 导航 · Enter 选择 · Esc 取消',
+  'Remote Control session has expired. Please restart with `claude remote-control` or /remote-control.':
+    '远程控制会话已过期。请使用 `claude remote-control` 或 /remote-control 重新启动。',
+  'Remote Control requires a claude.ai subscription. Run `claude auth login` to sign in with your claude.ai account.':
+    '远程控制需要 claude.ai 订阅。请运行 `claude auth login` 登录您的 claude.ai 账户。',
+  'Remote Control requires a full-scope login token. Long-lived tokens (from `claude setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `claude auth login` to use Remote Control.':
+    '远程控制需要完整权限的登录令牌。出于安全考虑，长效令牌（来自 `claude setup-token` 或 CLAUDE_CODE_OAUTH_TOKEN）仅限推理用途。请运行 `claude auth login` 以使用远程控制。',
+  'Your version of Claude Code ({version}) is too old for Remote Control.\nVersion {minVersion} or higher is required. Run `claude update` to update.':
+    '您的 Claude Code 版本（{version}）过旧，无法使用远程控制。\n需要 {minVersion} 或更高版本。请运行 `claude update` 更新。',
+  '\nRemote Control lets you access this CLI session from the web (claude.ai/code)\nor the Claude app, so you can pick up where you left off on any device.\n\nYou can disconnect remote access anytime by running /remote-control again.\n':
+    '\n远程控制让您可以从网页（claude.ai/code）或 Claude 应用访问此 CLI 会话，\n在任何设备上接续之前的工作。\n\n随时可以再次运行 /remote-control 断开远程访问。\n',
+  'Error: No recent session found in this directory or its worktrees. Run `claude remote-control` to start a new one.':
+    '错误：在此目录及其 worktree 中未找到最近的会话。请运行 `claude remote-control` 启动新会话。',
+  '\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from Claude Code on Web or your Mobile app. Learn more here: https://code.claude.com/docs/en/remote-control\n\n':
+    '\nClaude 远程控制正以 spawn 模式启动，您可以从 Web 版 Claude Code 或移动应用在此项目中创建新会话。了解更多：https://code.claude.com/docs/en/remote-control\n\n',
+  'Spawn mode for this project:\n': '此项目的 spawn 模式：\n',
+  '  [1] same-dir — sessions share the current directory (default)\n':
+    '  [1] same-dir — 各会话共享当前目录（默认）\n',
+  '  [2] worktree — each session gets an isolated git worktree\n\n':
+    '  [2] worktree — 每个会话使用独立的 git worktree\n\n',
+  'This can be changed later or explicitly set with --spawn=same-dir or --spawn=worktree.\n':
+    '之后可以更改，也可以通过 --spawn=same-dir 或 --spawn=worktree 显式设置。\n',
+  'Remote Control base URL uses HTTP. Only HTTPS or localhost HTTP is allowed.':
+    '远程控制的 base URL 使用了 HTTP。仅允许 HTTPS 或 localhost 的 HTTP。',
+  'Code everywhere with the Claude app or {url}':
+    '使用 Claude 应用或 {url}，随时随地编程',
+  'Continue coding in the Claude app or {url}':
+    '在 Claude 应用或 {url} 继续编程',
+  'Capacity: {active}/1 · New sessions will be created in an isolated worktree':
+    '容量：{active}/1 · 新会话将在独立的 worktree 中创建',
+  'Capacity: {active}/1 · New sessions will be created in the current directory':
+    '容量：{active}/1 · 新会话将在当前目录中创建',
+  "disabled by your organization's policy": '已被您所在组织的策略禁用',
+  Fetching: '正在获取',
+  'Running task': '正在运行任务',
+  'Error: You must be logged in to use Remote Control.\n\n':
+    '错误：必须登录才能使用远程控制。\n\n',
+  'Invalid work secret: missing or empty session_ingress_token':
+    '无效的 work secret：session_ingress_token 缺失或为空',
+  'Invalid work secret: missing api_base_url':
+    '无效的 work secret：缺少 api_base_url',
+  '{count} active session{suffix}:': '{count} 个活跃会话{suffix}：',
+  'Multiple sessions active. Specify one:': '存在多个活跃会话。请指定一个：',
+  'No log path recorded for session {id}': '会话 {id} 未记录日志路径',
+  'Failed to read log file: {path}': '读取日志文件失败：{path}',
+  'No background sessions to attach to. Start one with `claude daemon bg`.':
+    '没有可连接的后台会话。请使用 `claude daemon bg` 启动一个。',
+  'Multiple background sessions. Specify one:':
+    '存在多个后台会话。请指定一个：',
+  'tmux is no longer available. Cannot attach to tmux session.':
+    'tmux 已不可用，无法连接到 tmux 会话。',
+  'Specify a session to kill:': '请指定要终止的会话：',
+  'Session already exited.': '会话已退出。',
+  'Session force-killed.': '会话已被强制终止。',
+  'Session exited during grace period.': '会话在宽限期内已退出。',
+  'Error: Background sessions with detached engine require -p/--print flag.\n':
+    '错误：使用 detached 引擎的后台会话需要 -p/--print 标志。\n',
+  'Background session started: {name}': '后台会话已启动：{name}',
+  '  Engine: {engine}': '  引擎：{engine}',
+  '  Log: {path}': '  日志：{path}',
+  'Use `claude daemon attach {name}` to reconnect.':
+    '使用 `claude daemon attach {name}` 重新连接。',
+  'Use `claude daemon status` to check status.':
+    '使用 `claude daemon status` 查看状态。',
+  'Use `claude daemon kill {name}` to stop.':
+    '使用 `claude daemon kill {name}` 停止。',
+  'Created task {id}: {subject}': '已创建任务 {id}：{subject}',
+  'No tasks found.': '未找到任务。',
+  'Unable to create API key. The server accepted the request but did not return a key.':
+    '无法创建 API key。服务器已接受请求，但未返回 key。',
+  'Error: --console and --claudeai cannot be used together.':
+    '错误：--console 和 --claudeai 不能同时使用。',
+  'CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n':
+    '使用 CLAUDE_CODE_OAUTH_REFRESH_TOKEN 时必须设置 CLAUDE_CODE_OAUTH_SCOPES。\n',
+  "If the browser didn't open, visit: {url}":
+    '如果浏览器未自动打开，请访问：{url}',
+  'Not logged in. Run claude auth login to authenticate.':
+    '尚未登录。请运行 claude auth login 进行认证。',
+  'Failed to log out.': '退出登录失败。',
+  'Successfully logged out from your Anthropic account.':
+    '已成功退出您的 Anthropic 账户。',
+  'No custom auto mode rules found.\n\n': '未找到自定义自动模式规则。\n\n',
+  'Error: Directory {path} does not exist': '错误：目录 {path} 不存在',
+  'Removed MCP server "{name}" from {scope} config':
+    '已从 {scope} 配置中移除 MCP 服务器“{name}”',
+  'MCP server "{name}" exists in multiple scopes:':
+    'MCP 服务器“{name}”存在于多个作用域中：',
+  '\nTo remove from a specific scope, use:\n':
+    '\n要从指定作用域移除，请使用：\n',
+  'Checking MCP server health...': '正在检查 MCP 服务器健康状态...',
+  '\nTo remove this server, run: claude mcp remove "{name}" -s {scope}':
+    '\n要移除此服务器，请运行：claude mcp remove "{name}" -s {scope}',
+  'No MCP servers found in Claude Desktop configuration or configuration file does not exist.':
+    'Claude Desktop 配置中未找到 MCP 服务器，或配置文件不存在。',
+  'All project-scoped (.mcp.json) server approvals and rejections have been reset.\n':
+    '所有项目级（.mcp.json）服务器的批准和拒绝记录均已重置。\n',
+  'No plugins installed. Use `claude plugin install` to install a plugin.':
+    '未安装任何插件。请使用 `claude plugin install` 安装插件。',
+  'Installed plugins:': '已安装的插件：',
+  '--sparse is only supported for github and git marketplace sources (got: {source})':
+    '--sparse 仅支持 github 和 git 类型的 marketplace 来源（当前为：{source}）',
+  '    Source: GitHub ({repo})': '    来源：GitHub（{repo}）',
+  '    Source: Git ({url})': '    来源：Git（{url}）',
+  '    Source: URL ({url})': '    来源：URL（{url}）',
+  '    Source: Directory ({path})': '    来源：目录（{path}）',
+  '    Source: File ({path})': '    来源：文件（{path}）',
+  'Unknown template command: {cmd}': '未知的模板命令：{cmd}',
+  'Template Job Commands:': '模板任务命令：',
+  'Usage: claude job status <job-id>': '用法：claude job status <job-id>',
+  'No templates found.': '未找到模板。',
+  'Place .md files in .claude/templates/ or ~/.claude/templates/':
+    '请将 .md 文件放置在 .claude/templates/ 或 ~/.claude/templates/ 中',
+  '{count} template{suffix} found:': '找到 {count} 个模板{suffix}：',
+  '    Path:': '    路径：',
+  'Usage: claude job new <template> [args...]':
+    '用法：claude job new <template> [args...]',
+  'Template not found: {name}': '未找到模板：{name}',
+  'Available templates:': '可用模板：',
+  'Job created: {id}': '任务已创建：{id}',
+  '  Template: {name}': '  模板：{name}',
+  '  Input: {text}': '  输入：{text}',
+  'Usage: claude job reply <job-id> <text>':
+    '用法：claude job reply <job-id> <text>',
+  'Reply added to job {id}': '回复已添加到任务 {id}',
+  'Failed to append reply to job {id}': '向任务 {id} 追加回复失败',
+  'This will guide you through long-lived (1-year) auth token setup for your Claude account. Claude subscription required.':
+    '这将引导您为 Claude 账户设置长效（1 年）认证令牌。需要 Claude 订阅。',
+  'Error: When using --print, --output-format=stream-json requires --verbose\n':
+    '错误：使用 --print 时，--output-format=stream-json 需要配合 --verbose\n',
+  'Error: --resume requires a valid session ID when used with --print. Usage: claude -p --resume <session-id>':
+    '错误：--resume 与 --print 同时使用时需要有效的会话 ID。用法：claude -p --resume <session-id>',
+  '  (version listing requires access to the release registry)':
+    '  （列出版本需要访问发布注册表）',
+  '  Use `claude update --list` for available versions.':
+    '  使用 `claude update --list` 查看可用版本。',
+  '  (dry run — no changes made)': '  （试运行 — 未做任何更改）',
+  '  Safe version pinning requires access to the release API.':
+    '  固定安全版本需要访问发布 API。',
+  '  Contact oncall for the current safe version.':
+    '  请联系 oncall 获取当前安全版本。',
+  'Usage: claude rollback [target]\n\n': '用法：claude rollback [target]\n\n',
+  '  (dry run — would install {target})': '  （试运行 — 将会安装 {target}）',
+  'Rollback failed with exit code {code}': '回滚失败，退出码 {code}',
+  'Rolled back to {version} successfully.': '已成功回滚到 {version}。',
+  'Found "# claude up" in {path}': '在 {path} 中找到 "# claude up"',
+  'No "# claude up" section found in CLAUDE.md.':
+    'CLAUDE.md 中未找到 "# claude up" 段落。',
+  'claude up failed with exit code {code}': 'claude up 失败，退出码 {code}',
+  'claude up completed successfully.': 'claude up 已成功完成。',
+  'Package manager: {pm}': '包管理器：{pm}',
+  'Unable to fetch latest version from npm registry.':
+    '无法从 npm registry 获取最新版本。',
+  'ccb is up to date ({version})': 'ccb 已是最新版本（{version}）',
+  'Installing update via {pm}...': '正在通过 {pm} 安装更新...',
+  'Update failed': '更新失败',
+  'Try manually updating with:': '请尝试手动更新：',
+  'Failed to start daemon: {msg}': '启动守护进程失败：{msg}',
+  'Assistant Setup': '助手设置',
+  'Starting daemon in {dir}...': '正在 {dir} 中启动守护进程...',
+  'No active assistant sessions found.': '未找到活跃的助手会话。',
+  'Start a daemon in': '启动守护进程于',
+  'to create a cloud session?': '以创建云端会话？',
+  'Start assistant daemon': '启动助手守护进程',
+  'Enter to select · Esc to cancel': 'Enter 选择 · Esc 取消',
+  'Detecting repository...': '正在检测仓库...',
+  'Checking remote agent eligibility...': '正在检查远程 agent 可用资格...',
+  'Acquiring monitor lock...': '正在获取监控锁...',
+  'Launching remote session...': '正在启动远程会话...',
+  'Session registered': '会话已注册',
+  'Autofix launched': '自动修复已启动',
+  'Autofix PR': '自动修复 PR',
+  'Track:': '跟踪：',
+  'Monitor already active: {repo}#{number}': '监控已在运行：{repo}#{number}',
+  'gh pr view timed out after {timeout}ms': 'gh pr view 在 {timeout}ms 后超时',
+  'gh pr view exited {code}: {stderr}':
+    'gh pr view 以退出码 {code} 结束：{stderr}',
+  'gh pr view JSON parse failed: {error}': 'gh pr view JSON 解析失败：{error}',
+  'Show run and flow counts plus the latest automatic activity':
+    '显示运行和流程计数以及最新的自动活动',
+  Autonomy: '自治',
+  '↑/↓ select · Enter run · Esc close': '↑/↓ 选择 · Enter 运行 · Esc 关闭',
+  'Branched conversation': '对话已创建分支',
+  'No conversation to branch': '没有可创建分支的对话',
+  'No messages to branch': '没有可创建分支的消息',
+  'To resume the original': '如需恢复原对话',
+  'Branched conversation{titleInfo}. You are now in the branch.{resumeHint}':
+    '对话已创建分支{titleInfo}。您当前位于分支中。{resumeHint}',
+  'Branched conversation{titleInfo}. Resume with: /resume {sessionId}':
+    '对话已创建分支{titleInfo}。恢复原对话：/resume {sessionId}',
+  'Unknown error occurred': '发生未知错误',
+  'Failed to branch conversation: {error}': '创建对话分支失败：{error}',
+  'Show pending marker, always mode, and break count':
+    '显示待处理标记、始终模式和缓存断点计数',
+  Once: '一次',
+  'Break prompt cache on the next API call only':
+    '仅在下一次 API 调用时打断 prompt cache',
+  Always: '始终',
+  'Break prompt cache on every API call':
+    '在每次 API 调用时都打断 prompt cache',
+  'Disable always mode and clear pending once marker':
+    '禁用始终模式并清除待处理的一次性标记',
+  'Clear Once': '清除一次性标记',
+  'Cancel the pending one-time cache break': '取消待处理的一次性缓存断点',
+  'Break Cache': '打断缓存',
+  'This session is available via Remote Control at {url}.':
+    '此会话可通过远程控制在 {url} 访问。',
+  'This session is available via Remote Control.': '此会话可通过远程控制访问。',
+  'Disconnect this session': '断开此会话',
+  'Hide QR code': '隐藏二维码',
+  'Show QR code': '显示二维码',
+  Continue: '继续',
+  'Enter to select · Esc to continue': 'Enter 选择 · Esc 继续',
+  "Remote Control is disabled by your organization's policy.":
+    '远程控制已被您所在组织的策略禁用。',
+  'Show session API cost and usage stats': '显示会话 API 成本和使用统计',
+  'Use `claude daemon attach` from the CLI. Attach is not available inside the REPL.':
+    '请在 CLI 中使用 `claude daemon attach`。REPL 内不支持 attach。',
+  'Failed to set effort level: {error}': '设置努力级别失败：{error}',
+  'Quick, straightforward implementation with minimal overhead':
+    '快速、直接的实现，开销最小',
+  'Balanced approach with standard implementation and testing':
+    '平衡策略，标准实现与测试',
+  'Comprehensive implementation with extensive testing and documentation':
+    '全面实现，广泛的测试与文档',
+  'Extended reasoning beyond high, short of max': '推理强度高于 high、低于 max',
+  'Maximum capability with deepest reasoning': '最强能力，最深入的推理',
+  ' (this session only)': '（仅本次会话）',
+  'Not applied: CLAUDE_CODE_EFFORT_LEVEL={envRaw} overrides effort this session, and {effortValue} is session-only (nothing saved)':
+    '未生效：CLAUDE_CODE_EFFORT_LEVEL={envRaw} 覆盖了本会话的努力级别，且 {effortValue} 仅对本会话有效（未保存任何内容）',
+  'CLAUDE_CODE_EFFORT_LEVEL={envRaw} overrides this session — clear it and {effortValue} takes over':
+    'CLAUDE_CODE_EFFORT_LEVEL={envRaw} 覆盖了本会话 — 清除后 {effortValue} 将生效',
+  'Set effort level to {effortValue}{suffix}: {description}':
+    '努力级别已设置为 {effortValue}{suffix}：{description}',
+  'Effort level: auto (currently {level})': '努力级别：auto（当前为 {level}）',
+  'Current effort level: {effectiveValue} ({description})':
+    '当前努力级别：{effectiveValue}（{description}）',
+  'Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL={envRaw} still controls this session':
+    '已从设置中清除努力级别，但 CLAUDE_CODE_EFFORT_LEVEL={envRaw} 仍控制本会话',
+  'Invalid argument: {args}. Valid options are: low, medium, high, max, auto':
+    '无效参数：{args}。有效选项为：low、medium、high、max、auto',
+  'Usage: /effort [low|medium|high|xhigh|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning beyond high, short of max; including ChatGPT Codex models\n- max: Maximum capability with deepest reasoning; maps to xhigh for ChatGPT Codex models\n- auto: Use the default effort level for your model':
+    '用法：/effort [low|medium|high|xhigh|max|auto]\n\n努力级别：\n- low：快速、直接的实现\n- medium：平衡策略，标准测试\n- high：全面实现，广泛测试\n- xhigh：推理强度高于 high、低于 max；包括 ChatGPT Codex 模型\n- max：最强能力，最深入的推理；对 ChatGPT Codex 模型映射为 xhigh\n- auto：使用模型的默认努力级别',
+  'Found {count} other running IDE(s). However, their workspace/project directories do not match the current cwd.':
+    '发现 {count} 个其他正在运行的 IDE。但它们的工作区/项目目录与当前 cwd 不匹配。',
+  '↑/↓ to select · Enter to continue': '↑/↓ 选择 · Enter 继续',
+  '↑/↓ to select · ': '↑/↓ 选择 · ',
+  '  1. Delete the existing file and run this command again':
+    '  1. 删除现有文件后重新运行此命令',
+  '  2. Update the existing file manually using the template from:':
+    '  2. 使用以下模板手动更新现有文件：',
+  "Repository {name} was not found or you don't have access.":
+    '仓库 {name} 不存在，或您没有访问权限。',
+  "Couldn't install GitHub App: {error}\nFor manual setup instructions, see: {url}":
+    '无法安装 GitHub App：{error}\n手动设置说明请参阅：{url}',
+  'GitHub App installation failed\nFor manual setup instructions, see: {url}':
+    'GitHub App 安装失败\n手动设置说明请参阅：{url}',
+  "If your browser doesn't open automatically, visit:":
+    '如果浏览器没有自动打开，请访问：',
+  "Press Enter once you've installed the app": '安装完应用后按 Enter',
+  '✓ Authentication token created successfully!': '✓ 认证 token 创建成功！',
+  "Browser didn't open? Use the url below to sign in":
+    '浏览器没有打开？请使用下方 URL 登录',
+  'Failed to create workflow file {path}: A Claude workflow file already exists in this repository. Please remove it first or update it manually.':
+    '创建工作流文件 {path} 失败：此仓库中已存在 Claude 工作流文件。请先删除它，或手动更新。',
+  '\n\nNeed help? Common issues:\n· Permission denied → Run: gh auth refresh -h github.com -s repo,workflow\n· Not authorized → Ensure you have admin access to the repository\n· For manual setup → Visit: https://github.com/anthropics/claude-code-action':
+    '\n\n需要帮助？常见问题：\n· Permission denied → 运行：gh auth refresh -h github.com -s repo,workflow\n· Not authorized → 确认您拥有该仓库的管理员权限\n· 手动设置 → 访问：https://github.com/anthropics/claude-code-action',
+  'Failed to create workflow file {path}: {stderr}{help}':
+    '创建工作流文件 {path} 失败：{stderr}{help}',
+  'Failed to access repository {repo}: {error}':
+    '访问仓库 {repo} 失败：{error}',
+  'Failed to get default branch: {error}': '获取默认分支失败：{error}',
+  'Failed to get branch SHA: {error}': '获取分支 SHA 失败：{error}',
+  'Failed to create branch: {error}': '创建分支失败：{error}',
+  'Claude PR Assistant workflow': 'Claude PR 助手工作流',
+  'Claude Code Review workflow': 'Claude 代码审查工作流',
+  '\n\nNeed help? Common issues:\n· Permission denied → Run: gh auth refresh -h github.com -s repo\n· Not authorized → Ensure you have admin access to the repository\n· For manual setup → Visit: https://github.com/anthropics/claude-code-action':
+    '\n\n需要帮助？常见问题：\n· Permission denied → 运行：gh auth refresh -h github.com -s repo\n· Not authorized → 确认您拥有该仓库的管理员权限\n· 手动设置 → 访问：https://github.com/anthropics/claude-code-action',
+  'Failed to set API key secret: {error}{help}':
+    '设置 API key secret 失败：{error}{help}',
+  '✓ GitHub Actions workflow created!': '✓ GitHub Actions 工作流已创建！',
+  '✓ Using existing ANTHROPIC_API_KEY secret':
+    '✓ 使用现有的 ANTHROPIC_API_KEY secret',
+  '✓ API key saved as {name} secret': '✓ API key 已保存为 {name} secret',
+  "1. Install the Claude GitHub App if you haven't already":
+    '1. 如果尚未安装，请先安装 Claude GitHub App',
+  'No memory stores found.': '未找到记忆存储。',
+  'Local Memory Stores': '本地记忆存储',
+  'No entries in "{store}".': '“{store}”中没有条目。',
+  'Entries in "{store}"': '“{store}”中的条目',
+  Store: '存储',
+  'Write an entry: store name + key + value': '写入条目：存储名 + 键 + 值',
+  'Read an entry by store name + key': '按存储名 + 键读取条目',
+  Entries: '条目',
+  'List entry keys in a store': '列出存储中的条目键',
+  Archive: '归档',
+  'Archive a store (rename to *.archived)': '归档存储（重命名为 *.archived）',
+  'Internal: missing store': '内部错误：缺少存储名',
+  'Store created: {store}': '存储已创建：{store}',
+  'Archived store: {store}': '已归档存储：{store}',
+  'Internal: missing key': '内部错误：缺少键',
+  'Entry not found: {store}/{key}': '未找到条目：{store}/{key}',
+  'Entry fetched: {store}/{key}\n\n{value}':
+    '已获取条目：{store}/{key}\n\n{value}',
+  'Internal: missing key or value': '内部错误：缺少键或值',
+  'Stored {store}/{key} ({length} chars)':
+    '已存储 {store}/{key}（{length} 个字符）',
+  'Local Memory': '本地记忆',
+  '↑/↓ or 1-7 select · Enter run · Esc close':
+    '↑/↓ 或 1-7 选择 · Enter 运行 · Esc 关闭',
+  'Confirm Archive': '确认归档',
+  'Archive store "{store}"? This renames it to *.archived.':
+    '归档存储“{store}”？此操作会将其重命名为 *.archived。',
+  'y/Enter = archive · n/Esc = cancel': 'y/Enter = 归档 · n/Esc = 取消',
+  'Entry "{store}/{key}" already exists. Overwrite with new value ({length} chars)?':
+    '条目“{store}/{key}”已存在。用新值（{length} 个字符）覆盖？',
+  'STORE NAME': '存储名称',
+  VALUE: '值',
+  'e.g. my-notes': '例如 my-notes',
+  'e.g. todo-2026-05-08': '例如 todo-2026-05-08',
+  'free text': '任意文本',
+  'Invalid store name (no /, \\, :, null byte, or leading dot; max 255 chars)':
+    '存储名称无效（不能包含 /、\\、:、空字节，不能以点开头；最长 255 字符）',
+  'Local Memory · input': '本地记忆 · 输入',
+  'Stored entry "{key}" in store "{store}".':
+    '已在存储“{store}”中保存条目“{key}”。',
+  'Entry fetched: {store}/{key}\n{value}': '已获取条目：{store}/{key}\n{value}',
+  'No secrets stored.': '尚未存储任何机密。',
+  'Local Vault Keys': '本地保险库密钥',
+  Set: '设置',
+  'Store a secret: KEY + VALUE (input is masked)':
+    '存储机密：KEY + VALUE（输入已掩码）',
+  Get: '获取',
+  'Look up a secret (returns masked preview)': '查询机密（返回掩码预览）',
+  'Delete a stored secret by KEY': '按 KEY 删除已存储的机密',
+  'Deleted: {key}': '已删除：{key}',
+  'Key not found: {key}': '未找到键：{key}',
+  'Secret stored: {key} = [REDACTED]': '机密已存储：{key} = [REDACTED]',
+  'Failed to store {key}: {error}': '存储 {key} 失败：{error}',
+  'Key found: {key} = {masked}': '已找到键：{key} = {masked}',
+  'Local Vault': '本地保险库',
+  '↑/↓ or 1-5 select · Enter run · Esc close':
+    '↑/↓ 或 1-5 选择 · Enter 运行 · Esc 关闭',
+  'Confirm Delete': '确认删除',
+  'Delete secret "{key}"? This cannot be undone.':
+    '删除机密“{key}”？此操作无法撤销。',
+  'y/Enter = delete · n/Esc = cancel': 'y/Enter = 删除 · n/Esc = 取消',
+  'Deleting...': '正在删除...',
+  'Secret "{key}" already exists. Overwrite? Old value is lost.':
+    '机密“{key}”已存在。是否覆盖？旧值将丢失。',
+  'Storing...': '正在存储...',
+  'SECRET VALUE': '机密值',
+  'e.g. github-token': '例如 github-token',
+  '(masked input — value never displayed)': '（掩码输入 — 值不会显示）',
+  'Local Vault · KEY / VALUE': '本地保险库 · KEY / VALUE',
+  'Secret revealed for: {key}': '已显示机密：{key}',
+  'Warning: secret revealed in terminal.': '警告：机密已在终端中显示。',
+  'Key must start with "{prefix}"': '键必须以“{prefix}”开头',
+  'Key too short ({current}/{minimum} chars minimum)':
+    '键过短（{current}/{minimum}，未达最少字符数）',
+  'Key too long ({current}/{maximum} chars maximum)':
+    '键过长（{current}/{maximum}，超出最大字符数）',
+  '  Obtain from: https://console.anthropic.com/settings/keys':
+    '  获取地址：https://console.anthropic.com/settings/keys',
+  '[paste key here]': '[在此粘贴 key]',
+  '  Saving...': '  正在保存...',
+  'Failed to save key — unknown error': '保存 key 失败 — 未知错误',
+  'Add an MCP server to Claude Code.': '向 Claude Code 添加 MCP 服务器。',
+  'Examples:': '示例：',
+  'Add HTTP server:': '添加 HTTP 服务器：',
+  'Add HTTP server with headers:': '添加带请求头的 HTTP 服务器：',
+  'Add stdio server with environment variables:':
+    '添加带环境变量的 stdio 服务器：',
+  'Add stdio server with subprocess flags:':
+    '添加带子进程参数的 stdio 服务器：',
+  'Configuration scope (local, user, or project)':
+    '配置作用域（local、user 或 project）',
+  'Transport type (stdio, sse, http). Defaults to stdio if not specified.':
+    '传输类型（stdio、sse、http）。未指定时默认为 stdio。',
+  'Set environment variables (e.g. -e KEY=value)':
+    '设置环境变量（例如 -e KEY=value）',
+  'Set WebSocket headers (e.g. -H "X-Api-Key: abc123" -H "X-Custom: value")':
+    '设置 WebSocket 请求头（例如 -H "X-Api-Key: abc123" -H "X-Custom: value"）',
+  'OAuth client ID for HTTP/SSE servers': 'HTTP/SSE 服务器的 OAuth 客户端 ID',
+  'Prompt for OAuth client secret (or set MCP_CLIENT_SECRET env var)':
+    '提示输入 OAuth 客户端密钥（或设置 MCP_CLIENT_SECRET 环境变量）',
+  'Fixed port for OAuth callback (for servers requiring pre-registered redirect URIs)':
+    'OAuth 回调的固定端口（用于要求预注册重定向 URI 的服务器）',
+  'Display help for command': '显示命令帮助',
+  "Enable XAA (SEP-990) for this server. Requires 'claude mcp xaa setup' first. Also requires --client-id and --client-secret (for the MCP server's AS).":
+    "为此服务器启用 XAA（SEP-990）。需要先运行 'claude mcp xaa setup'，并需要 --client-id 和 --client-secret（用于 MCP 服务器的 AS）。",
+  'Error: Server name is required.': '错误：必须提供服务器名称。',
+  'Usage: claude mcp add <name> <command> [args...]':
+    '用法：claude mcp add <name> <command> [args...]',
+  'Error: Command is required when server name is provided.':
+    '错误：提供服务器名称时必须同时提供命令。',
+  'Error: --xaa requires CLAUDE_CODE_ENABLE_XAA=1 in your environment':
+    '错误：--xaa 需要在环境中设置 CLAUDE_CODE_ENABLE_XAA=1',
+  "'claude mcp xaa setup' (settings.xaaIdp not configured)":
+    "'claude mcp xaa setup'（settings.xaaIdp 未配置）",
+  'Error: --xaa requires: {items}': '错误：--xaa 需要：{items}',
+  'Error: URL is required for SSE transport.': '错误：SSE 传输必须提供 URL。',
+  'Added SSE MCP server {name} with URL: {url} to {scope} config\n':
+    '已将 SSE MCP 服务器 {name}（URL：{url}）添加到 {scope} 配置\n',
+  'Error: URL is required for HTTP transport.': '错误：HTTP 传输必须提供 URL。',
+  'Added HTTP MCP server {name} with URL: {url} to {scope} config\n':
+    '已将 HTTP MCP 服务器 {name}（URL：{url}）添加到 {scope} 配置\n',
+  'Warning: --client-id, --client-secret, --callback-port, and --xaa are only supported for HTTP/SSE transports and will be ignored for stdio.':
+    '警告：--client-id、--client-secret、--callback-port 和 --xaa 仅支持 HTTP/SSE 传输，stdio 下将被忽略。',
+  '\nWarning: The command "{command}" looks like a URL, but is being interpreted as a stdio server as --transport was not specified.\n':
+    '\n警告：命令“{command}”看起来像 URL，但由于未指定 --transport，将按 stdio 服务器处理。\n',
+  'If this is an HTTP server, use: claude mcp add --transport http {name} {command}\n':
+    '如果这是 HTTP 服务器，请使用：claude mcp add --transport http {name} {command}\n',
+  'If this is an SSE server, use: claude mcp add --transport sse {name} {command}\n':
+    '如果这是 SSE 服务器，请使用：claude mcp add --transport sse {name} {command}\n',
+  'Added stdio MCP server {name} with command: {cmd} {args} to {scope} config\n':
+    '已将 stdio MCP 服务器 {name}（命令：{cmd} {args}）添加到 {scope} 配置\n',
+  'Manage the XAA (SEP-990) IdP connection': '管理 XAA（SEP-990）IdP 连接',
+  'Configure the IdP connection (one-time setup for all XAA-enabled servers)':
+    '配置 IdP 连接（对所有启用 XAA 的服务器一次性设置）',
+  'IdP issuer URL (OIDC discovery)': 'IdP 颁发者 URL（OIDC 发现）',
+  "Claude Code's client_id at the IdP": 'Claude Code 在 IdP 处的 client_id',
+  'Read IdP client secret from MCP_XAA_IDP_CLIENT_SECRET env var':
+    '从 MCP_XAA_IDP_CLIENT_SECRET 环境变量读取 IdP 客户端密钥',
+  'Fixed loopback callback port (only if IdP does not honor RFC 8252 port-any matching)':
+    '固定回环回调端口（仅当 IdP 不支持 RFC 8252 任意端口匹配时使用）',
+  'Error: --issuer must be a valid URL (got "{issuer}")':
+    '错误：--issuer 必须是有效的 URL（收到“{issuer}”）',
+  'Error: --issuer must use https:// (got "{protocol}//{host}")':
+    '错误：--issuer 必须使用 https://（收到“{protocol}//{host}”）',
+  'Error: --callback-port must be a positive integer':
+    '错误：--callback-port 必须是正整数',
+  'Error: --client-secret requires MCP_XAA_IDP_CLIENT_SECRET env var':
+    '错误：--client-secret 需要 MCP_XAA_IDP_CLIENT_SECRET 环境变量',
+  'Error writing settings: {error}': '写入设置时出错：{error}',
+  'Error: settings written but keychain save failed{warning}. Re-run with --client-secret once keychain is available.':
+    '错误：设置已写入，但保存到钥匙串失败{warning}。钥匙串可用后请带 --client-secret 重新运行。',
+  'XAA IdP connection configured for {issuer}':
+    '已为 {issuer} 配置 XAA IdP 连接',
+  'Cache an IdP id_token so XAA-enabled MCP servers authenticate silently. Default: run the OIDC browser login. With --id-token: write a pre-obtained JWT directly (used by conformance/e2e tests where the mock IdP does not serve /authorize).':
+    '缓存 IdP id_token，使启用 XAA 的 MCP 服务器可静默认证。默认：执行 OIDC 浏览器登录。使用 --id-token 时：直接写入预先获取的 JWT（用于 mock IdP 不提供 /authorize 的一致性/e2e 测试）。',
+  'Ignore any cached id_token and re-login (useful after IdP-side revocation)':
+    '忽略已缓存的 id_token 并重新登录（在 IdP 侧撤销后很有用）',
+  'Write this pre-obtained id_token directly to cache, skipping the OIDC browser login':
+    '将预先获取的 id_token 直接写入缓存，跳过 OIDC 浏览器登录',
+  "Error: no XAA IdP connection. Run 'claude mcp xaa setup' first.":
+    "错误：没有 XAA IdP 连接。请先运行 'claude mcp xaa setup'。",
+  'id_token cached for {issuer} (expires {expires})':
+    '已为 {issuer} 缓存 id_token（{expires} 过期）',
+  'Already logged in to {issuer} (cached id_token still valid). Use --force to re-login.':
+    '已登录 {issuer}（缓存的 id_token 仍有效）。使用 --force 重新登录。',
+  'Opening browser for IdP login at {issuer}...\n':
+    '正在打开浏览器进行 {issuer} 的 IdP 登录...\n',
+  'If the browser did not open, visit:\n  {url}\n':
+    '如果浏览器未打开，请访问：\n  {url}\n',
+  'Logged in. MCP servers with --xaa will now authenticate silently.':
+    '已登录。带 --xaa 的 MCP 服务器现在将静默认证。',
+  'IdP login failed: {error}': 'IdP 登录失败：{error}',
+  'Show the current IdP connection config': '显示当前 IdP 连接配置',
+  'No XAA IdP connection configured.': '未配置 XAA IdP 连接。',
+  'Issuer:        ': '颁发者：     ',
+  'Client ID:     ': '客户端 ID：  ',
+  'Callback port: ': '回调端口：   ',
+  'Client secret: ': '客户端密钥： ',
+  '(stored in keychain)': '（已存储在钥匙串中）',
+  '(not set — PKCE-only)': '（未设置 — 仅 PKCE）',
+  'Logged in:     ': '登录状态：   ',
+  'yes (id_token cached)': '是（已缓存 id_token）',
+  "no — run 'claude mcp xaa login'": "否 — 请运行 'claude mcp xaa login'",
+  'Clear the IdP connection config and cached id_token':
+    '清除 IdP 连接配置和已缓存的 id_token',
+  'XAA IdP connection cleared': '已清除 XAA IdP 连接',
+  'Archived at: {archivedAt}': '归档时间：{archivedAt}',
+  'No memories in store {storeId}. Use /memory-stores create-memory {storeId} <content> to add one.':
+    '存储 {storeId} 中没有记忆。使用 /memory-stores create-memory {storeId} <内容> 添加一条。',
+  'Memories in {storeId} ({count})': '{storeId} 中的记忆（{count} 条）',
+  'Memory: {id}': '记忆：{id}',
+  'Store: {storeId}': '存储：{storeId}',
+  'Content: {content}': '内容：{content}',
+  'Updated: {updatedAt}': '更新于：{updatedAt}',
+  'Memory created': '记忆已创建',
+  'Memory updated': '记忆已更新',
+  'Memory {memoryId} deleted from store {storeId}.':
+    '记忆 {memoryId} 已从存储 {storeId} 中删除。',
+  'No memory versions found for store {storeId}.':
+    '未找到存储 {storeId} 的记忆版本。',
+  'Memory Versions in {storeId} ({count})':
+    '{storeId} 中的记忆版本（{count} 个）',
+  redacted: '已脱敏',
+  'Version redacted': '版本已脱敏',
+  'Redacted at: {redactedAt}': '脱敏于：{redactedAt}',
+  'Please enter a marketplace source': '请输入市场来源',
+  'Successfully added marketplace: {name}': '已成功添加市场：{name}',
+  'Add Marketplace': '添加市场',
+  'Enter marketplace source:': '输入市场来源：',
+  'Adding marketplace to configuration…': '正在将市场添加到配置…',
+  "Plugin '{pluginId}' is already installed globally. Use '/plugin' to manage existing plugins.":
+    "插件 '{pluginId}' 已全局安装。请使用 '/plugin' 管理现有插件。",
+  'Plugin "{targetPlugin}" not found in any marketplace':
+    '在任何市场中都未找到插件 "{targetPlugin}"',
+  'Marketplace "{targetMarketplace}" not found':
+    '未找到市场 "{targetMarketplace}"',
+  'Failed to load marketplace: {marketplaceName}':
+    '加载市场失败：{marketplaceName}',
+  'Failed to load plugins': '加载插件失败',
+  '✓ Installed {count} {pluginWord}. Run /reload-plugins to activate.':
+    '✓ 已安装 {count} 个{pluginWord}。运行 /reload-plugins 以激活。',
+  'Failed to install: {details}': '安装失败：{details}',
+  '✓ Installed {successCount} of {total} plugins. Failed: {details}. Run /reload-plugins to activate successfully installed plugins.':
+    '✓ 已安装 {total} 个插件中的 {successCount} 个。失败：{details}。运行 /reload-plugins 以激活已成功安装的插件。',
+  '✓ Installed and configured {name}. Run /reload-plugins to apply.':
+    '✓ 已安装并配置 {name}。运行 /reload-plugins 以应用。',
+  '✓ Installed {name}. Run /reload-plugins to apply.':
+    '✓ 已安装 {name}。运行 /reload-plugins 以应用。',
+  'Installed but failed to save config: {detail}':
+    '已安装，但保存配置失败：{detail}',
+  'Loading…': '加载中…',
+  'Select marketplace': '选择市场',
+  'No marketplaces configured.': '未配置市场。',
+  "Add a marketplace first using 'Add marketplace'.":
+    "请先使用 'Add marketplace' 添加市场。",
+  '{count} {pluginWord} available': '{count} 个{pluginWord}可用',
+  ' · {count} already installed': ' · {count} 个已安装',
+  'Plugin Details': '插件详情',
+  'Version: {version}': '版本：{version}',
+  'By:': '作者：',
+  'Will install:': '将安装：',
+  'Commands:': '命令：',
+  'Agents:': '智能体：',
+  'Hooks:': '钩子：',
+  '· Component summary not available for remote plugin':
+    '· 远程插件暂无组件摘要',
+  '· Components will be discovered at installation': '· 组件将在安装时发现',
+  'Error: {installError}': '错误：{installError}',
+  'Installing…': '安装中…',
+  'Install plugins': '安装插件',
+  'No new plugins available to install.': '没有可安装的新插件。',
+  'All plugins from this marketplace are already installed.':
+    '此市场中的所有插件均已安装。',
+  'Install Plugins': '安装插件',
+  'more above': '上方还有更多',
+  '[Community Managed]': '[社区维护]',
+  '(installed)': '（已安装）',
+  '{count} installs': '{count} 次安装',
+  'more below': '下方还有更多',
+  "Plugin '{pluginId}' is already installed. Use '/plugin' to manage existing plugins.":
+    "插件 '{pluginId}' 已安装。请使用 '/plugin' 管理现有插件。",
+  'Plugin details': '插件详情',
+  'from {marketplaceName}': '来自 {marketplaceName}',
+  'Discover plugins': '发现插件',
+  'No plugins match "{searchQuery}"': '没有与 "{searchQuery}" 匹配的插件',
+  install: '安装',
+  'type to search': '输入以搜索',
+  'Git is required to install marketplaces.': '安装市场需要 Git。',
+  'Please install git and restart Claude Code.':
+    '请安装 git 并重启 Claude Code。',
+  'Your organization policy does not allow any external marketplaces.':
+    '您的组织策略不允许任何外部市场。',
+  'Contact your administrator.': '请联系您的管理员。',
+  'Your organization restricts which marketplaces can be added.':
+    '您的组织限制了可添加的市场。',
+  'Switch to the Marketplaces tab to view allowed sources.':
+    '切换到市场标签页查看允许的来源。',
+  'Failed to load marketplace data.': '加载市场数据失败。',
+  'Check your network connection.': '请检查您的网络连接。',
+  'All available plugins are already installed.': '所有可用插件均已安装。',
+  'Check for new plugins later or add more marketplaces.':
+    '请稍后查看新插件，或添加更多市场。',
+  'No plugins available.': '没有可用插件。',
+  'Add a marketplace first using the Marketplaces tab.':
+    '请先在市场标签页中添加市场。',
+  'Built-in plugin {name} not found': '未找到内置插件 {name}',
+  'Plugin {name} not found in marketplace': '在市场中未找到插件 {name}',
+  'Failed to load components': '加载组件失败',
+  'Components:': '组件：',
+  'Installed components:': '已安装的组件：',
+  'Plugin enabled. Configuration skipped — run /reload-plugins to apply.':
+    '插件已启用。已跳过配置 — 运行 /reload-plugins 以应用。',
+  'Run /reload-plugins to apply plugin changes.':
+    '运行 /reload-plugins 以应用插件更改。',
+  'Removed from marketplace': '已从市场移除',
+  'Plugin "{targetPlugin}" is not installed in this project':
+    '插件 "{targetPlugin}" 未在此项目中安装',
+  '{name} is already at the latest version ({newVersion}).':
+    '{name} 已是最新版本（{newVersion}）。',
+  Updated: '已更新',
+  Uninstalled: '已卸载',
+  'Failed to {operation}: {errorMessage}': '{operation}失败：{errorMessage}',
+  'Failed to check plugin update availability': '检查插件更新失败',
+  'Failed to load MCPB for configuration': '加载 MCPB 配置失败',
+  'Failed to load configuration: {errorMsg}': '加载配置失败：{errorMsg}',
+  'Failed to write settings: {errorMessage}': '写入设置失败：{errorMessage}',
+  'Loading installed plugins…': '正在加载已安装的插件…',
+  'Manage plugins': '管理插件',
+  'No plugins or MCP servers installed.': '未安装任何插件或 MCP 服务器。',
+  'Failed to save configuration: {detail}': '保存配置失败：{detail}',
+  'Configuration saved. Run /reload-plugins for changes to take effect.':
+    '配置已保存。运行 /reload-plugins 使更改生效。',
+  'Failed to save configuration: {error}': '保存配置失败：{error}',
+  'Failed to save configuration: {errorMsg}': '保存配置失败：{errorMsg}',
+  Removed: '已移除',
+  'Removed from marketplace · reason: {reason}':
+    '已从市场移除 · 原因：{reason}',
+  dismiss: '关闭',
+  'Disable it just for you in .claude/settings.local.json?':
+    '仅在 .claude/settings.local.json 中为您个人禁用？',
+  'This has the same effect as uninstalling, without affecting other contributors.':
+    '这与卸载效果相同，但不影响其他贡献者。',
+  'Disabling…': '禁用中…',
+  'Delete it along with the plugin?': '随插件一并删除？',
+  'Uninstalling…': '卸载中…',
+  'to delete': '删除',
+  'to keep': '保留',
+  '{count} {word}:': '{count} 个{word}：',
+  'Author:': '作者：',
+  'Marked for update': '已标记待更新',
+  'Failed to load': '加载失败',
+  Remove: '移除',
+  'View on GitHub': '在 GitHub 上查看',
+  '{component} path not found: {path}': '未找到 {component} 路径：{path}',
+  'Disable plugin "{plugin}" if you want this plugin\'s version instead':
+    '如需改用此插件自带的版本，请禁用插件 "{plugin}"',
+  'Remove "{name}" from your MCP config if you want the plugin\'s version instead':
+    '如需改用插件自带的版本，请从 MCP 配置中移除 "{name}"',
+  'Configure {name}': '配置 {name}',
+  '[ANT-ONLY] MCP servers are now managed in /plugins. Use /mcp no-redirect to test old UI':
+    '[ANT-ONLY] MCP 服务器现已在 /plugins 中管理。使用 /mcp no-redirect 测试旧版界面',
+  Errors: '错误',
+  ' /plugin install - Browse and install plugins':
+    ' /plugin install - 浏览并安装插件',
+  ' /plugin install <marketplace> - Install from specific marketplace':
+    ' /plugin install <marketplace> - 从指定市场安装',
+  ' /plugin install <plugin> - Install specific plugin':
+    ' /plugin install <plugin> - 安装指定插件',
+  ' /plugin install <plugin>@<market> - Install plugin from marketplace':
+    ' /plugin install <plugin>@<market> - 从市场安装插件',
+  ' /plugin manage - Manage installed plugins':
+    ' /plugin manage - 管理已安装的插件',
+  ' /plugin enable <plugin> - Enable a plugin':
+    ' /plugin enable <plugin> - 启用插件',
+  ' /plugin disable <plugin> - Disable a plugin':
+    ' /plugin disable <plugin> - 禁用插件',
+  ' /plugin uninstall <plugin> - Uninstall a plugin':
+    ' /plugin uninstall <plugin> - 卸载插件',
+  ' /plugin marketplace - Marketplace management menu':
+    ' /plugin marketplace - 市场管理菜单',
+  ' /plugin marketplace add - Add a marketplace':
+    ' /plugin marketplace add - 添加市场',
+  ' /plugin marketplace add <path/url> - Add marketplace directly':
+    ' /plugin marketplace add <path/url> - 直接添加市场',
+  ' /plugin marketplace update - Update marketplaces':
+    ' /plugin marketplace update - 更新市场',
+  ' /plugin marketplace update <name> - Update specific marketplace':
+    ' /plugin marketplace update <name> - 更新指定市场',
+  ' /plugin marketplace remove - Remove a marketplace':
+    ' /plugin marketplace remove - 移除市场',
+  ' /plugin marketplace remove <name> - Remove specific marketplace':
+    ' /plugin marketplace remove <name> - 移除指定市场',
+  ' /plugin marketplace list - List all marketplaces':
+    ' /plugin marketplace list - 列出所有市场',
+  ' /plugin validate <path> - Validate a manifest file or directory':
+    ' /plugin validate <path> - 校验 manifest 文件或目录',
+  'Other:': '其他：',
+  ' /plugin - Main plugin menu': ' /plugin - 插件主菜单',
+  ' /plugin help - Show this help': ' /plugin help - 显示此帮助',
+  ' /plugins - Alias for /plugin': ' /plugins - /plugin 的别名',
+  'failed to load · {count} {errors}': '加载失败 · {count} 个{errors}',
+  'Usage: /plugin validate <path>\n\n': '用法：/plugin validate <path>\n\n',
+  'Validate a plugin or marketplace manifest file or directory.\n\n':
+    '校验插件或市场的 manifest 文件或目录。\n\n',
+  'Examples:\n': '示例：\n',
+  'When given a directory, automatically validates .claude-plugin/marketplace.json\n':
+    '传入目录时，自动校验 .claude-plugin/marketplace.json\n',
+  'or .claude-plugin/plugin.json (prefers marketplace if both exist).\n\n':
+    '或 .claude-plugin/plugin.json（两者都存在时优先 marketplace）。\n\n',
+  'Or from the command line:\n': '也可在命令行中运行：\n',
+  'Validating {fileType} manifest: {filePath}\n\n':
+    '正在校验 {fileType} manifest：{filePath}\n\n',
+  'Running validation...': '正在运行校验...',
+  'Unable to retrieve updated privacy settings': '无法获取更新后的隐私设置',
+  '"Help improve Claude" set to {status}.':
+    '「帮助改进 Claude」已设置为 {status}。',
+  'Unknown provider: {provider}': '未知提供者：{provider}',
+  'Switched to Cursor provider.\nNo CURSOR_API_KEY set — will try to read the session token from a signed-in Cursor IDE. Set CURSOR_API_KEY + CURSOR_MACHINE_ID to override.':
+    '已切换到 Cursor 提供者。\n未设置 CURSOR_API_KEY — 将尝试从已登录的 Cursor IDE 读取会话 token。可设置 CURSOR_API_KEY + CURSOR_MACHINE_ID 覆盖。',
+  'Request more': '申请更多',
+  'Request extra usage': '申请超额使用',
+  'Switch to extra usage': '切换到超额使用',
+  'Upgrade your plan': '升级您的计划',
+  'Stop and wait for limit to reset': '停止并等待限额重置',
+  'What do you want to do?': '您想怎么做？',
+  'See the full changelog at: {url}': '完整更新日志见：{url}',
+  'Login failed. Please visit {url} and login using the GitHub App':
+    '登录失败。请访问 {url} 并使用 GitHub App 登录',
+  'GitHub rejected that token. Run `gh auth login` and try again.':
+    'GitHub 拒绝了该 token。请运行 `gh auth login` 后重试。',
+  'Server error ({status}). Try again in a moment.':
+    '服务器错误（{status}）。请稍后重试。',
+  "Couldn't reach the server. Check your connection.":
+    '无法连接服务器。请检查网络连接。',
+  'GitHub CLI not found. Install it via https://cli.github.com/, then run `gh auth login`, or connect GitHub on the web: {url}':
+    '未找到 GitHub CLI。请通过 https://cli.github.com/ 安装后运行 `gh auth login`，或在网页端连接 GitHub：{url}',
+  'GitHub CLI not authenticated. Run `gh auth login` and try again, or connect GitHub on the web: {url}':
+    'GitHub CLI 未认证。请运行 `gh auth login` 后重试，或在网页端连接 GitHub：{url}',
+  'Connected as {username}. Opened {url}':
+    '已以 {username} 身份连接。已打开 {url}',
+  'Checking login status…': '正在检查登录状态…',
+  'Connecting GitHub to Claude…': '正在将 GitHub 连接到 Claude…',
+  'Connect Claude on the web to GitHub?': '将网页版 Claude 连接到 GitHub？',
+  'Remote Control Server failed to start: {msg}':
+    '远程控制服务器启动失败：{msg}',
+  'Failed to restart: {msg}': '重启失败：{msg}',
+  'Remote Control Server': '远程控制服务器',
+  'Remote Control Server is': '远程控制服务器当前',
+  ' (PID: {pid})': '（PID：{pid}）',
+  'Recent logs:': '最近日志：',
+  'Stop server': '停止服务器',
+  'Restart server': '重启服务器',
+  'Ultrareview failed to launch the remote session. Check that this is a GitHub repo and try again.':
+    'Ultrareview 启动远程会话失败。请确认这是一个 GitHub 仓库后重试。',
+  'Free ultrareviews used. Enable Extra Usage at https://claude.ai/settings/billing to continue.':
+    '免费 ultrareview 次数已用完。请在 https://claude.ai/settings/billing 启用超额使用以继续。',
+  'Balance too low to launch ultrareview ({available} available, $10 minimum). Top up at https://claude.ai/settings/billing':
+    '余额不足，无法启动 ultrareview（可用 {available}，最低需 $10）。请在 https://claude.ai/settings/billing 充值',
+  'Ultrareview cancelled.': 'Ultrareview 已取消。',
+  'Proceed with Extra Usage billing': '按超额使用计费继续',
+  'Ultrareview billing': 'Ultrareview 计费',
+  'Your free ultrareviews for this organization are used. Further reviews bill as Extra Usage (pay-per-use).':
+    '该组织的免费 ultrareview 次数已用完。后续审查将按超额使用计费（按量付费）。',
+  'Launching…': '正在启动…',
+  'Error: Sandboxing requires WSL2. WSL1 is not supported.':
+    '错误：沙箱需要 WSL2。不支持 WSL1。',
+  'Error: Sandboxing is currently only supported on macOS, Linux, and WSL2.':
+    '错误：沙箱目前仅支持 macOS、Linux 和 WSL2。',
+  'Error: Sandboxing is disabled for this platform ({platform}) via the enabledPlatforms setting.':
+    '错误：enabledPlatforms 设置已在此平台（{platform}）上禁用沙箱。',
+  'Error: Sandbox settings are overridden by a higher-priority configuration and cannot be changed locally.':
+    '错误：沙箱设置已被更高优先级的配置覆盖，无法在本地修改。',
+  'Error: Please provide a command pattern to exclude (e.g., /sandbox exclude "npm run test:*")':
+    '错误：请提供要排除的命令模式（例如 /sandbox exclude "npm run test:*"）',
+  'Added "{pattern}" to excluded commands in {configPath}':
+    '已将 "{pattern}" 添加到 {configPath} 的排除命令中',
+  'Error: Unknown subcommand "{subcommand}". Available subcommand: exclude':
+    '错误：未知子命令 "{subcommand}"。可用子命令：exclude',
+  'No scheduled triggers. Use /schedule create <cron> <prompt> to create one.':
+    '暂无定时触发器。使用 /schedule create <cron> <prompt> 创建。',
+  'Scheduled Triggers ({count})': '定时触发器（{count}）',
+  'Trigger: {triggerId}': '触发器：{triggerId}',
+  'Agent: {agentId}': 'Agent：{agentId}',
+  'Last run: {lastRun}': '上次运行：{lastRun}',
+  'Trigger created': '触发器已创建',
+  'Trigger updated': '触发器已更新',
+  'Trigger {id} deleted.': '触发器 {id} 已删除。',
+  'Trigger {id} fired.': '触发器 {id} 已触发。',
+  'Trigger {id} enabled.': '触发器 {id} 已启用。',
+  'Trigger {id} disabled.': '触发器 {id} 已禁用。',
+  'Unexpected gh gist output: {url}': 'gh gist 输出异常：{url}',
+  '0x0.st returned unexpected output: {url}': '0x0.st 返回了异常输出：{url}',
+  'Usage: /share [--public|--private] [--mask-secrets] [--summary-only] [--allow-public-fallback]\n\n  --public               Create a public Gist (default: secret)\n  --private              Create a secret Gist (default)\n  --mask-secrets         Redact API keys, tokens, and secrets before uploading\n  --summary-only         Upload a summary (first 200 chars per turn) instead of full log\n  --allow-public-fallback  Fall back to 0x0.st if gh gist fails':
+    '用法：/share [--public|--private] [--mask-secrets] [--summary-only] [--allow-public-fallback]\n\n  --public               创建公开 Gist（默认：私密）\n  --private              创建私密 Gist（默认）\n  --mask-secrets         上传前抹除 API key、token 和其他机密信息\n  --summary-only         上传摘要（每轮前 200 字符）而非完整日志\n  --allow-public-fallback  gh gist 失败时回退到 0x0.st',
+  '## Session log not found\n\nSession: {sessionId}\nExpected path: `{logPath}`\n\nThe session log may not have been written yet. Try sending at least one message first.':
+    '## 未找到会话日志\n\n会话：{sessionId}\n预期路径：`{logPath}`\n\n会话日志可能尚未写入。请先至少发送一条消息。',
+  '## Share session log\n\nSession: {sessionId}\nLog file: `{logPath}`\n\nTo upload to GitHub Gist automatically, install the `gh` CLI:\n  https://cli.github.com/\n\nThen run:\n  `gh gist create "{logPath}" --secret --filename claude-session.jsonl`\n\nOr use `--allow-public-fallback` to upload to 0x0.st instead.\n\n_Privacy note: the JSONL contains everything typed in this session,_\n_including tool outputs. Review before sharing._':
+    '## 分享会话日志\n\n会话：{sessionId}\n日志文件：`{logPath}`\n\n如需自动上传到 GitHub Gist，请安装 `gh` CLI：\n  https://cli.github.com/\n\n然后运行：\n  `gh gist create "{logPath}" --secret --filename claude-session.jsonl`\n\n或使用 `--allow-public-fallback` 改为上传到 0x0.st。\n\n_隐私提示：JSONL 包含本会话中输入的所有内容，_\n_包括工具输出。分享前请先检查。_',
+  'No conversation content found in session log.': '会话日志中未找到对话内容。',
+  'Failed to prepare share file: {error}': '准备分享文件失败：{error}',
+  '## Session shared': '## 会话已分享',
+  'Session:': '会话：',
+  'Visibility:': '可见性：',
+  'Method:': '方式：',
+  'Content:    summary only (truncated)': '内容：    仅摘要（已截断）',
+  'Secrets:    masked before upload': '机密信息：    上传前已脱敏',
+  '_Privacy note: the JSONL contains everything typed in this session._':
+    '_隐私提示：JSONL 包含此会话中输入的所有内容。_',
+  '## Failed to share session': '## 分享会话失败',
+  'Make sure you are logged in: `gh auth login`':
+    '请确认已登录：`gh auth login`',
+  'Install the `gh` CLI: https://cli.github.com/':
+    '安装 `gh` CLI：https://cli.github.com/',
+  'Log file: `{logPath}`': '日志文件：`{logPath}`',
+  'Show skill learning status for current project':
+    '显示当前项目的技能学习状态',
+  'Enable skill learning for this session': '为此会话启用技能学习',
+  'Disable skill learning for this session': '为此会话禁用技能学习',
+  'Detailed description of skill learning features': '技能学习功能的详细说明',
+  'Skill Learning': '技能学习',
+  'Show whether automatic skill matching is active':
+    '显示自动技能匹配是否已启用',
+  'Enable automatic skill matching for this session':
+    '为此会话启用自动技能匹配',
+  'Disable automatic skill matching for this session':
+    '为此会话禁用自动技能匹配',
+  'How automatic skill matching works': '自动技能匹配的工作原理',
+  'Skill Search': '技能搜索',
+  deprecated: '已弃用',
+  'Owner:': '所有者：',
+  'No skills found. Use /skill-store create <name> <markdown> to publish one.':
+    '未找到技能。使用 /skill-store create <name> <markdown> 发布一个。',
+  'Skills ({count})': '技能（{count}）',
+  'Skill: {id}': '技能：{id}',
+  'Allowed tools: {tools}': '允许的工具：{tools}',
+  'No versions found for skill {id}.': '未找到技能 {id} 的任何版本。',
+  'Versions for {id} ({count})': '{id} 的版本（{count}）',
+  'Version: {version} (skill: {skillId})': '版本：{version}（技能：{skillId}）',
+  'Skill created': '技能已创建',
+  'Skill {id} deleted.': '技能 {id} 已删除。',
+  'Skill installed': '技能已安装',
+  'Path: {path}': '路径：{path}',
+  'Load with: /skills (bundled skills are not auto-loaded; place in {path})':
+    '加载方式：/skills（打包技能不会自动加载；请放置在 {path}）',
+  'Show session API usage and activity stats': '显示会话 API 用量和活动统计',
+  'Configure a provider/account for Agent sub-sessions. The main session login will not be changed.':
+    '为 Agent 子会话配置提供者/账户。主会话的登录不会更改。',
+  '{editor} keybindings must be installed on your local machine, not the remote server.':
+    '{editor} 按键绑定必须安装在本地机器上，而不是远程服务器上。',
+  '- Enabled "Use Option as Meta key"': '- 已启用 "Use Option as Meta key"',
+  '- Switched to visual bell': '- 已切换为视觉铃声',
+  '{msg} Your settings have been restored from backup.':
+    '{msg} 您的设置已从备份恢复。',
+  '{msg} Restoring from backup failed, try manually with: defaults import com.apple.Terminal {path}':
+    '{msg} 从备份恢复失败，请手动尝试：defaults import com.apple.Terminal {path}',
+  '{msg} No backup was available to restore from.':
+    '{msg} 没有可用于恢复的备份。',
+  'No animation found. Run /think-back first to generate one.':
+    '未找到动画。请先运行 /think-back 生成一个。',
+  'Could not access animation data: {error}': '无法访问动画数据：{error}',
+  'Player script not found. The player.js file is missing from the thinkback skill.':
+    '未找到播放器脚本。thinkback 技能中缺少 player.js 文件。',
+  'Could not access player script: {error}': '无法访问播放器脚本：{error}',
+  'Failed to access terminal instance': '无法访问终端实例',
+  'Year in review animation complete!': '年度回顾动画播放完毕！',
+  'Updating marketplace...': '正在更新市场…',
+  'Failed to install plugin: {error}': '安装插件失败：{error}',
+  'Failed to enable plugin: {error}': '启用插件失败：{error}',
+  'Checking thinkback installation...': '正在检查 thinkback 安装情况…',
+  'Installing marketplace...': '正在安装市场…',
+  'Enabling thinkback plugin...': '正在启用 thinkback 插件…',
+  'Installing thinkback plugin...': '正在安装 thinkback 插件…',
+  'Play animation': '播放动画',
+  'Watch your year in review': '观看您的年度回顾',
+  'Edit content': '编辑内容',
+  'Modify the animation': '修改动画',
+  'Fix errors': '修复错误',
+  'Fix validation or rendering issues': '修复校验或渲染问题',
+  Regenerate: '重新生成',
+  'Create a new animation from scratch': '从头创建一个新动画',
+  "Let's go!": '开始吧！',
+  'Generate your personalized animation': '生成您的个性化动画',
+  'Think Back on 2025 with Claude Code': '与 Claude Code 一起回顾 2025',
+  'Generate your 2025 Claude Code Think Back (takes a few minutes to run)':
+    '生成您的 2025 Claude Code Think Back（需要几分钟运行）',
+  'Relive your year of coding with Claude.':
+    '与 Claude 一起重温您这一年的编程时光。',
+  "We'll create a personalized ASCII animation celebrating your journey.":
+    '我们将创建一个个性化的 ASCII 动画，纪念您的这段旅程。',
+  'Error with thinkback: {msg}. Try running /plugin to manually install the think-back plugin.':
+    'thinkback 出错：{msg}。请尝试运行 /plugin 手动安装 think-back 插件。',
+  'Try running /plugin to manually install the think-back plugin.':
+    '请尝试运行 /plugin 手动安装 think-back 插件。',
+  'Loading thinkback skill…': '正在加载 thinkback 技能…',
+  'Show marker and environment override state': '显示标记和环境覆盖状态',
+  Toggle: '切换',
+  'Flip persisted TUI mode for the next session':
+    '为下次会话翻转已持久化的 TUI 模式',
+  'Enable flicker-free alternate-screen mode': '启用无闪烁备用屏幕模式',
+  'Disable flicker-free alternate-screen mode': '禁用无闪烁备用屏幕模式',
+  'TUI Mode': 'TUI 模式',
+  'Show subscription plan usage and rate limits': '显示订阅计划用量和速率限制',
+  'Value: ***mask***': '值：***mask***',
+  '\nInstall audio recording tools? Run: {cmd}': '\n安装录音工具？运行：{cmd}',
+  'Tavily Search API (default)': 'Tavily Search API（默认）',
+  'Anthropic server-side web search': 'Anthropic 服务端网页搜索',
+  'Scrape Bing HTML results': '抓取 Bing HTML 结果',
+  'Brave Search API (needs API key)': 'Brave Search API（需要 API key）',
+  'Exa AI search (MCP endpoint)': 'Exa AI 搜索（MCP 端点）',
+  'Use Tavily /extract (default)': '使用 Tavily /extract（默认）',
+  'HTTP Direct': 'HTTP 直连',
+  'Fetch URL directly via HTTP': '通过 HTTP 直接获取 URL',
+  'Endpoint URL': '端点 URL',
+  'Timeout (ms)': '超时（毫秒）',
+  'Web Tools': '网络工具',
+  'Choose a web search backend:': '选择网页搜索后端：',
+  'Choose a web fetch backend:': '选择网页获取后端：',
+  'analyzing your sessions': '正在分析您的会话',
+  Done: '完成',
+  Tools: '工具',
+  'Source: {source}': '来源：{source}',
+  or: '或',
+  ' Generating agent from description...': ' 正在根据描述生成 agent…',
+  'A newer {scope} persistent memory snapshot is available for the "{agentType}" agent.\n\nPlease merge the snapshot update into the current {scope} agent memory before continuing:\n- Preserve useful current memory entries.\n- Incorporate newer or more accurate information from the snapshot.\n- Resolve duplicates or conflicts in favor of the most current, specific information.\n- Keep the memory concise and relevant to future runs of this agent.\n\nAfter merging, continue with the user\'s request.':
+    '"{agentType}" agent 有一个更新的{scope}持久记忆快照。\n\n请先将快照更新合并到当前{scope} agent 记忆中，然后再继续：\n- 保留当前记忆中有用的条目。\n- 吸收快照中更新或更准确的信息。\n- 遇到重复或冲突时，以最新、最具体的信息为准。\n- 保持记忆简洁，并与此 agent 的后续运行相关。\n\n合并完成后，继续处理用户的请求。',
+  '{selected} of {total} tools selected': '已选择 {selected}/{total} 个工具',
+  'Detected a custom API key in your environment':
+    '检测到您的环境中存在自定义 API key',
+  'Auto-updating…': '自动更新中…',
+  '✓ Update installed · Restart to apply': '✓ 更新已安装 · 重启后生效',
+  '✗ Auto-update failed · Try ': '✗ 自动更新失败 · 请尝试 ',
+  'Cloud Authentication': '云端认证',
+  'Switch to Stable Channel': '切换到稳定通道',
+  "The stable channel may have an older version than what you're currently running ({currentVersion}).":
+    '稳定通道的版本可能比您当前运行的版本（{currentVersion}）更旧。',
+  'Allow possible downgrade to stable version': '允许降级到稳定版本',
+  'Stay on current version ({currentVersion}) until stable catches up':
+    '保持当前版本（{currentVersion}），直到稳定版赶上',
+  'Yes, install': '是，安装',
+  "No, and don't show plugin installation hints again":
+    '否，且不再显示插件安装提示',
+  'Plugin Recommendation': '插件推荐',
+  'Allow external CLAUDE.md file imports?': '允许导入外部 CLAUDE.md 文件？',
+  'Yes, allow external imports': '是，允许外部导入',
+  'No, disable external imports': '否，禁用外部导入',
+  'Summarized conversation': '已总结对话',
+  'Summarized {count} messages {direction}':
+    '已总结{direction}的 {count} 条消息',
+  'up to this point': '截至此处',
+  'from this point': '从此处开始',
+  'Context: “{context}”': '上下文：“{context}”',
+  'Conversation summarized to free up context': '已总结对话以释放上下文',
+  'Use models via the Cursor backend (browser sign-in, token, or IDE session)':
+    '通过 Cursor 后端使用模型（浏览器登录、token 或 IDE 会话）',
+  'Display name, e.g. "Cursor work"': '显示名称，例如 "Cursor work"',
+  'Access token': '访问令牌',
+  'optional — leave empty to use the signed-in Cursor IDE':
+    '可选 — 留空则使用已登录的 Cursor IDE',
+  'Machine ID': '机器 ID',
+  'optional — auto-detected from the Cursor IDE':
+    '可选 — 自动从 Cursor IDE 检测',
+  'Connect Cursor IDE': '连接 Cursor IDE',
+  'Sign in to the Cursor IDE first, or paste a session token + machine id.':
+    '请先登录 Cursor IDE，或粘贴会话 token + machine id。',
+  'Connect Cursor': '连接 Cursor',
+  'How do you want to sign in?': '您想如何登录？',
+  'Sign in with browser (OAuth)': '通过浏览器登录（OAuth）',
+  'Opens cursor.com to authorize — no token to copy':
+    '打开 cursor.com 授权 — 无需复制 token',
+  'Paste token / use signed-in IDE': '粘贴 token / 使用已登录的 IDE',
+  'Enter a session token + machine id, or reuse the Cursor IDE':
+    '输入会话 token + machine id，或复用 Cursor IDE',
+  'Cursor Account Setup': 'Cursor 账户设置',
+  'Preparing sign-in…': '正在准备登录…',
+  'A browser window was opened. Confirm the sign-in there.':
+    '已打开浏览器窗口，请在其中确认登录。',
+  'If it did not open, visit this URL:': '如果没有自动打开，请访问此 URL：',
+  'Global default model set to {target}': '全局默认模型已设置为 {target}',
+  'Session model set to {target}': '会话模型已设置为 {target}',
+  'Global subagent model set to {target}': '全局子 agent 模型已设置为 {target}',
+  'Session subagent model set to {target}':
+    '会话子 agent 模型已设置为 {target}',
+  'Please use this option unless you need to login to a special org for accessing sensitive data (e.g. customer data, HIPI data) with the Console option':
+    '除非您需要通过 Console 选项登录特殊组织以访问敏感数据（如客户数据、HIPI 数据），否则请使用此选项',
+  'Press {key} to go back to login options.': '按 {key} 返回登录选项。',
+  'Login successful. Press {key} to continue…': '登录成功。按 {key} 继续…',
+  ' save ~{tokens}': ' 节省约 {tokens}',
+  'Cache hit rate: {rate}%': '缓存命中率：{rate}%',
+  ' (below {threshold}% threshold)': ' （低于 {threshold}% 阈值）',
+  "You've spent $5 on the Anthropic API this session.":
+    '本次会话您已在 Anthropic API 上花费 $5。',
+  'Got it, thanks!': '知道了，谢谢！',
+  next: '下一个',
+  prev: '上一个',
+  '(↓ to select)': '(↓ 选择)',
+  'Open in Claude Code Desktop': '在 Claude Code Desktop 中打开',
+  'Try Claude Code Desktop': '试用 Claude Code Desktop',
+  '[ANT-ONLY] slow sync:': '[ANT-ONLY] 同步缓慢：',
+  'WARNING: Loading development channels': '警告：正在加载开发通道',
+  'I am using this for local development': '我正在将其用于本地开发',
+  Exit: '退出',
+  'Tool execution failed': '工具执行失败',
+  'Invalid tool parameters': '无效的工具参数',
+  '… +{count} {label} ({shortcut}': '… +{count} {label}（{shortcut}',
+  line: '行',
+  lines: '行',
+  'to see all)': '查看全部）',
+  'Feedback collection is not available for organizations with custom data retention policies.':
+    '使用自定义数据保留策略的组织无法使用反馈收集功能。',
+  'Could not submit feedback. Please try again later.':
+    '无法提交反馈，请稍后重试。',
+  'Submit Feedback / Bug Report': '提交反馈 / Bug 报告',
+  'Describe the issue below:': '请在下方描述问题：',
+  'Edit and press Enter to retry, or Esc to cancel':
+    '编辑后按 Enter 重试，或按 Esc 取消',
+  'This report will include:': '此报告将包含：',
+  '- Your feedback / bug description: ': '- 您的反馈 / bug 描述： ',
+  '- Environment info: ': '- 环境信息： ',
+  '- Git repo metadata: ': '- Git 仓库元数据： ',
+  ', not synced': '，未同步',
+  ', has local changes': '，有本地更改',
+  '- Current session transcript': '- 当前会话记录',
+  "We will use your feedback to debug related issues or to improve Claude Code's functionality (eg. to reduce the risk of bugs occurring in the future).":
+    '我们将使用您的反馈来调试相关问题或改进 Claude Code 的功能（例如降低未来出现 bug 的风险）。',
+  'Press {key} to confirm and submit.': '按 {key} 确认并提交。',
+  'Submitting report…': '正在提交报告…',
+  'Thank you for your report!': '感谢您的报告！',
+  'Feedback ID: ': '反馈 ID： ',
+  ' to open your browser and draft a GitHub issue, or any other key to close.':
+    ' 打开浏览器并起草 GitHub issue，或按任意其他键关闭。',
+  'Thanks for sharing your transcript!': '感谢分享您的会话记录！',
+  'Sharing transcript…': '正在分享会话记录…',
+  'Use /issue to report model behavior issues.':
+    '使用 /issue 报告模型行为问题。',
+  'Use {command} to share detailed feedback anytime.':
+    '随时使用 {command} 分享详细反馈。',
+  Bad: '差',
+  Fine: '一般',
+  Good: '好',
+  'Can Anthropic look at your session transcript to help us improve Claude Code?':
+    '是否允许 Anthropic 查看您的会话记录，以帮助我们改进 Claude Code？',
+  '(No content)': '（无内容）',
+  '… +{count} lines': '… +{count} 行',
+  '(preview unavailable)': '（预览不可用）',
+  'Global Search': '全局搜索',
+  'Type to search…': '输入以搜索…',
+  'No matches': '无匹配项',
+  ' — Allow the use of your chats and coding sessions to train and improve Anthropic AI models. Change anytime in your Privacy Settings (':
+    ' — 允许使用您的聊天和编码会话来训练和改进 Anthropic AI 模型。可随时在隐私设置中更改（',
+  ').': '）。',
+  ' — To help us improve our AI models and safety protections, we’re extending data retention to 5 years.':
+    ' — 为帮助我们改进 AI 模型和安全防护，我们将数据保留期延长至 5 年。',
+  'Search prompts': '搜索提示词',
+  'Filter history…': '筛选历史…',
+  'No matching prompts': '无匹配的提示词',
+  'No history yet': '暂无历史',
+  '{count} {word} configured': '已配置 {count} 个{word}',
+  'Do you wish to enable auto-connect to IDE?': '是否启用自动连接 IDE？',
+  'Do you wish to disable auto-connect to IDE?': '是否禁用自动连接 IDE？',
+  'You can also configure this in /config': '您也可以在 /config 中配置此项',
+  ' selected': ' 已选择',
+  'In {filename}': '位于 {filename}',
+  "You've been away {idle} and this conversation is {tokens} tokens.":
+    '您已离开 {idle}，当前对话已达 {tokens} 个 token。',
+  'Continue this conversation': '继续此对话',
+  'Send message as a new conversation': '作为新对话发送消息',
+  "Don't ask me again": '不再询问',
+  'Configuration Error': '配置错误',
+  'Reset with default configuration': '重置为默认配置',
+  'Settings Error': '设置错误',
+  'Continue without these settings': '忽略这些设置并继续',
+  'Keybinding Configuration Issues': '按键绑定配置问题',
+  'tmux session:': 'tmux 会话：',
+  '[ANT-ONLY] Logs:': '[ANT-ONLY] 日志：',
+  '{amount} in extra usage': '{amount} 额外用量',
+  'current worktree': '当前 worktree',
+  'Resume Session': '恢复会话',
+  'Claude found these results:': 'Claude 找到以下结果：',
+  'Search deeply using Claude': '使用 Claude 深度搜索',
+  'Rename session:': '重命名会话：',
+  'Enter new session name': '输入新的会话名称',
+  'Searching with Claude…': '正在使用 Claude 搜索…',
+  'Type to Search': '输入以搜索',
+  'show current dir': '显示当前目录',
+  'show all projects': '显示所有项目',
+  'show current worktree': '显示当前 worktree',
+  'show all worktrees': '显示所有 worktree',
+  'Type to search': '输入以搜索',
+  'Disable all LSP recommendations': '禁用所有 LSP 推荐',
+  'LSP Plugin Recommendation': 'LSP 插件推荐',
+  'Managed settings require approval': '托管设置需要审批',
+  'Yes, I trust these settings': '是，我信任这些设置',
+  'No, exit Claude Code': '否，退出 Claude Code',
+  none: '无',
+  ' Accept  ': ' 接受  ',
+  ' Decline': ' 拒绝',
+  ' Reopen URL  ': ' 重新打开 URL  ',
+  ' Cancel': ' 取消',
+  "If your browser doesn't open automatically, copy this URL manually:":
+    '如果浏览器未自动打开，请手动复制此 URL：',
+  '※ Error logs shown inline with --debug': '※ 使用 --debug 可内联显示错误日志',
+  '※ Run claude --debug to see error logs':
+    '※ 运行 claude --debug 查看错误日志',
+  ' for help': ' 获取帮助',
+  'Failed to parse': '解析失败',
+  'Contains warnings': '包含警告',
+  '{serverName} requires authentication': '{serverName} 需要身份验证',
+  '{serverName} requires authentication. Use /mcp to authenticate.':
+    '{serverName} 需要身份验证。使用 /mcp 进行验证。',
+  ' Establishing connection to MCP server': ' 正在建立与 MCP 服务器的连接',
+  "Failed to {action} MCP server '{serverName}': {error}":
+    "对 MCP 服务器 '{serverName}' 执行 {action} 失败：{error}",
+  ' Authenticating via your identity provider':
+    ' 正在通过您的身份提供者进行验证',
+  "If your browser doesn't open automatically, copy this URL manually ":
+    '如果浏览器未自动打开，请手动复制此 URL ',
+  "If the redirect page shows a connection error, paste the URL from your browser's address bar:":
+    '如果重定向页面显示连接错误，请粘贴浏览器地址栏中的 URL：',
+  ' after authenticating in your browser.': ' 在浏览器中完成身份验证后。',
+  "If your browser didn't open automatically, copy this URL manually ":
+    '如果浏览器未自动打开，请手动复制此 URL ',
+  ' when done.': ' 完成后。',
+  ' to open the browser.': ' 打开浏览器。',
+  ' Restarting MCP server process': ' 正在重启 MCP 服务器进程',
+  ' [read-only]': ' [只读]',
+  ' [destructive]': ' [破坏性]',
+  ' [open-world]': ' [开放世界]',
+  ' (required)': '（必填）',
+  'Use this and all future MCP servers in this project':
+    '在此项目中使用此 MCP 服务器及未来所有 MCP 服务器',
+  'Use this MCP server': '使用此 MCP 服务器',
+  'Continue without using this MCP server': '不使用此 MCP 服务器并继续',
+  'Import MCP Servers from Claude Desktop': '从 Claude Desktop 导入 MCP 服务器',
+  'Found {count} MCP {noun} in Claude Desktop.':
+    '在 Claude Desktop 中找到 {count} 个 MCP {noun}。',
+  '{count} new MCP servers found in .mcp.json':
+    '在 .mcp.json 中发现 {count} 个新 MCP 服务器',
+  ' (new)': '（新）',
+  'User memory': '用户记忆',
+  'Project memory': '项目记忆',
+  'Saved in ~/.claude/CLAUDE.md': '保存于 ~/.claude/CLAUDE.md',
+  'Checked in at ./CLAUDE.md': '已签入 ./CLAUDE.md',
+  'Saved in ./CLAUDE.md': '保存于 ./CLAUDE.md',
+  '@-imported': '通过 @ 导入',
+  'dynamically loaded': '动态加载',
+  'Open auto-memory folder': '打开自动记忆文件夹',
+  'Open team memory folder': '打开团队记忆文件夹',
+  'Open {agentType} agent memory': '打开 {agentType} agent 记忆',
+  '{scope} scope': '{scope} 作用域',
+  'Auto-memory: {state}': '自动记忆：{state}',
+  on: '开',
+  off: '关',
+  'Auto-dream: {state}': '自动 dream：{state}',
+  '/dream to run': '/dream 手动运行',
+  path: '路径',
+  command: '命令',
+  pattern: '模式',
+  query: '查询',
+  prompt: '提示词',
+  collapse: '折叠',
+  edit: '编辑',
+  'copy {label}': '复制 {label}',
+  '· Run in another terminal: security unlock-keychain':
+    '· 在另一个终端运行：security unlock-keychain',
+  ' (API_TIMEOUT_MS={timeout}ms, try increasing it)':
+    '（API_TIMEOUT_MS={timeout}ms，可尝试调大）',
+  'To continue immediately, use /model to switch to {model} and continue coding.':
+    '要立即继续，请使用 /model 切换到 {model} 并继续编码。',
+  '{prefix}: Please wait a moment and try again.':
+    '{prefix}：请稍候片刻后重试。',
+  '∴ Thinking': '∴ 思考中',
+  ' (from {from})': '（来自 {from}）',
+  relevant: '个相关',
+  skill: '技能',
+  cells: '个单元格',
+  unchanged: '未更改',
+  pages: '页',
+  in: '于',
+  Recalled: '已回忆',
+  memory: '条记忆',
+  memories: '条记忆',
+  Loaded: '已加载',
+  from: '来自',
+  available: '可用',
+  type: '类型',
+  'Plan file referenced ({path})': '已引用计划文件（{path}）',
+  'Skills restored ({skillNames})': '技能已恢复（{skillNames}）',
+  '{hookName} hook returned blocking error': '{hookName} 钩子返回了阻断性错误',
+  '{hookName} hook error': '{hookName} 钩子错误',
+  '{hookName} hook warning': '{hookName} 钩子警告',
+  '{hookName} hook stopped continuation: {message}':
+    '{hookName} 钩子已阻止继续：{message}',
+  '{hookName} says: {content}': '{hookName} 提示：{content}',
+  Allowed: '已允许',
+  Denied: '已拒绝',
+  '{action} by {hookEvent} hook': '由 {hookEvent} 钩子{action}',
+  teammate: '队友',
+  'shut down gracefully': '已正常关闭',
+  '✻ Conversation compacted ({historyShortcut} for history)':
+    '✻ 对话已压缩（{historyShortcut} 查看历史）',
+  'Plan Approval Request from {from}': '来自 {from} 的计划批准请求',
+  'Plan file: {path}': '计划文件：{path}',
+  '✓ Plan Approved by {name}': '✓ 计划已由 {name} 批准',
+  'You can now proceed with implementation. Your plan mode restrictions have been lifted.':
+    '现在可以开始实施了。计划模式的限制已解除。',
+  '✗ Plan Rejected by {name}': '✗ 计划已被 {name} 拒绝',
+  'Feedback: {feedback}': '反馈：{feedback}',
+  'Please revise your plan based on the feedback and call ExitPlanMode again.':
+    '请根据反馈修改计划，然后再次调用 ExitPlanMode。',
+  '[Plan Approval Request from {from}]': '[来自 {from} 的计划批准请求]',
+  '[Plan Approved] You can now proceed with implementation':
+    '[计划已批准] 现在可以开始实施了',
+  'Please revise your plan': '请修改您的计划',
+  '[Plan Rejected] {feedback}': '[计划已拒绝] {feedback}',
+  'Agent idle': 'Agent 空闲',
+  'Task {taskId} {status}': '任务 {taskId} {status}',
+  'Last DM: {summary}': '最近私信：{summary}',
+  '/extra-usage to finish what you’re working on.':
+    '/extra-usage 完成手头的工作。',
+  '/login to switch to an API usage-billed account.':
+    '/login 切换到按 API 用量计费的账户。',
+  '/upgrade to increase your usage limit.': '/upgrade 提高您的用量限制。',
+  '/extra-usage to request more usage from your admin.':
+    '/extra-usage 向管理员申请更多用量。',
+  '/upgrade or /extra-usage to finish what you’re working on.':
+    '/upgrade 或 /extra-usage 完成手头的工作。',
+  'Shutdown request from {from}': '来自 {from} 的关闭请求',
+  'Reason: {reason}': '原因：{reason}',
+  'Shutdown rejected by {from}': '关闭请求已被 {from} 拒绝',
+  '[Shutdown Request from {from}]': '[来自 {from} 的关闭请求]',
+  '[Shutdown Approved] {from} is now exiting': '[关闭已批准] {from} 正在退出',
+  '[Shutdown Rejected] {from}: {reason}': '[关闭已拒绝] {from}：{reason}',
+  '[snip] Conversation history before this point has been snipped.':
+    '[snip] 此处之前的对话历史已被裁剪。',
+  'Retrying in {seconds} {secondsLabel}… (attempt {attempt}/{maxRetries})':
+    '{seconds} {secondsLabel}后重试…（第 {attempt}/{maxRetries} 次尝试）',
+  second: '秒',
+  seconds: '秒',
+  ' · API_TIMEOUT_MS={timeout}ms, try increasing it':
+    ' · API_TIMEOUT_MS={timeout}ms，可尝试调大',
+  'Allowed ': '已允许 ',
+  'Ran {count} {label} {hooks}': '已运行 {count} 个 {label} {hooks}',
+  hook: '钩子',
+  hooks: '钩子',
+  Ran: '已运行',
+  'hook error:': '钩子错误：',
+  ' is active. Code in CLI or at': ' 已激活。可在 CLI 中编码，或访问',
+  '[Task Assigned] #{taskId} - {subject}': '[任务已分配] #{taskId} - {subject}',
+  'Skill({command})': '技能（{command}）',
+  'Denied by auto mode classifier {bullet} /feedback if incorrect':
+    '已被自动模式分类器拒绝 {bullet} 如判断有误请用 /feedback 反馈',
+  ' Auto-approved · matched "{rule}"': ' 已自动批准 · 匹配规则 "{rule}"',
+  '{count} new messages': '{count} 条新消息',
+  '{shortcut} to show {count} previous messages':
+    '{shortcut} 显示之前的 {count} 条消息',
+  '{shortcut} to hide {count} previous messages':
+    '{shortcut} 隐藏之前的 {count} 条消息',
+  'Confirm you want to restore {what}to the point before you sent this message:':
+    '请确认要将{what}恢复到发送此消息之前的状态：',
+  ' at cell {cell_id}': '（单元格 {cell_id}）',
+  '(not installed)': '（未安装）',
+  '(already granted)': '（已授权）',
+  '{count} other {apps} will be hidden while Claude works.':
+    'Claude 工作期间将隐藏其他 {count} 个{apps}。',
+  'Tool use': '工具使用',
+  'Claude wants to review{title}.': 'Claude 想要审查{title}。',
+  'Summary: {summary}': '摘要：{summary}',
+  'Press Enter to continue…': '按 Enter 继续…',
+  ' [offline]': ' [离线]',
+  'Quick Open': '快速打开',
+  'Type to search files…': '输入以搜索文件…',
+  'No matching files': '没有匹配的文件',
+  'Start typing to search…': '开始输入以搜索…',
+  ' · loading…': ' · 加载中…',
+  'Loading preview…': '正在加载预览…',
+  'Enable Remote Control for this session': '为当前会话启用远程控制',
+  'Opens a secure connection to claude.ai.': '将建立到 claude.ai 的安全连接。',
+  'You can always enable it later with /remote-control.':
+    '之后随时可通过 /remote-control 启用。',
+  'Denied: {list}': '已拒绝：{list}',
+  'Allowed within denied: {list}': '拒绝范围内的允许项：{list}',
+  'Allowed: {list}': '已允许：{list}',
+  'Denied within allowed: {list}': '允许范围内的拒绝项：{list}',
+  ' ({count} more)': '（还有 {count} 个）',
+  '✓ Unsandboxed fallback allowed - commands can run outside sandbox when necessary':
+    '✓ 允许非沙箱回退 - 必要时命令可在沙箱外运行',
+  '✓ Strict sandbox mode - all commands must run in sandbox or be excluded via the `excludedCommands` option':
+    '✓ 严格沙箱模式 - 所有命令必须在沙箱中运行，或通过 `excludedCommands` 选项排除',
+  '✓ Sandbox enabled with auto-allow for bash commands':
+    '✓ 沙箱已启用，bash 命令自动允许',
+  '✓ Sandbox enabled with regular bash permissions':
+    '✓ 沙箱已启用，bash 使用常规权限',
+  '○ Sandbox disabled': '○ 沙箱已禁用',
+  Config: '配置',
+  'Boundary: {name}': '边界：{name}',
+  'Loading session…': '正在加载会话…',
+  'MeoW nickname': 'MeoW 昵称',
+  '(not set)': '（未设置）',
+  'Nickname used by the MeoW push service (chuckfang.com) to deliver notifications.':
+    'MeoW 推送服务（chuckfang.com）用于投递通知的昵称。',
+  'e.g. my-nickname': '例如 my-nickname',
+  'Default view': '默认视图',
+  'On-Demand Usage': '按量使用',
+  'Provider usage': '提供者用量',
+  'Opened changes in {ideName} ⧉': '已在 {ideName} 中打开更改 ⧉',
+  'This will modify {symlinkTarget} (outside working directory) via a symlink':
+    '此操作将通过符号链接修改 {symlinkTarget}（位于工作目录之外）',
+  'Symlink target:': '符号链接目标：',
+  'Skill improvement suggested for "{skillName}"':
+    '已为 "{skillName}" 提出技能改进建议',
+  thinking: '思考中',
+  'Loading your Claude Code stats…': '正在加载您的 Claude Code 统计数据…',
+  'Failed to load stats: {message}': '加载统计数据失败：{message}',
+  'No stats available yet. Start using Claude Code!':
+    '暂无统计数据。开始使用 Claude Code 吧！',
+  'Loading stats…': '正在加载统计…',
+  'Esc to cancel · r to cycle dates · ctrl+s to copy':
+    'Esc 取消 · r 切换日期 · ctrl+s 复制',
+  'Most active day': '最活跃的一天',
+  '{start}-{end} of {total} models (↑↓ to scroll)':
+    '{start}-{end} / {total} 个模型（↑↓ 滚动）',
+  'copying…': '复制中…',
+  'copied!': '已复制！',
+  'copy failed': '复制失败',
+  'Peak hour': '高峰时段',
+  'Stats from the last {days} days': '最近 {days} 天的统计',
+  'Session Usage Stats': '会话使用统计',
+  'Total cost:': '总成本：',
+  '  Input:': '  输入：',
+  '  Output:': '  输出：',
+  '  Cache read:': '  缓存读取：',
+  '  Cache write:': '  缓存写入：',
+  'Web search reqs:': '网页搜索请求：',
+  Duration: '耗时',
+  '  Wall:': '  实际：',
+  'Code Changes': '代码更改',
+  '  Lines added:': '  新增行数：',
+  '  Lines removed:': '  删除行数：',
+  'Model Usage': '模型使用',
+  '    Tokens:': '    Token：',
+  '{input} in / {output} out': '{input} 输入 / {output} 输出',
+  '    Cost:': '    成本：',
+  'to close': '关闭',
+  Completed: '已完成',
+  Failed: '失败',
+  Stopped: '已停止',
+  'Stop ultraplan?': '停止 ultraplan？',
+  working: '运行中',
+  idle: '空闲',
+  'Log in to Claude': '登录 Claude',
+  'Login with Claude account': '使用 Claude 账号登录',
+  '{path} no longer contains the correct repository. Select another path.':
+    '{path} 不再包含正确的仓库。请选择其他路径。',
+  'Teleport to Repo': '传送到仓库',
+  'Open Claude Code in {targetRepo}:': '在 {targetRepo} 中打开 Claude Code：',
+  'Validating repository…': '正在验证仓库…',
+  'Run claude --teleport from a checkout of {targetRepo}':
+    '请在 {targetRepo} 的检出目录中运行 claude --teleport',
+  'Loading "{title}"…': '正在加载“{title}”…',
+  'Failed to resume session': '恢复会话失败',
+  ' Checking git status': ' 正在检查 git 状态',
+  'Working Directory Has Changes': '工作目录有更改',
+  '{count} files changed': '{count} 个文件已更改',
+  'Stash changes and continue': '暂存更改并继续',
+  'Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT={value})':
+    '语法高亮已禁用（通过 CLAUDE_CODE_SYNTAX_HIGHLIGHT={value}）',
+  'Syntax highlighting disabled ({shortcut} to enable)':
+    '语法高亮已禁用（{shortcut} 启用）',
+  'Syntax theme: {theme}{source} ({shortcut} to disable)':
+    '语法主题：{theme}{source}（{shortcut} 禁用）',
+  ' (from {source})': '（来自 {source}）',
+  'Syntax highlighting enabled ({shortcut} to disable)':
+    '语法高亮已启用（{shortcut} 禁用）',
+  'Claude will think before responding': 'Claude 将在回复前思考',
+  'Claude will respond without extended thinking':
+    'Claude 将直接回复，不进行扩展思考',
+  'Accessing workspace:': '正在访问工作区：',
+  'Ultraplan approved': 'Ultraplan 已批准',
+  'How should the plan be implemented?': '应如何实施该计划？',
+  'Run ultraplan in the cloud?': '在云端运行 ultraplan？',
+  '(no content)': '（无内容）',
+  'Your directive: ': '您的指令： ',
+  'Usage: {input} input, {output} output, {cacheRead} cache read, {cacheWrite} cache write':
+    '用量：{input} 输入，{output} 输出，{cacheRead} 缓存读取，{cacheWrite} 缓存写入',
+  'Usage by model:': '按模型统计用量：',
+  '{input} input, {output} output, {cacheRead} cache read, {cacheWrite} cache write':
+    '{input} 输入，{output} 输出，{cacheRead} 缓存读取，{cacheWrite} 缓存写入',
+  '(costs may be inaccurate due to usage of unknown models)':
+    '（因使用了未知模型，成本可能不准确）',
+  'Total cost': '总成本',
+  'Total duration (API)': '总耗时（API）',
+  'Total duration (wall)': '总耗时（实际）',
+  'Total code changes': '代码更改总量',
+  added: '新增',
+  'Unknown daemon subcommand: {subcommand}':
+    '未知的守护进程子命令：{subcommand}',
+  '  Status:  running': '  状态：  运行中',
+  '  Started: {startedAt}': '  启动于：{startedAt}',
+  '  Workers: {workers}': '  Worker 数：{workers}',
+  '  Status: stopped': '  状态：已停止',
+  '  Status: stale (cleaned up)': '  状态：已过期（已清理）',
+  '\n=== Background Sessions ===': '\n=== 后台会话 ===',
+  "[daemon] spawning worker '{kind}'": "[守护进程] 正在启动 worker '{kind}'",
+  "[daemon] worker '{kind}' exited with permanent error — parking":
+    "[守护进程] worker '{kind}' 因永久性错误退出 — 已搁置",
+  "[daemon] worker '{kind}' failed {count} times rapidly — parking":
+    "[守护进程] worker '{kind}' 短时间内失败 {count} 次 — 已搁置",
+  "[daemon] worker '{kind}' exited (code={code}, signal={sig}), restarting in {backoffMs}ms":
+    "[守护进程] worker '{kind}' 已退出（code={code}, signal={sig}），将在 {backoffMs}ms 后重启",
+  "Error: unknown daemon worker kind '{kind}'":
+    "错误：未知的守护进程 worker 类型 '{kind}'",
+  '[remoteControl] permanent error: {message}':
+    '[remoteControl] 永久性错误：{message}',
+  '[remoteControl] transient error: {message}':
+    '[remoteControl] 暂时性错误：{message}',
+  'Error: --daemon-worker requires DAEMON feature to be enabled. Set FEATURE_DAEMON=1 or add DAEMON to DEFAULT_BUILD_FEATURES.':
+    '错误：--daemon-worker 需要启用 DAEMON 功能。请设置 FEATURE_DAEMON=1，或将 DAEMON 添加到 DEFAULT_BUILD_FEATURES。',
+  "Error: Remote Control is disabled by your organization's policy.":
+    '错误：远程控制已被您所在组织的策略禁用。',
+  '[deprecated] Use: claude daemon {cmd}':
+    '[已弃用] 请使用：claude daemon {cmd}',
+  '[deprecated] Use: claude job {cmd}': '[已弃用] 请使用：claude job {cmd}',
+  'Use your existing Claude {plan} plan with Claude Code':
+    '在 Claude Code 中使用您现有的 Claude {plan} 计划',
+  'Fast limit reset · now using fast mode':
+    '快速模式限额已重置 · 现已启用快速模式',
+  'Fast mode overloaded and is temporarily unavailable · resets in {resetIn}':
+    '快速模式过载，暂时不可用 · 将在 {resetIn} 后重置',
+  'Fast limit reached and temporarily disabled · resets in {resetIn}':
+    '快速模式限额已用尽，暂时禁用 · 将在 {resetIn} 后重置',
+  '{ide} disconnected': '{ide} 已断开连接',
+  'IDE plugin not connected · /status for info':
+    'IDE 插件未连接 · 运行 /status 查看详情',
+  'IDE extension install failed (see /status for info)':
+    'IDE 扩展安装失败（运行 /status 查看详情）',
+  'LSP for {name} failed': '{name} 的 LSP 失败',
+  '{count} MCP servers failed': '{count} 个 MCP 服务器失败',
+  '{count} claude.ai connectors unavailable':
+    '{count} 个 claude.ai 连接器不可用',
+  '{count} MCP servers need auth': '{count} 个 MCP 服务器需要认证',
+  '{count} claude.ai connectors need auth':
+    '{count} 个 claude.ai 连接器需要认证',
+  'Model updated to Sonnet 4.6': '模型已更新为 Sonnet 4.6',
+  'Model updated to Opus 4.7 · Set CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP=1 to opt out':
+    '模型已更新为 Opus 4.7 · 设置 CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP=1 可退出此行为',
+  'Model updated to Opus 4.7': '模型已更新为 Opus 4.7',
+  'Plugin updated: {names}': '插件已更新：{names}',
+  'Plugins updated: {names}': '插件已更新：{names}',
+  '{count} plugins failed to install': '{count} 个插件安装失败',
+  'Found {count} settings {word} · /doctor for details':
+    '发现 {count} 个设置{word} · /doctor 查看详情',
+  issue: '问题',
+  issues: '问题',
+  '{count} agents spawned': '已启动 {count} 个 agent',
+  '{count} agents shut down': '已关闭 {count} 个 agent',
+  'search history': '搜索历史',
+  'Image in clipboard · {shortcut} to paste':
+    '剪贴板中有图片 · {shortcut} 粘贴',
+  '{tool} requires permission': '{tool} 需要权限',
+  'User aborted': '用户已中止',
+  'User denied permission': '用户拒绝了权限',
+  'Failed to connect to server at {url}': '无法连接到服务器 {url}',
+  'Server disconnected.': '服务器已断开连接。',
+  'Plugins flagged. Check /plugins': '有插件被标记。请检查 /plugins',
+  'Failed to load plugin commands: {error}': '加载插件命令失败：{error}',
+  'Failed to load plugin agents: {error}': '加载插件 agent 失败：{error}',
+  'Failed to load plugin hooks: {error}': '加载插件钩子失败：{error}',
+  'Plugins changed. Run /reload-plugins to activate.':
+    '插件已变更。运行 /reload-plugins 以激活。',
+  '[{role} / {name}] Error: {detail}': '[{role} / {name}] 错误：{detail}',
+  'no output': '无输出',
+  '[{role} / {name}] Completed': '[{role} / {name}] 已完成',
+  'Routed to {targets}; main can continue other tasks':
+    '已路由至 {targets}；主会话可继续处理其他任务',
+  'Selected pipes are unavailable; processing locally.':
+    '所选管道不可用；改为本地处理。',
+  'Failed to send to: {targets}': '发送失败：{targets}',
+  'Plugin {pluginId} not found in marketplace':
+    '在插件市场中未找到插件 {pluginId}',
+  '{name} installed · restart to apply': '{name} 已安装 · 重启后生效',
+  'Failed to install {name}': '安装 {name} 失败',
+  'Remote session may be unresponsive. Attempting to reconnect…':
+    '远程会话可能无响应。正在尝试重新连接…',
+  'disabled after repeated failures · restart to retry':
+    '多次失败后已禁用 · 重启以重试',
+  'Remote Control failed to connect: {error}': '远程控制连接失败：{error}',
+  'Skill "{name}" updated with improvements.': '技能“{name}”已更新并改进。',
+  'send message': '发送消息',
+  'send message · {status}': '发送消息 · {status}',
+  'Use {shortcut} to toggle thinking': '使用 {shortcut} 切换思考模式',
+  'Error: Invalid JSON provided to --settings\n':
+    '错误：提供给 --settings 的 JSON 无效\n',
+  'Error: Settings file not found: {path}\n': '错误：未找到设置文件：{path}\n',
+  'Error processing settings: {error}\n': '处理设置时出错：{error}\n',
+  'Error processing --setting-sources: {error}\n':
+    '处理 --setting-sources 时出错：{error}\n',
+  'Your prompt': '您的提示词',
+  'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")':
+    '启用调试模式，可选类别过滤（例如 "api,hooks" 或 "!1p,!file"）',
+  'Enable debug mode (to stderr)': '启用调试模式（输出到 stderr）',
+  'Write debug logs to a specific file path (implicitly enables debug mode)':
+    '将调试日志写入指定文件路径（隐式启用调试模式）',
+  'Override verbose mode setting from config': '覆盖配置中的详细模式设置',
+  'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when Claude is run with the -p mode. Only use this flag in directories you trust.':
+    '打印响应后退出（适用于管道）。注意：以 -p 模式运行 Claude 时会跳过工作区信任对话框。请仅在您信任的目录中使用此标志。',
+  'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read). 3P providers (Bedrock/Vertex/Foundry) use their own credentials. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (CLAUDE.md dirs), --mcp-config, --settings, --agents, --plugin-dir.':
+    '极简模式：跳过钩子、LSP、插件同步、归因、自动记忆、后台预取、钥匙串读取和 CLAUDE.md 自动发现。设置 CLAUDE_CODE_SIMPLE=1。Anthropic 鉴权严格限定为 ANTHROPIC_API_KEY 或通过 --settings 指定的 apiKeyHelper（绝不读取 OAuth 和钥匙串）。第三方提供者（Bedrock/Vertex/Foundry）使用各自的凭据。技能仍可通过 /skill-name 解析。请通过以下方式显式提供上下文：--system-prompt[-file]、--append-system-prompt[-file]、--add-dir（CLAUDE.md 目录）、--mcp-config、--settings、--agents、--plugin-dir。',
+  'Run Setup hooks with init trigger, then continue':
+    '以 init 触发器运行 Setup 钩子，然后继续',
+  'Run Setup and SessionStart:startup hooks, then exit':
+    '运行 Setup 和 SessionStart:startup 钩子，然后退出',
+  'Run Setup hooks with maintenance trigger, then continue':
+    '以 maintenance 触发器运行 Setup 钩子，然后继续',
+  'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)':
+    '输出格式（仅配合 --print 使用）："text"（默认）、"json"（单一结果）或 "stream-json"（实时流式）',
+  'JSON Schema for structured output validation. Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}':
+    '用于结构化输出校验的 JSON Schema。示例：{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}',
+  'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)':
+    '在输出流中包含所有钩子生命周期事件（仅配合 --output-format=stream-json 使用）',
+  'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)':
+    '在部分消息块到达时即时输出（仅配合 --print 和 --output-format=stream-json 使用）',
+  'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)':
+    '输入格式（仅配合 --print 使用）："text"（默认）或 "stream-json"（实时流式输入）',
+  '[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)':
+    '【已弃用，请改用 --debug】启用 MCP 调试模式（显示 MCP 服务器错误）',
+  'Bypass all permission checks. Recommended only for sandboxes with no internet access.':
+    '绕过所有权限检查。仅建议在无互联网访问的沙箱中使用。',
+  'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.':
+    '将绕过所有权限检查作为可选项启用，但默认不开启。仅建议在无互联网访问的沙箱中使用。',
+  'Thinking mode: enabled (equivalent to adaptive), disabled':
+    '思考模式：enabled（等同于 adaptive）、disabled',
+  '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)':
+    '【已弃用，较新模型请改用 --thinking】思考 token 的最大数量（仅配合 --print 使用）',
+  'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)':
+    '非交互模式下 agent 轮次的最大数量。达到指定轮数后将提前结束对话。（仅配合 --print 使用）',
+  'Maximum dollar amount to spend on API calls (only works with --print)':
+    'API 调用花费的最大美元金额（仅配合 --print 使用）',
+  '--max-budget-usd must be a positive number greater than 0':
+    '--max-budget-usd 必须是大于 0 的正数',
+  'API-side task budget in tokens (output_config.task_budget)':
+    'API 侧的任务预算（以 token 计，output_config.task_budget）',
+  '--task-budget must be a positive integer': '--task-budget 必须是正整数',
+  'Re-emit user messages from stdin back on stdout for acknowledgment (only works with --input-format=stream-json and --output-format=stream-json)':
+    '将来自 stdin 的用户消息重新输出到 stdout 以作确认（仅配合 --input-format=stream-json 和 --output-format=stream-json 使用）',
+  'Enable auth status messages in SDK mode': '在 SDK 模式下启用鉴权状态消息',
+  'Comma or space-separated list of tool names to allow (e.g. "Bash(git:*) Edit")':
+    '允许的工具名称列表，以逗号或空格分隔（例如 "Bash(git:*) Edit"）',
+  'Specify the list of available tools from the built-in set. Use "" to disable all tools, "default" to use all tools, or specify tool names (e.g. "Bash,Edit,Read").':
+    '从内置工具集中指定可用工具列表。使用 "" 禁用所有工具，"default" 使用所有工具，或指定工具名称（例如 "Bash,Edit,Read"）。',
+  'Comma or space-separated list of tool names to deny (e.g. "Bash(git:*) Edit")':
+    '拒绝的工具名称列表，以逗号或空格分隔（例如 "Bash(git:*) Edit"）',
+  'Load MCP servers from JSON files or strings (space-separated)':
+    '从 JSON 文件或字符串加载 MCP 服务器（以空格分隔）',
+  'MCP tool to use for permission prompts (only works with --print)':
+    '用于权限提示的 MCP 工具（仅配合 --print 使用）',
+  'System prompt to use for the session': '会话使用的系统提示词',
+  'Read system prompt from a file': '从文件读取系统提示词',
+  'Append a system prompt to the default system prompt':
+    '在默认系统提示词后追加系统提示词',
+  'Read system prompt from a file and append to the default system prompt':
+    '从文件读取系统提示词并追加到默认系统提示词后',
+  'Permission mode to use for the session': '会话使用的权限模式',
+  'Continue the most recent conversation in the current directory':
+    '继续当前目录中最近的对话',
+  'Resume a conversation by session ID, or open interactive picker with optional search term':
+    '按会话 ID 恢复对话，或打开交互式选择器（可附带搜索词）',
+  'When resuming, create a new session ID instead of reusing the original (use with --resume or --continue)':
+    '恢复时创建新的会话 ID 而非复用原有 ID（配合 --resume 或 --continue 使用）',
+  'Pre-fill the prompt input with text without submitting it':
+    '预填充提示输入框文本但不提交',
+  'Signal that this session was launched from a deep link':
+    '标记此会话由深层链接启动',
+  'Repo slug the deep link ?repo= parameter resolved to the current cwd':
+    '深层链接 ?repo= 参数解析到当前 cwd 的仓库 slug',
+  'FETCH_HEAD mtime in epoch ms, precomputed by the deep link trampoline':
+    'FETCH_HEAD 的 mtime（epoch 毫秒），由深层链接跳板预先计算',
+  'Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term':
+    '按 PR 编号/URL 恢复与 PR 关联的会话，或打开交互式选择器（可附带搜索词）',
+  'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)':
+    '禁用会话持久化——会话不会保存到磁盘且无法恢复（仅配合 --print 使用）',
+  'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)':
+    '恢复时仅包含至 <message.id> 对应助手消息为止的消息（含该消息，在 print 模式下配合 --resume 使用）',
+  'Restore files to state at the specified user message and exit (requires --resume)':
+    '将文件恢复到指定用户消息时的状态后退出（需要 --resume）',
+  'It must be one of: {values}': '必须是以下值之一：{values}',
+  'Beta headers to include in API requests (API key users only)':
+    'API 请求中包含的 Beta 标头（仅限 API key 用户）',
+  'Enable automatic fallback to specified model when default model is overloaded (only works with --print)':
+    '当默认模型过载时自动回退到指定模型（仅配合 --print 使用）',
+  'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)':
+    '用于计费标头归因的工作负载标签（cc_workload）。进程级作用域；由为 cron 任务派生子进程的 SDK 守护进程调用方设置。（仅配合 --print 使用）',
+  'Path to a settings JSON file or a JSON string to load additional settings from':
+    '设置 JSON 文件的路径或 JSON 字符串，用于加载额外设置',
+  'Additional directories to allow tool access to': '允许工具访问的额外目录',
+  'Automatically connect to IDE on startup if exactly one valid IDE is available':
+    '启动时若恰好只有一个有效 IDE 可用则自动连接',
+  'Only use MCP servers from --mcp-config, ignoring all other MCP configurations':
+    '仅使用 --mcp-config 中的 MCP 服务器，忽略所有其他 MCP 配置',
+  'Use a specific session ID for the conversation (must be a valid UUID)':
+    '为对话使用指定的会话 ID（必须是有效的 UUID）',
+  'Set a display name for this session (shown in /resume and terminal title)':
+    '为此会话设置显示名称（显示在 /resume 和终端标题中）',
+  'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')':
+    '定义自定义 agent 的 JSON 对象（例如 \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\'）',
+  'Comma-separated list of setting sources to load (user, project, local).':
+    '要加载的设置来源列表，以逗号分隔（user、project、local）。',
+  'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)':
+    '仅为本次会话从目录加载插件（可重复：--plugin-dir A --plugin-dir B）',
+  'Disable all skills': '禁用所有技能',
+  'Enable Claude in Chrome integration': '启用 Claude in Chrome 集成',
+  'Disable Claude in Chrome integration': '禁用 Claude in Chrome 集成',
+  'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)':
+    '启动时要下载的文件资源。格式：file_id:relative_path（例如 --file file_abc:doc.txt file_def:img.png）',
+  'Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.':
+    '助手模式已禁用：目录不受信任。请接受信任对话框后重启。',
+  'Error: --tmux requires --worktree\n': '错误：--tmux 需要 --worktree\n',
+  'Error: --tmux is not supported on Windows\n':
+    '错误：Windows 不支持 --tmux\n',
+  'Error: tmux is not installed.\n{instructions}\n':
+    '错误：未安装 tmux。\n{instructions}\n',
+  'Error: --agent-id, --agent-name, and --team-name must all be provided together\n':
+    '错误：--agent-id、--agent-name 和 --team-name 必须同时提供\n',
+  'Error: --session-id can only be used with --continue or --resume if --fork-session is also specified.\n':
+    '错误：--session-id 只有在同时指定 --fork-session 时才能与 --continue 或 --resume 一起使用。\n',
+  'Error: Invalid session ID. Must be a valid UUID.\n':
+    '错误：无效的会话 ID。必须是有效的 UUID。\n',
+  'Error: Session ID {id} is already in use.\n':
+    '错误：会话 ID {id} 已被占用。\n',
+  'Error: Session token required for file downloads. CLAUDE_CODE_SESSION_ACCESS_TOKEN must be set.\n':
+    '错误：文件下载需要会话令牌。必须设置 CLAUDE_CODE_SESSION_ACCESS_TOKEN。\n',
+  'Error: Cannot use both --system-prompt and --system-prompt-file. Please use only one.\n':
+    '错误：不能同时使用 --system-prompt 和 --system-prompt-file，请只使用其中一个。\n',
+  'Error: System prompt file not found: {path}\n':
+    '错误：未找到系统提示词文件：{path}\n',
+  'Error reading system prompt file: {error}\n':
+    '读取系统提示词文件出错：{error}\n',
+  'Error: Cannot use both --append-system-prompt and --append-system-prompt-file. Please use only one.\n':
+    '错误：不能同时使用 --append-system-prompt 和 --append-system-prompt-file，请只使用其中一个。\n',
+  'Error: Append system prompt file not found: {path}\n':
+    '错误：未找到追加系统提示词文件：{path}\n',
+  'Error reading append system prompt file: {error}\n':
+    '读取追加系统提示词文件出错：{error}\n',
+  'Error: Invalid MCP configuration:\n{errors}\n':
+    '错误：无效的 MCP 配置：\n{errors}\n',
+  'Invalid MCP configuration: "{name}" is a reserved MCP name.':
+    '无效的 MCP 配置："{name}" 是保留的 MCP 名称。',
+  'Error: {message}\n': '错误：{message}\n',
+  'Warning: MCP {count} blocked by enterprise policy: {names}\n':
+    '警告：MCP {count} 已被企业策略拦截：{names}\n',
+  'Error: Failed to run with Claude in Chrome.':
+    '错误：无法通过 Claude in Chrome 运行。',
+  'You cannot use --strict-mcp-config when an enterprise MCP config is present':
+    '存在企业 MCP 配置时不能使用 --strict-mcp-config',
+  'You cannot dynamically configure MCP servers when an enterprise MCP config is present':
+    '存在企业 MCP 配置时不能动态配置 MCP 服务器',
+  '{flag} entries must be tagged: {bad}\n  plugin:<name>@<marketplace>  — plugin-provided channel (allowlist enforced)\n  server:<name>                — manually configured MCP server\n':
+    '{flag} 条目必须带标签：{bad}\n  plugin:<name>@<marketplace>  — 插件提供的频道（强制执行白名单）\n  server:<name>                — 手动配置的 MCP 服务器\n',
+  'Warning: claude.ai MCP {count} blocked by enterprise policy: {names}\n':
+    '警告：claude.ai MCP {count} 已被企业策略拦截：{names}\n',
+  'Error: The model "{model}" does not support the advisor tool.\n':
+    '错误：模型 "{model}" 不支持顾问工具。\n',
+  'Error: The model "{model}" cannot be used as an advisor.\n':
+    '错误：模型 "{model}" 不能用作顾问。\n',
+  '{reason}\n--rc flag ignored.\n': '{reason}\n已忽略 --rc 标志。\n',
+  'No conversation found to continue': '未找到可继续的对话',
+  'Connected to server at {url}\nSession: {id}':
+    '已连接到服务器 {url}\n会话：{id}',
+  'Starting local ssh-proxy test session...\n':
+    '正在启动本地 ssh-proxy 测试会话...\n',
+  'Connecting to {host}...\n': '正在连接到 {host}...\n',
+  'Local ssh-proxy test session\ncwd: {cwd}\nAuth: unix socket → local proxy':
+    '本地 ssh-proxy 测试会话\ncwd: {cwd}\n鉴权：unix socket → 本地代理',
+  'SSH session to {host}\nRemote cwd: {cwd}\nAuth: unix socket -R → local proxy':
+    '连接到 {host} 的 SSH 会话\n远程 cwd: {cwd}\n鉴权：unix socket -R → 本地代理',
+  'Failed to discover sessions: {error}': '发现会话失败：{error}',
+  'Assistant installation failed': '助手安装失败',
+  'Assistant installed in {dir}. The daemon is starting up — run `claude assistant` again in a few seconds to connect.':
+    '助手已安装到 {dir}。守护进程正在启动 — 请几秒后再次运行 `claude assistant` 以连接。',
+  'Error: {message}': '错误：{message}',
+  'Failed to authenticate': '身份验证失败',
+  'Attached to assistant session {id}...': '已附加到助手会话 {id}...',
+  "Error: Remote sessions are disabled by your organization's policy.":
+    '错误：您所在组织的策略已禁用远程会话。',
+  'Error: --remote requires a description.\nUsage: claude --remote "your task description"':
+    '错误：--remote 需要提供描述。\n用法：claude --remote "你的任务描述"',
+  'Error: Unable to create remote session': '错误：无法创建远程会话',
+  'Created remote session: {title}\n': '已创建远程会话：{title}\n',
+  'View: {url}\n': '查看：{url}\n',
+  'Resume with: claude --teleport {id}\n': '恢复方式：claude --teleport {id}\n',
+  '/remote-control is active. Code in CLI or at {url}':
+    '/remote-control 已激活。可在 CLI 中或访问 {url} 进行编码',
+  'You must run claude --teleport {teleport} from a checkout of {repo}.':
+    '必须在 {repo} 的检出目录中运行 claude --teleport {teleport}。',
+  'You must run claude --teleport {teleport} from a checkout of {repo}.\n':
+    '必须在 {repo} 的检出目录中运行 claude --teleport {teleport}。\n',
+  'Failed to validate session': '会话验证失败',
+  'Error: {error}\n': '错误：{error}\n',
+  'Unable to load transcript from file: {path}':
+    '无法从文件加载对话记录：{path}',
+  'No conversation found with session ID: {id}': '未找到会话 ID 为 {id} 的对话',
+  'Failed to resume session {id}': '恢复会话 {id} 失败',
+  'Warning: {count}/{total} file(s) failed to download.\n':
+    '警告：{count}/{total} 个文件下载失败。\n',
+  'Error downloading files: {error}': '下载文件出错：{error}',
+  'Output the version number': '输出版本号',
+  'Create a new git worktree for this session (optionally specify a name)':
+    '为此会话创建新的 git worktree（可选指定名称）',
+  'Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.':
+    '为 worktree 创建 tmux 会话（需要 --worktree）。可用时使用 iTerm2 原生窗格；使用 --tmux=classic 使用传统 tmux。',
+  'Enable the server-side advisor tool with the specified model (alias or full ID).':
+    '使用指定模型启用服务端顾问工具（别名或完整 ID）。',
+  '[ANT-ONLY] Alias for --permission-mode auto.':
+    '[ANT-ONLY] --permission-mode auto 的别名。',
+  '[ANT-ONLY] Deprecated alias for --permission-mode auto.':
+    '[ANT-ONLY] --permission-mode auto 的已弃用别名。',
+  '[ANT-ONLY] Tasks mode: watch for tasks and auto-process them. Optional id is used as both the task list ID and agent ID (defaults to "tasklist").':
+    '[ANT-ONLY] 任务模式：监视任务并自动处理。可选的 id 同时用作任务列表 ID 和 agent ID（默认为 "tasklist"）。',
+  '[ANT-ONLY] Force Claude to use multi-agent mode for solving problems':
+    '[ANT-ONLY] 强制 Claude 使用多 agent 模式解决问题',
+  'Opt in to auto mode': '选择启用自动模式',
+  'Start in proactive autonomous mode': '以主动自主模式启动',
+  'Unix domain socket path for the UDS messaging server (defaults to a tmp path)':
+    'UDS 消息服务器的 Unix domain socket 路径（默认为临时路径）',
+  'Enable SendUserMessage tool for agent-to-user communication':
+    '启用 SendUserMessage 工具用于 agent 与用户通信',
+  'Force assistant mode (Agent SDK daemon use)':
+    '强制助手模式（供 Agent SDK 守护进程使用）',
+  'MCP servers whose channel notifications (inbound push) should register this session. Space-separated server names.':
+    '其频道通知（入站推送）应注册此会话的 MCP 服务器。服务器名称以空格分隔。',
+  'Load channel servers not on the approved allowlist. For local channel development only. Shows a confirmation dialog at startup.':
+    '加载不在批准白名单中的频道服务器。仅用于本地频道开发。启动时会显示确认对话框。',
+  'Teammate agent ID': '队友 agent ID',
+  'Teammate display name': '队友显示名称',
+  'Team name for swarm coordination': '用于集群协调的团队名称',
+  'Teammate UI color': '队友 UI 颜色',
+  'Require plan mode before implementation': '实施前要求进入计划模式',
+  'Parent session ID for analytics correlation': '用于分析关联的父会话 ID',
+  'How to spawn teammates: "tmux", "in-process", or "auto"':
+    '队友的生成方式："tmux"、"in-process" 或 "auto"',
+  'Custom agent type for this teammate': '此队友的自定义 agent 类型',
+  'Use remote WebSocket endpoint for SDK I/O streaming (only with -p and stream-json format)':
+    '使用远程 WebSocket 端点进行 SDK I/O 流式传输（仅限 -p 和 stream-json 格式）',
+  'Resume a teleport session, optionally specify session ID':
+    '恢复 teleport 会话，可选指定会话 ID',
+  'Create a remote session with the given description':
+    '使用给定描述创建远程会话',
+  'Start an interactive session with Remote Control enabled (optionally named)':
+    '启动已启用远程控制的交互式会话（可选命名）',
+  'Alias for --remote-control': '--remote-control 的别名',
+  'Crash on logError calls instead of silently logging':
+    '在 logError 调用时崩溃而不是静默记录日志',
+  'Configure and manage MCP servers': '配置和管理 MCP 服务器',
+  'Start the Claude Code MCP server': '启动 Claude Code MCP 服务器',
+  'Enable debug mode': '启用调试模式',
+  'Remove an MCP server': '移除 MCP 服务器',
+  'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in':
+    '配置范围（local、user 或 project）— 未指定时，从其实际所在的范围中移除',
+  'List configured MCP servers. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.':
+    '列出已配置的 MCP 服务器。注意：会跳过工作区信任对话框，并会启动 .mcp.json 中的 stdio 服务器进行健康检查。请仅在您信任的目录中使用此命令。',
+  'Get details about an MCP server. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.':
+    '获取 MCP 服务器的详细信息。注意：会跳过工作区信任对话框，并会启动 .mcp.json 中的 stdio 服务器进行健康检查。请仅在您信任的目录中使用此命令。',
+  'Add an MCP server (stdio or SSE) with a JSON string':
+    '使用 JSON 字符串添加 MCP 服务器（stdio 或 SSE）',
+  'Import MCP servers from Claude Desktop (Mac and WSL only)':
+    '从 Claude Desktop 导入 MCP 服务器（仅限 Mac 和 WSL）',
+  'Reset all approved and rejected project-scoped (.mcp.json) servers within this project':
+    '重置此项目中所有已批准和已拒绝的项目级（.mcp.json）服务器',
+  'HTTP port': 'HTTP 端口',
+  'Bind address': '绑定地址',
+  'Bearer token for auth': '用于鉴权的 Bearer token',
+  'Listen on a unix domain socket': '监听 unix domain socket',
+  'Default working directory for sessions that do not specify cwd':
+    '未指定 cwd 的会话所使用的默认工作目录',
+  'Idle timeout for detached sessions in ms (0 = never expire)':
+    '分离会话的空闲超时（毫秒，0 = 永不过期）',
+  'Maximum concurrent sessions (0 = unlimited)': '最大并发会话数（0 = 无限制）',
+  'A claude server is already running (pid {pid}) at {url}\n':
+    '已有 claude 服务器在 {url} 运行（pid {pid}）\n',
+  'Permission mode for the remote session': '远程会话的权限模式',
+  'Skip all permission prompts on the remote (dangerous)':
+    '跳过远程端的所有权限提示（危险）',
+  'Custom remote binary command (skips probe/deploy). ':
+    '自定义远程二进制命令（跳过探测/部署）。 ',
+  'e2e test mode — spawn the child CLI locally (skip ssh/deploy). ':
+    'e2e 测试模式 — 在本地生成子 CLI（跳过 ssh/部署）。 ',
+  'Usage: claude ssh <user@host | ssh-config-alias> [dir]\n\n':
+    '用法：claude ssh <user@host | ssh-config-alias> [dir]\n\n',
+  'Print mode (headless)': '打印模式（无头）',
+  'Output format: text, json, stream-json': '输出格式：text、json、stream-json',
+  'Manage authentication': '管理身份验证',
+  'Sign in to your Anthropic account': '登录您的 Anthropic 账户',
+  'Pre-populate email address on the login page': '在登录页面预填电子邮箱地址',
+  'Force SSO login flow': '强制使用 SSO 登录流程',
+  'Use Anthropic Console (API usage billing) instead of Claude subscription':
+    '使用 Anthropic Console（按 API 用量计费）而非 Claude 订阅',
+  'Use Claude subscription (default)': '使用 Claude 订阅（默认）',
+  'Show authentication status': '显示身份验证状态',
+  'Output as JSON (default)': '以 JSON 格式输出（默认）',
+  'Output as human-readable text': '以人类可读的文本格式输出',
+  'Log out from your Anthropic account': '退出您的 Anthropic 账户',
+  'Use cowork_plugins directory': '使用 cowork_plugins 目录',
+  'Validate a plugin or marketplace manifest': '校验插件或市场清单',
+  'List installed plugins': '列出已安装的插件',
+  'Include available plugins from marketplaces (requires --json)':
+    '包含来自市场的可用插件（需要 --json）',
+  'Manage Claude Code marketplaces': '管理 Claude Code 市场',
+  'Add a marketplace from a URL, path, or GitHub repo':
+    '从 URL、路径或 GitHub 仓库添加市场',
+  'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .claude-plugin plugins':
+    '通过 git sparse-checkout 仅检出指定目录（适用于 monorepo）。示例：--sparse .claude-plugin plugins',
+  'Where to declare the marketplace: user (default), project, or local':
+    '市场声明位置：user（默认）、project 或 local',
+  'List all configured marketplaces': '列出所有已配置的市场',
+  'Remove a configured marketplace': '移除已配置的市场',
+  'Update marketplace(s) from their source - updates all if no name specified':
+    '从来源更新市场 — 未指定名称时更新全部',
+  'Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)':
+    '从可用市场安装插件（使用 plugin@marketplace 指定市场）',
+  'Installation scope: user, project, or local':
+    '安装范围：user、project 或 local',
+  'Uninstall an installed plugin': '卸载已安装的插件',
+  'Uninstall from scope: user, project, or local':
+    '卸载范围：user、project 或 local',
+  "Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/)":
+    '保留插件的持久数据目录（~/.claude/plugins/data/{id}/）',
+  'Enable a disabled plugin': '启用已禁用的插件',
+  'Disable an enabled plugin': '禁用已启用的插件',
+  'Disable all enabled plugins': '禁用所有已启用的插件',
+  'Update a plugin to the latest version (restart required to apply)':
+    '更新插件到最新版本（需重启生效）',
+  'Override which model is used': '覆盖使用的模型',
+  'Include teams, pipes, daemon, and remote-control sections':
+    '包含 teams、pipes、daemon 和 remote-control 部分',
+  'Usage: claude assistant [sessionId]\n\n':
+    '用法：claude assistant [sessionId]\n\n',
+  'List recent published versions with ages': '列出最近发布的版本及发布时间',
+  'Show what would be installed without installing':
+    '仅显示将安装的内容，不实际安装',
+  'Roll back to the server-pinned safe version (set by oncall during incidents)':
+    '回滚到服务端固定的安全版本（由 oncall 在事故期间设置）',
+  'Force installation even if already installed': '即使已安装也强制安装',
+  'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log':
+    '用于显示特定日志的编号（0、1、2 等），或日志的会话 ID（uuid）',
+  'A number (0, 1, 2, etc.) to display a specific log':
+    '用于显示特定日志的编号（0、1、2 等）',
+  'Session ID, log index (0, 1, 2...), or path to a .json/.jsonl log file':
+    '会话 ID、日志索引（0、1、2...）或 .json/.jsonl 日志文件路径',
+  'Output file path for the exported text': '导出文本的输出文件路径',
+  'Task description': '任务描述',
+  'Task list ID (defaults to "tasklist")': '任务列表 ID（默认为 "tasklist"）',
+  'Show only pending tasks': '仅显示待处理任务',
+  'Update subject': '更新主题',
+  'Update description': '更新描述',
+  'Set owner': '设置负责人',
+  'Clear owner': '清除负责人',
+  'Write completion script directly to a file instead of stdout':
+    '将补全脚本直接写入文件而非 stdout',
+  '└ Failed to fetch versions': '└ 获取版本失败',
+  '└ Stable version: {version}': '└ 稳定版本：{version}',
+  '└ Latest version: {version}': '└ 最新版本：{version}',
+  'Managed by package manager': '由包管理器管理',
+  '└ Currently running: {type} ({version})': '└ 当前运行：{type}（{version}）',
+  '└ Package manager: {pm}': '└ 包管理器：{pm}',
+  '└ Path: {path}': '└ 路径：{path}',
+  '└ Invoked: {binary}': '└ 调用方式：{binary}',
+  '└ Config install method: {method}': '└ 配置的安装方式：{method}',
+  '└ Search: {status} ({mode})': '└ 搜索：{status}（{mode}）',
+  'Not working': '不可用',
+  '└ Note: {note}': '└ 注意：{note}',
+  'Recommendation: {text}': '建议：{text}',
+  '{type} at {path}': '{type}，位于 {path}',
+  'Warning: {issue}': '警告：{issue}',
+  'Fix: {fix}': '修复：{fix}',
+  '└ Auto-updates: {status}': '└ 自动更新：{status}',
+  '└ Update permissions: {status}': '└ 更新权限：{status}',
+  '└ Auto-update channel: {channel}': '└ 自动更新通道：{channel}',
+  '└ Cleaned {count} stale lock(s)': '└ 已清理 {count} 个过期锁',
+  '{version}: PID {pid}': '{version}：PID {pid}',
+  '└ Failed to parse {count} agent file(s):':
+    '└ {count} 个 agent 文件解析失败：',
+  '└ {count} plugin error(s) detected:': '└ 检测到 {count} 个插件错误：',
+  'Showing detailed transcript · {shortcut} to toggle':
+    '正在显示详细对话记录 · {shortcut} 切换',
+  ' · n/N to navigate': ' · n/N 导航',
+  ' · {arrows} scroll · home/end top/bottom':
+    ' · {arrows} 滚动 · home/end 顶部/底部',
+  to: '至',
+  'show all': '显示全部',
+  'indexing…': '索引中…',
+  'indexed in {ms}ms': '索引完成，耗时 {ms}ms',
+  'no matches': '无匹配',
+  'worker request': 'worker 请求',
+  'sandbox request': '沙箱请求',
+  'dialog open': '对话框已打开',
+  'input needed': '需要输入',
+  'Worktree creation took {secs}s. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.':
+    'worktree 创建耗时 {secs} 秒。对于大型仓库，可在 .claude/settings.json 中设置 `worktree.sparsePaths`，只检出需要的目录。',
+  'Allow network connection to {host}?': '允许网络连接到 {host} 吗？',
+  'Error: sandbox required but unavailable: {reason}':
+    '错误：需要沙箱但不可用：{reason}',
+  'sandbox.failIfUnavailable is set — refusing to start without a working sandbox.':
+    '已设置 sandbox.failIfUnavailable — 沙箱不可用时拒绝启动。',
+  'Sandbox Error: {error}': '沙箱错误：{error}',
+  'Running PreCompact hooks…': '正在运行 PreCompact 钩子…',
+  'Running PostCompact hooks…': '正在运行 PostCompact 钩子…',
+  'Running SessionStart hooks…': '正在运行 SessionStart 钩子…',
+  'Detected connection error. Active goal was auto-paused. Run /goal resume after network recovers.':
+    '检测到连接错误。活动目标已自动暂停。网络恢复后请运行 /goal resume。',
+  'Slave request was interrupted before completion.':
+    '从属请求在完成前被中断。',
+  copied: '已复制',
+  'new task?': '新任务？',
+  '{n} tokens': '{n} token',
+  'new task? /clear to save {n} tokens': '新任务？/clear 可节省 {n} token',
+  'Goal auto-continue ({turn}/1): continue advancing "{objective}".':
+    '目标自动继续（{turn}/1）：继续推进“{objective}”。',
+  'Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.':
+    '目标已达到最大继续轮数（1）。运行 /goal continue 重置轮数计数并继续。',
+  'Claude Code has been suspended. Run `fg` to bring Claude Code back.':
+    'Claude Code 已挂起。运行 `fg` 恢复 Claude Code。',
+  'Note: ctrl + z now suspends Claude Code, ctrl + _ undoes input.':
+    '注意：ctrl + z 现在会挂起 Claude Code，ctrl + _ 撤销输入。',
+  'running {hookType} hook{label}': '正在运行 {hookType} 钩子{label}',
+  'running {hookType} hook{label}… {count}/{total}':
+    '正在运行 {hookType} 钩子{label}… {count}/{total}',
+  'running {hookType} hook': '正在运行 {hookType} 钩子',
+  'running stop hooks… {count}/{total}': '正在运行 stop 钩子… {count}/{total}',
+  'rendering {count} messages…': '正在渲染 {count} 条消息…',
+  'opening {path}': '正在打开 {path}',
+  'wrote {path} · no $VISUAL/$EDITOR set':
+    '已写入 {path} · 未设置 $VISUAL/$EDITOR',
+  'render failed: {error}': '渲染失败：{error}',
+  'Waiting for leader to approve network access to {host}':
+    '正在等待 leader 批准对 {host} 的网络访问',
+  'How well did Claude use its memory? (optional)':
+    'Claude 对记忆的使用效果如何？（可选）',
+  'That message is no longer in the active context (snipped or pre-compact). Choose a more recent message.':
+    '该消息已不在活动上下文中（已被裁剪或位于压缩之前）。请选择更近的消息。',
+  'Conversation summarized ({shortcut} for history)':
+    '对话已总结（{shortcut} 查看历史）',
+  'Session permission mode': '会话权限模式',
+  'AI model to use': '要使用的 AI 模型',
+  'Standard behavior, prompts for dangerous operations':
+    '标准行为，对危险操作进行确认',
+  'Auto-accept file edit operations': '自动接受文件编辑操作',
+  'Planning mode, no actual tool execution': '计划模式，不实际执行工具',
+  'Use a model classifier to approve/deny permission prompts.':
+    '使用模型分类器批准/拒绝权限请求。',
+  'Skip all permission checks': '跳过所有权限检查',
+  "Don't prompt for permissions, deny if not pre-approved":
+    '不进行权限确认，未预先批准则直接拒绝',
+  'Write {path}': '写入 {path}',
+  'Edit {path}': '编辑 {path}',
+  'Fetch {url}': '抓取 {url}',
+  'Web search': '网页搜索',
+  'Update TODOs: {items}': '更新 TODO：{items}',
+  'Update TODOs': '更新 TODO',
+  'Unknown Tool': '未知工具',
+  Reject: '拒绝',
+  'Yes, and use "auto" mode': '是，并使用 "auto" 模式',
+  'Yes, and auto-accept edits': '是，并自动接受编辑',
+  'Yes, and manually approve edits': '是，并手动批准编辑',
+  'Auto (Cursor picks)': '自动（由 Cursor 选择）',
+  '{error} after {retries} attempts': '尝试 {retries} 次后仍失败：{error}',
+  'File not found: {fileId}': '未找到文件：{fileId}',
+  'Authentication failed: invalid or missing API key':
+    '认证失败：API key 无效或缺失',
+  'Access denied to file: {fileId}': '文件访问被拒绝：{fileId}',
+  'Upload succeeded but no file ID returned': '上传成功但未返回文件 ID',
+  'Access denied for upload': '上传被拒绝',
+  'File too large for upload': '文件过大，无法上传',
+  'Upload canceled': '上传已取消',
+  'Access denied to list files': '列出文件被拒绝',
+  'Auth error: {error}': '认证错误：{error}',
+  'assertWorkspaceHost: invalid URL "{url}". Workspace API key requests must target {host}.':
+    'assertWorkspaceHost：无效 URL "{url}"。Workspace API key 请求必须指向 {host}。',
+  'assertWorkspaceHost: refusing to send workspace API key to non-Anthropic host "{hostname}". Workspace API key requests must target {target}. If you are using a custom base URL, workspace endpoints are only available on the Anthropic API.':
+    'assertWorkspaceHost：拒绝向非 Anthropic 主机 "{hostname}" 发送 workspace API key。Workspace API key 请求必须指向 {target}。如果您使用自定义 base URL，请注意 workspace 端点仅在 Anthropic API 上可用。',
+  'assertSubscriptionBaseUrl: invalid URL "{url}". Subscription OAuth requests must target {host}.':
+    'assertSubscriptionBaseUrl：无效 URL "{url}"。订阅 OAuth 请求必须指向 {host}。',
+  'assertSubscriptionBaseUrl: refusing subscription OAuth request to non-Anthropic host "{hostname}". Subscription OAuth requests must target {target}.':
+    'assertSubscriptionBaseUrl：拒绝向非 Anthropic 主机 "{hostname}" 发起订阅 OAuth 请求。订阅 OAuth 请求必须指向 {target}。',
+  'Workspace API key must not be empty.': 'Workspace API key 不能为空。',
+  'Workspace API key is too short ({length} chars). Expected at least {min} chars starting with "{prefix}".':
+    'Workspace API key 过短（{length} 个字符）。应至少 {min} 个字符且以 "{prefix}" 开头。',
+  'Workspace API key is too long ({length} chars). Maximum allowed length is {max} chars.':
+    'Workspace API key 过长（{length} 个字符）。最大允许长度为 {max} 个字符。',
+  'Workspace API key must start with "{prefix}" (workspace key). Got prefix "{gotPrefix}...". Obtain a workspace API key from https://console.anthropic.com/settings/keys.':
+    'Workspace API key 必须以 "{prefix}" 开头（workspace key）。实际前缀为 "{gotPrefix}..."。请前往 https://console.anthropic.com/settings/keys 获取 workspace API key。',
+  'Failed to save workspace API key to config: {error}':
+    '保存 workspace API key 到配置失败：{error}',
+  'Failed to remove workspace API key: {error}':
+    '移除 workspace API key 失败：{error}',
+  'Cursor credential for "{label}" is missing. Delete this connection and add it again via /connect.':
+    '缺少 "{label}" 的 Cursor 凭据。请删除此连接，然后通过 /connect 重新添加。',
+  'Cursor auto-selects a model': '由 Cursor 自动选择模型',
+  'vault was created with an older format (no KDF salt). ':
+    '保险库使用旧格式创建（无 KDF salt）。 ',
+  'Please re-set your secrets using /local-vault set to upgrade to the secure format':
+    '请使用 /local-vault set 重新设置您的机密，以升级到安全格式',
+  'No TTY available to prompt for client secret. Set MCP_CLIENT_SECRET env var instead.':
+    '没有可用的 TTY 来输入 client secret。请改为设置 MCP_CLIENT_SECRET 环境变量。',
+  'Enter OAuth client secret: ': '输入 OAuth client secret： ',
+  "Anthropic's agentic coding tool": 'Anthropic 的智能编程工具',
+  'Invalid name {name}. Names can only contain letters, numbers, hyphens, and underscores.':
+    '名称 {name} 无效。名称只能包含字母、数字、连字符和下划线。',
+  'Cannot add MCP server "{name}": this name is reserved.':
+    '无法添加 MCP 服务器 "{name}"：此名称已被保留。',
+  'Cannot add MCP server: enterprise MCP configuration is active and has exclusive control over MCP servers':
+    '无法添加 MCP 服务器：企业 MCP 配置已生效，对 MCP 服务器拥有独占控制权',
+  'Invalid configuration: {errors}': '配置无效：{errors}',
+  'Cannot add MCP server "{name}": server is explicitly blocked by enterprise policy':
+    '无法添加 MCP 服务器 "{name}"：该服务器已被企业策略明确阻止',
+  'Cannot add MCP server "{name}": not allowed by enterprise policy':
+    '无法添加 MCP 服务器 "{name}"：企业策略不允许',
+  'MCP server {name} already exists in .mcp.json':
+    'MCP 服务器 {name} 已存在于 .mcp.json 中',
+  'MCP server {name} already exists in user config':
+    'MCP 服务器 {name} 已存在于用户配置中',
+  'MCP server {name} already exists in local config':
+    'MCP 服务器 {name} 已存在于本地配置中',
+  'Cannot add MCP server to scope: dynamic':
+    '无法向作用域添加 MCP 服务器：dynamic',
+  'Cannot add MCP server to scope: enterprise':
+    '无法向作用域添加 MCP 服务器：enterprise',
+  'Cannot add MCP server to scope: claudeai':
+    '无法向作用域添加 MCP 服务器：claudeai',
+  'Failed to write to .mcp.json: {error}': '写入 .mcp.json 失败：{error}',
+  'Cannot add MCP server to scope: {scope}':
+    '无法向作用域添加 MCP 服务器：{scope}',
+  'No MCP server found with name: {name} in .mcp.json':
+    '在 .mcp.json 中未找到名为 {name} 的 MCP 服务器',
+  'Failed to remove from .mcp.json: {error}': '从 .mcp.json 移除失败：{error}',
+  'No user-scoped MCP server found with name: {name}':
+    '未找到名为 {name} 的用户级 MCP 服务器',
+  'No project-local MCP server found with name: {name}':
+    '未找到名为 {name} 的项目本地 MCP 服务器',
+  'Cannot remove MCP server from scope: {scope}':
+    '无法从作用域移除 MCP 服务器：{scope}',
+  'No available ports for OAuth redirect': '没有可用于 OAuth 重定向的端口',
+  'Invalid scope: {scope}. Must be one of: {valid}':
+    '无效作用域：{scope}。必须是以下之一：{valid}',
+  'Invalid transport type: {type}. Must be one of: stdio, sse, http':
+    '无效传输类型：{type}。必须是以下之一：stdio、sse、http',
+  'Invalid header format: "{header}". Expected format: "Header-Name: value"':
+    '请求头格式无效："{header}"。期望格式："Header-Name: value"',
+  'Invalid header: "{header}". Header name cannot be empty.':
+    '请求头无效："{header}"。请求头名称不能为空。',
+  'Authentication failed: Invalid authorization code': '认证失败：授权码无效',
+  'Token exchange failed ({status}): {text}':
+    '令牌交换失败（{status}）：{text}',
+  'Token refresh failed: {statusText}': '令牌刷新失败：{statusText}',
+  'Failed to fetch user roles: {statusText}': '获取用户角色失败：{statusText}',
+  'OAuth account information not found in config':
+    '配置中未找到 OAuth 账户信息',
+  '{icon} Failed to {operation}: {error}': '{icon} {operation} 失败：{error}',
+  'Installing plugin "{plugin}"...': '正在安装插件 "{plugin}"...',
+  'Checking for updates of plugin "{plugin}" in {scope} scope...\n':
+    '正在检查 {scope} 作用域中插件 "{plugin}" 的更新...\n',
+  'Authentication required for policy limits': '获取策略限制需要认证',
+  'Invalid policy limits format': '策略限制格式无效',
+  'Not authorized for policy limits': '无权访问策略限制',
+  'Policy limits request timeout': '策略限制请求超时',
+  'Authentication required for remote settings': '获取远程设置需要认证',
+  'Invalid remote settings format': '远程设置格式无效',
+  'Invalid settings structure': '设置结构无效',
+  'Not authorized for remote settings': '无权访问远程设置',
+  'Remote settings request timeout': '远程设置请求超时',
+  'Invalid store name: "{name}" is too long (max {maxLength} chars).':
+    '存储名称无效："{name}" 过长（最多 {maxLength} 个字符）。',
+  'Invalid store name: "{name}" contains illegal characters (path separators, null byte, or colon).':
+    '存储名称无效："{name}" 包含非法字符（路径分隔符、null 字节或冒号）。',
+  'Invalid store name: "{name}" must not start with ".".':
+    '存储名称无效："{name}" 不能以 "." 开头。',
+  'Invalid store name: "{name}" is path-like and would escape the base directory.':
+    '存储名称无效："{name}" 形似路径，会逃逸出基础目录。',
+  'Store "{storeName}" already exists': '存储 "{storeName}" 已存在',
+  'Store "{storeName}" does not exist': '存储 "{storeName}" 不存在',
+  'Entry value too large: {size} bytes exceeds the 1 MB limit. Use external storage for large data.':
+    '条目值过大：{size} 字节超出 1 MB 限制。大数据请使用外部存储。',
+  'No messages to summarize': '没有可总结的消息',
+  'Invalid settings sync response format': '设置同步响应格式无效',
+  'Not authorized for settings sync': '无权进行设置同步',
+  'Settings sync request timeout': '设置同步请求超时',
+  'No OAuth token available for team memory sync':
+    '没有可用于团队记忆同步的 OAuth 令牌',
+  'Invalid team memory response format': '团队记忆响应格式无效',
+  'Not authorized for team memory sync': '无权进行团队记忆同步',
+  'Team memory sync request timeout': '团队记忆同步请求超时',
+  'Server did not return entryChecksums (?view=hashes unsupported)':
+    '服务器未返回 entryChecksums（不支持 ?view=hashes）',
+  Timeout: '超时',
+  'ETag mismatch': 'ETag 不匹配',
+  'Conflict resolution failed after retries': '重试后冲突解决仍然失败',
+  'Conflict resolution hashes probe failed': '冲突解决哈希探测失败',
+  'Unexpected end of conflict resolution loop': '冲突解决循环意外结束',
+  'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required':
+    '需要设置 ANTHROPIC_API_KEY 或 CLAUDE_CODE_OAUTH_TOKEN 环境变量',
+  'apiKeyHelper failed: {detail}': 'apiKeyHelper 失败：{detail}',
+  'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.':
+    'AWS 鉴权刷新已超时（3 分钟）。请在单独的终端中手动运行您的鉴权命令。',
+  'Error running awsAuthRefresh (in settings or ~/.claude.json):':
+    '运行 awsAuthRefresh 时出错（位于设置或 ~/.claude.json）：',
+  'awsCredentialExport did not return a valid value':
+    'awsCredentialExport 未返回有效值',
+  'awsCredentialExport did not return valid AWS STS output structure':
+    'awsCredentialExport 未返回有效的 AWS STS 输出结构',
+  'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):':
+    '从 awsCredentialExport 获取 AWS 凭据时出错（位于设置或 ~/.claude.json）：',
+  'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.':
+    'GCP 鉴权刷新已超时（3 分钟）。请在单独的终端中手动运行您的鉴权命令。',
+  'Error running gcpAuthRefresh (in settings or ~/.claude.json):':
+    '运行 gcpAuthRefresh 时出错（位于设置或 ~/.claude.json）：',
+  'Invalid API key format. API key must contain only alphanumeric characters, dashes, and underscores.':
+    'API key 格式无效。API key 只能包含字母、数字、连字符和下划线。',
+  'Failed to delete keychain entry': '删除钥匙串条目失败',
+  'No autonomy flows recorded.': '未记录任何自治流程。',
+  'Autonomy flow not found.': '未找到自治流程。',
+  'getAutonomyPersistenceLockCountForTests can only be called in tests':
+    'getAutonomyPersistenceLockCountForTests 只能在测试中调用',
+  'Autonomy run was unexpectedly skipped.': '自治运行被意外跳过。',
+  'Autonomy queued prompt was unexpectedly skipped.':
+    '自治队列中的提示被意外跳过。',
+  'No autonomy runs recorded.': '未记录任何自治运行。',
+  'Failed to quote shell arguments safely': '无法安全地对 shell 参数加引号',
+  'Warning: Custom betas are only available for API key users. Ignoring provided betas.':
+    '警告：自定义 beta 仅对 API key 用户可用。将忽略提供的 beta。',
+  'Warning: Beta header is not allowed.': '警告：不允许使用 Beta 请求头。',
+  'Invalid URL format: {url}': 'URL 格式无效：{url}',
+  'Invalid URL protocol: must use http:// or https://, got {protocol}':
+    'URL 协议无效：必须使用 http:// 或 https://，实际为 {protocol}',
+  'Unsupported platform. Claude Desktop integration only works on macOS and WSL.':
+    '不支持的平台。Claude Desktop 集成仅支持 macOS 和 WSL。',
+  'Could not find Claude Desktop config file in Windows. Make sure Claude Desktop is installed on Windows.':
+    '在 Windows 中找不到 Claude Desktop 配置文件。请确认已在 Windows 上安装 Claude Desktop。',
+  'Unsupported platform - Claude Desktop integration only works on macOS and WSL.':
+    '不支持的平台 — Claude Desktop 集成仅支持 macOS 和 WSL。',
+  'Browser extension is not connected. Please ensure the Claude browser extension is installed and running ({extensionUrl}), and that you are logged into claude.ai with the same account as Claude Code. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: {bugUrl}':
+    '浏览器扩展未连接。请确保已安装并运行 Claude 浏览器扩展（{extensionUrl}），并且您登录 claude.ai 使用的账户与 Claude Code 相同。如果这是您首次连接 Chrome，可能需要重启 Chrome 以使安装生效。如果问题仍然存在，请报告 bug：{bugUrl}',
+  'Navigation completed': '导航已完成',
+  'Tab created': '标签页已创建',
+  'Tabs read': '标签页已读取',
+  'Input completed': '输入已完成',
+  'Action completed': '操作已完成',
+  'Window resized': '窗口大小已调整',
+  'Search completed': '搜索已完成',
+  'GIF action completed': 'GIF 操作已完成',
+  'Console messages retrieved': '已获取控制台消息',
+  'Network requests retrieved': '已获取网络请求',
+  'Shortcuts retrieved': '已获取快捷方式',
+  'Shortcut executed': '快捷方式已执行',
+  'Script executed': '脚本已执行',
+  'Page read': '页面已读取',
+  'Image uploaded': '图片已上传',
+  'Page text retrieved': '已获取页面文本',
+  'Plan updated': '计划已更新',
+  Captured: '已截取',
+  'Access updated': '访问权限已更新',
+  Typed: '已输入',
+  Pressed: '已按下',
+  Scrolled: '已滚动',
+  Dragged: '已拖动',
+  Opened: '已打开',
+  'Every minute': '每分钟',
+  'Every {n} minutes': '每 {n} 分钟',
+  'Every hour': '每小时',
+  'Every hour at :{minute}': '每小时的第 {minute} 分',
+  'Every {n} hours': '每 {n} 小时',
+  'Every {n} hours at :{minute}': '每 {n} 小时的第 {minute} 分',
+  'Every day at {time}': '每天 {time}',
+  'Every {day} at {time}': '每{day} {time}',
+  'Weekdays at {time}': '工作日 {time}',
+  'Invalid deep link: expected {protocol} scheme, got "{uri}"':
+    '深层链接无效：期望 {protocol} scheme，实际为 "{uri}"',
+  'Invalid deep link URL: "{uri}"': '深层链接 URL 无效："{uri}"',
+  'Unknown deep link action: "{action}"': '未知的深层链接操作："{action}"',
+  'Invalid cwd in deep link: must be an absolute path, got "{cwd}"':
+    '深层链接中的 cwd 无效：必须是绝对路径，实际为 "{cwd}"',
+  'Deep link cwd exceeds {max} characters (got {length})':
+    '深层链接的 cwd 超过 {max} 个字符（实际 {length}）',
+  'Invalid repo in deep link: expected "owner/repo", got "{repo}"':
+    '深层链接中的仓库无效：期望 "owner/repo" 格式，实际为 "{repo}"',
+  'Deep link query exceeds {max} characters (got {length})':
+    '深层链接的查询超过 {max} 个字符（实际 {length}）',
+  'Unsupported platform: {platform}': '不支持的平台：{platform}',
+  'Invalid manifest: {errors}': 'manifest 无效：{errors}',
+  'Invalid JSON in manifest.json': 'manifest.json 中的 JSON 无效',
+  'Failed to read or unzip file': '读取或解压文件失败',
+  'Invalid environment variable format: environment variables should be added as: -e KEY1=value1 -e KEY2=value2':
+    '环境变量格式无效：环境变量应按以下方式添加：-e KEY1=value1 -e KEY2=value2',
+  'Fast mode is not available': '快速模式不可用',
+  'Fast mode requires the native binary · Install from: https://claude.com/product/claude-code':
+    '快速模式需要原生二进制文件 · 安装地址：https://claude.com/product/claude-code',
+  'Fast mode is not available in the Agent SDK': 'Agent SDK 中不支持快速模式',
+  'Fast mode is not available on Bedrock, Vertex, or Foundry':
+    'Bedrock、Vertex 和 Foundry 不支持快速模式',
+  'Fast mode disabled · extra usage credits exhausted':
+    '快速模式已禁用 · 超额使用额度已耗尽',
+  'Fast mode disabled · extra usage disabled by your organization':
+    '快速模式已禁用 · 您的组织已禁用超额使用',
+  'Fast mode disabled · extra usage spending cap reached':
+    '快速模式已禁用 · 已达到超额使用消费上限',
+  'Fast mode disabled · extra usage disabled for your account':
+    '快速模式已禁用 · 您的账户已禁用超额使用',
+  'Fast mode disabled · extra usage not available for your plan':
+    '快速模式已禁用 · 您的计划不支持超额使用',
+  'Fast mode disabled · extra usage not available':
+    '快速模式已禁用 · 超额使用不可用',
+  'No auth available': '无可用鉴权',
+  'The selected snapshot was not found': '未找到所选快照',
+  'No agent available for forked execution': '没有可用于分支执行的 agent',
+  'No items in generator': '生成器中没有条目',
+  unreachable: '不可达代码',
+  'User settings (~/.claude/settings.json)':
+    '用户设置（~/.claude/settings.json）',
+  'Project settings (.claude/settings.json)':
+    '项目设置（.claude/settings.json）',
+  'Local settings (.claude/settings.local.json)':
+    '本地设置（.claude/settings.local.json）',
+  'Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)':
+    '插件钩子（~/.claude/plugins/*/hooks/hooks.json）',
+  'Session hooks (in-memory, temporary)': '会话钩子（内存中，临时）',
+  'Built-in hooks (registered internally by Claude Code)':
+    '内置钩子（由 Claude Code 内部注册）',
+  'User Settings': '用户设置',
+  'Project Settings': '项目设置',
+  'Local Settings': '本地设置',
+  'Plugin Hooks': '插件钩子',
+  'Session Hooks': '会话钩子',
+  'Built-in Hooks': '内置钩子',
+  User: '用户',
+  Project: '项目',
+  Local: '本地',
+  Session: '会话',
+  'Built-in': '内置',
+  'Plugin directory does not exist: {root}{extra}':
+    '插件目录不存在：{root}{extra}',
+  'run /plugin to reinstall': '运行 /plugin 重新安装',
+  'PowerShell hook executable not found. Install PowerShell, or remove "shell": "powershell" to use bash.':
+    '未找到 PowerShell 钩子可执行文件。请安装 PowerShell，或移除 "shell": "powershell" 以使用 bash。',
+  'Stop hook feedback:\n{error}': 'Stop 钩子反馈：\n{error}',
+  'TeammateIdle hook feedback:\n{error}': 'TeammateIdle 钩子反馈：\n{error}',
+  'TaskCreated hook feedback:\n{error}': 'TaskCreated 钩子反馈：\n{error}',
+  'TaskCompleted hook feedback:\n{error}': 'TaskCompleted 钩子反馈：\n{error}',
+  'UserPromptSubmit operation blocked by hook:\n{error}':
+    'UserPromptSubmit 操作已被钩子阻止：\n{error}',
+  'WorktreeCreate hook failed': 'WorktreeCreate 钩子执行失败',
+  'Empty key': '键为空',
+  'Key too long (max {max})': '键过长（最大 {max}）',
+  'Invalid key chars: {key}': '键包含非法字符：{key}',
+  'Leading dot forbidden': '不允许以点开头',
+  'Windows reserved name: {key}': 'Windows 保留名称：{key}',
+  'Start can only be called once per transport.':
+    '每个 transport 只能调用一次 start。',
+  'WebSocket is not open. Cannot start transport.':
+    'WebSocket 未打开，无法启动 transport。',
+  'WebSocket is not open. Cannot send message.':
+    'WebSocket 未打开，无法发送消息。',
+  'Use the default Cursor model (currently {model})':
+    '使用默认 Cursor 模型（当前 {model}）',
+  'Default Cursor model (currently {model})':
+    '默认 Cursor 模型（当前 {model}）',
+  'Cell with ID "{cellId}" not found in notebook':
+    '在 notebook 中未找到 ID 为 "{cellId}" 的单元格',
+  'Path must be a string, received {type}': '路径必须是字符串，实际收到 {type}',
+  'Base directory must be a string, received {type}':
+    '基础目录必须是字符串，实际收到 {type}',
+  'Path contains null bytes': '路径包含空字节',
+  'Scratchpad directory feature is not enabled': '暂存目录功能未启用',
+  'Cannot delete permission rules from read-only settings':
+    '无法从只读设置中删除权限规则',
+  'Cannot transition to auto mode: gate is not enabled':
+    '无法切换到自动模式：门控未启用',
+  'Bypass permissions mode was disabled by your organization policy':
+    '绕过权限模式已被您的组织策略禁用',
+  'Bypass permissions mode was disabled by settings':
+    '绕过权限模式已被设置禁用',
+  'Pipe "{name}" not found at {path}. Is the server running?':
+    '在 {path} 未找到管道 "{name}"。服务器是否在运行？',
+  'Not connected to pipe "{name}"': '未连接到管道 "{name}"',
+  'Failed to delete plugin cache': '删除插件缓存失败',
+  'Cannot install plugins to managed scope': '无法将插件安装到受管作用域',
+  'No result received from shell command': '未收到 shell 命令的结果',
+  'Commands are in the form `/command [args]`': '命令格式为 `/command [args]`',
+  'Unknown skill: {name}': '未知技能：{name}',
+  'Args from unknown skill: {args}': '来自未知技能的参数：{args}',
+  'This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "{name}" skill for you.':
+    '此技能只能由 Claude 调用，用户无法直接使用。请让 Claude 为您使用 "{name}" 技能。',
+  'Unknown command: {name}': '未知命令：{name}',
+  'Unexpected {type} command. Expected prompt command. Use /{name} directly in the main conversation.':
+    '意外的 {type} 命令，此处应为 prompt 命令。请在主对话中直接使用 /{name}。',
+  'Skill "/{name}" is available for workers.':
+    '技能 "/{name}" 可供 worker 使用。',
+  'Description: {description}': '描述：{description}',
+  'When to use: {whenToUse}': '使用时机：{whenToUse}',
+  'This skill grants workers additional tool permissions: {tools}':
+    '此技能为 worker 授予额外的工具权限：{tools}',
+  '\nInstruct a worker to use this skill by including "Use the /{name} skill" in your Agent prompt. The worker has access to the Skill tool and will receive the skill\'s content and permissions when it invokes it.':
+    '\n在 Agent prompt 中加入 "Use the /{name} skill" 即可指示 worker 使用此技能。worker 拥有 Skill 工具的访问权限，调用时会获得该技能的内容和权限。',
+  'Mode: {mode} requires a string input.': '模式 {mode} 需要字符串输入。',
+  'Ink instance not found - cannot pause rendering':
+    '未找到 Ink 实例 — 无法暂停渲染',
+  '{editor} exited with code {status}': '{editor} 已退出，退出码 {status}',
+  'Unsupported address family: {family}': '不支持的地址族：{family}',
+  'EISDIR: illegal operation on a directory, read "{path}"':
+    'EISDIR：对目录的非法操作，读取 "{path}"',
+  'Sandbox failed to initialize.': '沙箱初始化失败。',
+  'Unicode sanitization reached maximum iterations':
+    'Unicode 净化达到最大迭代次数',
+  'No messages found in JSONL file': 'JSONL 文件中未找到消息',
+  'No valid conversation chain found in JSONL file':
+    'JSONL 文件中未找到有效的对话链',
+  'Invalid JSON in transcript file: {error}': '转录文件中的 JSON 无效：{error}',
+  'Transcript messages must be an array': '转录消息必须是数组',
+  'Transcript must be an array of messages or an object with a messages array':
+    '转录必须是消息数组，或包含 messages 数组的对象',
+  'Invalid setting source: {name}. Valid options are: user, project, local':
+    '无效的设置来源：{name}。可用选项：user、project、local',
+  'Invalid value. Expected one of: {expected}':
+    '无效的值。期望以下之一：{expected}',
+  'Invalid or malformed JSON': 'JSON 无效或格式错误',
+  'Expected {expected}, but received {received}':
+    '期望 {expected}，实际收到 {received}',
+  'Unrecognized {fieldCount}: {keys}': '无法识别的 {fieldCount}：{keys}',
+  'Number must be greater than or equal to {minimum}':
+    '数字必须大于或等于 {minimum}',
+  'No suitable shell found. Claude CLI requires a Posix shell environment. Please ensure you have a valid shell installed and the SHELL environment variable set.':
+    '未找到合适的 shell。Claude CLI 需要 Posix shell 环境。请确保已安装有效的 shell 并设置了 SHELL 环境变量。',
+  'PowerShell is not available': 'PowerShell 不可用',
+  'Path "{path}" does not exist': '路径 "{path}" 不存在',
+  'Gemini API request failed': 'Gemini API 请求失败',
+  'Invalid ISO date string': '无效的 ISO 日期字符串',
+  plugin: '插件',
+  extension: '扩展',
+  'Error installing {ideName} {type}: {error}':
+    '安装 {ideName} {type} 时出错：{error}',
+  'Please restart your IDE and try again.': '请重启您的 IDE 后重试。',
+  'Connected to {ideName} {type} version {version} (server version: {serverVersion})':
+    '已连接到 {ideName} {type} 版本 {version}（服务器版本：{serverVersion}）',
+  'Connected to {ideName} {type} version {version}':
+    '已连接到 {ideName} {type} 版本 {version}',
+  'Installed {ideName} {type}': '已安装 {ideName} {type}',
+  'Connected to {ideName} extension': '已连接到 {ideName} 扩展',
+  '{n} connected': '{n} 个已连接',
+  '{n} need auth': '{n} 个需要认证',
+  '{n} pending': '{n} 个等待中',
+  '{n} failed': '{n} 个失败',
+  'MCP servers': 'MCP 服务器',
+  'Large {path} will impact performance ({size} chars > {max})':
+    '过大的 {path} 会影响性能（{size} 字符 > {max}）',
+  'Enterprise managed settings (remote)': '企业托管设置（远程）',
+  'Enterprise managed settings (plist)': '企业托管设置（plist）',
+  'Enterprise managed settings (HKLM)': '企业托管设置（HKLM）',
+  'Enterprise managed settings (file + drop-ins)':
+    '企业托管设置（文件 + drop-ins）',
+  'Enterprise managed settings (drop-ins)': '企业托管设置（drop-ins）',
+  'Enterprise managed settings (file)': '企业托管设置（文件）',
+  'Enterprise managed settings (HKCU)': '企业托管设置（HKCU）',
+  'Found invalid settings files: {files}. They will be ignored.':
+    '发现无效的设置文件：{files}。这些文件将被忽略。',
+  '{plan} Account': '{plan} 账户',
+  'AWS auth skipped': '已跳过 AWS 认证',
+  'GCP auth skipped': '已跳过 GCP 认证',
+  'Microsoft Foundry auth skipped': '已跳过 Microsoft Foundry 认证',
+  'Stream can only be iterated once': '流只能被迭代一次',
+  'Installing it2 using {pm}…': '正在使用 {pm} 安装 it2…',
+  '· Python API is enabled in iTerm2 preferences':
+    '· 已在 iTerm2 偏好设置中启用 Python API',
+  '· You may need to restart iTerm2 after enabling':
+    '· 启用后可能需要重启 iTerm2',
+  'Invalid UUID hex length: {length}': '无效的 UUID 十六进制长度：{length}',
+  'Mailbox message text exceeds {max} bytes': '邮箱消息文本超过 {max} 字节',
+  'Invalid mailbox message: expected object': '无效的邮箱消息：期望对象',
+  'Invalid mailbox message shape': '邮箱消息结构无效',
+  'Invalid mailbox file: expected message array':
+    '无效的邮箱文件：期望消息数组',
+  'Mailbox file exceeds {max} bytes: {path}': '邮箱文件超过 {max} 字节：{path}',
+  'Compacted mailbox still exceeds {max} bytes':
+    '压缩后的邮箱仍超过 {max} 字节',
+  'Git working directory is not clean. Please commit or stash your changes before using --teleport.':
+    'Git 工作目录不干净。使用 --teleport 前请先提交或暂存您的更改。',
+  'Error: Git working directory is not clean. Please commit or stash your changes before using --teleport.\n':
+    '错误：Git 工作目录不干净。使用 --teleport 前请先提交或暂存您的更改。\n',
+  "Remote sessions are disabled by your organization's policy.":
+    '远程会话已被您的组织策略禁用。',
+  'Unable to get organization UUID for constructing session URL':
+    '无法获取组织 UUID 以构建会话 URL',
+  'Failed to validate session repository': '验证会话仓库失败',
+  'Unhandled repo validation status: {status}':
+    '未处理的仓库验证状态：{status}',
+  'Failed to fetch session logs': '获取会话日志失败',
+  '{id} not found.': '未找到 {id}。',
+  '{id} not found.\n{help}': '未找到 {id}。\n{help}',
+  'Run /status in Claude Code to check your account.':
+    '在 Claude Code 中运行 /status 检查您的账户。',
+  'Failed to fetch session from Sessions API: {error}':
+    '从 Sessions API 获取会话失败：{error}',
+  'No access token for polling': '没有可用于轮询的访问令牌',
+  'No org UUID for polling': '没有可用于轮询的组织 UUID',
+  'Failed to fetch session events: {error}': '获取会话事件失败：{error}',
+  'Invalid events response': '无效的事件响应',
+  '. Please setup GitHub on https://claude.ai/code':
+    '。请在 https://claude.ai/code 上设置 GitHub',
+  'Repository has no commits — run `git add . && git commit -m "initial"` then retry':
+    '仓库没有任何提交 — 请运行 `git add . && git commit -m "initial"` 后重试',
+  'Repo is too large to teleport{setup}': '仓库过大，无法 teleport{setup}',
+  'Failed to create git bundle ({error}){setup}':
+    '创建 git bundle 失败（{error}）{setup}',
+  'Bundle upload failed: {error}{setup}': 'Bundle 上传失败：{error}{setup}',
+  'Bundle upload failed: {error}': 'Bundle 上传失败：{error}',
+  'Failed to create tmux session on socket {socket}: {error}':
+    '在套接字 {socket} 上创建 tmux 会话失败：{error}',
+  'Failed to get socket info for {socket}': '获取 {socket} 的套接字信息失败',
+  'Arguments: {args}': '参数：{args}',
+  '[{name}] Bridge not connected': '[{name}] 桥接未连接',
+  '[{name}] Tool call timed out: {toolName}':
+    '[{name}] 工具调用超时：{toolName}',
+  'Bridge client disconnected': '桥接客户端已断开连接',
+  '[{name}] Connection attempt timed out after 5000ms':
+    '[{name}] 连接尝试在 5000ms 后超时',
+  '[{name}] Cannot send request: not connected':
+    '[{name}] 无法发送请求：未连接',
+  '[{name}] Tool request timed out after {timeout}ms':
+    '[{name}] 工具请求在 {timeout}ms 后超时',
+  '[{name}] Insecure socket directory permissions: {mode} (expected 0700). Directory may have been tampered with.':
+    '[{name}] 套接字目录权限不安全：{mode}（应为 0700）。目录可能已被篡改。',
+  'Socket directory not owned by current user (uid: {uid}, dir uid: {dirUid}). Potential security risk.':
+    '套接字目录不属于当前用户（uid: {uid}，目录 uid: {dirUid}）。存在潜在安全风险。',
+  '[{name}] Path exists but it is not a socket: {path}':
+    '[{name}] 路径存在但不是套接字：{path}',
+  '[{name}] Insecure socket permissions: {mode} (expected 0600). Socket may have been tampered with.':
+    '[{name}] 套接字权限不安全：{mode}（应为 0600）。套接字可能已被篡改。',
+  'Socket not owned by current user (uid: {uid}, socket uid: {socketUid}). Potential security risk.':
+    '套接字不属于当前用户（uid: {uid}，套接字 uid: {socketUid}）。存在潜在安全风险。',
+  '[{name}] No connected sockets available': '[{name}] 没有可用的已连接套接字',
+  '[{name}] All sockets failed for tabs_context_mcp':
+    '[{name}] tabs_context_mcp 的所有套接字均失败',
+  'Error calling tool, please try again. : {detail}':
+    '调用工具出错，请重试。：{detail}',
+  'Tool execution completed': '工具执行完成',
+  'Permission mode set to: {mode}': '权限模式已设置为：{mode}',
+  'Browser switching is only available with bridge connections.':
+    '浏览器切换仅在桥接连接下可用。',
+  'No other browsers available to switch to. Open Chrome with the Claude extension in another browser to switch.':
+    '没有其他可切换的浏览器。请在另一个浏览器中打开装有 Claude 扩展的 Chrome 后再切换。',
+  'Connected to browser "{name}".': '已连接到浏览器“{name}”。',
+  'No browser responded within the timeout. Make sure Chrome is open with the Claude extension installed, then try again.':
+    '没有浏览器在超时时间内响应。请确保已打开安装了 Claude 扩展的 Chrome，然后重试。',
+  '@ant/computer-use-swift: macOS only':
+    '@ant/computer-use-swift：仅支持 macOS',
+  'Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported':
+    '当前 process.stdin 不支持 raw 模式，而 Ink 默认将其用作输入流。\n如何避免此错误请参阅 https://github.com/vadimdemedes/ink/#israwmodesupported',
+  'Raw mode is not supported on the stdin provided to Ink.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported':
+    '提供给 Ink 的 stdin 不支持 raw 模式。\n如何避免此错误请参阅 https://github.com/vadimdemedes/ink/#israwmodesupported',
+  'useTerminalNotification must be used within TerminalWriteProvider':
+    'useTerminalNotification 必须在 TerminalWriteProvider 内使用',
+  'Prompt is too long': '提示词过长',
+  'Credit balance is too low': '额度余额不足',
+  'Not logged in · Please run /login': '未登录 · 请运行 /login',
+  'Invalid API key · Fix external API key': 'API key 无效 · 请修复外部 API key',
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead':
+    '您的 ANTHROPIC_API_KEY 属于已被禁用的组织 · 请取消设置该环境变量以改用您的订阅',
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable':
+    '您的 ANTHROPIC_API_KEY 属于已被禁用的组织 · 请更新或取消设置该环境变量',
+  'OAuth token revoked · Please run /login':
+    'OAuth 令牌已被吊销 · 请运行 /login',
+  'Authentication error · This may be a temporary network issue, please try again':
+    '鉴权错误 · 可能是临时网络问题，请重试',
+  'Repeated 529 Overloaded errors': '反复出现 529 Overloaded 错误',
+  'Opus is experiencing high load, please use /model to switch to Sonnet':
+    'Opus 当前负载较高，请使用 /model 切换到 Sonnet',
+  'Request timed out': '请求超时',
+  'Your account does not have access to Claude Code. Please run /login.':
+    '您的账户无权访问 Claude Code。请运行 /login。',
+  '⚠️  Certificate {status}, regenerating...':
+    '⚠️  证书{status}，正在重新生成...',
+  expired: '已过期',
+  'expires in {days} days': '将在 {days} 天后过期',
+  '🔐 Using existing certificate from {dir}': '🔐 使用 {dir} 中的现有证书',
+  '   Valid for {days} more days': '   还有 {days} 天有效期',
+  '⚠️  LAN IP changed (missing: {ips}), regenerating certificate...':
+    '⚠️  局域网 IP 已变更（缺少：{ips}），正在重新生成证书...',
+  '⚠️  Invalid certificate, regenerating...': '⚠️  证书无效，正在重新生成...',
+  '🔐 Generating self-signed certificate...': '🔐 正在生成自签名证书...',
+  '   Including LAN IPs: {ips}': '   包含局域网 IP：{ips}',
+  '✅ Certificate saved to {dir}': '✅ 证书已保存到 {dir}',
+  '   Valid for {days} days': '   有效期 {days} 天',
+  '   ⚠️  First access will show a security warning - click "Advanced" → "Proceed"':
+    '   ⚠️  首次访问会显示安全警告 - 请点击“高级”→“继续前往”',
+  '⚠️  WARNING: Authentication disabled. This is dangerous for remote access!':
+    '⚠️  警告：已禁用身份验证。这对远程访问来说很危险！',
+  '\n  Error: port {port} is already in use. Use --port to specify a different port.\n':
+    '\n  错误：端口 {port} 已被占用。请使用 --port 指定其他端口。\n',
+  '\n  Error: {message}\n': '\n  错误：{message}\n',
+  '  🖥️  ACP Manager': '  🖥️  ACP 管理器',
+  '    URL:   http://localhost:{port}': '    URL:   http://localhost:{port}',
+  '  Press Ctrl+C to stop': '  按 Ctrl+C 停止',
+  '  🔗 Dashboard: {url}/code/': '  🔗 控制面板：{url}/code/',
+  '     Agent ID: {id}': '     Agent ID：{id}',
+  'Invalid session/load payload': '无效的 session/load 载荷',
+  'Invalid session/resume payload': '无效的 session/resume 载荷',
+  'Invalid session/set_model payload': '无效的 session/set_model 载荷',
+  'Not connected to agent': '未连接到 agent',
+  'Method not found: {method}': '方法未找到：{method}',
+  'Failed to create session: {msg}': '创建会话失败：{msg}',
+  'Listing sessions is not supported by this agent': '此 agent 不支持列出会话',
+  'Failed to list sessions: {msg}': '列出会话失败：{msg}',
+  'Loading sessions is not supported by this agent': '此 agent 不支持加载会话',
+  'Failed to load session: {msg}': '加载会话失败：{msg}',
+  'Resuming sessions is not supported by this agent': '此 agent 不支持恢复会话',
+  'Failed to resume session: {msg}': '恢复会话失败：{msg}',
+  'No active session': '没有活动会话',
+  'Prompt failed: {msg}': '提示请求失败：{msg}',
+  'Model selection not supported by this agent': '此 agent 不支持模型选择',
+  'Failed to set model: {msg}': '设置模型失败：{msg}',
+  'bypassPermissions requires local ACP_PERMISSION_MODE=bypassPermissions before a client can request it.':
+    '客户端请求 bypassPermissions 之前，本地必须先设置 ACP_PERMISSION_MODE=bypassPermissions。',
+  'Invalid permissionMode: expected a non-empty string.':
+    '无效的 permissionMode：应为非空字符串。',
+  'Invalid permissionMode: {mode}.': '无效的 permissionMode：{mode}。',
+  'Invalid ACP_RCS_GROUP "{group}": only letters, digits, hyphens, and underscores are allowed':
+    '无效的 ACP_RCS_GROUP“{group}”：仅允许字母、数字、连字符和下划线',
+  'Unauthorized: Invalid token': '未授权：token 无效',
+  '  🚀 ACP Proxy Server{https}': '  🚀 ACP 代理服务器{https}',
+  '  Connection:': '  连接：',
+  '    URL:   {url}': '    URL:   {url}',
+  '    Token: configured': '    Token: 已配置',
+  '  ⚠️  Authentication disabled (--no-auth)':
+    '  ⚠️  已禁用身份验证（--no-auth）',
+  '  📦 Agent: {display}': '  📦 Agent：{display}',
+  '     CWD:   {cwd}': '     CWD：   {cwd}',
+  'Agent Teams is not yet available on your plan.':
+    '您的计划暂不支持 Agent Teams。',
+  'Cannot launch remote agent:\n{reasons}': '无法启动远程 agent：\n{reasons}',
+  'Unexpected agent tool result status: {status}':
+    '意外的 agent 工具结果状态：{status}',
+  'No assistant messages found': '未找到助手消息',
+  'No transcript found for agent ID: {agentId}':
+    '未找到 agent ID 为 {agentId} 的会话记录',
+  'Artifact upload failed: HTTP {status} (non-JSON body)':
+    '工件上传失败：HTTP {status}（非 JSON 响应体）',
+  'Artifact upload failed: {code}': '工件上传失败：{code}',
+  'Running {desc}': '正在运行 {desc}',
+  "Blocked: {sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.":
+    '已拦截：{sleepPattern}。请使用 run_in_background: true 在后台运行阻塞命令 — 完成时您会收到通知。对于流式事件（查看日志、轮询 API），请使用 Monitor 工具。如果确实需要延时（限流、刻意节奏），请保持在 2 秒以内。',
+  '<error>Command was aborted before completion</error>':
+    '<error>命令在完成前已中止</error>',
+  'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.':
+    '命令超过了助手模式阻塞预算（{blockingBudget} 秒），已被移至后台运行，ID 为：{backgroundTaskId}。它仍在运行 — 完成时您会收到通知。输出正写入：{outputPath}。在助手模式下，请将长时间运行的工作委派给子 agent，或使用 run_in_background 保持对话响应。',
+  'Command was manually backgrounded by user with ID: {backgroundTaskId}. Output is being written to: {outputPath}':
+    '命令已由用户手动转入后台，ID 为：{backgroundTaskId}。输出正写入：{outputPath}',
+  'Command running in background with ID: {backgroundTaskId}. Output is being written to: {outputPath}':
+    '命令正在后台运行，ID 为：{backgroundTaskId}。输出正写入：{outputPath}',
+  'Dangerous flag combination detected': '检测到危险的 flag 组合',
+  'Getting {setting}': '正在获取 {setting}',
+  'Failed: {error}': '失败：{error}',
+  'Context: {total_tokens} tokens, {message_count} messages\n{summary}':
+    '上下文：{total_tokens} tokens，{message_count} 条消息\n{summary}',
+  'Focus: {focused}': '焦点：{focused}',
+  'Overall context summary': '整体上下文摘要',
+  'Model context: {model}': '模型上下文：{model}',
+  'Prompt caching: {status}': 'Prompt cache：{status}',
+  'Session memory: {status}': '会话记忆：{status}',
+  'Context collapse: {status}': '上下文折叠：{status}',
+  'Collapse spans: {collapsedSpans} committed, {stagedSpans} staged, {collapsedMessages} messages summarized':
+    '折叠区段：已提交 {collapsedSpans} 个，暂存 {stagedSpans} 个，已总结 {collapsedMessages} 条消息',
+  'EnterPlanMode tool cannot be used in agent contexts':
+    'EnterPlanMode 工具不能在 agent 上下文中使用',
+  'Already in a worktree session': '已处于 worktree 会话中',
+  'Tool "{tool_name}" not found. Use SearchExtraTools to discover available tools.':
+    '未找到工具 "{tool_name}"。请使用 SearchExtraTools 发现可用工具。',
+  'Tool "{tool_name}" has not been discovered yet. You must first use SearchExtraTools to discover this tool before executing it.\n\nUsage: SearchExtraTools("select:{tool_name}")':
+    '工具 "{tool_name}" 尚未被发现。执行前必须先使用 SearchExtraTools 发现该工具。\n\n用法：SearchExtraTools("select:{tool_name}")',
+  'Invalid parameters for tool "{tool_name}": {message}':
+    '工具 "{tool_name}" 的参数无效：{message}',
+  'Permission denied for tool "{tool_name}": {message}':
+    '工具 "{tool_name}" 被拒绝授权：{message}',
+  'Permission denied': '权限被拒绝',
+  'Prompts the user to exit plan mode and start coding':
+    '提示用户退出计划模式并开始编码',
+  'No plan file found at {filePath}. Please write your plan to this file before calling ExitPlanMode.':
+    '在 {filePath} 未找到计划文件。请先将计划写入该文件，再调用 ExitPlanMode。',
+  'plan exit → default · {notification}': '退出计划 → 默认 · {notification}',
+  'Your plan has been submitted to the team lead for approval.\n\nPlan file: {filePath}\n\n**What happens next:**\n1. Wait for the team lead to review your plan\n2. You will receive a message in your inbox with approval/rejection\n3. If approved, you can proceed with implementation\n4. If rejected, refine your plan based on the feedback\n\n**Important:** Do NOT proceed until you receive approval. Check your inbox for response.\n\nRequest ID: {requestId}':
+    '您的计划已提交给团队负责人审批。\n\n计划文件：{filePath}\n\n**接下来会发生什么：**\n1. 等待团队负责人审阅您的计划\n2. 您的收件箱将收到批准/驳回的消息\n3. 若获批准，即可开始实施\n4. 若被驳回，请根据反馈完善计划\n\n**重要：**在收到批准之前请勿继续。请留意收件箱中的回复。\n\n请求 ID：{requestId}',
+  '\n\nIf this plan can be broken down into multiple independent tasks, consider using the {toolName} tool to create a team and parallelize the work.':
+    '\n\n如果此计划可以拆分为多个独立任务，请考虑使用 {toolName} 工具创建团队并行推进工作。',
+  'User has approved your plan. You can now start coding. Start with updating your todo list if applicable\n\nYour plan has been saved to: {filePath}\nYou can refer back to it if needed during implementation.{teamHint}\n\n## {planLabel}:\n{plan}':
+    '用户已批准您的计划。现在可以开始编码。如有待办清单，请先更新它\n\n您的计划已保存到：{filePath}\n实施过程中如有需要可随时回顾。{teamHint}\n\n## {planLabel}：\n{plan}',
+  'Not in a worktree session': '当前不在 worktree 会话中',
+  'Returned to {cwd}': '已返回 {cwd}',
+  'Editing {summary}': '正在编辑 {summary}',
+  'Editing file': '正在编辑文件',
+  'File is too large to edit ({fileSize}). Maximum editable file size is {maxFileSize}.':
+    '文件过大，无法编辑（{fileSize}）。可编辑文件的最大大小为 {maxFileSize}。',
+  'File does not exist. {cwdNote} {cwd}.': '文件不存在。{cwdNote} {cwd}。',
+  ' Did you mean {suggestion}?': ' 您是指 {suggestion} 吗？',
+  ' Did you mean {similarFilename}?': ' 您是指 {similarFilename} 吗？',
+  'File is a Jupyter Notebook. Use the {toolName} to edit this file.':
+    '该文件是 Jupyter Notebook。请使用 {toolName} 编辑此文件。',
+  '.  The user modified your proposed changes before accepting them. ':
+    '。 用户在接受前修改了您提议的更改。 ',
+  'The file {filePath} has been updated{modifiedNote}. All occurrences were successfully replaced.':
+    '文件 {filePath} 已更新{modifiedNote}。所有匹配项均已成功替换。',
+  'The file {filePath} has been updated successfully{modifiedNote}.':
+    '文件 {filePath} 已成功更新{modifiedNote}。',
+  'String not found in file. Failed to apply edit.':
+    '在文件中未找到该字符串。应用编辑失败。',
+  'File content ({tokenCount} tokens) exceeds maximum allowed tokens ({maxTokens}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.':
+    '文件内容（{tokenCount} tokens）超过允许的最大 token 数（{maxTokens}）。请使用 offset 和 limit 参数读取文件的特定部分，或搜索特定内容而不是读取整个文件。',
+  '. Files larger than {maxSize} will return an error; use offset and limit for larger files':
+    '。大于 {maxSize} 的文件将返回错误；更大的文件请使用 offset 和 limit',
+  'Invalid pages parameter: "{pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.':
+    '无效的 pages 参数："{pages}"。请使用 "1-5"、"3" 或 "10-20" 之类的格式。页码从 1 开始。',
+  'Page range "{pages}" exceeds maximum of {maxPages} pages per request. Please use a smaller range.':
+    '页码范围 "{pages}" 超过了每次请求最多 {maxPages} 页的限制。请使用更小的范围。',
+  'This tool cannot read binary files. The file appears to be a binary {ext} file. Please use appropriate tools for binary file analysis.':
+    '此工具无法读取二进制文件。该文件似乎是二进制 {ext} 文件。请使用合适的工具分析二进制文件。',
+  "Cannot read '{filePath}': this device file would block or produce infinite output.":
+    "无法读取 '{filePath}'：该设备文件会阻塞或产生无限输出。",
+  'PDF file read: {filePath} ({fileSize})':
+    '已读取 PDF 文件：{filePath}（{fileSize}）',
+  'PDF pages extracted: {count} page(s) from {filePath} ({fileSize})':
+    '已提取 PDF 页面：从 {filePath} 提取 {count} 页（{fileSize}）',
+  '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>':
+    '<system-reminder>警告：文件存在，但内容为空。</system-reminder>',
+  '<system-reminder>Warning: the file exists but is shorter than the provided offset ({startLine}). The file has {totalLines} lines.</system-reminder>':
+    '<system-reminder>警告：文件存在，但长度小于提供的 offset（{startLine}）。该文件共有 {totalLines} 行。</system-reminder>',
+  'Notebook content ({size}) exceeds maximum allowed size ({maxSize}). ':
+    'Notebook 内容（{size}）超过允许的最大大小（{maxSize}）。 ',
+  'This PDF has {pageCount} pages, which is too many to read at once. ':
+    '此 PDF 共有 {pageCount} 页，无法一次读完。 ',
+  'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ':
+    '此模型不支持读取完整 PDF。请使用更新的模型（Sonnet 3.5 v2 或更高版本）， ',
+  'Image file is empty: {filePath}': '图片文件为空：{filePath}',
+  'Native image processor not available, falling back to sharp':
+    '原生图像处理器不可用，回退到 sharp',
+  'Writing {summary}': '正在写入 {summary}',
+  'Finding {summary}': '正在查找 {summary}',
+  'Directory does not exist: {path}. {cwdNote} {cwd}.':
+    '目录不存在：{path}。{cwdNote} {cwd}。',
+  'Path is not a directory: {path}': '路径不是目录：{path}',
+  'Token usage: {tokensUsed} / {tokenBudget}':
+    'Token 用量：{tokensUsed} / {tokenBudget}',
+  'Token usage: {tokensUsed}': 'Token 用量：{tokensUsed}',
+  '  Active time: {elapsed}': '  活跃时间：{elapsed}',
+  '  Continuation turns: {turnsExecuted}': '  续跑轮次：{turnsExecuted}',
+  'Updating goal: {status}{reasonSuffix}':
+    '正在更新目标：{status}{reasonSuffix}',
+  'Goal error: {error}': '目标错误：{error}',
+  'Goal "{objective}" — {status}': '目标 "{objective}" — {status}',
+  'The "status" field is required for update. Use "complete" or "blocked".':
+    '更新时必须提供 "status" 字段。请使用 "complete" 或 "blocked"。',
+  'No active goal to update.': '没有可更新的活跃目标。',
+  'Goal is not in a state that accepts blocked attempts.':
+    '目标当前的状态不接受 blocked 尝试。',
+  'Goal marked as blocked after {attempts} consecutive attempts. Reason: {reason}':
+    '目标在连续 {attempts} 次尝试后被标记为 blocked。原因：{reason}',
+  'Blocked attempt {attempts} recorded. The goal remains active — the same condition must persist for 3 consecutive turns before it is marked blocked.':
+    '已记录第 {attempts} 次 blocked 尝试。目标仍保持活跃 — 同一状况需连续持续 3 轮才会被标记为 blocked。',
+  'Searching for {summary}': '正在搜索 {summary}',
+  'Path does not exist: {path}. {cwdNote} {cwd}.':
+    '路径不存在：{path}。{cwdNote} {cwd}。',
+  '\n\nFound {matches} total {matchWord} across {files} {fileWord}.{limitInfo}':
+    '\n\n在 {files} 个{fileWord}中共找到 {matches} 处{matchWord}。{limitInfo}',
+  'Found {numFiles} {fileWord}{limitInfoStr}\n{filenames}':
+    '找到 {numFiles} 个{fileWord}{limitInfoStr}\n{filenames}',
+  'Stores: {stores}': '存储：{stores}',
+  'Hover info {special}': '悬停信息 {special}',
+  'Edit Notebook': '编辑 Notebook',
+  'Editing notebook {summary}': '正在编辑 notebook {summary}',
+  'Updated cell {cell_id} with {new_source}':
+    '已用 {new_source} 更新单元格 {cell_id}',
+  'Inserted cell {cell_id} with {new_source}':
+    '已插入单元格 {cell_id}，内容为 {new_source}',
+  'Deleted cell {cell_id}': '已删除单元格 {cell_id}',
+  'File has not been read yet. Read it first before writing to it.':
+    '文件尚未被读取。写入前请先读取该文件。',
+  'Cell with index {parsedCellIndex} does not exist in notebook.':
+    'notebook 中不存在索引为 {parsedCellIndex} 的单元格。',
+  'Cell with ID "{cell_id}" not found in notebook.':
+    '在 notebook 中未找到 ID 为 "{cell_id}" 的单元格。',
+  'Unknown error occurred while editing notebook':
+    '编辑 notebook 时发生未知错误',
+  'Enterprise policy requires sandboxing, but sandboxing is not available on native Windows. Shell command execution is blocked on this platform by policy.':
+    '企业策略要求使用沙箱，但原生 Windows 不支持沙箱。根据策略，此平台上的 shell 命令执行已被阻止。',
+  'PowerShell is not available on this system.':
+    '此系统上没有可用的 PowerShell。',
+  'Failed to execute PowerShell command: {error}':
+    '执行 PowerShell 命令失败：{error}',
+  'getAppState not available in runPowerShellCommand context':
+    'runPowerShellCommand 上下文中无法使用 getAppState',
+  'Running…': '运行中…',
+  'Waiting…': '等待中…',
+  '[Image data detected and sent to Claude]':
+    '[已检测到图像数据并发送给 Claude]',
+  Interrupted: '已中断',
+  '(No output)': '（无输出）',
+  'Server "{serverName}" is not connected': '服务器 "{serverName}" 未连接',
+  'Server "{serverName}" does not support resources':
+    '服务器 "{serverName}" 不支持资源',
+  'Unable to resolve organization UUID.': '无法解析组织 UUID。',
+  'Team "{teamName}" does not exist': '团队 "{teamName}" 不存在',
+  'structured messages cannot be broadcast': '结构化消息无法广播',
+  'name and prompt are required for spawn operation':
+    'spawn 操作必须提供 name 和 prompt',
+  'Command processing failed': '命令处理失败',
+  'Failed to load remote skill {slug}: {msg}':
+    '加载远程技能 {slug} 失败：{msg}',
+  'No task found with ID: {task_id}': '未找到 ID 为 {task_id} 的任务',
+  'Read output ({shortcut} to expand)': '读取输出（{shortcut} 展开）',
+  'Missing required parameter: task_id': '缺少必需参数：task_id',
+  'team_name is required for TeamCreate': 'TeamCreate 需要提供 team_name',
+  'Create a new team for coordinating multiple agents':
+    '创建一个新团队以协调多个 agent',
+  'Already leading team "{existingTeam}". A leader can only manage one team at a time. Use TeamDelete to end the current team before creating a new one.':
+    '已在领导团队“{existingTeam}”。一个 leader 同时只能管理一个团队。请先使用 TeamDelete 结束当前团队，再创建新团队。',
+  'Shutdown requested for active teammate(s): {requested}. Cleanup is still blocked after waiting {waitMs}ms: {memberNames}.':
+    '已请求关闭活跃队友：{requested}。等待 {waitMs}ms 后清理仍被阻塞：{memberNames}。',
+  'Shutdown requested for active teammate(s): {requested}. Cleanup is blocked until they exit: {memberNames}.':
+    '已请求关闭活跃队友：{requested}。清理将在它们退出前保持阻塞：{memberNames}。',
+  'Cannot cleanup team with {count} active member(s): {memberNames}. Use requestShutdown to gracefully terminate teammates first.':
+    '无法清理仍有 {count} 个活跃成员的团队：{memberNames}。请先使用 requestShutdown 优雅地终止队友。',
+  'No team name found, nothing to clean up': '未找到团队名称，无需清理',
+  Received: '已接收',
+  'Too many redirects (exceeded {maxRedirects})':
+    '重定向次数过多（超过 {maxRedirects} 次）',
+  'Redirect missing Location header': '重定向缺少 Location 头',
+  'Invalid URL': '无效的 URL',
+  'Searching: {query}': '正在搜索：{query}',
+  'Web search results for query: "{query}"\n\n':
+    '查询“{query}”的网页搜索结果\n\n',
+  'No links found.\n\n': '未找到链接。\n\n',
+  '\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.':
+    '\n提醒：您必须在给用户的回复中以 markdown 超链接形式包含上述来源。',
+  'MCP connection timed out after {timeoutMs}ms':
+    'MCP 连接在 {timeoutMs}ms 后超时',
+  'Connection to {serverName} timed out after {timeoutMs}ms':
+    '连接 {serverName} 在 {timeoutMs}ms 后超时',
+  'Session expired for {serverName}': '{serverName} 的会话已过期',
+  'MCP server "{serverName}" requires re-authorization (token expired)':
+    'MCP 服务器“{serverName}”需要重新授权（token 已过期）',
+  'MCP server "{serverName}" tool "{tool}" timed out after {timeout}s':
+    'MCP 服务器“{serverName}”的工具“{tool}”在 {timeout}s 后超时',
+  'Server {serverName} is not connected': '服务器 {serverName} 未连接',
+  'No API key configured for JWT signing': '未配置用于 JWT 签名的 API key',
+  'Session not found': '未找到会话',
+  'Environment {environmentId} not found': '未找到环境 {environmentId}',
+  'Environment {environmentId} is not active (status: {status})':
+    '环境 {environmentId} 未激活（状态：{status}）',
+  'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nSession enablement:\n  ccb --channels plugin:weixin@builtin':
+    '用法：\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\n会话启用：\n  ccb --channels plugin:weixin@builtin',
+  'WeChat account cleared.': '微信账号已清除。',
+  'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
+    '已连接：\n  用户 ID：{userId}\n  连接时间：{savedAt}\n\n运行 `ccb weixin login clear` 断开连接。\n使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
+  'Starting WeChat QR login...': '正在启动微信扫码登录...',
+  'Scan the QR code above with WeChat, or open this URL:':
+    '使用微信扫描上方二维码，或打开此 URL：',
+  'Login failed: {message}': '登录失败：{message}',
+  'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
+    '连接成功！\n  用户 ID：{userId}\n  Base URL：{baseUrl}\n\n使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
+  'Invalid or expired pairing code.': '配对码无效或已过期。',
+  'Paired successfully: {userId}': '配对成功：{userId}',
+  '[weixin] serve handler not available in this context.':
+    '[weixin] serve 处理器在此上下文中不可用。',
+  'Failed to get QR code: HTTP {status}': '获取二维码失败：HTTP {status}',
+  'No qrcode in response': '响应中缺少 qrcode 字段',
+  'Scan the QR code with WeChat to connect.': '使用微信扫描二维码进行连接。',
+  'Connected to WeChat successfully!': '已成功连接微信！',
+  'QR code scanned, waiting for confirmation...': '二维码已扫描，等待确认...',
+  'QR code expired after maximum retries.':
+    '二维码在达到最大重试次数后已过期。',
+  'QR code expired, refreshing...': '二维码已过期，正在刷新...',
+  'Login timed out.': '登录超时。',
+  'Invalid aes_key: expected 16 raw bytes or 32 hex chars, got {length} bytes':
+    '无效的 aes_key：期望 16 个原始字节或 32 个十六进制字符，实际为 {length} 字节',
+  'CDN download failed: HTTP {status}': 'CDN 下载失败：HTTP {status}',
+  'No upload_param in response': '响应中缺少 upload_param 字段',
+  'CDN upload failed: HTTP {status}': 'CDN 上传失败：HTTP {status}',
+  'Download failed: HTTP {status}': '下载失败：HTTP {status}',
+  '[weixin] Failed to download media: {error}\n':
+    '[weixin] 下载媒体失败：{error}\n',
+  '[weixin] Starting message poll loop...\n':
+    '[weixin] 正在启动消息轮询循环...\n',
+  '[weixin] Session expired (errcode -14). Pausing for 30s...\n':
+    '[weixin] 会话已过期（errcode -14）。暂停 30 秒...\n',
+  'getUpdates error: ret={ret} errcode={errcode} {msg}':
+    'getUpdates 错误：ret={ret} errcode={errcode} {msg}',
+  '[weixin] Poll error ({count}): {msg}\n':
+    '[weixin] 轮询错误（{count}）：{msg}\n',
+  '[weixin] Too many consecutive errors, backing off 30s...\n':
+    '[weixin] 连续错误过多，退避 30 秒...\n',
+  '[weixin] Poll loop stopped.\n': '[weixin] 轮询循环已停止。\n',
+  'Your pairing code is: {code}\n\nAsk the operator to confirm:\nccb weixin access pair {code}':
+    '您的配对码是：{code}\n\n请让操作员确认：\nccb weixin access pair {code}',
+  '[weixin] Failed to send pairing code: {error}\n':
+    '[weixin] 发送配对码失败：{error}\n',
+  '(media attachment)': '（媒体附件）',
+  'Claude Code needs your approval.\n\nTool: {toolName}\nReason: {reason}\nInput: {inputPreview}\n\nReply with: yes {requestId}\nOr deny with: no {requestId}':
+    'Claude Code 需要您的批准。\n\n工具：{toolName}\n原因：{reason}\n输入：{inputPreview}\n\n回复以批准：yes {requestId}\n回复以拒绝：no {requestId}',
+  'WeChat not connected. Run `ccb weixin login` first.':
+    '微信未连接。请先运行 `ccb weixin login`。',
+  'Missing chat_id or text parameter.': '缺少 chat_id 或 text 参数。',
+  'File not found: {filePath}': '未找到文件：{filePath}',
+  'Message sent with attachments.': '消息已随附件发送。',
+  'Message sent.': '消息已发送。',
+  'Failed to send: {error}': '发送失败：{error}',
+  'Missing chat_id parameter.': '缺少 chat_id 参数。',
+  'Typing indicator sent.': '输入状态指示已发送。',
+  'Failed to send typing: {error}': '发送输入状态失败：{error}',
+  'Unknown tool: {name}': '未知工具：{name}',
+  '[weixin] No account configured. Run `ccb weixin login` to connect your WeChat account.':
+    '[weixin] 未配置账号。请运行 `ccb weixin login` 连接您的微信账号。',
+  '[weixin] Failed to relay permission request {requestId}: {error}\n':
+    '[weixin] 转发权限请求 {requestId} 失败：{error}\n',
+  '[weixin] Parent process exited, shutting down...':
+    '[weixin] 父进程已退出，正在关闭...',
+
+  // ── Batch-filled missing translations (auto-generated sweep) ────
+  'No artifacts uploaded this session. Run /use-artifacts to learn how.':
+    '本会话未上传任何工件。运行 /use-artifacts 了解使用方法。',
+  'Answering...': '正在回答...',
+  'Manage permissions': '管理权限',
+  'Reconnect extension': '重新连接扩展',
+  'Claude in Chrome is not supported in WSL at this time.':
+    'Claude in Chrome 目前不支持 WSL。',
+  'Claude in Chrome requires a claude.ai subscription.':
+    'Claude in Chrome 需要 claude.ai 订阅。',
+  'Not detected': '未检测到',
+  'Once installed, select "Reconnect extension" to connect.':
+    '安装完成后，选择“重新连接扩展”进行连接。',
+  'Usage:': '用法：',
+  'Tab to toggle · Enter to confirm · Esc to cancel':
+    'Tab 切换 · Enter 确认 · Esc 取消',
+  'Fast mode': '快速模式',
+  '· Objective:': '· 目标：',
+  '· Status:': '· 状态：',
+  '· Time:': '· 时间：',
+  '· Tokens:': '· Token：',
+  'Location:': '位置：',
+  'Next: Run': '下一步：运行',
+  'to get started': '以开始使用',
+  'Store created:': '已创建存储：',
+  'Stored entry': '已存储条目',
+  'Not found:': '未找到：',
+  'No entries in': '无条目：',
+  'Archived store:': '已归档存储：',
+  'No memory stores found. Use /local-memory create <store> to create one.':
+    '未找到记忆存储。使用 /local-memory create <store> 创建一个。',
+  'Secret stored:': '机密已存储：',
+  'Key not found:': '未找到键：',
+  'Deleted:': '已删除：',
+  'No secrets stored. Use /local-vault set <key> <value> to add one.':
+    '未存储任何机密。使用 /local-vault set <key> <value> 添加。',
+  'Enter workspace API key (sk-ant-api03-*):':
+    '输入工作区 API key（sk-ant-api03-*）：',
+  'Onboarding status': '引导状态',
+  'to edit this plan in': '以在以下位置编辑此计划',
+  'Loading marketplaces…': '正在加载市场…',
+  'Manage marketplaces': '管理市场',
+  'Updating marketplace…': '正在更新市场…',
+  'Pending changes:': '待处理更改：',
+  'Enter to apply': 'Enter 应用',
+  'Processing changes…': '正在处理更改…',
+  'Claude on the web requires connecting to your GitHub account to clone and push code on your behalf.':
+    'Claude 网页版需要连接您的 GitHub 账户，以便代表您克隆和推送代码。',
+  'Your local credentials are used to authenticate with GitHub':
+    '将使用您的本地凭据向 GitHub 进行身份验证',
+  'Open in browser:': '在浏览器中打开：',
+  'Tab switch tab': 'Tab 切换标签页',
+  'No additional configuration needed.': '无需额外配置。',
+  'Do you want to use this API key?': '是否使用此 API key？',
+  recommended: '推荐',
+  'd to disconnect · space for QR code · Enter/Esc to close':
+    'd 断开连接 · space 显示二维码 · Enter/Esc 关闭',
+  'By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.':
+    '继续即表示您对在绕过权限模式下运行时执行的所有操作承担全部责任。',
+  'How would you like to handle this?': '您希望如何处理？',
+  The: '该',
+  'command suggests installing a plugin.': '命令建议安装一个插件。',
+  'Marketplace:': '市场：',
+  'Would you like to install it?': '是否安装？',
+  'Requires the Chrome extension. Get started at':
+    '需要 Chrome 扩展。开始使用请访问',
+  'For more info, use': '了解更多信息，请使用',
+  'or visit': '或访问',
+  'External imports:': '外部导入：',
+  'Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks':
+    '重要提示：仅将 Claude Code 用于您信任的文件。访问不受信任的文件可能带来安全风险',
+  'Base URL': '基础 URL',
+  'Context Usage': '上下文使用情况',
+  'Free space:': '可用空间：',
+  '(loaded on-demand)': '（按需加载）',
+  Available: '可用',
+  'System tools': '系统工具',
+  '(some loaded on-demand)': '（部分按需加载）',
+  'Custom agents': '自定义 agent',
+  'Memory files': '记忆文件',
+  'Message breakdown': '消息明细',
+  'Tool calls:': '工具调用：',
+  'Tool results:': '工具结果：',
+  'Attachments:': '附件：',
+  'Assistant messages (non-tool):': '助手消息（非工具）：',
+  'User messages (non-tool-result):': '用户消息（非工具结果）：',
+  'Learn more about how to monitor your spending:': '了解如何监控您的支出：',
+  'Same Claude Code with visual diffs, live app preview, parallel sessions, and more.':
+    '同样的 Claude Code，还支持可视化差异、实时应用预览、并行会话等更多功能。',
+  'Please use --channels to run a list of approved channels.':
+    '请使用 --channels 指定已批准的频道列表。',
+  'Channels:': '频道：',
+  'No diff content': '无差异内容',
+  'Enter view': 'Enter 查看',
+  'No changed files': '无已更改文件',
+  '←/→ adjust · Enter confirm · Esc cancel': '←/→ 调整 · Enter 确认 · Esc 取消',
+  Faster: '更快',
+  Smarter: '更智能',
+  'Thanks for the feedback!': '感谢您的反馈！',
+  'An update to our Consumer Terms and Privacy Policy will take effect on':
+    '我们的消费者条款和隐私政策更新将生效于',
+  '. You can accept the updated terms today.': '。您可以立即接受更新后的条款。',
+  'What&apos;s changing?': '有哪些变化？',
+  'You can help improve Claude': '您可以帮助改进 Claude',
+  'Updates to data retention': '数据保留政策更新',
+  'Learn more (': '了解更多（',
+  ') or read the updated Consumer Terms (': '）或阅读更新后的消费者条款（',
+  ') and Privacy Policy (': '）和隐私政策（',
+  ')': '）',
+  'We&apos;ve updated our Consumer Terms and Privacy Policy.':
+    '我们更新了消费者条款和隐私政策。',
+  'Help improve Claude': '帮助改进 Claude',
+  'How this affects data retention': '这对数据保留的影响',
+  'Please select how you&apos;d like to continue': '请选择您希望如何继续',
+  'Your choice takes effect immediately upon confirmation.':
+    '您的选择在确认后立即生效。',
+  'Review and manage your privacy settings at': '查看和管理您的隐私设置：',
+  Type: '输入',
+  'to commit changes,': '提交更改，',
+  'for commands, or': '查看命令，或',
+  'for shortcuts.': '查看快捷键。',
+  'You can also configure this in /config or with the --ide flag':
+    '您也可以在 /config 中或通过 --ide 标志配置此项',
+  'Claude has context of': 'Claude 的上下文包含',
+  'open files': '个打开的文件',
+  and: '和',
+  'selected lines': '个选中行',
+  'Review Claude Code&apos;s changes': '审查 Claude Code 的更改',
+  'in the comfort of your IDE': '在您熟悉的 IDE 中',
+  'for Quick Launch': '用于快速启动',
+  'to reference files or lines in your input': '在输入中引用文件或行',
+  'If this is a new task, clearing context will save usage and be faster.':
+    '如果这是新任务，清除上下文可以节省用量并更快。',
+  'The configuration file at': '配置文件',
+  'contains invalid JSON.': '包含无效的 JSON。',
+  'Choose an option:': '选择一个选项：',
+  'Files with errors are skipped entirely, not just the invalid settings.':
+    '有错误的文件会被整个跳过，而不仅是无效的设置项。',
+  'LSP provides code intelligence like go-to-definition and error checking':
+    'LSP 提供跳转到定义、错误检查等代码智能功能',
+  'Triggered by:': '触发来源：',
+  'Would you like to install this LSP plugin?': '是否安装此 LSP 插件？',
+  'Settings requiring approval:': '需要批准的设置：',
+  'Enter to confirm · Esc to exit': 'Enter 确认 · Esc 退出',
+  'Capabilities:': '能力：',
+  'MCP Config Diagnostics': 'MCP 配置诊断',
+  'Please select the servers you want to import:': '请选择要导入的服务器：',
+  'MCP servers may execute code or access system resources. All tool calls require approval. Learn more in the':
+    'MCP 服务器可能会执行代码或访问系统资源。所有工具调用都需要批准。了解更多请参阅',
+  'MCP documentation': 'MCP 文档',
+  Advising: '顾问建议中',
+  'Advisor has reviewed the conversation and will apply the feedback':
+    '顾问已审阅对话，将应用反馈',
+  'Context limit reached · /compact or /clear to continue':
+    '已达上下文上限 · 使用 /compact 或 /clear 继续',
+  'Credit balance too low · Add funds: https://platform.claude.com/settings/billing':
+    '余额不足 · 充值：https://platform.claude.com/settings/billing',
+  'We are experiencing high demand for Opus 4.': 'Opus 4 目前需求量较大。',
+  'Waiting for permission…': '等待权限批准…',
+  'Task assigned:': '已分配任务：',
+  'Discovered tools:': '已发现的工具：',
+  'Listed directory': '已列出目录',
+  'Referenced file': '已引用文件',
+  'Referenced PDF': '已引用 PDF',
+  Selected: '已选择',
+  'lines from': '行，来自',
+  'Read MCP resource': '已读取 MCP 资源',
+  'Async hook': '异步钩子',
+  You: '您',
+  'hook…': '钩子…',
+  'hooks…': '钩子…',
+  'Teammate is continuing to work. You may request shutdown again later.':
+    '队友仍在继续工作。您可以稍后再次请求其停止。',
+  'Tool use rejected': '工具使用已被拒绝',
+  'Allowed by auto mode classifier': '已由自动模式分类器允许',
+  'Summarizing…': '正在总结…',
+  'Use Claude Code&apos;s terminal setup?': '使用 Claude Code 的终端设置？',
+  'Notes:': '备注：',
+  'Ready to submit your answers?': '准备好提交您的回答了吗？',
+  'Host:': '主机：',
+  'No other pipes found. Start another instance.':
+    '未找到其他管道。请启动另一个实例。',
+  'listening…': '正在聆听…',
+  'keep holding…': '继续按住…',
+  'Voice: processing…': '语音：处理中…',
+  'You can disconnect remote access anytime by running /remote-control again.':
+    '您可以随时再次运行 /remote-control 断开远程访问。',
+  'Sandbox is not enabled': '沙箱未启用',
+  'Network Restrictions': '网络限制',
+  'Warning: Glob patterns not fully supported on Linux':
+    '警告：Linux 上未完全支持 Glob 模式',
+  '(Managed)': '（托管）',
+  Sandbox: '沙箱',
+  'Save file to continue…': '保存文件以继续…',
+  'Do you want to make this edit to': '是否要将此编辑应用到',
+  '· Tab to amend': '· Tab 修改',
+  Apply: '应用',
+  'Create skills in .claude/skills/ or ~/.claude/skills/':
+    '在 .claude/skills/ 或 ~/.claude/skills/ 中创建技能',
+  Tokens: '词元',
+  'Server:': '服务器：',
+  'Resource:': '资源：',
+  'This will terminate the Claude Code on the web session.':
+    '这将终止 Claude Code on the web 会话。',
+  Viewing: '正在查看',
+  'No teammates': '无队友',
+  Tasks: '任务',
+  'Enter to view': 'Enter 查看',
+  'Teleport requires a Claude.ai account.': 'Teleport 需要 claude.ai 账号。',
+  'Your Claude Pro/Max subscription will be used by Claude Code.':
+    'Claude Code 将使用您的 Claude Pro/Max 订阅。',
+  Use: '使用',
+  'Teleport will switch git branches. The following changes were found:':
+    'Teleport 将切换 git 分支。发现以下更改：',
+  'No changes detected': '未检测到更改',
+  'Would you like to stash these changes and continue with teleport?':
+    '是否暂存这些更改并继续 teleport？',
+  'Stashing changes...': '正在暂存更改...',
+  'Let&apos;s get started.': '开始使用。',
+  'Claude in Chrome requires a claude.ai subscription':
+    'Claude in Chrome 需要 claude.ai 订阅',
+  'Failed to save marketplace retry info · Check ~/.claude.json permissions':
+    '保存市场重试信息失败 · 请检查 ~/.claude.json 权限',
+  'Failed to install Anthropic marketplace · Will retry on next startup':
+    '安装 Anthropic 市场失败 · 将在下次启动时重试',
+  'Checking installation status…': '正在检查安装状态…',
+  Diagnostics: '诊断',
+  'Warning: Multiple installations found': '警告：发现多个安装',
+  'Invalid Settings': '无效设置',
+  Updates: '更新',
+  'Environment Variables': '环境变量',
+  'Version Locks': '版本锁定',
+  '└ No active version locks': '└ 无活动的版本锁定',
+  '(running)': '（运行中）',
+  '(stale)': '（已过期）',
+  'Context Usage Warnings': '上下文使用警告',
+  'Files:': '文件：',
+  'Top contributors:': '主要占用来源：',
+  'MCP servers:': 'MCP 服务器：',
+  'Press Ctrl+C to exit and start a new conversation.':
+    '按 Ctrl+C 退出并开始新对话。',
+  'Running feedback capture...': '正在运行反馈收集...',
+  'This enables teammates to appear as split panes within your current window.':
+    '这将使队友以分屏窗格的形式出现在您当前的窗口中。',
+  'This may take a moment.': '这可能需要片刻。',
+  'Press Enter when ready to verify…': '准备好验证时请按 Enter…',
+  'Verifying it2 can communicate with iTerm2…':
+    '正在验证 it2 能否与 iTerm2 通信…',
+  'Teammates will now appear as split panes.': '队友现在将以分屏窗格形式显示。',
+  'Verification failed': '验证失败',
+  'Make sure:': '请确保：',
+  'Press y to confirm, or n/Esc to cancel.': '按 y 确认，按 n/Esc 取消。',
+  "User answered Claude's questions:": '用户回答了 Claude 的问题：',
+  'User declined to answer questions': '用户拒绝回答问题',
+  'Config change rejected': '配置更改已被拒绝',
+  'No scheduled jobs': '无定时任务',
+  'Task is still running…': '任务仍在运行…',
+  'Task not ready': '任务未就绪',
+  'Fetching…': '正在获取…',
 }
 
 export default zh

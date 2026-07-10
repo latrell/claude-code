@@ -224,7 +224,11 @@ describe('ExecuteTool', () => {
       tool_name: 'UndiscoveredTool',
     })
     expect(result.newMessages).toBeDefined()
-    expect(result.newMessages![0].content).toContain('has not been discovered')
+    // Locale-independent assertion: the not-discovered error always embeds
+    // the SearchExtraTools usage hint regardless of resolved UI language.
+    expect(result.newMessages![0].content).toContain(
+      'SearchExtraTools("select:UndiscoveredTool")',
+    )
   })
 
   test('has correct name', () => {

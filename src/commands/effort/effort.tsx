@@ -65,8 +65,8 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     };
   }
 
-  const description = getEffortValueDescription(effortValue);
-  const suffix = persistable !== undefined ? '' : ' (this session only)';
+  const description = t(getEffortValueDescription(effortValue));
+  const suffix = persistable !== undefined ? '' : t(' (this session only)');
   return {
     message: tf('Set effort level to {effortValue}{suffix}: {description}', { effortValue, suffix, description }),
     effortUpdate: { value: effortValue },
@@ -80,7 +80,7 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     const level = getDisplayedEffortLevel(model, appStateEffort);
     return { message: tf('Effort level: auto (currently {level})', { level }) };
   }
-  const description = getEffortValueDescription(effectiveValue);
+  const description = t(getEffortValueDescription(effectiveValue));
   return {
     message: tf('Current effort level: {effectiveValue} ({description})', { effectiveValue, description }),
   };
@@ -92,7 +92,7 @@ function unsetEffortLevel(): EffortCommandResult {
   });
   if (result.error) {
     return {
-      message: `Failed to set effort level: ${result.error.message}`,
+      message: tf('Failed to set effort level: {error}', { error: result.error.message }),
     };
   }
   logEvent('tengu_effort_command', {
