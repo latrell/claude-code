@@ -12,9 +12,12 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // other exports of the same modules (see CLAUDE.md cross-file mock
 // pollution rules). Only the functions under test are replaced.
 const actualConfig = await import('src/utils/config.js')
+let mockedConfig: Record<string, unknown> = {
+  preferredNotifChannel: 'terminal_bell',
+}
 mock.module('src/utils/config.ts', () => ({
   ...actualConfig,
-  getGlobalConfig: () => ({ preferredNotifChannel: 'terminal_bell' }),
+  getGlobalConfig: () => mockedConfig,
 }))
 
 const actualHooks = await import('src/utils/hooks.js')
@@ -24,7 +27,7 @@ mock.module('src/utils/hooks.ts', () => ({
   executeNotificationHooks: executeNotificationHooksMock,
 }))
 
-const { sendNotification } = await import('../notifier.js')
+const { sendMeowPush, sendNotification } = await import('../notifier.js')
 const { clearDynamicTeamContext, setDynamicTeamContext } = await import(
   'src/utils/teammate.js'
 )
@@ -50,6 +53,7 @@ describe('sendNotification', () => {
 
   beforeEach(() => {
     executeNotificationHooksMock.mockClear()
+    mockedConfig = { preferredNotifChannel: 'terminal_bell' }
     // Simulate a top-level interactive session (main.tsx sets this at startup)
     setIsInteractive(true)
     clearDynamicTeamContext()
@@ -91,5 +95,32 @@ describe('sendNotification', () => {
 
     expect(terminal.notifyBell).not.toHaveBeenCalled()
     expect(executeNotificationHooksMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('sendMeowPush', () => {
+  test('appends a timestamp line to the message body', async () => {
+    mockedConfig = {
+      preferredNotifChannel: 'meow',
+      meowNotifNickname: 'tester',
+    }
+
+    const originalFetch = globalThis.fetch
+    let capturedBody: { title?: string; msg?: string } | null = null
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body))
+      return new Response(JSON.stringify({ data: true }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    try {
+      const sent = await sendMeowPush('Task done', 'Refactor complete.')
+      expect(sent).toBe(true)
+      expect(capturedBody!.title).toBe('Task done')
+      expect(capturedBody!.msg).toMatch(
+        /^Refactor complete\.\n\n\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+      )
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })

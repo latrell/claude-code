@@ -48,6 +48,7 @@ import {
 } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { sendNotification } from '../services/notifier.js';
+import { buildTaskCompletionNotification } from '../utils/notificationContent.js';
 import { startPreventSleep, stopPreventSleep } from '../services/preventSleep.js';
 import { useTerminalNotification, hasCursorUpViewportYankBug } from '@anthropic/ink';
 import {
@@ -4891,9 +4892,11 @@ export function REPL({
           focusedInputDialogRef.current === undefined &&
           idleTimeSinceResponse >= getGlobalConfig().messageIdleNotifThresholdMs
         ) {
+          // Rich content (task title + completion summary) makes the push
+          // actionable when the user is away from the terminal.
           void sendNotification(
             {
-              message: t('Claude is waiting for your input'),
+              ...buildTaskCompletionNotification(messagesRef.current, t('Claude is waiting for your input')),
               notificationType: 'idle_prompt',
             },
             terminal,

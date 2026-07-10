@@ -48,6 +48,11 @@ Use this when:
 - A permission prompt is waiting and you need user input
 - Something urgent requires the user's attention
 
+Content guidelines:
+- title: a short name for the task (e.g. the user's request, condensed)
+- body: a brief summary (~150 characters) of what was completed or what is needed — the user reads this on their phone without terminal context
+- The send time is appended to the body automatically; do not include it yourself
+
 Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifEnabled, agentPushNotifEnabled).`
   },
 

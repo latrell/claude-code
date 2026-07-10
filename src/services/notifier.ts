@@ -146,6 +146,16 @@ export function isMeowChannelConfigured(): boolean {
   )
 }
 
+/**
+ * Local wall-clock timestamp appended to every MeoW push body. Unlike OS
+ * notifications, the MeoW app does not surface the event time prominently,
+ * so include it in the message itself.
+ */
+export function formatNotificationTimestamp(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export async function sendMeowPush(
   title: string,
   message: string,
@@ -155,13 +165,15 @@ export async function sendMeowPush(
     return false
   }
 
+  const messageWithTimestamp = `${message.trimEnd()}\n\n${formatNotificationTimestamp()}`
+
   try {
     const res = await fetch(
       `${MEOW_API_BASE}/${encodeURIComponent(nickname)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, msg: message }),
+        body: JSON.stringify({ title, msg: messageWithTimestamp }),
         signal: AbortSignal.timeout(10_000),
       },
     )
