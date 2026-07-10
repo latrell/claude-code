@@ -6,8 +6,7 @@ import { lazySchema } from 'src/utils/lazySchema.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { isBridgeEnabled } from 'src/bridge/bridgeEnabled.js'
 import { isMeowChannelConfigured, sendMeowPush } from 'src/services/notifier.js'
-
-const PUSH_NOTIFICATION_TOOL_NAME = 'PushNotification'
+import { PUSH_NOTIFICATION_TOOL_NAME } from './constants.js'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({

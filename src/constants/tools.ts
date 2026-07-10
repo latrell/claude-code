@@ -40,6 +40,7 @@ import {
 } from '@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { LOCAL_MEMORY_RECALL_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/LocalMemoryRecallTool/constants.js'
 import { VAULT_HTTP_FETCH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/VaultHttpFetchTool/constants.js'
+import { PUSH_NOTIFICATION_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/PushNotificationTool/constants.js'
 
 export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   TASK_OUTPUT_TOOL_NAME,
@@ -59,6 +60,11 @@ export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   // LOCAL-WIRING PR-2: vault HTTP fetch is even more sensitive (touches
   // user secrets). Same two-layer gate applies — keep main thread only.
   VAULT_HTTP_FETCH_TOOL_NAME,
+  // User-facing push notifications (MeoW/bridge) are the main agent's job:
+  // subagents finishing intermediate work would otherwise ping the user's
+  // phone on every Task completion. sendMeowPush bypasses sendNotification's
+  // isTeammate() guard, so gate at tool-availability level instead.
+  PUSH_NOTIFICATION_TOOL_NAME,
 ])
 
 export const CUSTOM_AGENT_DISALLOWED_TOOLS = new Set([

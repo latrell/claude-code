@@ -75,6 +75,22 @@ describe('AC11a: ALL_AGENT_DISALLOWED_TOOLS contains LocalMemoryRecall', () => {
   })
 })
 
+describe('ALL_AGENT_DISALLOWED_TOOLS contains PushNotification', () => {
+  // Subagents must not push user-facing notifications (MeoW/bridge) on
+  // completion of intermediate work — that is the main agent's job. The
+  // tool bypasses sendNotification's isTeammate() guard, so availability
+  // gating is the only layer.
+  test('subagents cannot see the PushNotification tool', () => {
+    expect(ALL_AGENT_DISALLOWED_TOOLS.has('PushNotification')).toBe(true)
+  })
+
+  test('fork path strips PushNotification from parent tools', () => {
+    const parent: Tool[] = [fakeTool('PushNotification'), fakeTool('Bash')]
+    const result = filterParentToolsForFork(parent)
+    expect(result.map(t => t.name)).toEqual(['Bash'])
+  })
+})
+
 describe('AC11b: layer 2 fork-path filter integration semantics', () => {
   // Both AgentTool.tsx (new fork) and resumeAgent.ts (resumed fork) must
   // call filterParentToolsForFork before passing tools to runAgent. We
