@@ -151,6 +151,24 @@ export function getRawUtilization(): RawUtilization {
   return rawUtilization
 }
 
+/**
+ * Clear all cached Anthropic rate-limit state. Called when the main-slot
+ * provider connection changes: stale 5h/7d utilization from the previous
+ * Anthropic account would otherwise keep the status line pinned to the old
+ * connection's quota (it treats any rawUtilization as "Anthropic is active").
+ */
+export function resetClaudeAiLimits(): void {
+  rawUtilization = {}
+  const defaultLimits: ClaudeAILimits = {
+    status: 'allowed',
+    unifiedRateLimitFallbackAvailable: false,
+    isUsingOverage: false,
+  }
+  if (!isEqual(currentLimits, defaultLimits)) {
+    emitStatusChange(defaultLimits)
+  }
+}
+
 function extractRawUtilization(headers: globalThis.Headers): RawUtilization {
   const result: RawUtilization = {}
   for (const [key, abbrev] of [

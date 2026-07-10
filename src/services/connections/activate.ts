@@ -261,6 +261,47 @@ async function clearProviderClientCaches(): Promise<void> {
 }
 
 /**
+ * Reset the usage surfaces (status line / /usage fallback) after a main-slot
+ * switch and kick off a fresh fetch for the new connection. Without this the
+ * provider-usage store and the Anthropic rawUtilization cache keep the
+ * previous connection's quota on screen until the next poll/response.
+ */
+async function refreshUsageStoresForConnection(
+  connection: Connection,
+): Promise<void> {
+  try {
+    const { resetProviderUsage } = await import('../providerUsage/store.js')
+    resetProviderUsage()
+  } catch (err) {
+    logError(err)
+  }
+  try {
+    const { resetClaudeAiLimits } = await import('../claudeAiLimits.js')
+    resetClaudeAiLimits()
+  } catch (err) {
+    logError(err)
+  }
+  // Pull-based usage APIs: refresh immediately so the status line repopulates
+  // without waiting for the 5-minute poll (Anthropic/OpenAI-compat refill from
+  // response headers on the next request instead).
+  if (connection.kind === 'cursor') {
+    try {
+      const { fetchCursorUsage } = await import('../api/cursor/cursorUsage.js')
+      void fetchCursorUsage().catch(() => undefined)
+    } catch (err) {
+      logError(err)
+    }
+  } else if (connection.kind === 'chatgpt-oauth') {
+    try {
+      const { fetchCodexUsage } = await import('../api/openai/codexUsage.js')
+      void fetchCodexUsage().catch(() => undefined)
+    } catch (err) {
+      logError(err)
+    }
+  }
+}
+
+/**
  * Verify the credential backing a chatgpt-oauth connection is still readable.
  * The registry entry can outlive the credential file: /login into an
  * OpenAI-compatible endpoint deletes the default openai-chatgpt-auth.json
@@ -391,6 +432,7 @@ export async function activateConnectionForSession(
   setSessionProviderEnvOverlay(env)
   setProviderCliOverride(kindToProviderName(connection.kind))
   await clearProviderClientCaches()
+  await refreshUsageStoresForConnection(connection)
   touchConnectionUsage(connection.id)
   setSessionAssignment('main', {
     connectionId: connection.id,

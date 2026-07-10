@@ -41,6 +41,7 @@ import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
+import { getAPIProvider } from '../utils/model/providers.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
@@ -600,9 +601,16 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
   };
 
   // When no Anthropic rate limits are available (e.g. OpenAI/ChatGPT provider),
-  // fall back to the provider usage store for non-Anthropic bucket display.
+  // fall back to the provider usage store for non-Anthropic bucket display —
+  // but only when the stored buckets belong to the currently active provider.
+  // The store is a session-global singleton, so after a /connect switch it can
+  // still hold the previous connection's quota until the new provider reports.
   const hasAnthropicLimits = builtinRawUtil.five_hour !== undefined || builtinRawUtil.seven_day !== undefined;
-  const providerUsage = !hasAnthropicLimits ? getProviderUsage() : null;
+  const activeProvider = getAPIProvider();
+  const activeProviderStoreId = activeProvider === 'firstParty' ? 'anthropic' : activeProvider;
+  const providerUsageSnapshot = !hasAnthropicLimits ? getProviderUsage() : null;
+  const providerUsage =
+    providerUsageSnapshot && providerUsageSnapshot.providerId === activeProviderStoreId ? providerUsageSnapshot : null;
   const statusLineProviderBuckets = providerUsage
     ? selectStatusLineProviderBuckets(providerUsage.providerId, providerUsage.buckets)
     : undefined;
