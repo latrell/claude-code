@@ -19,11 +19,11 @@ export function renderToolResultMessage(
   return (
     <Box flexDirection="column">
       <Text>
-        Switched to worktree
+        {t('Switched to worktree')}
         {output.worktreeBranch ? (
           <>
             {' '}
-            on branch <Text bold>{output.worktreeBranch}</Text>
+            {t('on branch')} <Text bold>{output.worktreeBranch}</Text>
           </>
         ) : null}
       </Text>

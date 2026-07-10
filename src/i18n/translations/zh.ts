@@ -3967,6 +3967,8 @@ const zh: Record<string, string> = {
   'Successfully loaded skill': '成功加载技能',
   'Kept worktree': '已保留工作树',
   'Removed worktree': '已移除工作树',
+  'Switched to worktree': '已切换到工作树',
+  'on branch': '于分支',
   'Artifact uploaded: ': 'Artifact 已上传：',
   'expires: ': '过期时间：',
   'create team: ': '创建团队：',
