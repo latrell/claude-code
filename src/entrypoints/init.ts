@@ -237,12 +237,16 @@ export const init = memoize(async (): Promise<void> => {
       })
     }
 
-    // Surface ripgrep fallback (e.g. Android/Termux) once per session.
+    // Surface ripgrep problems once per session. Only warn when NO ripgrep
+    // is available (actionable: user must install it). A successful fallback
+    // to system rg (mode 'system', e.g. Android/Termux/OpenHarmony where no
+    // builtin binary ships) works fine and is pure noise at startup — it
+    // remains visible in /doctor via getRipgrepStatus().note.
     // Goes to stderr so it doesn't corrupt pipe-mode (`-p`) stdout.
     try {
       const { getRipgrepStatus } = await import('../utils/ripgrep.js')
       const status = getRipgrepStatus()
-      if (status.note) {
+      if (status.note && status.mode !== 'system') {
         process.stderr.write(`[ripgrep] ${status.note}\n`)
       }
     } catch {

@@ -125,10 +125,19 @@ export default defineConfig({
   },
 
   resolve: {
-    alias: {
-      // src/* path alias (mirrors tsconfig paths)
-      'src/': resolve(projectRoot, 'src/'),
-    },
+    alias: [
+      // src/* path alias (mirrors tsconfig paths).
+      // 必须用 regex + 正斜杠 + 尾斜杠的 replacement：对象形式
+      // `'src/': resolve(projectRoot, 'src/')` 在 Windows 上会产生
+      // 反斜杠、无尾斜杠的替换路径，别名导入与相对导入解析出两个不同的
+      // 模块 ID，同一模块（如 AppState.tsx）被打包两份 —— Provider 写入
+      // 副本 A 的 context，组件读副本 B 的 context，运行时崩溃
+      // "useAppState cannot be called outside of an <AppStateProvider />"。
+      {
+        find: /^src\//,
+        replacement: resolve(projectRoot, 'src').replace(/\\/g, '/') + '/',
+      },
+    ],
     // Ensure workspace packages share a single copy of these
     dedupe: ['react', 'react-reconciler', 'react-compiler-runtime'],
     // Resolve .js imports to .ts files (Bun does this automatically)
