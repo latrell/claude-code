@@ -91,6 +91,20 @@ export async function* queryModelGemini(
       `[Gemini] Calling model=${geminiModel}, messages=${contents.length}, tools=${geminiTools.length}`,
     )
 
+    // Thinking budget derived from the explicit effort value (user /effort or
+    // connection profile). Only used when thinkingConfig carries no explicit
+    // budget of its own (MAX_THINKING_TOKENS env / --max-thinking-tokens).
+    const effortThinkingBudget =
+      options.effortValue === 'low'
+        ? 4096
+        : options.effortValue === 'medium'
+          ? 16384
+          : options.effortValue === 'high'
+            ? 24576
+            : options.effortValue === 'xhigh' || options.effortValue === 'max'
+              ? 32768
+              : undefined
+
     // Wrap the API call + stream adaptation in retry for transient errors
     // (fetch failed, ECONNRESET/EPIPE, 429, 5xx, stream terminated, etc.).
     // streamGeminiGenerateContent is a fully lazy generator — without the
@@ -119,9 +133,11 @@ export async function* queryModelGemini(
               ...(thinkingConfig.type !== 'disabled' && {
                 thinkingConfig: {
                   includeThoughts: true,
-                  ...(thinkingConfig.type === 'enabled' && {
-                    thinkingBudget: thinkingConfig.budgetTokens,
-                  }),
+                  ...(thinkingConfig.type === 'enabled'
+                    ? { thinkingBudget: thinkingConfig.budgetTokens }
+                    : effortThinkingBudget !== undefined && {
+                        thinkingBudget: effortThinkingBudget,
+                      }),
                 },
               }),
             },

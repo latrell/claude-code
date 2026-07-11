@@ -460,6 +460,32 @@ function configureEffortParams(
   }
 }
 
+/**
+ * Thinking budget for models WITHOUT adaptive thinking, derived from the
+ * explicit effort value (user /effort or connection profile). Used only when
+ * no explicit thinkingConfig budget (MAX_THINKING_TOKENS env /
+ * --max-thinking-tokens) was provided. Numeric (ant-only) efforts return
+ * undefined and keep the model-default budget.
+ */
+function thinkingBudgetForEffort(
+  effortValue: EffortValue,
+  model: string,
+): number | undefined {
+  switch (effortValue) {
+    case 'low':
+      return 4096
+    case 'medium':
+      return 16384
+    case 'high':
+      return 32768
+    case 'xhigh':
+    case 'max':
+      return getMaxThinkingTokensForModel(model)
+    default:
+      return undefined
+  }
+}
+
 // output_config.task_budget — API-side token budget awareness for the model.
 // Stainless SDK types don't yet include task_budget on BetaOutputConfig, so we
 // define the wire shape locally and cast. The API validates on receipt; see
@@ -1713,13 +1739,23 @@ async function* queryModel(
         } satisfies BetaMessageStreamParams['thinking']
       } else {
         // For models that do not support adaptive thinking, use the default
-        // thinking budget unless explicitly specified.
+        // thinking budget unless explicitly specified. An explicit
+        // thinkingConfig budget (MAX_THINKING_TOKENS env /
+        // --max-thinking-tokens) wins over the effort-derived budget.
         let thinkingBudget = getMaxThinkingTokensForModel(options.model)
         if (
           thinkingConfig.type === 'enabled' &&
           thinkingConfig.budgetTokens !== undefined
         ) {
           thinkingBudget = thinkingConfig.budgetTokens
+        } else if (options.effortValue !== undefined) {
+          const effortBudget = thinkingBudgetForEffort(
+            options.effortValue,
+            options.model,
+          )
+          if (effortBudget !== undefined) {
+            thinkingBudget = effortBudget
+          }
         }
         thinkingBudget = Math.min(maxOutputTokens - 1, thinkingBudget)
         thinking = {

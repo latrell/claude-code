@@ -99,6 +99,18 @@ export async function* queryModelGrok(
       `[Grok] Calling model=${grokModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}`,
     )
 
+    // xAI reasoning models accept only two reasoning_effort values.
+    // low → 'low'; medium/high/xhigh/max → 'high'; undefined omits the field.
+    const reasoningEffort =
+      options.effortValue === 'low'
+        ? 'low'
+        : options.effortValue === 'medium' ||
+            options.effortValue === 'high' ||
+            options.effortValue === 'xhigh' ||
+            options.effortValue === 'max'
+          ? 'high'
+          : undefined
+
     // Wrap the API call + stream adaptation in retry for transient errors
     // (fetch failed, 429, 5xx, ECONNRESET/EPIPE, stream terminated, etc.).
     // startStreamEagerly pulls the first adapted event inside the factory so
@@ -121,6 +133,9 @@ export async function* queryModelGrok(
             }),
             stream: true,
             stream_options: { include_usage: true },
+            ...(reasoningEffort !== undefined && {
+              reasoning_effort: reasoningEffort,
+            }),
             ...(options.temperatureOverride !== undefined && {
               temperature: options.temperatureOverride,
             }),

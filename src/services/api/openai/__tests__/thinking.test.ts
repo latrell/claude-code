@@ -297,4 +297,22 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.tools).toBeUndefined()
     expect(body.tool_choice).toBeUndefined()
   })
+
+  test('includes reasoning_effort when provided', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: false,
+      reasoningEffort: 'high',
+    })
+    expect(body.reasoning_effort).toBe('high')
+  })
+
+  test('omits reasoning_effort entirely when undefined', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: false,
+    })
+    expect(body.reasoning_effort).toBeUndefined()
+    expect(Object.keys(body)).not.toContain('reasoning_effort')
+  })
 })

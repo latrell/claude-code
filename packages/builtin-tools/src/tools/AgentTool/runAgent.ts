@@ -59,6 +59,7 @@ import { createUserMessage } from 'src/utils/messages.js'
 import { getAgentModel } from 'src/utils/model/agent.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSubagentProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
+import { mapThinkingEffortToEffortValue } from 'src/services/connections/thinkingEffort.js'
 import {
   createSubagentTrace,
   endTrace,
@@ -493,11 +494,14 @@ export async function* runAgent({
       }
     }
 
-    // Override effort level if agent defines one
+    // Override effort level: agent definition wins, then the subagent
+    // connection profile's pinned thinking effort, then the parent state.
     const effortValue =
       agentDefinition.effort !== undefined
         ? agentDefinition.effort
-        : state.effortValue
+        : (mapThinkingEffortToEffortValue(
+            providerRuntimeConfig?.thinkingEffort,
+          ) ?? state.effortValue)
 
     if (
       toolPermissionContext === state.toolPermissionContext &&

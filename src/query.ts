@@ -41,6 +41,10 @@ import type {
 } from './types/message.js'
 import { logError } from './utils/log.js'
 import {
+  getConnectionThinkingEffort,
+  mapThinkingEffortToEffortValue,
+} from './services/connections/thinkingEffort.js'
+import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
@@ -901,7 +905,14 @@ async function* queryLoop(
           for await (const message of deps.callModel({
             messages: prependUserContext(messagesForQuery, userContext),
             systemPrompt: fullSystemPrompt,
-            thinkingConfig: toolUseContext.options.thinkingConfig,
+            // A connection profile pinned to 'off' suppresses thinking for
+            // every provider (the Anthropic/Gemini paths key off
+            // thinkingConfig; OpenAI-compat additionally gets
+            // OPENAI_ENABLE_THINKING=0 injected at activation).
+            thinkingConfig:
+              getConnectionThinkingEffort('main') === 'off'
+                ? { type: 'disabled' as const }
+                : toolUseContext.options.thinkingConfig,
             tools: toolUseContext.options.tools,
             signal: toolUseContext.abortController.signal,
             options: {
@@ -933,7 +944,14 @@ async function* queryLoop(
                 c => c.type === 'pending',
               ),
               queryTracking,
-              effortValue: appState.effortValue,
+              // Effort precedence: env CLAUDE_CODE_EFFORT_LEVEL (applied
+              // downstream in resolveAppliedEffort) > user /effort (appState)
+              // > connection profile thinkingEffort > model default.
+              effortValue:
+                appState.effortValue ??
+                mapThinkingEffortToEffortValue(
+                  getConnectionThinkingEffort('main'),
+                ),
               advisorModel: appState.advisorModel,
               skipCacheWrite,
               agentId: toolUseContext.agentId,

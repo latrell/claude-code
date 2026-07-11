@@ -89,6 +89,27 @@ function convertToResponsesReasoningEffort(
   return undefined
 }
 
+/**
+ * Chat Completions `reasoning_effort` from the resolved effort value.
+ * The public Chat Completions field only accepts low/medium/high, so
+ * xhigh/max clamp to 'high'. Undefined (no explicit effort) omits the field
+ * entirely — many OpenAI-compatible endpoints reject unknown values.
+ */
+function convertToChatCompletionsReasoningEffort(
+  effortValue: unknown,
+): 'low' | 'medium' | 'high' | undefined {
+  if (effortValue === 'low') return 'low'
+  if (effortValue === 'medium') return 'medium'
+  if (
+    effortValue === 'high' ||
+    effortValue === 'xhigh' ||
+    effortValue === 'max'
+  ) {
+    return 'high'
+  }
+  return undefined
+}
+
 function getChatGPTResponsesReasoningEffort(
   effortValue: unknown,
   env: Record<string, string | undefined> = process.env,
@@ -403,6 +424,9 @@ export async function* queryModelOpenAI(
                 enableThinking,
                 maxTokens,
                 temperatureOverride: options.temperatureOverride,
+                reasoningEffort: convertToChatCompletionsReasoningEffort(
+                  options.effortValue,
+                ),
               }),
               { signal: innerSignal },
             ),

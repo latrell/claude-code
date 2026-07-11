@@ -1,3 +1,8 @@
+import {
+  asThinkingEffort,
+  getConnectionThinkingEffort,
+} from '../../services/connections/thinkingEffort.js'
+import type { ThinkingEffort } from '../../services/connections/types.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import { apiProviderToSettingsProviderKey } from './model.js'
@@ -11,6 +16,8 @@ export type ProviderRuntimeConfig = {
   env?: Record<string, string | undefined>
   model?: string | null
   credentialScope?: string
+  /** Thinking effort pinned by the subagent connection profile. */
+  thinkingEffort?: ThinkingEffort
 }
 
 // Process-level CLI override for --subagent-provider (not persisted to settings)
@@ -234,6 +241,17 @@ export function getSubagentProviderRuntimeConfig(
 
   if (!subagentProvider && !model) return undefined
 
+  // Thinking effort: a value carried on the override config (connection
+  // activation stuffs connection.thinkingEffort into it — passthrough field,
+  // hence the runtime validation) wins over the subagent-slot connection
+  // registry lookup.
+  const thinkingEffort =
+    asThinkingEffort(
+      (subagentProvider as Record<string, unknown> | undefined)?.[
+        'thinkingEffort'
+      ],
+    ) ?? getConnectionThinkingEffort('subagent')
+
   return {
     provider,
     modelType: subagentProvider?.modelType,
@@ -241,5 +259,6 @@ export function getSubagentProviderRuntimeConfig(
     model,
     credentialScope:
       subagentProvider?.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
+    ...(thinkingEffort && { thinkingEffort }),
   }
 }

@@ -79,10 +79,17 @@ export function buildOpenAIRequestBody(params: {
   enableThinking: boolean
   maxTokens: number
   temperatureOverride?: number
+  /**
+   * OpenAI `reasoning_effort` value ('low' | 'medium' | 'high'). Only sent
+   * when defined — endpoints that do not recognize the field would otherwise
+   * reject the request.
+   */
+  reasoningEffort?: string
 }): ChatCompletionCreateParamsStreaming & {
   thinking?: { type: string }
   enable_thinking?: boolean
   chat_template_kwargs?: { thinking: boolean; enable_thinking: boolean }
+  reasoning_effort?: string
 } {
   const {
     model,
@@ -92,6 +99,7 @@ export function buildOpenAIRequestBody(params: {
     enableThinking,
     maxTokens,
     temperatureOverride,
+    reasoningEffort,
   } = params
   return {
     model,
@@ -103,6 +111,11 @@ export function buildOpenAIRequestBody(params: {
     }),
     stream: true,
     stream_options: { include_usage: true },
+    // Reasoning effort for endpoints that support it (o-series, DeepSeek,
+    // GLM…). Undefined = field omitted entirely.
+    ...(reasoningEffort !== undefined && {
+      reasoning_effort: reasoningEffort,
+    }),
     // Enable chain-of-thought output for DeepSeek and MiMo models.
     // When active, temperature/top_p/presence_penalty/frequency_penalty are ignored.
     ...(enableThinking && {
