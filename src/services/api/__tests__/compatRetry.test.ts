@@ -9,15 +9,24 @@
  * 5. AbortSignal 中断时停止重试
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
-import { describe, test, expect } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import {
   hasExhaustedCompatRetries,
+  isCompatConnectionInterruptionError,
   isRetryableCompatError,
   prependFirstEvent,
   startStreamEagerly,
   withCompatRetry,
 } from '../compatRetry.js'
+import {
+  _resetKeepAliveForTesting,
+  getProxyFetchOptions,
+} from 'src/utils/proxy.js'
+
+afterEach(() => {
+  _resetKeepAliveForTesting()
+})
 
 // ---------------------------------------------------------------------------
 // Mock OpenAI SDK error classes (避免对 openai 包的硬依赖)
@@ -87,6 +96,40 @@ class MockBadRequestError extends MockAPIError {
 // ---------------------------------------------------------------------------
 // isRetryableCompatError
 // ---------------------------------------------------------------------------
+
+describe('isCompatConnectionInterruptionError', () => {
+  test('连接中断类错误会触发 keep-alive 熔断', () => {
+    expect(
+      isCompatConnectionInterruptionError(new TypeError('terminated')),
+    ).toBe(true)
+    expect(
+      isCompatConnectionInterruptionError(
+        Object.assign(new Error('fetch failed'), { code: 'UND_ERR_SOCKET' }),
+      ),
+    ).toBe(true)
+    expect(
+      isCompatConnectionInterruptionError(
+        Object.assign(new Error('fetch failed'), {
+          cause: { code: 'ConnectionClosed' },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isCompatConnectionInterruptionError(
+        new Error('The socket connection was closed unexpectedly'),
+      ),
+    ).toBe(true)
+  })
+
+  test('纯 HTTP 429/5xx 不触发 keep-alive 熔断', () => {
+    expect(
+      isCompatConnectionInterruptionError(new MockRateLimitError('rate limit')),
+    ).toBe(false)
+    expect(
+      isCompatConnectionInterruptionError(new MockAPIError(503, 'overloaded')),
+    ).toBe(false)
+  })
+})
 
 describe('isRetryableCompatError', () => {
   // --- 可重试 ---
@@ -337,6 +380,52 @@ describe('withCompatRetry', () => {
       expect(err).toBeInstanceOf(MockAuthenticationError)
     }
     expect(callCount).toBe(1)
+  })
+
+  test('连接中断重试时禁用后续 fetch keep-alive', async () => {
+    _resetKeepAliveForTesting()
+    const signal = new AbortController().signal
+    const gen = withCompatRetry(
+      async () => {
+        throw new TypeError('terminated')
+      },
+      { maxRetries: 0, signal, provider: 'test' },
+    )
+
+    expect(getProxyFetchOptions({ forAnthropicAPI: false }).keepalive).toBe(
+      undefined,
+    )
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect((err as Error).message).toBe('terminated')
+    }
+    expect(getProxyFetchOptions({ forAnthropicAPI: false }).keepalive).toBe(
+      false,
+    )
+    _resetKeepAliveForTesting()
+  })
+
+  test('HTTP 503 重试不禁用 keep-alive', async () => {
+    _resetKeepAliveForTesting()
+    const signal = new AbortController().signal
+    const gen = withCompatRetry(
+      async () => {
+        throw new MockAPIError(503, 'service unavailable')
+      },
+      { maxRetries: 0, signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect(err).toBeInstanceOf(MockAPIError)
+    }
+    expect(getProxyFetchOptions({ forAnthropicAPI: false }).keepalive).toBe(
+      undefined,
+    )
   })
 
   test('重试后成功返回结果', async () => {

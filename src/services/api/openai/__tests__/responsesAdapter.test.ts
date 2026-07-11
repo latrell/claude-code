@@ -1,7 +1,11 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
+  createChatGPTResponsesStream,
   extractUsage,
 } from '../responsesAdapter.js'
 
@@ -27,6 +31,95 @@ describe('buildResponsesRequest', () => {
     }) as Record<string, unknown>
 
     expect('max_output_tokens' in request).toBe(false)
+  })
+})
+
+describe('createChatGPTResponsesStream', () => {
+  const envKeys = ['CLAUDE_CONFIG_DIR'] as const
+  let envSnapshot: Partial<Record<(typeof envKeys)[number], string>>
+  let tempDir: string
+
+  beforeEach(() => {
+    envSnapshot = {
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    }
+    tempDir = join(
+      tmpdir(),
+      `responses-adapter-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    )
+    mkdirSync(tempDir, { recursive: true })
+    writeFileSync(
+      join(tempDir, 'openai-chatgpt-auth.json'),
+      `${JSON.stringify({
+        auth_mode: 'chatgpt',
+        tokens: {
+          id_token: 'id-token',
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          account_id: 'account-123',
+        },
+      })}\n`,
+    )
+    process.env.CLAUDE_CONFIG_DIR = tempDir
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      const value = envSnapshot[key]
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  test('passes unified fetch options without dropping explicit request init', async () => {
+    const controller = new AbortController()
+    let capturedInit: RequestInit | undefined
+    const fetchOverride = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        capturedInit = init
+        return Promise.resolve(
+          new Response('data: [DONE]\n\n', { status: 200 }),
+        )
+      },
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+
+    for await (const _event of stream) {
+      // drain the response so reader cleanup is exercised
+    }
+
+    expect(capturedInit?.method).toBe('POST')
+    expect(capturedInit?.signal).toBe(controller.signal)
+    expect(capturedInit?.body).toContain('gpt-5.5')
+    expect(capturedInit?.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    })
+    expect(
+      String(
+        (capturedInit?.headers as Record<string, string> | undefined)
+          ?.Authorization ?? '',
+      ),
+    ).toStartWith('Bearer ')
+    const bunTimeout = (capturedInit as Record<string, unknown> | undefined)
+      ?.timeout
+    if (bunTimeout !== undefined) {
+      expect(bunTimeout).toBe(false)
+    }
   })
 })
 

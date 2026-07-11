@@ -3,6 +3,7 @@ import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta
 import { getValidChatGPTAuth } from './chatgptAuth.js'
 import { openaiAdapter } from '../../providerUsage/adapters/openai.js'
 import { updateProviderBuckets } from '../../providerUsage/store.js'
+import { getProxyFetchOptions } from '../../../utils/proxy.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
@@ -206,27 +207,31 @@ async function* parseSSE(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let splitAt = buffer.indexOf('\n\n')
-    while (splitAt >= 0) {
-      const frame = buffer.slice(0, splitAt)
-      buffer = buffer.slice(splitAt + 2)
-      const data = frame
-        .split(/\r?\n/)
-        .filter(line => line.startsWith('data:'))
-        .map(line => line.slice(5).trimStart())
-        .join('\n')
-      if (data && data !== '[DONE]') {
-        const parsed = JSON.parse(data) as unknown
-        if (parsed && typeof parsed === 'object') {
-          yield parsed as Record<string, unknown>
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let splitAt = buffer.indexOf('\n\n')
+      while (splitAt >= 0) {
+        const frame = buffer.slice(0, splitAt)
+        buffer = buffer.slice(splitAt + 2)
+        const data = frame
+          .split(/\r?\n/)
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart())
+          .join('\n')
+        if (data && data !== '[DONE]') {
+          const parsed = JSON.parse(data) as unknown
+          if (parsed && typeof parsed === 'object') {
+            yield parsed as Record<string, unknown>
+          }
         }
+        splitAt = buffer.indexOf('\n\n')
       }
-      splitAt = buffer.indexOf('\n\n')
     }
+  } finally {
+    reader.releaseLock()
   }
 }
 
@@ -523,6 +528,7 @@ export async function createChatGPTResponsesStream(params: {
   const response = await fetchFn(
     'https://chatgpt.com/backend-api/codex/responses',
     {
+      ...getProxyFetchOptions({ forAnthropicAPI: false }),
       method: 'POST',
       headers,
       body: JSON.stringify(params.request),

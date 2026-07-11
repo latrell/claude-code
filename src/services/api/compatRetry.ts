@@ -21,6 +21,7 @@ import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from 'src/utils/debug.js'
 import { errorMessage } from 'src/utils/errors.js'
+import { disableKeepAlive } from 'src/utils/proxy.js'
 import { sleep } from 'src/utils/sleep.js'
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,120 @@ function getRetryDelay(attempt: number): number {
 // ---------------------------------------------------------------------------
 // 错误分类
 // ---------------------------------------------------------------------------
+
+function getErrorRecord(error: unknown): Record<string, unknown> | undefined {
+  return error && typeof error === 'object'
+    ? (error as Record<string, unknown>)
+    : undefined
+}
+
+function getStringField(
+  record: Record<string, unknown> | undefined,
+  field: string,
+): string | undefined {
+  const value = record?.[field]
+  return typeof value === 'string' ? value : undefined
+}
+
+function getConstructorName(error: unknown): string {
+  const record = getErrorRecord(error)
+  return (record?.constructor as { name?: string } | undefined)?.name ?? ''
+}
+
+function getErrorName(error: unknown): string | undefined {
+  return error instanceof Error
+    ? error.name
+    : getStringField(getErrorRecord(error), 'name')
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  const record = getErrorRecord(error)
+  const cause = getErrorRecord(record?.cause)
+  return (
+    getStringField(record, 'code') ??
+    getStringField(cause, 'code') ??
+    getStringField(cause, 'errno')
+  )
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  const status = getErrorRecord(error)?.status
+  return typeof status === 'number' ? status : undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function getErrorCauseMessage(error: unknown): string | undefined {
+  return getStringField(getErrorRecord(getErrorRecord(error)?.cause), 'message')
+}
+
+/**
+ * Network/socket interruptions where retrying should also stop reusing pooled
+ * keep-alive sockets. Deliberately excludes pure HTTP 429/5xx responses.
+ */
+export function isCompatConnectionInterruptionError(error: unknown): boolean {
+  if (error instanceof Error && error.name === 'AbortError') return false
+
+  const record = getErrorRecord(error)
+  const name = getErrorName(error)
+  const ctorName = getConstructorName(error)
+  if (name === 'APIUserAbortError' || ctorName === 'APIUserAbortError') {
+    return false
+  }
+  if (getErrorStatus(error) !== undefined) return false
+
+  if (
+    ctorName === 'APIConnectionError' ||
+    ctorName === 'APIConnectionTimeoutError' ||
+    name === 'APIConnectionError' ||
+    name === 'APIConnectionTimeoutError'
+  ) {
+    return true
+  }
+
+  const code = getErrorCode(error)?.toLowerCase()
+  if (
+    code === 'connectionclosed' ||
+    code === 'connectionrefused' ||
+    code === 'failedtoopensocket' ||
+    code === 'econnreset' ||
+    code === 'epipe' ||
+    code === 'etimedout' ||
+    code === 'econnrefused' ||
+    code === 'enetunreach' ||
+    code === 'enotfound' ||
+    code === 'und_err_socket'
+  ) {
+    return true
+  }
+
+  const msg =
+    `${getErrorMessage(error)} ${getErrorCauseMessage(error) ?? ''}`.toLowerCase()
+  if (
+    msg.includes('terminated') ||
+    msg.includes('fetch failed') ||
+    msg.includes('socket connection was closed') ||
+    msg.includes('econnreset') ||
+    msg.includes('epipe') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enetunreach') ||
+    msg.includes('etimedout') ||
+    msg.includes('enotfound') ||
+    msg.includes('und_err_socket') ||
+    msg.includes('connectionclosed') ||
+    msg.includes('connectionrefused') ||
+    msg.includes('failedtoopensocket')
+  ) {
+    return true
+  }
+
+  return (
+    typeof record?.message === 'string' &&
+    record.message.toLowerCase().includes('connection error')
+  )
+}
 
 /**
  * 判定某个错误是否应该在兼容层中重试。
@@ -152,6 +267,8 @@ export function isRetryableCompatError(error: unknown): boolean {
       return false
     }
   }
+
+  if (isCompatConnectionInterruptionError(error)) return true
 
   return false
 }
@@ -279,13 +396,24 @@ export async function* withCompatRetry<T>(
     } catch (error: unknown) {
       lastError = error
 
+      const retryable = isRetryableCompatError(error)
+      const connectionInterruption =
+        retryable && isCompatConnectionInterruptionError(error)
+
       logForDebugging(
         `[${options.provider}] API error (attempt ${attempt + 1}/${maxRetries + 1}): ${errorMessage(error)}`,
         { level: 'error' },
       )
 
-      if (!isRetryableCompatError(error)) {
+      if (!retryable) {
         throw error
+      }
+
+      if (connectionInterruption) {
+        logForDebugging(
+          `[${options.provider}] Connection interruption detected — disabling keep-alive for subsequent compatible provider requests`,
+        )
+        disableKeepAlive()
       }
 
       if (attempt >= maxRetries) {

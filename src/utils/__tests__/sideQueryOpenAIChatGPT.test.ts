@@ -64,6 +64,95 @@ describe('sideQuery ChatGPT auth', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  test('passes unified fetch options for Gemini side queries', async () => {
+    const controller = new AbortController()
+    let capturedUrl = ''
+    let capturedInit: RequestInit | undefined
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      capturedUrl = typeof input === 'string' ? input : input.toString()
+      capturedInit = init
+      return Promise.resolve(
+        Response.json({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'hello from gemini' }],
+              },
+              finishReason: 'STOP',
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 4,
+            candidatesTokenCount: 3,
+          },
+          id: 'gemini-response-id',
+        }),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'Hi' }],
+      querySource: 'auto_mode',
+      signal: controller.signal,
+      providerRuntimeConfig: {
+        provider: 'gemini',
+        env: {
+          GEMINI_API_KEY: 'gemini-key',
+          GEMINI_MODEL: 'gemini-test-model',
+        },
+      },
+    })
+
+    expect(capturedUrl).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-test-model:generateContent',
+    )
+    expect(capturedInit?.method).toBe('POST')
+    expect(capturedInit?.signal).toBe(controller.signal)
+    expect(capturedInit?.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'x-goog-api-key': 'gemini-key',
+    })
+    expect(capturedInit?.body).toContain('maxOutputTokens')
+    const bunTimeout = (capturedInit as Record<string, unknown> | undefined)
+      ?.timeout
+    if (bunTimeout !== undefined) {
+      expect(bunTimeout).toBe(false)
+    }
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: 'hello from gemini',
+    })
+  })
+
+  test('Gemini side query errors include status and response body', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response('rate limit exceeded', {
+          status: 429,
+          statusText: 'Too Many Requests',
+        }),
+      ),
+    ) as unknown as typeof globalThis.fetch
+
+    await expect(
+      sideQuery({
+        model: 'claude-sonnet-4-5',
+        messages: [{ role: 'user', content: 'Hi' }],
+        querySource: 'auto_mode',
+        providerRuntimeConfig: {
+          provider: 'gemini',
+          env: {
+            GEMINI_API_KEY: 'gemini-key',
+            GEMINI_MODEL: 'gemini-test-model',
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Gemini API request failed (429 Too Many Requests): rate limit exceeded',
+    )
+  })
+
   test('uses ChatGPT Responses backend and returns tool_use content', async () => {
     let capturedUrl = ''
     let capturedAuth = ''
