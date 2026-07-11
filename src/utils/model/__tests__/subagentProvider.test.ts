@@ -1,4 +1,9 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { setSessionAssignment } from '../../../services/connections/sessionAssignments.js'
+import { _invalidateConnectionsCache } from '../../../services/connections/store.js'
 import { getAgentModel } from '../agent.js'
 import {
   getSubagentProviderFromEnv,
@@ -6,6 +11,32 @@ import {
   setSubagentProviderCliOverride,
   SUBAGENT_CREDENTIAL_SCOPE,
 } from '../subagentProvider.js'
+
+// getSubagentProviderRuntimeConfig falls back to getConnectionThinkingEffort
+// ('subagent'), which reads the real connection registry. Point CLAUDE_CONFIG_DIR
+// at an empty temp dir so a developer's subagent-slot connection (with a pinned
+// thinkingEffort) cannot leak into the expected configs below.
+let tmpDir: string
+let previousConfigDir: string | undefined
+
+beforeEach(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), 'ccb-subagent-provider-test-'))
+  previousConfigDir = process.env['CLAUDE_CONFIG_DIR']
+  process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+  _invalidateConnectionsCache()
+  setSessionAssignment('subagent', undefined)
+})
+
+afterEach(() => {
+  if (previousConfigDir === undefined) {
+    delete process.env['CLAUDE_CONFIG_DIR']
+  } else {
+    process.env['CLAUDE_CONFIG_DIR'] = previousConfigDir
+  }
+  _invalidateConnectionsCache()
+  setSessionAssignment('subagent', undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
+})
 
 describe('subagent provider config', () => {
   test('returns undefined without subagent settings or env override', () => {

@@ -4,6 +4,7 @@ import { ConnectionPicker } from '../../components/connections/ConnectionPicker.
 import { t } from '../../i18n/t.js';
 import type { LocalJSXCommandCall, LocalJSXCommandOnDone } from '../../types/command.js';
 import { stripSignatureBlocks } from '../../utils/messages.js';
+import { refreshProviderSlotDisplay } from './providerSlotRefresh.js';
 import { runProviderCommand } from './runProvider.js';
 
 function applyAuthChanged(context: LocalJSXCommandContext): void {
@@ -36,6 +37,7 @@ export const call: LocalJSXCommandCall = async (
     }
     if (outcome.authChanged) {
       applyAuthChanged(context);
+      refreshProviderSlotDisplay(context);
     }
     onDone(outcome.message, { display: 'system' });
     return;
@@ -54,7 +56,10 @@ export const call: LocalJSXCommandCall = async (
           mainLoopModelForSession: null,
         }));
       }}
-      onAuthChanged={() => applyAuthChanged(context)}
+      onAuthChanged={() => {
+        applyAuthChanged(context);
+        refreshProviderSlotDisplay(context);
+      }}
     />
   );
 };

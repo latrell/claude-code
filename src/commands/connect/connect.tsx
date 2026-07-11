@@ -26,6 +26,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
         context.setAppState(prev => ({
           ...prev,
           authVersion: prev.authVersion + 1,
+          providerSlotsVersion: prev.providerSlotsVersion + 1,
         }));
       }}
     />

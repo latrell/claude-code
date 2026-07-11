@@ -21,6 +21,10 @@ import {
 } from './model/agent.js'
 import { getAPIProvider } from './model/providers.js'
 import {
+  getFastModelAndRuntime,
+  getFastProviderRuntimeConfig,
+} from './model/fastProvider.js'
+import {
   getSubagentProviderRuntimeConfig,
   type ProviderRuntimeConfig,
 } from './model/subagentProvider.js'
@@ -304,27 +308,59 @@ export function getSubagentBillingDisplayName(
  * @param parentModel - The resolved main loop model name
  * @param billingType - Optional billing/entitlement name to append
  */
-export function formatSubagentDisplayLine(
+function formatProviderSlotDisplayLine(
+  label: string,
   runtimeConfig: ProviderRuntimeConfig | undefined,
   parentModel: string,
   billingType?: string,
+  displayModelOverride?: string,
 ): string | undefined {
   if (!runtimeConfig) return undefined
   const providerName = formatProviderName(runtimeConfig)
-  const resolvedModel = getAgentModel(
-    getDefaultSubagentModel(),
-    parentModel,
-    undefined,
-    'default',
-    runtimeConfig,
-  )
+  const resolvedModel =
+    displayModelOverride ??
+    getAgentModel(
+      getDefaultSubagentModel(),
+      parentModel,
+      undefined,
+      'default',
+      runtimeConfig,
+    )
   const modelPart =
     resolvedModel === parentModel
       ? t('Inherit from parent')
       : getAgentModelDisplay(resolvedModel)
 
   const billingSuffix = billingType ? ` · ${billingType}` : ''
-  return `${t('Subagent:')} ${providerName} · ${modelPart}${billingSuffix}`
+  return `${label} ${providerName} · ${modelPart}${billingSuffix}`
+}
+
+export function formatSubagentDisplayLine(
+  runtimeConfig: ProviderRuntimeConfig | undefined,
+  parentModel: string,
+  billingType?: string,
+): string | undefined {
+  return formatProviderSlotDisplayLine(
+    t('Subagent:'),
+    runtimeConfig,
+    parentModel,
+    billingType,
+  )
+}
+
+export function formatFastDisplayLine(
+  runtimeConfig: ProviderRuntimeConfig | undefined,
+  parentModel: string,
+  billingType?: string,
+  displayModel?: string,
+): string | undefined {
+  return formatProviderSlotDisplayLine(
+    t('Fast agent:'),
+    runtimeConfig,
+    parentModel,
+    billingType,
+    displayModel,
+  )
 }
 
 /**
@@ -335,6 +371,7 @@ export function calculateOptimalLeftWidth(
   truncatedCwd: string,
   modelLine: string,
   subagentLine?: string,
+  fastLine?: string,
 ): number {
   const widths = [
     stringWidth(welcomeMessage),
@@ -344,6 +381,9 @@ export function calculateOptimalLeftWidth(
   ]
   if (subagentLine) {
     widths.push(stringWidth(subagentLine))
+  }
+  if (fastLine) {
+    widths.push(stringWidth(fastLine))
   }
   const contentWidth = Math.max(...widths)
   return Math.min(contentWidth + 4, MAX_LEFT_WIDTH) // +4 for padding
@@ -506,6 +546,7 @@ export function getLogoDisplayData(parentModel: string): {
   billingType: string
   agentName: string | undefined
   subagentLine?: string
+  fastLine?: string
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION_DISPLAY
   const serverUrl = getDirectConnectServerUrl()
@@ -527,6 +568,20 @@ export function getLogoDisplayData(parentModel: string): {
     parentModel,
     subagentBillingType,
   )
+  const fastRuntimeConfig = getFastProviderRuntimeConfig()
+  const fastModel = fastRuntimeConfig
+    ? getFastModelAndRuntime().model
+    : undefined
+  const fastBillingType = getSubagentBillingDisplayName(
+    fastRuntimeConfig,
+    billingType,
+  )
+  const fastLine = formatFastDisplayLine(
+    fastRuntimeConfig,
+    parentModel,
+    fastBillingType,
+    fastModel,
+  )
 
   return {
     version,
@@ -534,6 +589,7 @@ export function getLogoDisplayData(parentModel: string): {
     billingType,
     agentName,
     subagentLine,
+    fastLine,
   }
 }
 

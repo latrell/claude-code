@@ -52,6 +52,7 @@ _setOAuthConfigAccessForTest({
 })
 
 const { call } = await import('../nonInteractive.js')
+const { call: jsxCall } = await import('../fast-provider.js')
 const { _invalidateConnectionsCache, getDefaultAssignment, upsertConnection } =
   await import('../../../services/connections/store.js')
 const { setSessionAssignment } = await import(
@@ -188,5 +189,43 @@ describe('/fast-provider command', () => {
     expect(
       getFastProviderConfig({}, { FAST_OPENAI_API_KEY: 'sk-x' }),
     ).toBeUndefined()
+  })
+
+  test('interactive argument path refreshes provider slot display on success', async () => {
+    upsertConnection(deepseekConn())
+    const appState = { providerSlotsVersion: 0 }
+    const context = {
+      setAppState(updater: (prev: typeof appState) => typeof appState) {
+        Object.assign(appState, updater(appState))
+      },
+    }
+    let doneMessage: string | undefined
+
+    await jsxCall(
+      message => {
+        doneMessage = message
+      },
+      context as never,
+      'deepseek',
+    )
+
+    expect(doneMessage).toContain('DeepSeek')
+    expect(appState.providerSlotsVersion).toBe(1)
+  })
+
+  test('interactive picker path passes provider slot refresh callback', async () => {
+    const appState = { providerSlotsVersion: 0 }
+    const context = {
+      setAppState(updater: (prev: typeof appState) => typeof appState) {
+        Object.assign(appState, updater(appState))
+      },
+    }
+
+    const element = (await jsxCall(() => {}, context as never, '')) as {
+      props: { onAuthChanged: () => void }
+    }
+    element.props.onAuthChanged()
+
+    expect(appState.providerSlotsVersion).toBe(1)
   })
 })

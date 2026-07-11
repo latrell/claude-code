@@ -3907,6 +3907,7 @@ async function run(): Promise<CommanderCommand> {
         pendingWorkerRequest: null,
         pendingSandboxRequest: null,
         authVersion: 0,
+        providerSlotsVersion: 0,
         initialMessage: inputPrompt
           ? {
               message: createUserMessage({

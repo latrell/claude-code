@@ -28,9 +28,19 @@ export function CondensedLogo(): ReactNode {
   // the billing line and the provider-default model are recomputed from
   // process.env on re-render.
   useAppState(s => s.authVersion);
+  // Provider slot assignments live outside AppState; this version invalidates
+  // banner display when main/subagent/fast slots change.
+  useAppState(s => s.providerSlotsVersion);
   const model = useMainLoopModel();
   const modelDisplayName = renderModelSetting(model);
-  const { version, cwd, billingType, agentName: agentNameFromSettings, subagentLine } = getLogoDisplayData(model);
+  const {
+    version,
+    cwd,
+    billingType,
+    agentName: agentNameFromSettings,
+    subagentLine,
+    fastLine,
+  } = getLogoDisplayData(model);
 
   // Prefer AppState.agent (set from --agent CLI flag) over settings
   const agentName = agent ?? agentNameFromSettings;
@@ -97,6 +107,7 @@ export function CondensedLogo(): ReactNode {
             </Text>
           )}
           {subagentLine && <Text dimColor>{subagentLine}</Text>}
+          {fastLine && <Text dimColor>{fastLine}</Text>}
           <Text dimColor>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text>
           {showGuestPassesUpsell && <GuestPassesUpsell />}
           {!showGuestPassesUpsell && showOverageCreditUpsell && <OverageCreditUpsell maxWidth={textWidth} twoLine />}

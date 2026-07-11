@@ -13,14 +13,25 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 import { setChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
-import type { ProviderRuntimeConfig } from '../model/subagentProvider.js'
+import { setFastProviderConfigOverride } from '../model/fastProvider.js'
 import {
+  setSubagentProviderConfigOverride,
+  type ProviderRuntimeConfig,
+} from '../model/subagentProvider.js'
+import {
+  formatFastDisplayLine,
   formatSubagentDisplayLine,
   getBillingDisplayName,
+  getLogoDisplayData,
   getSubagentBillingDisplayName,
 } from '../logoV2Utils.js'
 
 const PARENT_MODEL = 'claude-sonnet-4-6-20250514'
+
+afterEach(() => {
+  setSubagentProviderConfigOverride(undefined)
+  setFastProviderConfigOverride(undefined)
+})
 
 describe('formatSubagentDisplayLine', () => {
   test('returns undefined when no subagent provider is configured', () => {
@@ -260,6 +271,68 @@ describe('formatSubagentDisplayLine', () => {
     expect(formatSubagentDisplayLine(config, PARENT_MODEL)).toBe(
       'Subagent: Anthropic · Inherit from parent',
     )
+  })
+})
+
+describe('formatFastDisplayLine', () => {
+  test('returns undefined when no fast provider is configured', () => {
+    expect(
+      formatFastDisplayLine(undefined, PARENT_MODEL, 'DeepSeek API'),
+    ).toBeUndefined()
+  })
+
+  test('displays fast slot provider, model and billing', () => {
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com',
+        OPENAI_MODEL: 'deepseek-v4-flash',
+      },
+    }
+    expect(formatFastDisplayLine(config, PARENT_MODEL, 'DeepSeek API')).toBe(
+      'Fast agent: DeepSeek · Deepseek-v4-flash · DeepSeek API',
+    )
+  })
+})
+
+describe('getLogoDisplayData', () => {
+  test('returns both subagentLine and fastLine when scoped providers are configured', () => {
+    setSubagentProviderConfigOverride({
+      modelType: 'openai',
+      model: 'deepseek-v4-pro',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com',
+        OPENAI_API_KEY: 'sk-subagent',
+      },
+      credentialScope: 'subagent',
+    })
+    setFastProviderConfigOverride({
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com',
+        OPENAI_API_KEY: 'sk-fast',
+      },
+      credentialScope: 'fast',
+    })
+    const previousDemoVersion = process.env.DEMO_VERSION
+    process.env.DEMO_VERSION = 'test'
+
+    try {
+      const result = getLogoDisplayData(PARENT_MODEL)
+
+      expect(result.subagentLine).toBe(
+        'Subagent: DeepSeek · Deepseek-v4-pro · DeepSeek API',
+      )
+      expect(result.fastLine).toBe(
+        'Fast agent: DeepSeek · Deepseek-v4-flash · DeepSeek API',
+      )
+    } finally {
+      if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION
+      else process.env.DEMO_VERSION = previousDemoVersion
+    }
   })
 })
 

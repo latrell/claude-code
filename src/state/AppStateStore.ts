@@ -406,6 +406,8 @@ export type AppState = DeepImmutable<{
   }
   // Auth version - incremented on login/logout to trigger re-fetching of auth-dependent data
   authVersion: number
+  // Provider slot display version - incremented when main/subagent/fast provider assignments change.
+  providerSlotsVersion: number
   // Initial message to process (from CLI args or plan mode exit)
   // When set, REPL will process the message and trigger a query
   initialMessage: {
@@ -569,6 +571,7 @@ export function getDefaultAppState(): AppState {
       suggestion: null,
     },
     authVersion: 0,
+    providerSlotsVersion: 0,
     initialMessage: null,
     effortValue: undefined,
     activeOverlays: new Set<string>(),

@@ -602,6 +602,7 @@ const zh: Record<string, string> = {
   'Welcome back, {username}!': '欢迎回来，{username}！',
   'Inherit from parent': '继承自父智能体',
   'Subagent:': '子智能体：',
+  'Fast agent:': '快速智能体：',
 
   // ── Interrupted by user ─────────────────────────────────────────
   'Interrupted ': '已中断 ',
