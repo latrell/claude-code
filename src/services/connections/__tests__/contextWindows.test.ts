@@ -200,6 +200,75 @@ describe('getConnectionContextWindow', () => {
     })
     expect(getConnectionContextWindow('deepseek-v4-pro')).toBe(1_000_000)
   })
+
+  test('connection-level contextWindow wins when the pinned model matches', () => {
+    upsertConnection(
+      conn({
+        id: 'active',
+        model: 'shared',
+        contextWindow: 777_000,
+        modelContextWindows: { shared: { tokens: 500_000 } },
+      }),
+    )
+    setSessionAssignment('main', { connectionId: 'active' })
+    expect(getConnectionContextWindow('shared')).toBe(777_000)
+    // Case-insensitive pinned-model match
+    expect(getConnectionContextWindow('SHARED')).toBe(777_000)
+  })
+
+  test('empty model query returns the main slot connection contextWindow', () => {
+    upsertConnection(conn({ id: 'active', contextWindow: 777_000 }))
+    setSessionAssignment('main', { connectionId: 'active' })
+    expect(getConnectionContextWindow('')).toBe(777_000)
+  })
+
+  test('connection-level contextWindow is skipped for a different model', () => {
+    upsertConnection(
+      conn({
+        id: 'active',
+        model: 'pinned-model',
+        contextWindow: 777_000,
+        modelContextWindows: { other: { tokens: 500_000 } },
+      }),
+    )
+    setSessionAssignment('main', { connectionId: 'active' })
+    // Falls through to the per-model map of the same connection
+    expect(getConnectionContextWindow('other')).toBe(500_000)
+    // And to the global search for models this connection does not know
+    upsertConnection(
+      conn({
+        id: 'elsewhere',
+        modelContextWindows: { faraway: { tokens: 100_000 } },
+      }),
+    )
+    expect(getConnectionContextWindow('faraway')).toBe(100_000)
+  })
+
+  test('global default main connection contextWindow applies without a session slot', () => {
+    upsertConnection(
+      conn({ id: 'default-conn', model: 'shared', contextWindow: 900_000 }),
+    )
+    upsertConnection(
+      conn({
+        id: 'other',
+        modelContextWindows: { shared: { tokens: 100_000 } },
+      }),
+    )
+    setDefaultAssignment('main', { connectionId: 'default-conn' })
+    expect(getConnectionContextWindow('shared')).toBe(900_000)
+  })
+
+  test('session slot overrides the global default for connection-level windows', () => {
+    upsertConnection(
+      conn({ id: 'default-conn', model: 'shared', contextWindow: 900_000 }),
+    )
+    upsertConnection(
+      conn({ id: 'session-conn', model: 'shared', contextWindow: 300_000 }),
+    )
+    setDefaultAssignment('main', { connectionId: 'default-conn' })
+    setSessionAssignment('main', { connectionId: 'session-conn' })
+    expect(getConnectionContextWindow('shared')).toBe(300_000)
+  })
 })
 
 describe('setManualContextWindow', () => {

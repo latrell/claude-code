@@ -24,6 +24,7 @@ import {
   removeConnection,
   renameConnection,
   setDefaultAssignment,
+  updateConnectionModel,
   upsertConnection,
 } from '../store.js'
 import type { Connection } from '../types.js'
@@ -196,5 +197,209 @@ describe('generateConnectionId', () => {
     expect(generateConnectionId('DeepSeek')).toBe('deepseek-2')
     upsertConnection(sampleConnection({ id: 'deepseek-2', label: 'DeepSeek' }))
     expect(generateConnectionId('DeepSeek')).toBe('deepseek-3')
+  })
+})
+
+describe('profile fields (model / thinkingEffort / contextWindow)', () => {
+  test('round-trip through disk', () => {
+    upsertConnection(
+      sampleConnection({
+        model: 'deepseek-reasoner',
+        thinkingEffort: 'high',
+        contextWindow: 131_072,
+      }),
+    )
+    _invalidateConnectionsCache()
+    const conn = findConnection('deepseek-personal')
+    expect(conn?.model).toBe('deepseek-reasoner')
+    expect(conn?.thinkingEffort).toBe('high')
+    expect(conn?.contextWindow).toBe(131_072)
+  })
+
+  test('schema rejects invalid thinkingEffort and contextWindow', () => {
+    writeFileSync(
+      getConnectionsFilePath(),
+      JSON.stringify({
+        connections: [
+          { ...sampleConnection(), thinkingEffort: 'ultra' },
+          { ...sampleConnection({ id: 'other' }), contextWindow: -1 },
+        ],
+      }),
+    )
+    // Invalid values fail validation → degrade to empty registry
+    expect(loadConnectionsFile().connections).toEqual([])
+  })
+})
+
+describe('lazy migration of legacy connections', () => {
+  function writeLegacyFile(file: Record<string, unknown>): void {
+    writeFileSync(getConnectionsFilePath(), JSON.stringify(file))
+    _invalidateConnectionsCache()
+  }
+
+  test('derives model from the main default assignment first', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        sampleConnection({
+          tierModels: { sonnet: 'deepseek-chat' },
+          models: ['deepseek-reasoner', 'deepseek-chat'],
+        }),
+      ],
+      defaults: {
+        main: {
+          connectionId: 'deepseek-personal',
+          model: 'deepseek-reasoner',
+        },
+      },
+    })
+    expect(findConnection('deepseek-personal')?.model).toBe('deepseek-reasoner')
+  })
+
+  test('derives model from the subagent default when not the main default', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        sampleConnection({ models: ['deepseek-chat', 'deepseek-reasoner'] }),
+      ],
+      defaults: {
+        main: { connectionId: 'someone-else', model: 'other-model' },
+        subagent: {
+          connectionId: 'deepseek-personal',
+          model: 'deepseek-reasoner',
+        },
+      },
+    })
+    expect(findConnection('deepseek-personal')?.model).toBe('deepseek-reasoner')
+  })
+
+  test('falls back to tierModels.sonnet, then models[0]', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        sampleConnection({
+          id: 'with-tier',
+          tierModels: { sonnet: 'tier-sonnet' },
+          models: ['catalog-first'],
+        }),
+        sampleConnection({ id: 'catalog-only', models: ['catalog-first'] }),
+      ],
+    })
+    expect(findConnection('with-tier')?.model).toBe('tier-sonnet')
+    expect(findConnection('catalog-only')?.model).toBe('catalog-first')
+  })
+
+  test('copies contextWindow from modelContextWindows for the derived model', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        sampleConnection({
+          models: ['deepseek-chat'],
+          modelContextWindows: {
+            'deepseek-chat': { tokens: 131_072, source: 'auto' },
+            'deepseek-reasoner': { tokens: 65_536, source: 'auto' },
+          },
+        }),
+      ],
+    })
+    const conn = findConnection('deepseek-personal')
+    expect(conn?.model).toBe('deepseek-chat')
+    expect(conn?.contextWindow).toBe(131_072)
+  })
+
+  test('leaves connections without any model source untouched', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        {
+          id: 'claude-sub',
+          label: 'Claude Subscription',
+          kind: 'anthropic-oauth',
+          credentialRef: 'account-uuid',
+        },
+      ],
+    })
+    const conn = findConnection('claude-sub')
+    expect(conn?.model).toBeUndefined()
+    expect(conn?.contextWindow).toBeUndefined()
+    // No rewrite happened: raw file is byte-identical to what we wrote
+    const raw = JSON.parse(readFileSync(getConnectionsFilePath(), 'utf8'))
+    expect(raw.connections[0].model).toBeUndefined()
+  })
+
+  test('persists the migration to disk exactly once (idempotent)', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [sampleConnection({ models: ['deepseek-chat'] })],
+    })
+    loadConnectionsFile()
+
+    // The migrated shape was written back
+    const afterFirst = readFileSync(getConnectionsFilePath(), 'utf8')
+    expect(JSON.parse(afterFirst).connections[0].model).toBe('deepseek-chat')
+
+    // A second cold load leaves the file byte-identical
+    _invalidateConnectionsCache()
+    loadConnectionsFile()
+    expect(readFileSync(getConnectionsFilePath(), 'utf8')).toBe(afterFirst)
+  })
+
+  test('does not overwrite an existing pinned model', () => {
+    writeLegacyFile({
+      version: 1,
+      connections: [
+        sampleConnection({
+          model: 'pinned-model',
+          tierModels: { sonnet: 'tier-sonnet' },
+          models: ['catalog-first'],
+        }),
+      ],
+    })
+    expect(findConnection('deepseek-personal')?.model).toBe('pinned-model')
+  })
+})
+
+describe('updateConnectionModel', () => {
+  test('updates the pinned model and syncs contextWindow from the window map', () => {
+    upsertConnection(
+      sampleConnection({
+        model: 'deepseek-chat',
+        contextWindow: 131_072,
+        modelContextWindows: {
+          'deepseek-chat': { tokens: 131_072, source: 'auto' },
+          'deepseek-reasoner': { tokens: 65_536, source: 'manual' },
+        },
+      }),
+    )
+    updateConnectionModel('deepseek-personal', 'deepseek-reasoner')
+    const conn = findConnection('deepseek-personal')
+    expect(conn?.model).toBe('deepseek-reasoner')
+    expect(conn?.contextWindow).toBe(65_536)
+
+    // Persisted to disk (cache was invalidated by the update)
+    const raw = JSON.parse(readFileSync(getConnectionsFilePath(), 'utf8'))
+    expect(raw.connections[0].model).toBe('deepseek-reasoner')
+    expect(raw.connections[0].contextWindow).toBe(65_536)
+  })
+
+  test('clears contextWindow when the new model has no known window', () => {
+    upsertConnection(
+      sampleConnection({
+        model: 'deepseek-chat',
+        contextWindow: 131_072,
+        modelContextWindows: {
+          'deepseek-chat': { tokens: 131_072, source: 'auto' },
+        },
+      }),
+    )
+    updateConnectionModel('deepseek-personal', 'brand-new-model')
+    const conn = findConnection('deepseek-personal')
+    expect(conn?.model).toBe('brand-new-model')
+    expect(conn?.contextWindow).toBeUndefined()
+  })
+
+  test('is a no-op for unknown connection ids', () => {
+    expect(() => updateConnectionModel('missing', 'some-model')).not.toThrow()
+    expect(listConnections()).toHaveLength(0)
   })
 })

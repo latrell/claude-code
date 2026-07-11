@@ -53,8 +53,23 @@ export const ModelContextWindowSchema = z.object({
 export type ModelContextWindow = z.infer<typeof ModelContextWindowSchema>
 
 /**
- * A "connection" = provider kind + endpoint + one account's credentials +
- * model catalog. Multiple connections may share the same kind (multi-account).
+ * Reasoning/thinking effort pinned to a connection profile. Applied when
+ * the connection is activated (future batches wire this into activation).
+ */
+export const ThinkingEffortSchema = z.enum([
+  'off',
+  'low',
+  'medium',
+  'high',
+  'max',
+])
+export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>
+
+/**
+ * A "connection" = a named profile: provider kind + endpoint + one account's
+ * credentials + a pinned model (+ thinking effort + context window).
+ * Multiple connections may share the same kind (multi-account) or even the
+ * same credentials with different pinned models.
  */
 export const ConnectionSchema = z.object({
   id: z
@@ -81,15 +96,35 @@ export const ConnectionSchema = z.object({
    *   ('default' refers to the unsuffixed default file)
    */
   credentialRef: z.string().optional(),
-  /** Models selectable for this connection (ids as sent to the API). */
+  /** Models selectable for this connection (ids as sent to the API). Kept
+   * only as the catalog for picker UIs; the pinned `model` below is the
+   * single source of truth for what the connection actually uses. */
   models: z.array(z.string()).optional(),
-  /** haiku/sonnet/opus tier mapping applied on activation. */
+  /**
+   * The single model this connection profile is pinned to (source of
+   * truth). Optional: OAuth kinds (anthropic-oauth / chatgpt-oauth) may
+   * leave it unset and follow the provider's default model.
+   */
+  model: z.string().optional(),
+  /** Thinking effort applied while this connection is active. */
+  thinkingEffort: ThinkingEffortSchema.optional(),
+  /**
+   * Context window (tokens) for the pinned `model`. Synced by
+   * updateConnectionModel() and the lazy migration in store.ts; read first
+   * by getConnectionContextWindow().
+   */
+  contextWindow: z.number().int().positive().optional(),
+  /**
+   * @deprecated Legacy haiku/sonnet/opus tier mapping applied on
+   * activation. Superseded by the pinned `model`; kept so old registry
+   * files still parse.
+   */
   tierModels: TierModelsSchema.optional(),
   /**
-   * Context window sizes keyed by model id. Auto-detected from the
-   * provider's model list where available, or set manually in /connect.
-   * Read by getContextWindowForModel() for auto-compact thresholds and
-   * context usage display.
+   * @deprecated Context window sizes keyed by model id, auto-detected from
+   * the provider's model list or set manually in /connect. Superseded by
+   * the connection-level `contextWindow`; kept as a fallback source and so
+   * old registry files still parse.
    */
   modelContextWindows: z
     .record(z.string(), ModelContextWindowSchema)
@@ -106,7 +141,11 @@ export type Connection = z.infer<typeof ConnectionSchema>
 /** Assignment of a connection (+ optional model) to an agent slot. */
 export const SlotAssignmentSchema = z.object({
   connectionId: z.string().min(1),
-  /** Model id within the connection; undefined = connection default. */
+  /**
+   * @deprecated Model id within the connection; undefined = connection
+   * default. Superseded by the connection's pinned `model` field; kept so
+   * old registry files still parse (and as migration input).
+   */
   model: z.string().optional(),
 })
 export type SlotAssignment = z.infer<typeof SlotAssignmentSchema>

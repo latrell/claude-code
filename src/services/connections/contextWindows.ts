@@ -104,16 +104,42 @@ export function getModelContextWindowForConnection(
 
 /**
  * Runtime lookup for getContextWindowForModel(): the context window
- * configured for `model` on the most relevant connection. Search order:
- * session assignments (main, then subagent), global default assignments,
- * then the rest of the registry. Model ids match exactly first, then
- * case-insensitively.
+ * configured for `model` on the most relevant connection. Resolution order:
+ *
+ * 1. The active main-slot connection's own `contextWindow`, when its pinned
+ *    `model` matches the queried model (or the query is empty, meaning
+ *    "whatever the current connection runs").
+ * 2. That connection's per-model window map / preset catalog fallback.
+ * 3. Legacy global search: session assignments (main, then subagent),
+ *    global default assignments, then the rest of the registry. Model ids
+ *    match exactly first, then case-insensitively.
  */
 export function getConnectionContextWindow(model: string): number | undefined {
-  if (!model) return undefined
   const file = loadConnectionsFile()
   if (file.connections.length === 0) return undefined
 
+  // ① Connection-level window of the active main-slot connection
+  const mainId =
+    getSessionAssignment('main')?.connectionId ??
+    file.defaults?.main?.connectionId
+  const mainConnection = mainId
+    ? file.connections.find(c => c.id === mainId)
+    : undefined
+  if (mainConnection?.contextWindow !== undefined) {
+    const pinned = mainConnection.model
+    if (!model || (pinned && pinned.toLowerCase() === model.toLowerCase())) {
+      return mainConnection.contextWindow
+    }
+  }
+  if (!model) return undefined
+
+  // ② That connection's per-model map (incl. preset catalog fallback)
+  if (mainConnection) {
+    const resolved = getModelContextWindowForConnection(mainConnection, model)
+    if (resolved) return resolved.tokens
+  }
+
+  // ③ Legacy global search across the whole registry
   const orderedIds: string[] = []
   for (const slot of ['main', 'subagent'] as const) {
     const session = getSessionAssignment(slot)

@@ -51,6 +51,56 @@ function emptyFile(): ConnectionsFile {
   return { version: CONNECTIONS_FILE_VERSION, connections: [] }
 }
 
+// ── Lazy migration (legacy catalog → pinned-model profile) ──────────────────
+
+/**
+ * Derive the pinned model for a legacy connection, in priority order:
+ * global main default assignment model (when this connection is the main
+ * default) > subagent default assignment model > tierModels.sonnet >
+ * first catalog entry. Undefined when no source exists (OAuth kinds may
+ * legitimately have no pinned model and follow the provider default).
+ */
+function deriveConnectionModel(
+  connection: Connection,
+  defaults: ConnectionsFile['defaults'],
+): string | undefined {
+  if (defaults?.main?.connectionId === connection.id && defaults.main.model) {
+    return defaults.main.model
+  }
+  if (
+    defaults?.subagent?.connectionId === connection.id &&
+    defaults.subagent.model
+  ) {
+    return defaults.subagent.model
+  }
+  if (connection.tierModels?.sonnet) return connection.tierModels.sonnet
+  return connection.models?.[0]
+}
+
+/**
+ * One-time lazy migration run on load: connections written before the
+ * profile fields existed get a pinned `model` (and, when the per-model
+ * window map knows it, a `contextWindow`) derived from the legacy fields.
+ * Pure and idempotent — returns null when nothing needs to change, so the
+ * read path only triggers a single write-back per legacy file.
+ */
+function migrateConnectionsFile(file: ConnectionsFile): ConnectionsFile | null {
+  let changed = false
+  const connections = file.connections.map(connection => {
+    if (connection.model !== undefined) return connection
+    const model = deriveConnectionModel(connection, file.defaults)
+    if (model === undefined) return connection
+    changed = true
+    const migrated: Connection = { ...connection, model }
+    const window = connection.modelContextWindows?.[model]
+    if (connection.contextWindow === undefined && window) {
+      migrated.contextWindow = window.tokens
+    }
+    return migrated
+  })
+  return changed ? { ...file, connections } : null
+}
+
 /**
  * Load the connection registry from disk (memoized per process).
  * Missing / corrupt / invalid files degrade to an empty registry.
@@ -79,6 +129,19 @@ export function loadConnectionsFile(): ConnectionsFile {
         ),
       )
       _cache = emptyFile()
+      return _cache
+    }
+    const migrated = migrateConnectionsFile(result.data)
+    if (migrated) {
+      try {
+        // Persist the migration once (writeConnectionsFile also updates the
+        // cache). Best-effort: a read-only filesystem must not break loading —
+        // the migrated shape is still served from memory.
+        writeConnectionsFile(migrated)
+      } catch {
+        // logged inside writeConnectionsFile
+      }
+      _cache = migrated
       return _cache
     }
     _cache = result.data
@@ -196,6 +259,27 @@ export function touchConnectionUsage(id: string): void {
   const existing = findConnection(id)
   if (!existing) return
   upsertConnection({ ...existing, lastUsedAt: new Date().toISOString() })
+}
+
+/**
+ * Pin a connection to a model (entry point for /model writing straight to
+ * the connection profile). Syncs the connection-level `contextWindow` from
+ * the per-model window map when the model is known there; clears it
+ * otherwise so a stale window from the previous model is never applied to
+ * the new one. Persists to disk and invalidates the process cache.
+ */
+export function updateConnectionModel(id: string, model: string): void {
+  const existing = findConnection(id)
+  if (!existing) return
+  const window = existing.modelContextWindows?.[model]
+  const updated: Connection = { ...existing, model }
+  if (window) {
+    updated.contextWindow = window.tokens
+  } else {
+    delete updated.contextWindow
+  }
+  upsertConnection(updated)
+  _invalidateConnectionsCache()
 }
 
 /** Wipe the entire registry (logout). */
