@@ -1,36 +1,117 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { debugMock } from '../../../../tests/mocks/debug'
+import { logMock } from '../../../../tests/mocks/log'
+// Spread-real mock pattern (see CLAUDE.md cross-file mock pollution rules).
+// updateSettingsForSource is captured so the command's settings writes are
+// observable without touching a real settings.json.
 import * as realSettings from '../../../utils/settings/settings.js'
-import type { LocalCommandCall } from '../../../types/command.js'
 
-// Mock settings to track writes and control getSettings_DEPRECATED /
-// getInitialSettings. Do NOT mock subagentProvider.js — it would
-// pollute other subagent tests (Bun mock.module is process-global).
-// Instead, control behavior through mockSettings which the real
-// getEffectiveSubagentProvider reads via getInitialSettings.
+mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/debug.ts', debugMock)
+mock.module('bun:bundle', () => ({ feature: () => false }))
+
 let mockSettings: Record<string, unknown> = {}
-const updateCalls: Array<{ source: string; update: unknown }> = []
+const updateCalls: Array<{ source: string; update: Record<string, unknown> }> =
+  []
 mock.module('src/utils/settings/settings.js', () => ({
   ...realSettings,
   getSettings_DEPRECATED: () => mockSettings,
   getInitialSettings: () => mockSettings,
-  updateSettingsForSource: (source: string, update: unknown) => {
+  updateSettingsForSource: (
+    source: string,
+    update: Record<string, unknown>,
+  ) => {
     updateCalls.push({ source, update })
+    for (const [key, value] of Object.entries(update)) {
+      if (value === undefined) delete mockSettings[key]
+      else mockSettings[key] = value
+    }
     return { error: null }
   },
 }))
 
-const { default: cmdModule } = await import('../index.js')
+// The migrate/import path reads the active OAuth account through this seam;
+// stub it so the developer's real global config is never touched.
+const { _setOAuthConfigAccessForTest } = await import(
+  '../../../services/connections/oauthAccounts.js'
+)
+_setOAuthConfigAccessForTest({
+  getAccount: () => undefined,
+  setAccount: () => {},
+})
 
-describe('subagent-provider command', () => {
-  let call: LocalCommandCall
+const { call } = await import('../nonInteractive.js')
+const { _invalidateConnectionsCache, getDefaultAssignment, upsertConnection } =
+  await import('../../../services/connections/store.js')
+const { setSessionAssignment } = await import(
+  '../../../services/connections/sessionAssignments.js'
+)
+const { getSubagentProviderConfig, setSubagentProviderCliOverride } =
+  await import('../../../utils/model/subagentProvider.js')
+import type { Connection } from '../../../services/connections/types.js'
 
-  beforeEach(async () => {
-    mockSettings = {}
-    updateCalls.length = 0
-    const loaded = await cmdModule.load()
-    call = loaded.call
-  })
+let tmpDir: string
+let previousConfigDir: string | undefined
+let savedCodexHome: string | undefined
 
+beforeEach(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), 'ccb-subagent-provider-test-'))
+  previousConfigDir = process.env['CLAUDE_CONFIG_DIR']
+  process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+  savedCodexHome = process.env['CODEX_HOME']
+  process.env['CODEX_HOME'] = join(tmpDir, 'codex-home-missing')
+  _invalidateConnectionsCache()
+  mockSettings = {}
+  updateCalls.length = 0
+  setSubagentProviderCliOverride(undefined)
+  setSessionAssignment('subagent', undefined)
+})
+
+afterEach(() => {
+  if (previousConfigDir === undefined) {
+    delete process.env['CLAUDE_CONFIG_DIR']
+  } else {
+    process.env['CLAUDE_CONFIG_DIR'] = previousConfigDir
+  }
+  if (savedCodexHome === undefined) {
+    delete process.env['CODEX_HOME']
+  } else {
+    process.env['CODEX_HOME'] = savedCodexHome
+  }
+  _invalidateConnectionsCache()
+  setSubagentProviderCliOverride(undefined)
+  setSessionAssignment('subagent', undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
+})
+
+afterAll(() => {
+  _setOAuthConfigAccessForTest(null)
+})
+
+function deepseekConn(overrides: Partial<Connection> = {}): Connection {
+  return {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    kind: 'openai-compat',
+    baseUrl: 'https://api.deepseek.com',
+    apiKey: 'sk-a',
+    model: 'deepseek-chat',
+    ...overrides,
+  }
+}
+
+describe('/subagent-provider command', () => {
   test('no args shows current subagent provider', async () => {
     mockSettings = { subagentProvider: { modelType: 'openai' } }
     const result = await call('', {} as never)
@@ -44,129 +125,72 @@ describe('subagent-provider command', () => {
   })
 
   test('no args shows no settings source when unconfigured', async () => {
-    mockSettings = {}
     const result = await call('', {} as never)
-    expect(result.type).toBe('text')
     expect((result as { value: string }).value).toContain(
       'Current subagent provider:',
     )
-    // Should not show "(from settings: ...)" when no settings override
     expect((result as { value: string }).value).not.toContain('(from settings:')
   })
 
-  test('set to openai writes settings', async () => {
+  test('legacy provider type names are no longer accepted', async () => {
+    upsertConnection(deepseekConn())
     const result = await call('openai', {} as never)
-    expect(result).toEqual({
-      type: 'text',
-      value: 'Subagent provider set to openai.',
-    })
-    expect(updateCalls).toHaveLength(1)
-    expect(updateCalls[0]?.source).toBe('userSettings')
-    expect(updateCalls[0]?.update).toEqual({
-      subagentProvider: {
-        modelType: 'openai',
-        credentialScope: 'subagent',
-      },
+    expect((result as { value: string }).value).toContain('Unknown connection')
+  })
+
+  test('empty registry errors with /connect guidance', async () => {
+    const result = await call('nope', {} as never)
+    expect((result as { value: string }).value).toContain('/connect')
+  })
+
+  test('<connection> activates the subagent slot for this session', async () => {
+    upsertConnection(deepseekConn({ thinkingEffort: 'low' }))
+    const result = await call('deepseek', {} as never)
+    const value = (result as { value: string }).value
+    expect(value).toContain('DeepSeek (deepseek-chat, effort low)')
+    expect(value).toContain('for this session')
+
+    const config = getSubagentProviderConfig({}, {})
+    expect(config?.modelType).toBe('openai')
+    expect(config?.model).toBe('deepseek-chat')
+    expect(config?.env?.OPENAI_API_KEY).toBe('sk-a')
+    // Session-only: no settings write, no registry default
+    expect(updateCalls).toHaveLength(0)
+    expect(getDefaultAssignment('subagent')).toBeUndefined()
+  })
+
+  test('<connection> global persists subagentProvider and the default', async () => {
+    upsertConnection(deepseekConn())
+    const result = await call('deepseek global', {} as never)
+    expect((result as { value: string }).value).toContain('global default')
+
+    const subagentProvider = mockSettings['subagentProvider'] as
+      | { modelType?: string; model?: string }
+      | undefined
+    expect(subagentProvider?.modelType).toBe('openai')
+    expect(subagentProvider?.model).toBe('deepseek-chat')
+    expect(getDefaultAssignment('subagent')).toEqual({
+      connectionId: 'deepseek',
+      model: 'deepseek-chat',
     })
   })
 
-  test('set to gemini writes settings', async () => {
-    const result = await call('gemini', {} as never)
-    expect(result).toEqual({
-      type: 'text',
-      value: 'Subagent provider set to gemini.',
-    })
-    expect(updateCalls[0]?.update).toEqual({
-      subagentProvider: {
-        modelType: 'gemini',
-        credentialScope: 'subagent',
-      },
-    })
-  })
+  test('unset clears overrides and settings so subagents inherit main', async () => {
+    upsertConnection(deepseekConn())
+    await call('deepseek global', {} as never)
+    expect(getSubagentProviderConfig({}, {})).toBeDefined()
 
-  test('set to grok writes settings', async () => {
-    const result = await call('grok', {} as never)
-    expect(result).toEqual({
-      type: 'text',
-      value: 'Subagent provider set to grok.',
-    })
-    expect(updateCalls[0]?.update).toEqual({
-      subagentProvider: {
-        modelType: 'grok',
-        credentialScope: 'subagent',
-      },
-    })
-  })
-
-  test('set to anthropic writes settings', async () => {
-    const result = await call('anthropic', {} as never)
-    expect(result).toEqual({
-      type: 'text',
-      value: 'Subagent provider set to anthropic.',
-    })
-    expect(updateCalls[0]?.update).toEqual({
-      subagentProvider: {
-        modelType: 'anthropic',
-        credentialScope: 'subagent',
-      },
-    })
-  })
-
-  test('unset clears subagent provider', async () => {
     const result = await call('unset', {} as never)
     expect(result).toEqual({
       type: 'text',
       value:
         'Subagent provider cleared. Subagents will now inherit the main provider.',
     })
-    expect(updateCalls).toHaveLength(1)
-    expect(updateCalls[0]?.source).toBe('userSettings')
-    expect(updateCalls[0]?.update).toEqual({ subagentProvider: undefined })
-  })
-
-  test('preserves existing env when changing provider', async () => {
-    mockSettings = {
-      subagentProvider: {
-        modelType: 'openai',
-        env: { OPENAI_API_KEY: 'some-key' },
-        credentialScope: 'subagent',
-      },
-    }
-    const result = await call('gemini', {} as never)
-    expect(result).toEqual({
-      type: 'text',
-      value: 'Subagent provider set to gemini.',
-    })
-    expect(updateCalls[0]?.update).toEqual({
-      subagentProvider: {
-        modelType: 'gemini',
-        env: { OPENAI_API_KEY: 'some-key' },
-        credentialScope: 'subagent',
-      },
-    })
-  })
-
-  test('bedrock gives clear error', async () => {
-    const result = await call('bedrock', {} as never)
-    expect(result.type).toBe('text')
-    expect((result as { value: string }).value).toContain('not supported')
-  })
-
-  test('vertex gives clear error', async () => {
-    const result = await call('vertex', {} as never)
-    expect(result.type).toBe('text')
-    expect((result as { value: string }).value).toContain('not supported')
-  })
-
-  test('foundry gives clear error', async () => {
-    const result = await call('foundry', {} as never)
-    expect(result.type).toBe('text')
-    expect((result as { value: string }).value).toContain('not supported')
-  })
-
-  test('invalid provider gives error', async () => {
-    const result = await call('invalid', {} as never)
-    expect(result.type).toBe('text')
-    expect((result as { value: string }).value).toContain('Invalid provider')
+    expect(mockSettings['subagentProvider']).toBeUndefined()
+    expect(getDefaultAssignment('subagent')).toBeUndefined()
+    // The unset override also blocks SUBAGENT_* env staging for this process
+    expect(
+      getSubagentProviderConfig({}, { SUBAGENT_OPENAI_API_KEY: 'sk-x' }),
+    ).toBeUndefined()
   })
 })

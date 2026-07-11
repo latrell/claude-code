@@ -152,7 +152,7 @@ export function ConsoleOAuthFlow({
         config.modelType === 'openai' || config.modelType === 'gemini' || config.modelType === 'grok';
 
       // Mirror global-scope logins into the CCB connection registry so
-      // /connect and /models can switch back to these credentials later.
+      // /connect and the connection pickers can switch back to these credentials later.
       // Best-effort: registration must never fail a login.
       const registerInConnectionRegistry = () => {
         if (scope !== 'global' || !config.env) return;

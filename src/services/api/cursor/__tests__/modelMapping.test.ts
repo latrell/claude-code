@@ -75,7 +75,7 @@ describe('resolveCursorModel', () => {
     expect(resolveCursorModel('composer-2.5', {})).toBe('composer-2.5')
   })
 
-  // Cursor-native Claude serverModelNames (picked in /model | /models or typed
+  // Cursor-native Claude serverModelNames (picked in /model or typed
   // as a custom model) must be sent verbatim — the family regexes used to
   // remap e.g. claude-sonnet-5-thinking-high to the sonnet slot, silently
   // calling claude-4.5-sonnet instead of the picked model.

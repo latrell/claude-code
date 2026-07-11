@@ -33,26 +33,20 @@ const zh: Record<string, string> = {
   'Current API provider: {provider}': '当前 API 提供者：{provider}',
   'API provider cleared (will use environment variables).':
     '已清除 API 提供者配置（将使用环境变量）。',
-  'Invalid provider: {provider}\nValid: {validProviders}':
-    '无效提供者：{provider}\n可用：{validProviders}',
-  'Switched to OpenAI provider.\nWarning: Missing env vars: {missing}\nConfigure them via /login or set manually.':
-    '已切换到 OpenAI 提供者。\n警告：缺少环境变量：{missing}\n请通过 /login 配置，或手动设置。',
-  'Switched to Grok provider.\nWarning: Missing env var: GROK_API_KEY (or XAI_API_KEY)\nConfigure it via settings.json env or set manually.':
-    '已切换到 Grok 提供者。\n警告：缺少环境变量：GROK_API_KEY（或 XAI_API_KEY）\n请通过 settings.json env 配置，或手动设置。',
-  'Switched to Gemini provider.\nWarning: Missing env var: GEMINI_API_KEY\nConfigure it via /login or set manually.':
-    '已切换到 Gemini 提供者。\n警告：缺少环境变量：GEMINI_API_KEY\n请通过 /login 配置，或手动设置。',
-  'API provider set to {provider}.': 'API 提供者已设置为 {provider}。',
-  'API provider set to {provider} (via environment variable).':
-    'API 提供者已设置为 {provider}（通过环境变量）。',
   'Current subagent provider: {provider}{source}':
     '当前子 agent 提供者：{provider}{source}',
   ' (from settings: {provider})': '（来自设置：{provider}）',
   'Subagent provider cleared. Subagents will now inherit the main provider.':
     '已清除子 agent 提供者。子 agent 现在将继承主提供者。',
-  'Subagent provider "{provider}" is not supported. Subagents only support: {validProviders}':
-    '不支持子 agent 提供者“{provider}”。子 agent 仅支持：{validProviders}',
-  'Subagent provider set to {provider}.':
-    '子 agent 提供者已设置为 {provider}。',
+  'provider default': '提供者默认',
+  'Switched main agent to {target} for this session':
+    '已切换主 agent 到 {target}（本会话）',
+  'Switched main agent to {target} and set it as the global default':
+    '已切换主 agent 到 {target} 并设为全局默认',
+  'Switched subagents to {target} for this session':
+    '已切换子 agent 到 {target}（本会话）',
+  'Switched subagents to {target} and set it as the global default':
+    '已切换子 agent 到 {target} 并设为全局默认',
 
   // ── /lang command ──────────────────────────────────────────────
   // (Removed — language setting is now unified in /config's Language option)
@@ -1865,10 +1859,10 @@ const zh: Record<string, string> = {
     '捕获性能和词元用量快照。参数：--format=json|csv|md（默认 md）',
   'Toggle poor mode \u2014 disable extract_memories and prompt_suggestion to save tokens':
     '切换穷鬼模式 \u2014 禁用 extract_memories 和 prompt_suggestion 以节省词元',
-  'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)':
-    '切换 API 提供商（anthropic/openai/gemini/grok/bedrock/vertex/foundry）',
-  'Switch or check the subagent API provider (anthropic/openai/gemini/grok/unset)':
-    '切换或查看子智能体 API 提供商（anthropic/openai/gemini/grok/unset）',
+  'Switch the main agent to a saved connection (from /connect)':
+    '将主 agent 切换到已保存的连接（来自 /connect）',
+  'Switch subagents to a saved connection (from /connect), or unset to inherit the main agent':
+    '将子 agent 切换到已保存的连接（来自 /connect），或 unset 继承主 agent',
   'Manage scheduled remote agent triggers (cloud cron). Requires Claude Pro/Max/Team subscription.':
     '管理定时远程智能体触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
   'Show Claude Code status including version, model, account, API connectivity, and tool statuses':
@@ -2541,11 +2535,9 @@ const zh: Record<string, string> = {
   'Print configured provider connections (from /connect) and exit':
     '打印已配置的提供者连接（来自 /connect）并退出',
 
-  // ── Provider connections (/connect + /models) ─────────────────
+  // ── Provider connections (/connect) ───────────────────────────
   'Manage provider connections and accounts (add, switch, remove)':
     '管理提供者连接与账号（添加、切换、删除）',
-  'Pick the model for the main agent or subagents across all connections':
-    '跨所有连接为主 agent 或子 agent 选择模型',
   Connections: '连接管理',
   Close: '关闭',
   'Connections closed': '已关闭连接管理',
@@ -2666,6 +2658,14 @@ const zh: Record<string, string> = {
   'Run /connect to add providers and accounts first.':
     '请先运行 /connect 添加提供者和账号。',
   'Model picker closed': '已关闭模型选择器',
+  'Select connection — main agent': '选择连接 — 主 agent',
+  'Select connection — subagents': '选择连接 — 子 agent',
+  'Search connections…': '搜索连接…',
+  'No connections match — add connections via /connect':
+    '没有匹配的连接 — 请先通过 /connect 添加连接',
+  'Connection picker closed': '已关闭连接选择器',
+  'Connection {label} model set to {target}':
+    '连接 {label} 的模型已设为 {target}',
 
   // ── i18n batch: agent creation wizard ──────────────────────────
   'Agent type (identifier)': '智能体类型（标识符）',
@@ -4908,9 +4908,6 @@ const zh: Record<string, string> = {
   'Unable to retrieve updated privacy settings': '无法获取更新后的隐私设置',
   '"Help improve Claude" set to {status}.':
     '「帮助改进 Claude」已设置为 {status}。',
-  'Unknown provider: {provider}': '未知提供者：{provider}',
-  'Switched to Cursor provider.\nNo CURSOR_API_KEY set — will try to read the session token from a signed-in Cursor IDE. Set CURSOR_API_KEY + CURSOR_MACHINE_ID to override.':
-    '已切换到 Cursor 提供者。\n未设置 CURSOR_API_KEY — 将尝试从已登录的 Cursor IDE 读取会话 token。可设置 CURSOR_API_KEY + CURSOR_MACHINE_ID 覆盖。',
   'Request more': '申请更多',
   'Request extra usage': '申请超额使用',
   'Switch to extra usage': '切换到超额使用',

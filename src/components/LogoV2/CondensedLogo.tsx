@@ -23,7 +23,7 @@ export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize();
   const agent = useAppState(s => s.agent);
   const effortValue = useAppState(s => s.effortValue);
-  // /connect, /models and /login can swap the provider without changing the
+  // /connect, /provider and /login can swap the provider without changing the
   // selected model (mainLoopModel stays null), so subscribe to authVersion:
   // the billing line and the provider-default model are recomputed from
   // process.env on re-render.

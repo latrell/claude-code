@@ -145,7 +145,7 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
       logForDebugging(String(err), { level: 'error' }),
     )
     // Register this account in the CCB connection registry (best-effort)
-    // so /connect and /models can switch back to it later.
+    // so /connect and the connection pickers can switch back to it later.
     const { registerConnectionFromOAuthLogin } = await import(
       '../../services/connections/autoRegister.js'
     )

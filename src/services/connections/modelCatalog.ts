@@ -1,5 +1,5 @@
 /**
- * Per-connection model catalogs for the /models picker.
+ * Per-connection model catalogs for the connection model pickers.
  *
  * Static sources (sync): the connection's own model list, its tier mapping,
  * preset catalogs (CHINA_LLM_PROVIDERS), builtin alias sets for Anthropic

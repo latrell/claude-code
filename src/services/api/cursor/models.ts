@@ -4,10 +4,10 @@
  * Two sources:
  *  - CURSOR_MODELS: a curated, current list of the most useful base models
  *    (one canonical entry per family), used as the offline catalog for the
- *    /model and /models pickers and as a fallback when the live fetch fails.
+ *    /model picker and as a fallback when the live fetch fails.
  *  - fetchCursorAvailableModels(): the live, complete list from Cursor's
  *    `AiService/AvailableModels` endpoint (152+ entries incl. effort variants),
- *    so the /models picker is never stale.
+ *    so the model picker is never stale.
  *
  * Model ids here are Cursor `serverModelName` values (what the chat endpoint
  * accepts), verified live against api2.cursor.sh. Heavy client/auth modules are

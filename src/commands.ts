@@ -100,8 +100,8 @@ const workflowsCmd = feature('WORKFLOW_SCRIPTS')
       require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
     ).default
   : null
-// Provider connection registry commands (/connect + /models). Declared as
-// inline literals with lazy load() — an eager require here would run during
+// Provider connection registry command (/connect). Declared as an inline
+// literal with lazy load() — an eager require here would run during
 // commands.ts module evaluation, whose timing depends on which test file
 // loads it first (bun:bundle feature mocks are process-global).
 const connectCmd: Command = {
@@ -112,15 +112,6 @@ const connectCmd: Command = {
   ),
   aliases: ['connections'],
   load: () => import('./commands/connect/connect.js'),
-}
-const modelsCmd: Command = {
-  type: 'local-jsx',
-  name: 'models',
-  description: t(
-    'Pick the model for the main agent or subagents across all connections',
-  ),
-  argumentHint: '[sub]',
-  load: () => import('./commands/models/models.js'),
 }
 const webCmd = feature('CCR_REMOTE_SETUP')
   ? (
@@ -228,8 +219,10 @@ import chrome from './commands/chrome/index.js'
 import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
-import provider from './commands/provider.js'
-import subagentProvider from './commands/subagent-provider/index.js'
+import provider, { providerNonInteractive } from './commands/provider/index.js'
+import subagentProvider, {
+  subagentProviderNonInteractive,
+} from './commands/subagent-provider/index.js'
 import { t } from './i18n/t.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
@@ -331,8 +324,10 @@ const COMMANDS = memoize((): Command[] => [
   localMemoryCommand,
   autonomy,
   provider,
+  providerNonInteractive,
   subagentProvider,
-  ...(feature('PROVIDER_CONNECTIONS') ? [connectCmd, modelsCmd] : []),
+  subagentProviderNonInteractive,
+  ...(feature('PROVIDER_CONNECTIONS') ? [connectCmd] : []),
   artifacts,
   agents,
   branch,

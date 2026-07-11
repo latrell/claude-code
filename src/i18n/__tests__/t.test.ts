@@ -54,10 +54,10 @@ describe('t', () => {
     expect(t('Add a new working directory')).toBe('添加新的工作目录')
     expect(
       t(
-        'Switch or check the subagent API provider (anthropic/openai/gemini/grok/unset)',
+        'Switch subagents to a saved connection (from /connect), or unset to inherit the main agent',
       ),
     ).toBe(
-      '切换或查看子智能体 API 提供商（anthropic/openai/gemini/grok/unset）',
+      '将子 agent 切换到已保存的连接（来自 /connect），或 unset 继承主 agent',
     )
   })
 
