@@ -47,6 +47,26 @@ describe('getTaskTitleFromMessages', () => {
     expect(getTaskTitleFromMessages(messages)).toBe('real prompt')
   })
 
+  test('strips injected tag blocks from mixed prompts', () => {
+    const messages = [
+      createUserMessage({
+        content:
+          'fix the login bug\n<system-reminder>Skills relevant to your task</system-reminder>',
+      }),
+    ]
+    expect(getTaskTitleFromMessages(messages)).toBe('fix the login bug')
+  })
+
+  test('skips non-meta messages that are only injected tags', () => {
+    const messages = [
+      createUserMessage({ content: 'real prompt' }),
+      createUserMessage({
+        content: '<task-notification>background agent done</task-notification>',
+      }),
+    ]
+    expect(getTaskTitleFromMessages(messages)).toBe('real prompt')
+  })
+
   test('truncates long prompts to 60 chars', () => {
     const messages = [createUserMessage({ content: 'x'.repeat(200) })]
     const title = getTaskTitleFromMessages(messages)

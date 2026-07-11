@@ -1,12 +1,13 @@
 import type { Message, UserMessage } from '../types/message.js'
+import { stripDisplayTagsAllowEmpty } from './displayTags.js'
 import {
   getAssistantMessageText,
   getLastAssistantMessage,
   textForResubmit,
 } from './messages.js'
 
-const TASK_TITLE_MAX_CHARS = 60
-const SUMMARY_MAX_CHARS = 150
+export const NOTIFICATION_TITLE_MAX_CHARS = 60
+export const NOTIFICATION_SUMMARY_MAX_CHARS = 150
 
 function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
@@ -24,22 +25,46 @@ export function truncateForNotification(
 }
 
 /**
- * The user's most recent real prompt, used as the notification title so a
- * push identifies which task finished. Skips meta scaffolding and
- * tool-result user messages (their content has no text blocks).
+ * The user's most recent real prompt, untruncated. Skips meta scaffolding
+ * and tool-result user messages (their content has no text blocks), strips
+ * system-injected `<tag>…</tag>` wrapper blocks (system reminders, task
+ * notifications, hook output), and skips messages that are nothing but such
+ * blocks — those are injected context, not something the user asked for.
  */
-export function getTaskTitleFromMessages(messages: Message[]): string | null {
+export function getRawTaskText(messages: Message[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (!msg || msg.type !== 'user' || msg.isMeta) {
       continue
     }
-    const text = textForResubmit(msg as UserMessage)?.text?.trim()
+    const raw = textForResubmit(msg as UserMessage)?.text?.trim()
+    if (!raw) {
+      continue
+    }
+    const text = stripDisplayTagsAllowEmpty(raw)
     if (text) {
-      return truncateForNotification(text, TASK_TITLE_MAX_CHARS)
+      return text
     }
   }
   return null
+}
+
+/**
+ * The user's most recent real prompt, used as the notification title so a
+ * push identifies which task finished.
+ */
+export function getTaskTitleFromMessages(messages: Message[]): string | null {
+  const raw = getRawTaskText(messages)
+  return raw ? truncateForNotification(raw, NOTIFICATION_TITLE_MAX_CHARS) : null
+}
+
+/** Claude's final response text, untruncated. */
+export function getRawResultText(messages: Message[]): string | null {
+  const lastAssistant = getLastAssistantMessage(messages)
+  if (!lastAssistant) {
+    return null
+  }
+  return getAssistantMessageText(lastAssistant) || null
 }
 
 /**
@@ -49,15 +74,10 @@ export function getTaskTitleFromMessages(messages: Message[]): string | null {
 export function getCompletionSummaryFromMessages(
   messages: Message[],
 ): string | null {
-  const lastAssistant = getLastAssistantMessage(messages)
-  if (!lastAssistant) {
-    return null
-  }
-  const text = getAssistantMessageText(lastAssistant)
-  if (!text) {
-    return null
-  }
-  return truncateForNotification(text, SUMMARY_MAX_CHARS)
+  const raw = getRawResultText(messages)
+  return raw
+    ? truncateForNotification(raw, NOTIFICATION_SUMMARY_MAX_CHARS)
+    : null
 }
 
 /**

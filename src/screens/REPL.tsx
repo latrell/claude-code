@@ -48,7 +48,7 @@ import {
 } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { sendNotification } from '../services/notifier.js';
-import { buildTaskCompletionNotification } from '../utils/notificationContent.js';
+import { buildNotificationWithAISummary } from '../utils/notificationSummary.js';
 import { startPreventSleep, stopPreventSleep } from '../services/preventSleep.js';
 import { useTerminalNotification, hasCursorUpViewportYankBug } from '@anthropic/ink';
 import {
@@ -4893,13 +4893,14 @@ export function REPL({
           idleTimeSinceResponse >= getGlobalConfig().messageIdleNotifThresholdMs
         ) {
           // Rich content (task title + completion summary) makes the push
-          // actionable when the user is away from the terminal.
-          void sendNotification(
-            {
-              ...buildTaskCompletionNotification(messagesRef.current, t('Claude is waiting for your input')),
-              notificationType: 'idle_prompt',
+          // actionable when the user is away from the terminal. The AI
+          // summary can take a few seconds — re-check idleness afterwards so
+          // a user who came back meanwhile isn't pinged about waiting input.
+          void buildNotificationWithAISummary(messagesRef.current, t('Claude is waiting for your input')).then(
+            content => {
+              if (getLastInteractionTime() > lastQueryCompletionTime) return;
+              return sendNotification({ ...content, notificationType: 'idle_prompt' }, terminal);
             },
-            terminal,
           );
         }
       },
