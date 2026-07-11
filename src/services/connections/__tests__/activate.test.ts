@@ -141,6 +141,7 @@ const ENV_KEYS = [
   'OPENAI_DEFAULT_HAIKU_MODEL',
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
+  'OPENAI_ENABLE_THINKING',
   'GEMINI_BASE_URL',
   'GEMINI_API_KEY',
   'GEMINI_MODEL',
@@ -308,30 +309,59 @@ describe('envForConnection', () => {
     expect(env.OPENAI_DEFAULT_OPUS_MODEL).toBe('deepseek-reasoner')
   })
 
-  test('"Default" (null model) resolves the connection default from the sonnet tier', () => {
-    const env = envForConnection(openaiConn(), null)
+  test('"Default" (null model) resolves the connection pinned model', () => {
+    const env = envForConnection(openaiConn({ model: 'deepseek-chat' }), null)
     // Without this, getDefaultModel() falls back to the built-in Anthropic
     // model id (Fable 5) which third-party endpoints reject.
     expect(env.OPENAI_DEFAULT_MODEL).toBe('deepseek-chat')
   })
 
-  test('"Default" (null model) falls back to the first catalog model when no tiers', () => {
+  test('"Default" (null model) ignores legacy tierModels/models catalog', () => {
+    // The lazy migration backfills connection.model on load, so the env
+    // builder no longer consults tierModels.sonnet or models[0].
     const env = envForConnection(
       openaiConn({
-        tierModels: undefined,
-        models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+        model: undefined,
+        tierModels: { sonnet: 'legacy-sonnet' },
+        models: ['legacy-first', 'legacy-second'],
       }),
       null,
     )
-    expect(env.OPENAI_DEFAULT_MODEL).toBe('deepseek-v4-pro')
+    expect(env).toHaveProperty('OPENAI_DEFAULT_MODEL', undefined)
   })
 
-  test('"Default" (null model) with no tiers and no catalog clears the default', () => {
+  test('explicit model wins over the connection pinned model', () => {
+    const env = envForConnection(
+      openaiConn({ model: 'deepseek-chat' }),
+      'deepseek-reasoner',
+    )
+    expect(env.OPENAI_DEFAULT_MODEL).toBe('deepseek-reasoner')
+  })
+
+  test('"Default" (null model) with no pinned model clears the default', () => {
     const env = envForConnection(
       openaiConn({ tierModels: undefined, models: undefined }),
       null,
     )
     expect(env).toHaveProperty('OPENAI_DEFAULT_MODEL', undefined)
+  })
+
+  test('openai-compat thinkingEffort off injects OPENAI_ENABLE_THINKING=0', () => {
+    const env = envForConnection(
+      openaiConn({ thinkingEffort: 'off', model: 'deepseek-reasoner' }),
+      null,
+    )
+    expect(env.OPENAI_ENABLE_THINKING).toBe('0')
+  })
+
+  test('openai-compat non-off effort clears a stale OPENAI_ENABLE_THINKING', () => {
+    const withHigh = envForConnection(
+      openaiConn({ thinkingEffort: 'high' }),
+      null,
+    )
+    expect(withHigh).toHaveProperty('OPENAI_ENABLE_THINKING', undefined)
+    const withoutEffort = envForConnection(openaiConn(), null)
+    expect(withoutEffort).toHaveProperty('OPENAI_ENABLE_THINKING', undefined)
   })
 
   test('gemini and grok also expose the connection default model', () => {
@@ -341,7 +371,7 @@ describe('envForConnection', () => {
         label: 'Gemini',
         kind: 'gemini',
         apiKey: 'k',
-        tierModels: { sonnet: 'gemini-2.5-pro' },
+        model: 'gemini-2.5-pro',
       },
       null,
     )
@@ -353,7 +383,7 @@ describe('envForConnection', () => {
         label: 'Grok',
         kind: 'grok',
         apiKey: 'k',
-        models: ['grok-5', 'grok-5-mini'],
+        model: 'grok-5',
       },
       null,
     )
@@ -379,7 +409,7 @@ describe('envForConnection', () => {
         kind: 'cursor',
         apiKey: 'user::jwt',
         machineId: 'mach-1',
-        tierModels: { sonnet: 'claude-4.5-sonnet' },
+        model: 'claude-4.5-sonnet',
       },
       null,
     )
@@ -406,7 +436,7 @@ describe('envForConnection', () => {
       label: 'Cursor Account',
       kind: 'cursor',
       credentialRef: 'cur-oauth',
-      tierModels: { sonnet: 'claude-4.5-sonnet' },
+      model: 'claude-4.5-sonnet',
     })
     expect(env.CURSOR_AUTH_MODE).toBe('oauth')
     expect(env.CURSOR_CREDENTIAL_SCOPE).toBe('cur-oauth')
@@ -508,6 +538,30 @@ describe('activateConnectionForSession (main slot)', () => {
     upsertConnection(openaiConn())
     await activateConnectionForSession(openaiConn(), 'subagent', null)
     expect(getSessionProviderEnvOverlay()).toBeNull()
+  })
+
+  test('model omitted: falls back to the connection pinned model', async () => {
+    const conn = openaiConn({ model: 'deepseek-reasoner' })
+    upsertConnection(conn)
+
+    const result = await activateConnectionForSession(conn, 'main')
+
+    expect(result.success).toBe(true)
+    expect(result.mainLoopModel).toBe('deepseek-reasoner')
+    expect(process.env.OPENAI_DEFAULT_MODEL).toBe('deepseek-reasoner')
+  })
+
+  test('thinkingEffort off deploys OPENAI_ENABLE_THINKING=0 to the session', async () => {
+    const conn = openaiConn({
+      model: 'deepseek-reasoner',
+      thinkingEffort: 'off',
+    })
+    upsertConnection(conn)
+
+    const result = await activateConnectionForSession(conn, 'main')
+    expect(result.success).toBe(true)
+    expect(process.env.OPENAI_ENABLE_THINKING).toBe('0')
+    expect(getSessionProviderEnvOverlay()?.OPENAI_ENABLE_THINKING).toBe('0')
   })
 
   test('switching between two openai-compat accounts swaps credentials', async () => {
@@ -674,6 +728,40 @@ describe('activateConnectionForSession (subagent slot)', () => {
     expect(process.env.OPENAI_API_KEY).toBeUndefined()
     expect(getAPIProvider({}, {})).toBe('firstParty')
   })
+
+  test('model omitted: subagent config pins the connection model', async () => {
+    const conn = openaiConn({ model: 'deepseek-reasoner' })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'subagent')
+    expect(result.success).toBe(true)
+    expect(getSubagentProviderConfig({}, {})?.model).toBe('deepseek-reasoner')
+  })
+
+  test('connection thinkingEffort travels on the subagent override config', async () => {
+    const conn = openaiConn({
+      model: 'deepseek-reasoner',
+      thinkingEffort: 'high',
+    })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'subagent')
+    expect(result.success).toBe(true)
+    const config = getSubagentProviderConfig({}, {}) as
+      | (Record<string, unknown> & { env?: Record<string, string> })
+      | undefined
+    expect(config?.['thinkingEffort']).toBe('high')
+  })
+
+  test('thinkingEffort off puts OPENAI_ENABLE_THINKING=0 in the subagent env', async () => {
+    const conn = openaiConn({
+      model: 'deepseek-reasoner',
+      thinkingEffort: 'off',
+    })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'subagent')
+    expect(result.success).toBe(true)
+    const config = getSubagentProviderConfig({}, {})
+    expect(config?.env?.OPENAI_ENABLE_THINKING).toBe('0')
+  })
 })
 
 describe('chatgpt-oauth credential validation', () => {
@@ -805,6 +893,24 @@ describe('activateConnectionGlobally', () => {
     expect(getDefaultAssignment('subagent')).toEqual({
       connectionId: 'deepseek-a',
       model: 'deepseek-chat',
+    })
+  })
+
+  test('main slot: model omitted resolves the connection pinned model', async () => {
+    const conn = openaiConn({ model: 'deepseek-reasoner' })
+    upsertConnection(conn)
+
+    const result = await activateConnectionGlobally(conn, 'main')
+    expect(result.success).toBe(true)
+    expect(result.mainLoopModel).toBe('deepseek-reasoner')
+
+    const settings = readUserSettings()
+    expect(settings['providerModels']).toMatchObject({
+      openai: { model: 'deepseek-reasoner' },
+    })
+    expect(getDefaultAssignment('main')).toEqual({
+      connectionId: 'deepseek-a',
+      model: 'deepseek-reasoner',
     })
   })
 

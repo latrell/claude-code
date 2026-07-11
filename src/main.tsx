@@ -1662,7 +1662,7 @@ async function run(): Promise<CommanderCommand> {
             process.stderr.write(chalk.red(`${resolved.error}\n`));
             process.exit(1);
           }
-          const model = connectionsCliModule.modelForCliActivation(resolved.connection, 'main', cliModelForActivation);
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection, cliModelForActivation);
           const result = await connectionsActivateModule.activateConnectionForSession(
             resolved.connection,
             'main',
@@ -1689,7 +1689,7 @@ async function run(): Promise<CommanderCommand> {
             process.stderr.write(chalk.red(`${resolved.error}\n`));
             process.exit(1);
           }
-          const model = connectionsCliModule.modelForCliActivation(resolved.connection, 'subagent');
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection);
           const result = await connectionsActivateModule.activateConnectionForSession(
             resolved.connection,
             'subagent',

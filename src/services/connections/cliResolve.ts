@@ -190,8 +190,9 @@ export function formatConnectionsList(): string {
 
 /**
  * Model to pass when activating a connection from CLI flags.
- * Prefer an explicit --model, else the registry default for this connection,
- * else the connection catalog default (tier sonnet / first models entry).
+ * Prefer an explicit --model, else the connection's pinned model (single
+ * source of truth; the lazy migration in store.ts backfills it for legacy
+ * registries).
  *
  * Always returning a concrete model (when the connection has one) ensures
  * the main-loop override wins over a stale providerModels.<key>.model left
@@ -199,13 +200,8 @@ export function formatConnectionsList(): string {
  */
 export function modelForCliActivation(
   connection: Connection,
-  slot: 'main' | 'subagent',
   explicitModel?: string,
 ): string | undefined {
   if (explicitModel && explicitModel !== 'default') return explicitModel
-  const assignment = getDefaultAssignment(slot)
-  if (assignment?.connectionId === connection.id && assignment.model) {
-    return assignment.model
-  }
-  return connection.tierModels?.sonnet ?? connection.models?.[0]
+  return connection.model
 }

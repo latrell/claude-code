@@ -163,47 +163,47 @@ describe('formatConnectionsList', () => {
 
 describe('modelForCliActivation', () => {
   test('prefers explicit model', () => {
-    const conn = sampleConnection()
+    const conn = sampleConnection({ model: 'deepseek-chat' })
     upsertConnection(conn)
-    setDefaultAssignment('main', {
-      connectionId: 'deepseek',
-      model: 'deepseek-chat',
-    })
-    expect(modelForCliActivation(conn, 'main', 'custom-model')).toBe(
-      'custom-model',
-    )
+    expect(modelForCliActivation(conn, 'custom-model')).toBe('custom-model')
   })
 
-  test('uses registry default model when no explicit model', () => {
-    const conn = sampleConnection()
+  test('treats explicit "default" as no explicit model', () => {
+    const conn = sampleConnection({ model: 'deepseek-chat' })
     upsertConnection(conn)
-    setDefaultAssignment('main', {
-      connectionId: 'deepseek',
-      model: 'deepseek-reasoner',
-    })
-    expect(modelForCliActivation(conn, 'main')).toBe('deepseek-reasoner')
+    expect(modelForCliActivation(conn, 'default')).toBe('deepseek-chat')
   })
 
-  test('falls back to connection catalog when no registry default', () => {
+  test('uses the connection pinned model when no explicit model', () => {
+    const conn = sampleConnection({ model: 'deepseek-reasoner' })
+    upsertConnection(conn)
+    expect(modelForCliActivation(conn)).toBe('deepseek-reasoner')
+  })
+
+  test('ignores legacy tierModels/models catalog and registry defaults', () => {
     const conn = sampleConnection({
+      model: undefined,
       models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
       tierModels: { sonnet: 'deepseek-v4-pro' },
     })
     upsertConnection(conn)
-    expect(modelForCliActivation(conn, 'main')).toBe('deepseek-v4-pro')
+    setDefaultAssignment('main', {
+      connectionId: 'deepseek',
+      model: 'stale-registry-model',
+    })
+    // Lazy migration backfills connection.model on load; the resolver itself
+    // no longer consults tierModels/models[0] or the assignment model.
+    expect(modelForCliActivation(conn)).toBeUndefined()
   })
 
-  test('returns undefined when connection has no catalog model', () => {
+  test('returns undefined when the connection pins no model', () => {
     const conn = sampleConnection({
+      model: undefined,
       models: undefined,
       tierModels: undefined,
     })
     upsertConnection(conn)
-    setDefaultAssignment('main', {
-      connectionId: 'other',
-      model: 'x',
-    })
-    expect(modelForCliActivation(conn, 'main')).toBeUndefined()
+    expect(modelForCliActivation(conn)).toBeUndefined()
   })
 })
 

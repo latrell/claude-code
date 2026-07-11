@@ -113,10 +113,10 @@ export function envForConnection(
   // Model used when the picker selects "Default" (model = null). Without
   // this, getDefaultModel() finds no provider default and falls back to the
   // built-in Anthropic model id (Fable 5), which third-party endpoints
-  // reject. Tier mapping wins, then the picked model, then the first
-  // catalog entry (presets list the recommended model first).
-  const connectionDefault =
-    tiers?.sonnet ?? model ?? connection.models?.[0] ?? undefined
+  // reject. An explicitly picked model wins, then the connection's pinned
+  // model (the lazy migration in store.ts guarantees legacy connections
+  // already carry one, so no tierModels/models[0] fallback chain is needed).
+  const connectionDefault = model ?? connection.model ?? undefined
 
   switch (connection.kind) {
     case 'openai-compat': {
@@ -132,9 +132,15 @@ export function envForConnection(
       // the global OPENAI_MODEL override must not linger and shadow it.
       env.OPENAI_MODEL = undefined
       env.OPENAI_DEFAULT_MODEL = connectionDefault
-      env.OPENAI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? model ?? undefined
-      env.OPENAI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? model ?? undefined
-      env.OPENAI_DEFAULT_OPUS_MODEL = tiers?.opus ?? model ?? undefined
+      env.OPENAI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? connectionDefault
+      env.OPENAI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? connectionDefault
+      env.OPENAI_DEFAULT_OPUS_MODEL = tiers?.opus ?? connectionDefault
+      // 'off' pins thinking off for this connection: isOpenAIThinkingEnabled
+      // treats an explicit '0' as a hard disable that overrides model
+      // auto-detect (deepseek/mimo). Any other effort clears a stale '0'
+      // left behind by a previous 'off' activation.
+      env.OPENAI_ENABLE_THINKING =
+        connection.thinkingEffort === 'off' ? '0' : undefined
       break
     }
     case 'chatgpt-oauth': {
@@ -155,9 +161,9 @@ export function envForConnection(
       env.GEMINI_API_KEY = connection.apiKey
       env.GEMINI_MODEL = undefined
       env.GEMINI_DEFAULT_MODEL = connectionDefault
-      env.GEMINI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? model ?? undefined
-      env.GEMINI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? model ?? undefined
-      env.GEMINI_DEFAULT_OPUS_MODEL = tiers?.opus ?? model ?? undefined
+      env.GEMINI_DEFAULT_HAIKU_MODEL = tiers?.haiku ?? connectionDefault
+      env.GEMINI_DEFAULT_SONNET_MODEL = tiers?.sonnet ?? connectionDefault
+      env.GEMINI_DEFAULT_OPUS_MODEL = tiers?.opus ?? connectionDefault
       break
     }
     case 'grok': {
@@ -398,6 +404,18 @@ async function deployAnthropicOAuth(connection: Connection): Promise<{
 }
 
 /**
+ * Model an activation should deploy: an explicit override wins, then the
+ * connection's pinned model (single source of truth; the lazy migration in
+ * store.ts backfills it for legacy registries). null = provider default.
+ */
+function resolveActivationModel(
+  connection: Connection,
+  model?: string | null,
+): string | null {
+  return model ?? connection.model ?? null
+}
+
+/**
  * Activate a connection for the current session only (no disk writes except
  * OAuth slot mirrors, which by design live in secure storage).
  */
@@ -409,6 +427,7 @@ export async function activateConnectionForSession(
   if (slot === 'subagent') {
     return activateSubagentForSession(connection, model)
   }
+  const resolvedModel = resolveActivationModel(connection, model)
 
   // Credential deployment for OAuth-backed kinds
   if (connection.kind === 'anthropic-oauth') {
@@ -422,7 +441,7 @@ export async function activateConnectionForSession(
     if (!checked.success) return checked
   }
 
-  const env = envForConnection(connection, model)
+  const env = envForConnection(connection, resolvedModel)
   applyEnvToProcess(env)
   // Record the delta so managedEnv re-applies it after every later config
   // env application — otherwise applyConfigEnvironmentVariables() at trust
@@ -436,12 +455,12 @@ export async function activateConnectionForSession(
   touchConnectionUsage(connection.id)
   setSessionAssignment('main', {
     connectionId: connection.id,
-    model: model ?? undefined,
+    model: resolvedModel ?? undefined,
   })
 
   return {
     success: true,
-    mainLoopModel: model ?? null,
+    mainLoopModel: resolvedModel,
   }
 }
 
@@ -458,6 +477,9 @@ function chatgptSubagentConfig(
     modelType: 'openai',
     env: { OPENAI_AUTH_MODE: 'chatgpt' },
     ...(model && { model }),
+    ...(connection.thinkingEffort && {
+      thinkingEffort: connection.thinkingEffort,
+    }),
     credentialScope: connection.credentialRef ?? 'default',
   }
 }
@@ -478,6 +500,9 @@ function subagentLoginConfig(
     modelType: kindToModelType(connection.kind),
     ...(Object.keys(cleanEnv).length > 0 && { env: cleanEnv }),
     ...(model && { model }),
+    ...(connection.thinkingEffort && {
+      thinkingEffort: connection.thinkingEffort,
+    }),
     credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
   }
 }
@@ -486,30 +511,38 @@ async function activateSubagentForSession(
   connection: Connection,
   model?: string | null,
 ): Promise<ActivationResult> {
+  const resolvedModel = resolveActivationModel(connection, model)
   // Anthropic OAuth subagent identity switching would require scoped OAuth
   // credentials in the Anthropic client path, which does not exist yet —
   // subagents share the main session's Anthropic credentials.
   if (connection.kind === 'anthropic-oauth') {
     setSubagentProviderConfigOverride({
       modelType: 'anthropic',
-      ...(model && { model }),
+      ...(resolvedModel && { model: resolvedModel }),
+      ...(connection.thinkingEffort && {
+        thinkingEffort: connection.thinkingEffort,
+      }),
       credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
     })
   } else if (connection.kind === 'chatgpt-oauth') {
     const checked = await checkChatGPTCredential(connection)
     if (!checked.success) return checked
-    setSubagentProviderConfigOverride(chatgptSubagentConfig(connection, model))
+    setSubagentProviderConfigOverride(
+      chatgptSubagentConfig(connection, resolvedModel),
+    )
   } else {
     if (connection.kind === 'cursor') {
       const checked = await checkCursorCredential(connection)
       if (!checked.success) return checked
     }
-    setSubagentProviderConfigOverride(subagentLoginConfig(connection, model))
+    setSubagentProviderConfigOverride(
+      subagentLoginConfig(connection, resolvedModel),
+    )
   }
   touchConnectionUsage(connection.id)
   setSessionAssignment('subagent', {
     connectionId: connection.id,
-    model: model ?? undefined,
+    model: resolvedModel ?? undefined,
   })
   return { success: true }
 }
@@ -538,6 +571,7 @@ export async function activateConnectionGlobally(
   const providerKey = apiProviderToSettingsProviderKey(
     kindToAPIProvider(connection.kind),
   )
+  const resolvedModel = resolveActivationModel(connection, model)
 
   try {
     if (slot === 'main') {
@@ -548,14 +582,14 @@ export async function activateConnectionGlobally(
         connection.kind === 'grok' ||
         connection.kind === 'cursor'
       ) {
-        const env = envForConnection(connection, model)
+        const env = envForConnection(connection, resolvedModel)
         writeCCBProviderAuthEnv(modelType as CCBProvider, env)
       } else if (connection.kind === 'chatgpt-oauth') {
         const deployed = await deployChatGPTCredential(connection)
         if (!deployed.success) return deployed
         writeCCBProviderAuthEnv('openai', { OPENAI_AUTH_MODE: 'chatgpt' })
       } else if (connection.kind === 'anthropic-api') {
-        const env = envForConnection(connection, model)
+        const env = envForConnection(connection, resolvedModel)
         const settingsEnv: Record<string, string | undefined> = {}
         for (const [key, value] of Object.entries(env)) {
           settingsEnv[key] = value
@@ -584,7 +618,9 @@ export async function activateConnectionGlobally(
       const { error } = writeUserSettings({
         modelType,
         ...(providerKey && {
-          providerModels: { [providerKey]: { model: model ?? undefined } },
+          providerModels: {
+            [providerKey]: { model: resolvedModel ?? undefined },
+          },
         }),
       } as unknown as SettingsJson)
       if (error) return { success: false, error: error.message }
@@ -594,17 +630,20 @@ export async function activateConnectionGlobally(
         connection.kind === 'anthropic-oauth'
           ? {
               modelType: 'anthropic' as const,
-              ...(model && { model }),
+              ...(resolvedModel && { model: resolvedModel }),
+              ...(connection.thinkingEffort && {
+                thinkingEffort: connection.thinkingEffort,
+              }),
               credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
             }
           : connection.kind === 'chatgpt-oauth'
-            ? chatgptSubagentConfig(connection, model)
-            : subagentLoginConfig(connection, model)
+            ? chatgptSubagentConfig(connection, resolvedModel)
+            : subagentLoginConfig(connection, resolvedModel)
       const { error } = writeUserSettings({
         subagentProvider,
         ...(providerKey && {
           providerModels: {
-            [providerKey]: { subagentModel: model ?? undefined },
+            [providerKey]: { subagentModel: resolvedModel ?? undefined },
           },
         }),
       } as unknown as SettingsJson)
@@ -621,11 +660,11 @@ export async function activateConnectionGlobally(
   // 3. Record the default in the registry (single source for the UI)
   setDefaultAssignment(slot, {
     connectionId: connection.id,
-    model: model ?? undefined,
+    model: resolvedModel ?? undefined,
   })
 
   // 4. Apply to the running session immediately
-  return activateConnectionForSession(connection, slot, model)
+  return activateConnectionForSession(connection, slot, resolvedModel)
 }
 
 /** Clear the global subagent default (inherit the main provider again). */
