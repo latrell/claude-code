@@ -226,7 +226,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 连接器: `CONNECTOR_TEXT`, `COMMIT_ATTRIBUTION`, `DIRECT_CONNECT`
 - 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
 - 模式: `POOR`, `SSH_REMOTE`
-- Provider 连接管理: `PROVIDER_CONNECTIONS`（`/connect` + `/models`，见 `docs/features/provider-connections.md`）
+- Provider 连接管理: `PROVIDER_CONNECTIONS`（`/connect` + `/provider` + `/model`，见 `docs/features/provider-connections.md`）
 - 已禁用: `CONTEXT_COLLAPSE`, `FORK_SUBAGENT`, `UDS_INBOX`, `LAN_PIPES`, `REVIEW_ARTIFACT`, `TEAMMEM`, `SKILL_LEARNING`
 
 **Dev mode 默认**: 全部启用（见 `scripts/dev.ts`）。
@@ -279,11 +279,11 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 详见各兼容层的 docs 文档。
 
-### Provider 连接管理（/connect + /models）
+### Provider 连接管理（/connect + /provider + /model）
 
-- **`src/services/connections/`** — 连接注册表（`~/.claude/ccb-connections.json`）：一个"连接" = provider 类型 + 端点 + 一份账号凭据 + 模型目录，同一 provider 可存多个连接（多账号）。`activate.ts` 采用部署式激活：会话级只改进程内状态（env + `setProviderCliOverride` + client 缓存清理），全局写回现有持久层（`ccb-provider-auth.json` / `settings.modelType` / `providerModels` / `subagentProvider`），启动链路零改动。Anthropic OAuth 多账号存于 secure storage 的 `claudeAiOauthAccounts` 槽位（`claudeAiOauth` 保持活跃账号镜像，官方兼容）；ChatGPT 多账号按 scope 分文件。`/login` 成功自动注册连接，`/logout` 清空注册表。
-- **`src/commands/connect/`** — 连接管理面板（增删改、设默认、会话切换）；**`src/commands/models/`** — 跨 provider 模型选择器（Enter 会话切换、Shift+Tab 设全局默认、Tab 切主/子 agent 槽位）。
-- **模型上下文窗口**：`connections/contextWindows.ts` + `Connection.modelContextWindows`。打开模型选择器时从 provider 模型列表端点自动识别（OpenAI 兼容 `context_length`/`max_model_len` 等字段、Gemini `inputTokenLimit`）并持久化；`/connect` 可手动设置（manual 优先于 auto）；预设目录的 contextWindow 字符串运行时解析兜底。`getContextWindowForModel()`（`src/utils/context.ts`）经 `getConnectionContextWindow()` 消费，使 auto-compact 阈值与上下文百分比按真实窗口计算，不再对第三方模型一律按 200k。
+- **`src/services/connections/`** — 连接注册表（`~/.claude/ccb-connections.json`）：一个"连接" = **命名档案**：provider 类型 + 端点 + 一份账号凭据 + 固定模型（`model`，唯一真相源）+ 思考强度（`thinkingEffort`：off/low/medium/high/max）+ 上下文窗口（`contextWindow`，tokens 单值）。同一 provider 可存多个连接（多账号），同一凭据也可建多个档案（如 deepseek1=deepseek-v4-pro/1M/max 思考、deepseek2=deepseek-v4-flash/low 思考，`/provider deepseek1`、`/subagent-provider deepseek2` 一键切换）。`models[]` 目录仅供选择 UI；`tierModels` / per-model `modelContextWindows` 已 deprecated（旧文件解析 + 窗口回退，不再新增写入）。`activate.ts` 采用部署式激活（model 缺省自动用 `connection.model`）：会话级只改进程内状态（env + `setProviderCliOverride` + client 缓存清理），全局写回现有持久层（`ccb-provider-auth.json` / `settings.modelType` / `providerModels` / `subagentProvider`），启动链路零改动。`profile.ts` 收敛档案纯函数（`duplicateConnection` / `withPinnedModel` / `withThinkingEffort` / `withContextWindow` / 档案摘要）。Anthropic OAuth 多账号存于 secure storage 的 `claudeAiOauthAccounts` 槽位（`claudeAiOauth` 保持活跃账号镜像，官方兼容）；ChatGPT 多账号按 scope 分文件。`/login` 成功自动注册连接，`/logout` 清空注册表。
+- **`src/commands/connect/`** — 连接管理面板：添加向导在凭据后带档案三步（模型选择含远程拉取与自定义输入 → 思考强度（Cursor 跳过）→ 上下文窗口（OAuth 类跳过，远程识别到窗口时预填））；连接菜单可直接激活（不再强制选模型；key 型第三方无固定模型时先引导补选）、更换固定模型（在用时自动重新部署）、调思考强度、编辑连接级上下文窗口、**复制连接**（同凭据多档案的核心入口）。**`src/commands/provider/`** — `/provider`、`/subagent-provider` 连接切换（Enter 会话切换、Shift+Tab 设全局默认、可带参 `/provider deepseek1 [global]`）；`/model` 在连接场景直写连接档案（`updateConnectionModel`）并重新部署。
+- **模型上下文窗口**：连接级 `contextWindow` 单值优先（`getConnectionContextWindow()` → `getContextWindowForModel()`，auto-compact 阈值与上下文百分比按真实窗口计算）。来源：手动输入（/connect 菜单、向导、激活引导）＞ `updateConnectionModel()` 换模型时从远程识别的 per-model 窗口自动同步（识别不到即清空防串窗）＞ 预设目录字符串兜底。
 - Feature flag：`PROVIDER_CONNECTIONS`。详见 `docs/features/provider-connections.md`。
 
 ### 穷鬼模式（Budget Mode）

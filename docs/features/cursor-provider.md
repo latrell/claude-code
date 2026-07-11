@@ -133,7 +133,7 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 ## 模型列表与选择
 
 - **`/model`（单 agent 选择器）**：Cursor 为当前 provider 时显示 Cursor 的策展模型列表（`Default` + Composer 2.5 / Opus 4.8 / Sonnet 5 / Fable 5 / GPT-5.x / Codex / Gemini / Grok / GLM / Kimi 等），不再错误显示 Claude 列表。实现见 `src/utils/model/modelOptions.ts` 的 `getCursorModelOptions()`。
-- **`/connect` + `/models`（跨 provider 选择器）**：静态策展列表（`src/services/api/cursor/models.ts` 的 `CURSOR_MODELS`）之上，会**实时拉取** Cursor 完整模型目录并合并（`supportsRemoteModelList('cursor')` = true）。
+- **`/connect`（连接管理面板）**：静态策展列表（`src/services/api/cursor/models.ts` 的 `CURSOR_MODELS`）之上，会**实时拉取** Cursor 完整模型目录并合并（`supportsRemoteModelList('cursor')` = true）；选中的模型固定到连接档案（`Connection.model`）。
 - **实时目录**：`POST /aiserver.v1.AiService/AvailableModels`（ConnectRPC 的 **JSON** 变体 + h2），返回 150+ 个模型（含 effort 变体 `-low/-high/-thinking-*/-fast`）。`fetchCursorAvailableModels()` 过滤出 agent-capable 模型，并从 tooltip 解析上下文窗口。凭据走签入的 Cursor 会话（env / OAuth 文件 / IDE），非 `connection.apiKey`。
 - 选择器仍保留「Custom model…」，可输入任意 Cursor 接受的模型 id。
 
@@ -177,7 +177,7 @@ Cursor 每个模型有两个上下文窗口：non-max（如 Opus 4.8 = 300k、So
 
 - **Max Mode 默认开启**：聊天请求置位 protobuf 的 `LARGE_CONTEXT`（field 35）启用模型完整（≤1M）窗口，上下文窗口按 `maxContextWindow` 计算。设 `CURSOR_MAX_MODE=0` 关闭（回到 non-max 窗口）。注意 Max Mode 会产生 Cursor 的按量计费。
 - `getContextWindowForModel()` 对 Cursor 当前 provider 会先经 `getCursorContextWindowForModel()`（`src/services/api/cursor/models.ts`）解析：把家族别名（`sonnet`/`opus`/`fable`）映射为 Cursor 模型 id，再按当前 Max Mode 查策展目录的窗口。**修复了 Cursor 模型一律回退到 200k 默认值的问题**——auto-compact 阈值与状态栏上下文百分比现按真实窗口计算（默认即 1M 级）。
-- `/models` 实时拉取的窗口也随 Max Mode 取 non-max / max tooltip。
+- `/connect` 模型选择器实时拉取的窗口也随 Max Mode 取 non-max / max tooltip。
 
 ## 订阅用量（/usage）
 

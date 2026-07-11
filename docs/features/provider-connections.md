@@ -1,12 +1,16 @@
-# Provider 连接管理（/connect + /models）
+# Provider 连接管理（/connect + /provider + /model）
 
-参考 opencode 的 `/connect` + `/models` 交互，为 CCB 提供统一的"连接（provider + 账号）"管理：多提供者、多账号并存，主/子 agent 模型可分别在会话级或全局切换。
+为 CCB 提供统一的"连接（命名档案）"管理：多提供者、多账号、多档案并存，主/子 agent 可在会话级或全局一键切换完整档案。
 
 Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
 ## 核心概念
 
-**连接（Connection）** = 提供者类型 + 端点 + 一份账号凭据 + 模型目录。同一提供者可以保存多个连接（即多账号）。连接注册表存于 `~/.claude/ccb-connections.json`（chmod 600）。
+**连接（Connection）= 命名档案**：提供者类型 + 端点 + 一份账号凭据 + **固定模型（`model`）** + **思考强度（`thinkingEffort`：off/low/medium/high/max）** + **上下文窗口（`contextWindow`，tokens 单值）**。
+
+- 同一提供者可以保存多个连接（多账号），**同一份凭据也可以建多个连接**（多档案）：例如用同一个 DeepSeek key 建 `deepseek1`（deepseek-v4-pro、1M 上下文、max 思考）和 `deepseek2`（deepseek-v4-flash、low 思考），之后 `/provider deepseek1`、`/subagent-provider deepseek2` 一键切换完整档案。
+- `Connection.model` 是连接实际使用模型的**唯一真相源**；`models[]` 目录仅供选择 UI 展示。`tierModels` 与 per-model 的 `modelContextWindows` 已 deprecated（仅作旧文件解析与窗口回退来源，不再新增写入）。
+- 连接注册表存于 `~/.claude/ccb-connections.json`（chmod 600）。旧格式文件在加载时懒迁移（从 tierModels/目录推导 pinned model）。
 
 支持的连接类型（`kind`）：
 
@@ -27,11 +31,11 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 启动时可用连接名称（`/connect` 配置的 id、label 或 presetId）指定主/子 agent 使用的连接，进程级生效、不写盘：
 
 ```bash
-# 主 agent 用 deepseek 连接，子 agent 继承主连接
-ccb --provider deepseek --subagent-provider unset
+# 主 agent 用 deepseek1 档案，子 agent 用 deepseek2 档案
+ccb --provider deepseek1 --subagent-provider deepseek2
 
-# 主/子各用不同连接
-ccb --provider deepseek --subagent-provider zhipu
+# 子 agent 完全继承主连接
+ccb --provider deepseek1 --subagent-provider unset
 
 # 打印已配置连接列表后退出
 ccb connect
@@ -43,51 +47,60 @@ ccb connect
 
 ### `/connect` — 连接管理面板
 
-- 列表展示所有连接，标记全局默认（主/子 agent）与本会话使用中的连接。
-- 添加连接：中国厂商预设（DeepSeek / 智谱 / 通义 / MiMo，含 API 与编程套餐两种接入方式）、OpenAI 兼容自定义端点、Anthropic 兼容网关、Gemini、Grok、Cursor IDE、Claude OAuth 账号、ChatGPT 订阅账号。
-- 每个连接的操作菜单：本会话使用 / 设为全局默认（主 agent 与子 agent 各自独立）、重命名、删除。
+- 列表展示所有连接，行内附带档案摘要（`模型 · effort 强度 · ctx 窗口`），标记全局默认（主/子 agent）与本会话使用中的连接。
+- **添加连接向导**：选择类型/预设 → 填凭据（或 OAuth 登录）→ **档案三步**：
+  1. **模型**：列出该连接可用模型（静态目录 + 远程实时拉取），支持手动输入任意模型 id（自定义端点目录可能为空）；OAuth 类连接（Claude / ChatGPT）可选"Default"走 provider 默认。
+  2. **思考强度**：off/low/medium/high/max + "默认（不设置）"。Cursor 连接跳过此步（effort 编码在模型 id 里）。
+  3. **上下文窗口**：可跳过的输入（支持 `200000` / `128K` / `1M`）；远程目录已上报该模型窗口时自动预填，回车即确认。OAuth 类连接（窗口由 provider 决定）跳过此步。
+  三步均可 Esc 返回上一步。
+- **连接操作菜单**：
+  - 本会话使用 / 设为全局默认（主 agent 与子 agent 各自独立）——**直接按档案激活，不再强制选模型**。仅当 key 型第三方连接（openai-compat / gemini / grok）还没有固定模型时，先引导补选（选中即落盘到 `Connection.model` 后激活）。
+  - **更换固定模型…** —— 模型选择器（静态目录 + 远程拉取 + 自定义输入），选中 `updateConnectionModel` 落盘；若该连接正在会话/全局的主或子 agent 槽位使用，自动重新部署刷新。
+  - **思考强度…** —— 五档 + 默认，写回连接并按需重新部署。
+  - **上下文窗口…** —— 直接编辑连接级 `contextWindow` 单值（留空清除）。
+  - **复制连接…** —— 输入新名称（预填 `<label> 2`），复制凭据与档案字段（model / thinkingEffort / contextWindow 可再改）生成新连接。这是"同一凭据、多套档案"（deepseek1/deepseek2）场景的核心入口。
+  - 编辑（名称/凭据）、删除。
 - 首次打开自动从旧存储导入（幂等）：`ccb-provider-auth.json` 各 provider 槽位（openai / gemini / grok / cursor）、`settings.env` 的 Anthropic 自定义端点、当前 OAuth 账号、ChatGPT 默认凭据。
 
-### `/models` — 跨 provider 模型选择器
+### `/provider` / `/subagent-provider` — 连接切换器
 
-- 扁平列出 `连接 / 模型`，支持模糊搜索；OpenAI 兼容端点（含 Grok）异步拉取 `GET {baseUrl}/models`、Gemini 拉取 ListModels API 补充模型列表。
-- `Enter` = 本会话切换；`Shift+Tab` = 设为全局默认；`Tab` = 在主 agent / 子 agent 槽位间切换。
-- `/models sub` 直接打开子 agent 槽位。
-- 标记：`●` 当前会话使用中，`★` 全局默认；条目附带已知的上下文窗口（`ctx 1M` 等）。
+- 模糊搜索连接列表，行内显示档案摘要；`Enter` = 本会话切换，`Shift+Tab` = 设为全局默认，标记 `●` 当前会话 / `★` 全局默认。
+- 也支持直接传参：`/provider deepseek1`、`/subagent-provider deepseek2 global`。
+- 切换即部署完整档案：凭据 + 固定模型 + 思考强度 + 上下文窗口一起生效。
 
-## 模型上下文窗口
+### `/model` — 当前连接的模型选择
 
-第三方模型的上下文窗口不再一律按 200k 硬编码处理，`getContextWindowForModel()` 会读取连接注册表中的配置（`Connection.modelContextWindows`），使自动压缩阈值（auto-compact）、状态栏上下文百分比等按真实窗口计算。
+主 agent 运行在某个连接上时，`/model` 列出该连接的模型目录；选中**直写连接档案**（`updateConnectionModel`）并重新部署（连接是全局默认时同步持久化）。
 
-三个来源（优先级从高到低）：
+## 上下文窗口
 
-1. **manual** — 用户在 `/connect` 中手动设置，永远不会被自动识别覆盖。
-2. **auto** — 打开 `/models` 或 `/connect` 模型选择器时，从提供者的模型列表端点自动识别并持久化：
-   - OpenAI 兼容 / Grok：`GET {baseUrl}/models` 条目上的 `context_length`（OpenRouter/Together）、`max_model_len`（vLLM）、`max_context_length`（LM Studio）、`context_window`、`max_input_tokens` 等字段（官方 OpenAI 响应不含这些字段，识别不到就留空）
-   - Gemini：ListModels 的 `inputTokenLimit`
-3. **preset** — 中国厂商预设目录（`CHINA_LLM_PROVIDERS`）中的 `contextWindow` 展示字符串（如 `"1M"`、`"203K"`），运行时解析兜底。
+第三方模型的上下文窗口不再一律按 200k 硬编码处理：`getContextWindowForModel()` 经 `getConnectionContextWindow()` 优先读取**连接级 `contextWindow`**，使自动压缩阈值（auto-compact）、状态栏上下文百分比等按真实窗口计算。
 
-交互入口：
+`contextWindow` 的来源：
 
-- `/connect` → 连接菜单 → **Model context windows…**：选择模型后输入窗口大小（支持 `200000` / `128K` / `1M` 格式，留空清除手动值）。
-- `/connect` 激活路径选中一个**窗口未知**的第三方模型时，自动插入一步可跳过的窗口输入（识别到的模型不打断）。
-- 切换成功消息会附带生效的窗口（`ctx 1M`）或未知提示，便于确认识别结果。
+1. **手动** — `/connect` 连接菜单"上下文窗口…"、向导第 3 步或激活引导中输入。
+2. **自动同步** — `updateConnectionModel()` 换模型时从已识别的 per-model 窗口（远程模型列表端点上报的 `context_length` / `max_model_len` / Gemini `inputTokenLimit` 等）同步；识别不到则清空，避免旧模型的窗口误用到新模型。
+3. **预设兜底** — 中国厂商预设目录（`CHINA_LLM_PROVIDERS`）的 `contextWindow` 展示字符串（如 `"1M"`）运行时解析。
 
-运行时查找顺序（`getConnectionContextWindow(model)`，按 model id 匹配）：会话激活连接（主 → 子）→ 全局默认连接 → 注册表其余连接。均未命中时维持原有解析链（Anthropic 能力缓存、1M beta、ChatGPT plan 窗口、200k 默认）。
+激活路径选中一个**窗口未知**的第三方模型时，自动插入一步可跳过的窗口输入（已识别的模型不打断）。切换成功消息附带生效的窗口（`ctx 1M`），便于确认。
+
+运行时查找顺序（`getConnectionContextWindow(model)`）：活跃主槽连接的连接级 `contextWindow`（pinned model 匹配时）→ 该连接的 per-model/预设窗口 → 旧版全局搜索（会话/默认/其余连接的 per-model 表）。均未命中时维持原有解析链（Anthropic 能力缓存、1M beta、ChatGPT plan 窗口、200k 默认）。
+
+## 思考强度
+
+连接档案的 `thinkingEffort`（off/low/medium/high/max）在连接激活期间生效，已接线到各协议请求层（`getConnectionThinkingEffort()` 按槽位解析：会话分配 > 全局默认分配）。`off` 对 OpenAI 兼容层写 `OPENAI_ENABLE_THINKING=0` 硬关闭。
 
 ## 激活（部署式）语义
 
-激活一个连接不会引入新的运行时读取路径，而是把配置"部署"到现有存储槽位，启动链路零改动：
+激活一个连接不会引入新的运行时读取路径，而是把档案"部署"到现有存储槽位，启动链路零改动。model 缺省时自动使用 `connection.model`（`resolveActivationModel`）：
 
 - **会话级**：仅进程内生效 — 注入 `process.env`、`setProviderCliOverride()`、清空 provider SDK client 缓存、更新 `AppState.mainLoopModel`。不写盘。
 - **全局**：写入现有持久层后立即对当前会话生效 —
-  - `openai-compat` / `gemini` / `grok` → `~/.claude/ccb-provider-auth.json` 对应槽位 + `settings.modelType` + `providerModels.<key>.model`
-  - `anthropic-api` → `settings.env`（`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / tier 映射）
+  - `openai-compat` / `gemini` / `grok` / `cursor` → `~/.claude/ccb-provider-auth.json` 对应槽位 + `settings.modelType` + `providerModels.<key>.model`
+  - `anthropic-api` → `settings.env`（`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 等）
   - `anthropic-oauth` → secure storage 活跃槽位切换 + 清除 `settings.env` 中的自定义端点残留
   - `chatgpt-oauth` → 连接的 scope 凭据文件拷贝到默认文件 + `OPENAI_AUTH_MODE=chatgpt`
-  - 子 agent 槽位 → `settings.subagentProvider` + `providerModels.<key>.subagentModel`（复用现有 `getSubagentProviderRuntimeConfig()` 管线）
-
-tier 映射（`tierModels.haiku/sonnet/opus`）写成 `*_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` 环境变量，使 `haiku` 等别名（后台任务、small-fast model）按连接解析。
+  - 子 agent 槽位 → `settings.subagentProvider`（含 model + thinkingEffort）+ `providerModels.<key>.subagentModel`（复用现有 `getSubagentProviderRuntimeConfig()` 管线）
 
 ### 注意事项
 
@@ -105,18 +118,23 @@ tier 映射（`tierModels.haiku/sonnet/opus`）写成 `*_DEFAULT_{HAIKU,SONNET,O
 ```
 src/services/connections/
   types.ts               # Zod schema：Connection / ConnectionsFile / SlotAssignment
-  store.ts               # 注册表读写（原子写 + 进程内缓存 + chmod 600）
+  store.ts               # 注册表读写（原子写 + 缓存 + chmod 600）+ updateConnectionModel + 懒迁移
+  profile.ts             # 档案纯函数：duplicateConnection / withPinnedModel /
+                         #   withThinkingEffort / withContextWindow / 档案摘要
   oauthAccounts.ts       # Anthropic OAuth 多账号槽位（secure storage）
   migrate.ts             # 旧存储幂等导入
   sessionAssignments.ts  # 会话槽位记录（轻量模块，供底层查找使用）
-  activate.ts            # 会话级/全局激活引擎
+  activate.ts            # 会话级/全局激活引擎（model 缺省 = connection.model）
+  slotSwitch.ts          # /provider、/subagent-provider 共享的切换辅助
   cliResolve.ts          # CLI --provider/--subagent-provider/`connect` 解析与列表格式化
   modelCatalog.ts        # 每连接模型目录（静态 + /v1/models、Gemini ListModels 动态拉取）
-  contextWindows.ts      # 模型上下文窗口：解析/格式化/查找/持久化
+  contextWindows.ts      # 上下文窗口：解析/格式化/查找
+  thinkingEffort.ts      # 连接思考强度的运行时解析
   autoRegister.ts        # /login 成功后的自动注册
   logoutCleanup.ts       # /logout 清理
 src/components/connections/
   ConnectionsPanel.tsx / AddConnectionWizard.tsx / ConnectionForm.tsx
-  ChatGPTDeviceLogin.tsx / ModelsPicker.tsx
-src/commands/connect/  src/commands/models/
+  ConnectionPicker.tsx / ModelsPicker.tsx
+  ChatGPTDeviceLogin.tsx / CursorDeviceLogin.tsx
+src/commands/connect/  src/commands/provider/
 ```
