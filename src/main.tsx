@@ -1659,7 +1659,13 @@ async function run(): Promise<CommanderCommand> {
         if (cliProvider) {
           const resolved = connectionsCliModule.resolveConnectionRef(cliProvider);
           if (!resolved.ok) {
-            process.stderr.write(chalk.red(`${resolved.error}\n`));
+            // Mirror the /provider slash command: append the configured
+            // connections table so the user can pick a valid name directly.
+            const message =
+              resolved.reason === 'not_found'
+                ? `${resolved.error}\n${connectionsCliModule.formatConnectionsList()}`
+                : resolved.error;
+            process.stderr.write(chalk.red(`${message}\n`));
             process.exit(1);
           }
           const model = connectionsCliModule.modelForCliActivation(resolved.connection, cliModelForActivation);
@@ -1686,7 +1692,11 @@ async function run(): Promise<CommanderCommand> {
         if (cliSubagentProvider && cliSubagentProvider !== 'unset') {
           const resolved = connectionsCliModule.resolveConnectionRef(cliSubagentProvider);
           if (!resolved.ok) {
-            process.stderr.write(chalk.red(`${resolved.error}\n`));
+            const message =
+              resolved.reason === 'not_found'
+                ? `${resolved.error}\n${connectionsCliModule.formatConnectionsList()}`
+                : resolved.error;
+            process.stderr.write(chalk.red(`${message}\n`));
             process.exit(1);
           }
           const model = connectionsCliModule.modelForCliActivation(resolved.connection);
