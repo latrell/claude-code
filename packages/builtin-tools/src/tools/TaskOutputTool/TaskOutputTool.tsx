@@ -1,3 +1,4 @@
+import { stat } from 'fs/promises';
 import React from 'react';
 import { z } from 'zod/v4';
 import { tf } from 'src/i18n/t.js';
@@ -21,7 +22,8 @@ import { semanticBoolean } from 'src/utils/semanticBoolean.js';
 import { sleep } from 'src/utils/sleep.js';
 import { jsonParse } from 'src/utils/slowOperations.js';
 import { countCharInString } from 'src/utils/stringUtils.js';
-import { getTaskOutput } from 'src/utils/task/diskOutput.js';
+import { getErrnoCode } from 'src/utils/errors.js';
+import { getTaskOutput, getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { updateTaskState } from 'src/utils/task/framework.js';
 import { formatTaskOutput } from 'src/utils/task/outputFormatting.js';
 import type { ThemeName } from 'src/utils/theme.js';
@@ -43,10 +45,11 @@ type TaskOutputToolInput = z.infer<InputSchema>;
 // Unified output type covering all task types
 type TaskOutput = {
   task_id: string;
-  task_type: TaskType;
+  task_type?: TaskType;
   status: string;
   description: string;
   output: string;
+  outputFile?: string;
   exitCode?: number | null;
   error?: string;
   // For agents
@@ -55,9 +58,43 @@ type TaskOutput = {
 };
 
 type TaskOutputToolOutput = {
-  retrieval_status: 'success' | 'timeout' | 'not_ready';
+  retrieval_status: 'success' | 'timeout' | 'not_ready' | 'output_file_only' | 'evicted';
   task: TaskOutput | null;
+  message?: string;
 };
+
+function getTaskNotFoundMessage(taskId: string): string {
+  return `No task found with ID: ${taskId}. This background task is not present in the current task registry. It may not exist, may have already completed and been cleaned up, may belong to another session or process, or the ID may not match exactly. If you have the absolute <output_file> path from the task notification, use the Read tool on that path to retrieve the complete output.`;
+}
+
+async function outputFileExists(taskId: string): Promise<boolean> {
+  try {
+    await stat(getTaskOutputPath(taskId));
+    return true;
+  } catch (e) {
+    if (getErrnoCode(e) === 'ENOENT') {
+      return false;
+    }
+    return false;
+  }
+}
+
+async function getOutputFileOnlyData(taskId: string): Promise<TaskOutput | null> {
+  if (!(await outputFileExists(taskId))) {
+    return null;
+  }
+
+  const outputFile = getTaskOutputPath(taskId);
+  const output = await getTaskOutput(taskId);
+  return {
+    task_id: taskId,
+    status: 'output_file_only',
+    description:
+      'Task registry entry is no longer available; showing output from the current session output file only.',
+    output,
+    outputFile,
+  };
+}
 
 // Re-export Progress from centralized types to break import cycles
 export type { TaskOutputProgress as Progress } from 'src/types/tools.js';
@@ -85,6 +122,7 @@ async function getTaskOutputData(task: TaskState): Promise<TaskOutput> {
     status: task.status,
     description: task.description,
     output,
+    outputFile: task.outputFile,
   };
 
   // Add type-specific fields
@@ -218,10 +256,10 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const appState = getAppState();
     const task = appState.tasks?.[task_id] as TaskState | undefined;
 
-    if (!task) {
+    if (!task && !(await outputFileExists(task_id))) {
       return {
         result: false,
-        message: `No task found with ID: ${task_id}`,
+        message: getTaskNotFoundMessage(task_id),
         errorCode: 2,
       };
     }
@@ -236,7 +274,18 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const task = appState.tasks?.[task_id] as TaskState | undefined;
 
     if (!task) {
-      throw new Error(tf('No task found with ID: {task_id}', { task_id }));
+      const outputFileOnlyTask = await getOutputFileOnlyData(task_id);
+      if (outputFileOnlyTask) {
+        return {
+          data: {
+            retrieval_status: 'output_file_only' as const,
+            task: outputFileOnlyTask,
+            message:
+              'Task registry entry is no longer available; found the current session output file. Use Read on output_file for the complete output.',
+          },
+        };
+      }
+      throw new Error(getTaskNotFoundMessage(task_id));
     }
 
     if (!block) {
@@ -282,10 +331,11 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     );
 
     if (!completedTask) {
+      const outputFileOnlyTask = await getOutputFileOnlyData(task_id);
       return {
         data: {
-          retrieval_status: 'timeout' as const,
-          task: null,
+          retrieval_status: outputFileOnlyTask ? ('evicted' as const) : ('timeout' as const),
+          task: outputFileOnlyTask,
         },
       };
     }
@@ -320,8 +370,18 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
 
     if (data.task) {
       parts.push(`<task_id>${data.task.task_id}</task_id>`);
-      parts.push(`<task_type>${data.task.task_type}</task_type>`);
+      if (data.task.task_type) {
+        parts.push(`<task_type>${data.task.task_type}</task_type>`);
+      }
       parts.push(`<status>${data.task.status}</status>`);
+      if (data.task.outputFile) {
+        parts.push(`<output_file>${data.task.outputFile}</output_file>`);
+      }
+      if (data.retrieval_status === 'output_file_only' || data.retrieval_status === 'evicted') {
+        parts.push(
+          'The task registry entry is no longer available, so task type/status/final clean result cannot be verified. Use the Read tool on <output_file> to retrieve the complete output.',
+        );
+      }
 
       if (data.task.exitCode !== undefined && data.task.exitCode !== null) {
         parts.push(`<exit_code>${data.task.exitCode}</exit_code>`);
@@ -407,6 +467,20 @@ function TaskOutputResultDisplay({
   }
 
   const { task } = result;
+
+  if (result.retrieval_status === 'output_file_only' || result.retrieval_status === 'evicted') {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>Task registry entry is no longer available; showing current session output file only.</Text>
+        {task.outputFile && <Text dimColor>Read the output file for the complete output: {task.outputFile}</Text>}
+        {task.output && (
+          <Box paddingLeft={2} marginTop={1}>
+            <Text>{verbose ? task.output : task.output.slice(0, 500)}</Text>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   // For shell tasks, render like BashToolResultMessage
   if (task.task_type === 'local_bash') {
