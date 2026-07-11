@@ -28,6 +28,7 @@ import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'
+import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
@@ -44,6 +45,10 @@ import {
   parseClassifierResponse,
 } from './classifierShared.js'
 import { getClaudeTempDir } from './filesystem.js'
+
+type ClassifierProviderRuntimeConfig = Parameters<
+  typeof sideQuery
+>[0]['providerRuntimeConfig']
 
 // Dead code elimination: conditional imports for auto mode classifier prompts.
 // At build time, the bundler inlines .txt files as string literals. At test
@@ -721,6 +726,7 @@ async function classifyYoloActionXml(
     Anthropic.TextBlockParam | Anthropic.ImageBlockParam
   >,
   model: string,
+  providerRuntimeConfig: ClassifierProviderRuntimeConfig,
   promptLengths: {
     systemPrompt: number
     toolCalls: number
@@ -797,6 +803,7 @@ async function classifyYoloActionXml(
         signal,
         ...(mode !== 'fast' && { stop_sequences: ['</block>'] }),
         querySource: 'auto_mode',
+        ...(providerRuntimeConfig && { providerRuntimeConfig }),
         parentSpan,
       }
       const stage1Raw = await sideQuery(stage1Opts)
@@ -884,6 +891,7 @@ async function classifyYoloActionXml(
       maxRetries: getDefaultMaxRetries(),
       signal,
       querySource: 'auto_mode' as const,
+      ...(providerRuntimeConfig && { providerRuntimeConfig }),
       parentSpan,
     }
     const stage2Raw = await sideQuery(stage2Opts)
@@ -1114,7 +1122,17 @@ export async function classifyYoloAction(
     cache_control: cacheControl,
   })
 
-  const model = getClassifierModel()
+  const fast = getFastModelAndRuntime()
+  const explicitModel = getExplicitClassifierModel()
+  const providerRuntimeConfig = explicitModel
+    ? runtimeWithoutPinnedModelEnv(fast.runtime)
+    : fast.runtime
+  // Live auto-mode transcript classification is an internal sideQuery call, so
+  // route it through the fast slot when configured. Explicit auto-mode model
+  // overrides remain highest priority; otherwise a pinned fast runtime model
+  // becomes the classifier model. This is unrelated to the legacy Bash prompt
+  // classifier.
+  const model = explicitModel ?? fast.runtime?.model ?? getClassifierModel()
 
   // Dispatch to 2-stage XML classifier if enabled via GrowthBook
   if (isTwoStageClassifierEnabled()) {
@@ -1124,6 +1142,7 @@ export async function classifyYoloAction(
       userPrompt,
       userContentBlocks,
       model,
+      providerRuntimeConfig,
       promptLengths,
       signal,
       {
@@ -1166,6 +1185,7 @@ export async function classifyYoloAction(
       maxRetries: getDefaultMaxRetries(),
       signal,
       querySource: 'auto_mode' as const,
+      ...(providerRuntimeConfig && { providerRuntimeConfig }),
       parentSpan,
     }
     const result = await sideQuery(sideQueryOpts)
@@ -1337,12 +1357,7 @@ type AutoModeConfig = {
   jsonlTranscript?: boolean
 }
 
-/**
- * Get the model for the classifier.
- * Ant-only env var takes precedence, then GrowthBook JSON config override,
- * then the main loop model.
- */
-function getClassifierModel(): string {
+function getExplicitClassifierModel(): string | undefined {
   if (process.env.USER_TYPE === 'ant') {
     const envModel = process.env.CLAUDE_CODE_AUTO_MODE_MODEL
     if (envModel) return envModel
@@ -1351,9 +1366,31 @@ function getClassifierModel(): string {
     'tengu_auto_mode_config',
     {} as AutoModeConfig,
   )
-  if (config?.model) {
-    return config.model
-  }
+  return config?.model
+}
+
+function runtimeWithoutPinnedModelEnv(
+  runtime: ClassifierProviderRuntimeConfig,
+): ClassifierProviderRuntimeConfig {
+  if (!runtime?.env) return runtime
+  const env = { ...runtime.env }
+  delete env.OPENAI_MODEL
+  delete env.GEMINI_MODEL
+  delete env.GROK_MODEL
+  delete env.CURSOR_MODEL
+  delete env.CLAUDE_CODE_FAST_MODEL
+  return { ...runtime, model: undefined, env }
+}
+
+/**
+ * Get the model for the classifier.
+ * Ant-only env var takes precedence, then GrowthBook JSON config override,
+ * then the main loop model. Live classifier calls may further override the
+ * non-explicit fallback with the fast slot's pinned model.
+ */
+function getClassifierModel(): string {
+  const explicitModel = getExplicitClassifierModel()
+  if (explicitModel) return explicitModel
   // Poor mode: downgrade classifier to Sonnet to reduce cost
   if (isPoorModeActive()) {
     return getDefaultSonnetModel()

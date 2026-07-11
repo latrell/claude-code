@@ -145,11 +145,11 @@ describe('t', () => {
       tf(
         'Auto mode classifier requires confirmation for this {toolType}.\n{reason}',
         {
-          toolType: 'command',
+          toolType: t('command'),
           reason: 'Classifier unavailable',
         },
       ),
-    ).toBe('自动模式分类器要求确认此command。\nClassifier unavailable')
+    ).toBe('自动模式分类器要求确认此命令。\nClassifier unavailable')
     expect(
       tf(
         'Classifier {classifier} requires confirmation for this {toolType}.\n{reason}',

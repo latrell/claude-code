@@ -6,12 +6,14 @@ import ThemedText from '../design-system/ThemedText.js';
 import { useAppState } from '../../state/AppState.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
 import { permissionRuleValueToString } from '../../utils/permissions/permissionRuleParser.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 import type { Theme } from '../../utils/theme.js';
+
+type PermissionToolType = 'tool' | 'command' | 'edit' | 'read';
 
 export type PermissionRuleExplanationProps = {
   permissionResult: PermissionDecision;
-  toolType: 'tool' | 'command' | 'edit' | 'read';
+  toolType: PermissionToolType;
 };
 
 type DecisionReasonStrings = {
@@ -21,18 +23,23 @@ type DecisionReasonStrings = {
   themeColor?: keyof Theme;
 };
 
+function getPermissionToolTypeDisplayName(toolType: PermissionToolType): string {
+  return t(toolType);
+}
+
 function stringsForDecisionReason(
   reason: PermissionDecisionReason | undefined,
-  toolType: 'tool' | 'command' | 'edit' | 'read',
+  toolType: PermissionToolType,
 ): DecisionReasonStrings | null {
   if (!reason) {
     return null;
   }
   if ((feature('BASH_CLASSIFIER') || feature('TRANSCRIPT_CLASSIFIER')) && reason.type === 'classifier') {
+    const toolTypeDisplayName = getPermissionToolTypeDisplayName(toolType);
     if (reason.classifier === 'auto-mode') {
       return {
         reasonString: tf('Auto mode classifier requires confirmation for this {toolType}.\n{reason}', {
-          toolType,
+          toolType: toolTypeDisplayName,
           reason: reason.reason,
         }),
         configString: undefined,
@@ -42,7 +49,7 @@ function stringsForDecisionReason(
     return {
       reasonString: tf('Classifier {classifier} requires confirmation for this {toolType}.\n{reason}', {
         classifier: chalk.bold(reason.classifier),
-        toolType,
+        toolType: toolTypeDisplayName,
         reason: reason.reason,
       }),
       configString: undefined,
