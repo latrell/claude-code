@@ -2568,24 +2568,40 @@ const zh: Record<string, string> = {
   'This session only': '仅当前会话',
   'Custom model…': '自定义模型…',
   'type a model id, Enter to confirm': '输入模型 ID，回车确认',
-  'Model context windows…': '模型上下文窗口…',
-  'Model context windows': '模型上下文窗口',
-  'Pick a model to set its context window (used for auto-compact and context display)':
-    '选择模型以设置其上下文窗口（用于自动压缩和上下文用量显示）',
-  'ctx unknown, 200K assumed': '上下文窗口未知，按 200K 处理',
+  'Change pinned model…': '更换固定模型…',
+  'Change pinned model — {label}': '更换固定模型 — {label}',
+  'The selected model is pinned to this connection profile':
+    '选中的模型将固定到此连接档案',
+  'Thinking effort…': '思考强度…',
+  'Thinking effort — {label}': '思考强度 — {label}',
+  'Applied while this connection is active (Default = provider behavior)':
+    '此连接激活期间生效（默认 = 提供者默认行为）',
+  'Default (not set)': '默认（不设置）',
+  'Off — disable thinking': '关闭 — 禁用思考',
+  Medium: '中',
+  Max: '最大',
+  current: '当前',
+  'Context window…': '上下文窗口…',
+  'Duplicate connection…': '复制连接…',
+  'Duplicate connection — {label}': '复制连接 — {label}',
+  'Copies credentials and profile (model, thinking effort, context window) into a new connection':
+    '复制凭据与档案（模型、思考强度、上下文窗口）为一个新连接',
+  'Model — {label}': '模型 — {label}',
+  'Pick the model this connection is pinned to (change later via /connect or /model)':
+    '选择此连接固定使用的模型（之后可在 /connect 或 /model 中更改）',
+  'Tokens the model can hold — sizes auto-compact and the context display (leave empty to skip; 200K assumed)':
+    '模型可容纳的 token 数 — 决定自动压缩阈值与上下文用量显示（留空跳过，按 200K 处理）',
   'ctx unknown, 200K assumed — set via /connect':
     '上下文窗口未知，按 200K 处理 — 可在 /connect 中设置',
-  'Context window — {model}': '上下文窗口 — {model}',
-  'Current: {value} tokens ({source})': '当前：{value} tokens（{source}）',
-  'set manually': '手动设置',
-  'from preset': '来自预设',
-  'auto-detected': '自动识别',
+  'Context window — {label}': '上下文窗口 — {label}',
+  'Current: {value} tokens': '当前：{value} tokens',
+  'Detected: {value} tokens — Enter to accept':
+    '已识别：{value} tokens — 回车确认',
   'Not reported by the provider — enter it to size auto-compact correctly (200K assumed otherwise)':
     '提供者未上报此模型的上下文窗口 — 填写后自动压缩阈值才能按真实窗口计算（不填按 200K 处理）',
   'Context window': '上下文窗口',
   'e.g. 128K or 1M — leave empty to skip': '如 128K 或 1M — 留空跳过',
-  'e.g. 128K or 1M — leave empty to clear the manual value':
-    '如 128K 或 1M — 留空清除手动设置',
+  'e.g. 128K or 1M — leave empty to clear': '如 128K 或 1M — 留空清除',
   'Invalid context window — use a token count like 200000, 128K or 1M':
     '无效的上下文窗口 — 请输入 token 数，如 200000、128K 或 1M',
   'Switching…': '切换中…',

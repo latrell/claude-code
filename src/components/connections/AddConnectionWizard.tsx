@@ -1,7 +1,19 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
+import {
+  getModelContextWindowForConnection,
+  parseContextWindowInput,
+  recordAutoDetectedContextWindows,
+} from '../../services/connections/contextWindows.js';
+import {
+  fetchRemoteModelsForConnection,
+  pickerModelsForConnection,
+  supportsRemoteModelList,
+  type RemoteModel,
+} from '../../services/connections/modelCatalog.js';
+import { withContextWindow, withPinnedModel, withThinkingEffort } from '../../services/connections/profile.js';
 import { generateConnectionId, listConnections, upsertConnection } from '../../services/connections/store.js';
-import type { Connection, ConnectionKind, TierModels } from '../../services/connections/types.js';
+import type { Connection, ConnectionKind, ThinkingEffort, TierModels } from '../../services/connections/types.js';
 import { saveCurrentOAuthAccountToSlot } from '../../services/connections/oauthAccounts.js';
 import {
   CHINA_LLM_PROVIDERS,
@@ -29,6 +41,15 @@ type WizardStep =
   | { step: 'chatgpt-oauth'; scope: string }
   | { step: 'cursor-mode' }
   | { step: 'cursor-oauth'; scope: string }
+  /**
+   * Profile steps run between credential entry and finishCreate: pin a model,
+   * pick a thinking effort (skipped for Cursor — effort is encoded in the
+   * model id) and set a context window (skipped for OAuth kinds with
+   * provider-known windows). `back` is the pre-profile step Esc returns to.
+   */
+  | { step: 'profile-model'; draft: Connection; back: WizardStep }
+  | { step: 'profile-effort'; draft: Connection; back: WizardStep }
+  | { step: 'profile-context'; draft: Connection; back: WizardStep }
   | { step: 'error'; message: string };
 
 type Props = {
@@ -68,20 +89,87 @@ function findExisting(kind: ConnectionKind, match: (c: Connection) => boolean): 
   return listConnections().find(c => c.kind === kind && match(c));
 }
 
+/** Kinds where a context window entry is meaningful (provider-unknown). */
+function hasContextStep(kind: ConnectionKind): boolean {
+  return kind !== 'anthropic-oauth' && kind !== 'chatgpt-oauth';
+}
+
+const EFFORT_CHOICES: Array<{ value: ThinkingEffort; label: () => string }> = [
+  { value: 'off', label: () => t('Off — disable thinking') },
+  { value: 'low', label: () => t('Low') },
+  { value: 'medium', label: () => t('Medium') },
+  { value: 'high', label: () => t('High') },
+  { value: 'max', label: () => t('Max') },
+];
+
+function isThinkingEffort(value: string): value is ThinkingEffort {
+  return value === 'off' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
+}
+
 export function AddConnectionWizard({ onCreated, onCancel }: Props): React.ReactNode {
   const [step, setStep] = useState<WizardStep>({ step: 'kind' });
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [remoteModels, setRemoteModels] = useState<RemoteModel[]>([]);
+  // Holds the "Custom model…" text field value so the step only advances on
+  // Enter (Select's onChange with '__custom__'), not on every keystroke.
+  const [customModelInput, setCustomModelInput] = useState('');
+
+  // Fetch the live model list when entering the profile-model step. The
+  // draft is not persisted yet, so this uses the pure fetch — detected
+  // context windows are recorded onto the connection in finishCreate.
+  useEffect(() => {
+    setCustomModelInput('');
+    if (step.step !== 'profile-model') return;
+    const draft = step.draft;
+    if (!supportsRemoteModelList(draft.kind)) return;
+    let cancelled = false;
+    void fetchRemoteModelsForConnection(draft).then(models => {
+      if (!cancelled) setRemoteModels(models);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [step]);
 
   const finishCreate = useCallback(
     (connection: Connection) => {
       try {
         upsertConnection(connection);
+        if (remoteModels.some(m => m.contextLength !== undefined)) {
+          recordAutoDetectedContextWindows(connection.id, remoteModels);
+        }
         onCreated(connection);
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : String(err));
       }
     },
-    [onCreated],
+    [onCreated, remoteModels],
+  );
+
+  /** Enter the profile steps for a freshly built draft connection. */
+  const startProfile = useCallback((draft: Connection, back: WizardStep) => {
+    setSubmitError(null);
+    setStep({ step: 'profile-model', draft, back });
+  }, []);
+
+  const afterModelStep = useCallback((draft: Connection, back: WizardStep) => {
+    if (draft.kind === 'cursor') {
+      // Cursor encodes effort in the model id — skip the effort step.
+      setStep({ step: 'profile-context', draft, back });
+      return;
+    }
+    setStep({ step: 'profile-effort', draft, back });
+  }, []);
+
+  const afterEffortStep = useCallback(
+    (draft: Connection, back: WizardStep) => {
+      if (hasContextStep(draft.kind)) {
+        setStep({ step: 'profile-context', draft, back });
+        return;
+      }
+      finishCreate(draft);
+    },
+    [finishCreate],
   );
 
   const handleClaudeOAuthDone = useCallback(() => {
@@ -109,8 +197,8 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           accountEmail: account.emailAddress,
           createdAt: new Date().toISOString(),
         };
-    finishCreate(connection);
-  }, [finishCreate]);
+    startProfile(connection, { step: 'kind' });
+  }, [startProfile]);
 
   switch (step.step) {
     case 'kind': {
@@ -243,25 +331,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       const keyFormat =
         preset && presetMode === 'coding-plan' ? (preset.codingPlan?.keyFormat ?? preset.keyFormat) : preset?.keyFormat;
 
-      const tierFields: ConnectionFormField[] = [
-        {
-          key: 'haiku',
-          label: t('Haiku'),
-          placeholder: t('model for fast/background tasks (optional)'),
-        },
-        {
-          key: 'sonnet',
-          label: t('Sonnet'),
-          required: kind === 'gemini',
-          placeholder: t('default model (recommended)'),
-        },
-        {
-          key: 'opus',
-          label: t('Opus'),
-          placeholder: t('model for complex tasks (optional)'),
-        },
-      ];
-
       // Cursor uses a session token + machine id (both optional — falls back to
       // the signed-in Cursor IDE), and needs no base URL.
       const fields: ConnectionFormField[] = isCursor
@@ -284,7 +353,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               label: t('Machine ID'),
               placeholder: t('optional — auto-detected from the Cursor IDE'),
             },
-            ...tierFields,
           ]
         : [
             {
@@ -315,7 +383,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               required: true,
               placeholder: keyFormat ?? 'sk-…',
             },
-            ...(preset ? [] : tierFields),
           ];
 
       return (
@@ -345,13 +412,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           onCancel={() => setStep({ step: 'kind' })}
           onSubmit={values => {
             const label = values['label'] || preset?.label || kind;
-            const tiers: TierModels = preset
-              ? (presetTierModels(preset) ?? {})
-              : {
-                  ...(values['haiku'] && { haiku: values['haiku'] }),
-                  ...(values['sonnet'] && { sonnet: values['sonnet'] }),
-                  ...(values['opus'] && { opus: values['opus'] }),
-                };
+            const tiers = preset ? presetTierModels(preset) : undefined;
             const connection: Connection = {
               id: generateConnectionId(label),
               label,
@@ -359,14 +420,14 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               baseUrl: values['baseUrl'] || presetBaseUrl || undefined,
               apiKey: values['apiKey'] || undefined,
               ...(values['machineId'] && { machineId: values['machineId'] }),
-              ...(Object.keys(tiers).length > 0 && { tierModels: tiers }),
+              ...(tiers && { tierModels: tiers }),
               ...(preset && {
                 presetId: preset.id,
                 models: preset.models.filter(m => !m.deprecated).map(m => m.id),
               }),
               createdAt: new Date().toISOString(),
             };
-            finishCreate(connection);
+            startProfile(connection, step);
           }}
         />
       );
@@ -423,15 +484,14 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           onSuccess={() => {
             const existing = findExisting('cursor', c => c.credentialRef === step.scope);
             const label = t('Cursor Account');
-            finishCreate(
-              existing ?? {
-                id: step.scope,
-                label,
-                kind: 'cursor',
-                credentialRef: step.scope,
-                createdAt: new Date().toISOString(),
-              },
-            );
+            const connection: Connection = existing ?? {
+              id: step.scope,
+              label,
+              kind: 'cursor',
+              credentialRef: step.scope,
+              createdAt: new Date().toISOString(),
+            };
+            startProfile(connection, { step: 'cursor-mode' });
           }}
           onError={message => setStep({ step: 'error', message })}
         />
@@ -445,19 +505,146 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           onSuccess={() => {
             const existing = findExisting('chatgpt-oauth', c => c.credentialRef === step.scope);
             const label = t('ChatGPT Subscription');
-            finishCreate(
-              existing ?? {
-                id: step.scope,
-                label,
-                kind: 'chatgpt-oauth',
-                credentialRef: step.scope,
-                createdAt: new Date().toISOString(),
-              },
-            );
+            const connection: Connection = existing ?? {
+              id: step.scope,
+              label,
+              kind: 'chatgpt-oauth',
+              credentialRef: step.scope,
+              createdAt: new Date().toISOString(),
+            };
+            startProfile(connection, { step: 'kind' });
           }}
           onError={message => setStep({ step: 'error', message })}
         />
       );
+
+    case 'profile-model': {
+      const { draft, back } = step;
+      const models = pickerModelsForConnection(draft, remoteModels);
+      type PickValue = string;
+      const options = [
+        ...models.map(model => ({
+          label: model.label,
+          value: (model.value ?? '__default__') as PickValue,
+          description: model.description,
+        })),
+        {
+          label: t('Custom model…'),
+          value: '__custom__' as PickValue,
+          type: 'input' as const,
+          placeholder: t('type a model id, Enter to confirm'),
+          onChange: setCustomModelInput,
+        },
+        { label: t('Back'), value: '__back__' as PickValue },
+      ];
+      return (
+        <Box key="step-profile-model" flexDirection="column" gap={1}>
+          <Text bold>{tf('Model — {label}', { label: draft.label })}</Text>
+          <Text dimColor>{t('Pick the model this connection is pinned to (change later via /connect or /model)')}</Text>
+          <Select
+            options={options}
+            visibleOptionCount={10}
+            onCancel={() => setStep(back)}
+            onChange={value => {
+              if (value === '__back__') {
+                setStep(back);
+                return;
+              }
+              if (value === '__custom__') {
+                const trimmed = customModelInput.trim();
+                if (!trimmed) return;
+                afterModelStep(withPinnedModel(draft, trimmed), back);
+                return;
+              }
+              if (value === '__default__') {
+                afterModelStep(withPinnedModel(draft, undefined), back);
+                return;
+              }
+              afterModelStep(withPinnedModel(draft, value), back);
+            }}
+          />
+        </Box>
+      );
+    }
+
+    case 'profile-effort': {
+      const { draft, back } = step;
+      return (
+        <Box key="step-profile-effort" flexDirection="column" gap={1}>
+          <Text bold>{tf('Thinking effort — {label}', { label: draft.label })}</Text>
+          <Text dimColor>{t('Applied while this connection is active (Default = provider behavior)')}</Text>
+          <Select
+            options={[
+              { label: t('Default (not set)'), value: 'default' },
+              ...EFFORT_CHOICES.map(choice => ({
+                label: choice.label(),
+                value: choice.value as string,
+              })),
+              { label: t('Back'), value: '__back__' },
+            ]}
+            visibleOptionCount={8}
+            onCancel={() => setStep({ step: 'profile-model', draft, back })}
+            onChange={value => {
+              if (value === '__back__') {
+                setStep({ step: 'profile-model', draft, back });
+                return;
+              }
+              const next = withThinkingEffort(draft, isThinkingEffort(value) ? value : undefined);
+              afterEffortStep(next, back);
+            }}
+          />
+        </Box>
+      );
+    }
+
+    case 'profile-context': {
+      const { draft, back } = step;
+      const detected =
+        draft.contextWindow ??
+        (draft.model
+          ? (remoteModels.find(m => m.id === draft.model)?.contextLength ??
+            getModelContextWindowForConnection(draft, draft.model)?.tokens)
+          : undefined);
+      const backStep: WizardStep =
+        draft.kind === 'cursor' ? { step: 'profile-model', draft, back } : { step: 'profile-effort', draft, back };
+      return (
+        <ConnectionForm
+          key="step-profile-context"
+          title={tf('Context window — {label}', { label: draft.label })}
+          subtitle={t(
+            'Tokens the model can hold — sizes auto-compact and the context display (leave empty to skip; 200K assumed)',
+          )}
+          fields={[
+            {
+              key: 'contextWindow',
+              label: t('Context window'),
+              initialValue: detected !== undefined ? String(detected) : '',
+              placeholder: t('e.g. 128K or 1M — leave empty to skip'),
+            },
+          ]}
+          submitError={submitError}
+          onCancel={() => {
+            setSubmitError(null);
+            setStep(backStep);
+          }}
+          onSubmit={values => {
+            const raw = (values['contextWindow'] ?? '').trim();
+            if (!raw) {
+              setSubmitError(null);
+              finishCreate(withContextWindow(draft, undefined));
+              return;
+            }
+            const tokens = parseContextWindowInput(raw);
+            if (tokens === undefined) {
+              setSubmitError(t('Invalid context window — use a token count like 200000, 128K or 1M'));
+              return;
+            }
+            setSubmitError(null);
+            finishCreate(withContextWindow(draft, tokens));
+          }}
+        />
+      );
+    }
 
     case 'error':
       return (

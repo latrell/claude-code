@@ -204,6 +204,41 @@ export function getStaticModelsForConnection(
   return out
 }
 
+/**
+ * Models offered by the picker UIs for a connection: the static catalog with
+ * the live remote list merged on top. For key-based third-party kinds
+ * without a tier mapping the "Default" entry is dropped — an explicit model
+ * id is required for the endpoint to work.
+ */
+export function pickerModelsForConnection(
+  connection: Connection,
+  remoteModels: RemoteModel[],
+): CatalogModel[] {
+  let models = getStaticModelsForConnection(connection)
+  const needsExplicitModel =
+    (connection.kind === 'openai-compat' ||
+      connection.kind === 'gemini' ||
+      connection.kind === 'grok') &&
+    !connection.tierModels?.sonnet
+  if (needsExplicitModel) {
+    models = models.filter(m => m.value !== null)
+  }
+  const seen = new Set(models.map(m => m.value ?? ''))
+  for (const model of remoteModels) {
+    if (seen.has(model.id)) continue
+    seen.add(model.id)
+    models.push({
+      value: model.id,
+      label: model.id,
+      description:
+        model.contextLength !== undefined
+          ? `ctx ${formatContextWindow(model.contextLength)}`
+          : undefined,
+    })
+  }
+  return models
+}
+
 /** Kinds whose live model list can be fetched from the provider. */
 export function supportsRemoteModelList(kind: Connection['kind']): boolean {
   return (

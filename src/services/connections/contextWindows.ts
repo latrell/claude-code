@@ -176,40 +176,6 @@ export function getConnectionContextWindow(model: string): number | undefined {
 }
 
 /**
- * Persist a manually entered context window (source: manual — wins over
- * auto-detection). `tokens: undefined` removes the entry. Best-effort:
- * a failed registry write must not crash the settings UI.
- */
-export function setManualContextWindow(
-  connectionId: string,
-  modelId: string,
-  tokens: number | undefined,
-): void {
-  const connection = findConnection(connectionId)
-  if (!connection) return
-  const updated: Record<string, ModelContextWindow> = {
-    ...(connection.modelContextWindows ?? {}),
-  }
-  if (tokens === undefined) {
-    if (!(modelId in updated)) return
-    delete updated[modelId]
-  } else {
-    const current = updated[modelId]
-    if (current?.tokens === tokens && current.source === 'manual') return
-    updated[modelId] = { tokens, source: 'manual' }
-  }
-  try {
-    upsertConnection({
-      ...connection,
-      modelContextWindows:
-        Object.keys(updated).length > 0 ? updated : undefined,
-    })
-  } catch (err) {
-    logError(err)
-  }
-}
-
-/**
  * Record context windows auto-detected from a provider's model list.
  * Never overwrites manual entries; writes only when something changed.
  * Best-effort: persistence failures must never break the model picker.

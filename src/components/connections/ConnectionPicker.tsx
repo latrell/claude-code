@@ -2,8 +2,8 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import { getSessionAssignment } from '../../services/connections/activate.js';
-import { formatContextWindow } from '../../services/connections/contextWindows.js';
 import { importLegacyConnections } from '../../services/connections/migrate.js';
+import { connectionProfileSummary } from '../../services/connections/profile.js';
 import { switchSlotToConnection } from '../../services/connections/slotSwitch.js';
 import { getDefaultAssignment, listConnections } from '../../services/connections/store.js';
 import type { AgentSlot, Connection } from '../../services/connections/types.js';
@@ -46,14 +46,7 @@ function itemMarkers(connection: Connection, slot: AgentSlot): string {
 }
 
 function connectionDetails(connection: Connection): string {
-  const parts: string[] = [kindDisplayName(connection.kind), connection.model ?? t('provider default')];
-  if (connection.thinkingEffort) {
-    parts.push(`effort ${connection.thinkingEffort}`);
-  }
-  if (connection.contextWindow) {
-    parts.push(`ctx ${formatContextWindow(connection.contextWindow)}`);
-  }
-  return parts.join(' · ');
+  return [kindDisplayName(connection.kind), connectionProfileSummary(connection)].join(' · ');
 }
 
 /**

@@ -98,9 +98,10 @@ export function getContextWindowForModel(
     }
   }
 
-  // Connection registry (/connect + /models): context windows auto-detected
-  // from the provider's model list or entered manually. Primary channel for
-  // third-party models, which otherwise fall through to the 200k default.
+  // Connection registry (/connect): the connection-level context window
+  // (auto-synced from the provider's model list or entered manually).
+  // Primary channel for third-party models, which otherwise fall through
+  // to the 200k default.
   const connectionWindow = getConnectionContextWindow(model)
   if (connectionWindow !== undefined) {
     return connectionWindow

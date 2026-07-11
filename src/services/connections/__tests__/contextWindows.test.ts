@@ -13,7 +13,6 @@ const {
   getModelContextWindowForConnection,
   parseContextWindowInput,
   recordAutoDetectedContextWindows,
-  setManualContextWindow,
 } = await import('../contextWindows.js')
 const { setSessionAssignment } = await import('../sessionAssignments.js')
 const {
@@ -268,34 +267,6 @@ describe('getConnectionContextWindow', () => {
     setDefaultAssignment('main', { connectionId: 'default-conn' })
     setSessionAssignment('main', { connectionId: 'session-conn' })
     expect(getConnectionContextWindow('shared')).toBe(300_000)
-  })
-})
-
-describe('setManualContextWindow', () => {
-  test('persists a manual entry', () => {
-    upsertConnection(conn())
-    setManualContextWindow('remote-a', 'model-a', 131_072)
-    expect(findConnection('remote-a')?.modelContextWindows).toEqual({
-      'model-a': { tokens: 131_072, source: 'manual' },
-    })
-  })
-
-  test('clearing removes the entry and empties the map', () => {
-    upsertConnection(
-      conn({
-        modelContextWindows: {
-          'model-a': { tokens: 131_072, source: 'manual' },
-        },
-      }),
-    )
-    setManualContextWindow('remote-a', 'model-a', undefined)
-    expect(findConnection('remote-a')?.modelContextWindows).toBeUndefined()
-  })
-
-  test('ignores unknown connections', () => {
-    expect(() =>
-      setManualContextWindow('missing', 'model-a', 131_072),
-    ).not.toThrow()
   })
 })
 

@@ -10,25 +10,34 @@ import {
   formatContextWindow,
   getModelContextWindowForConnection,
   parseContextWindowInput,
-  setManualContextWindow,
 } from '../../services/connections/contextWindows.js';
 import { importLegacyConnections } from '../../services/connections/migrate.js';
 import {
   fetchAndRecordRemoteModels,
-  getStaticModelsForConnection,
+  pickerModelsForConnection,
   supportsRemoteModelList,
-  type CatalogModel,
   type RemoteModel,
 } from '../../services/connections/modelCatalog.js';
 import { removeOAuthAccountSlot } from '../../services/connections/oauthAccounts.js';
 import {
+  connectionProfileSummary,
+  connectionRequiresPinnedModel,
+  duplicateConnection,
+  withContextWindow,
+  withPinnedModel,
+  withThinkingEffort,
+} from '../../services/connections/profile.js';
+import {
   _invalidateConnectionsCache,
+  findConnection,
+  generateConnectionId,
   getDefaultAssignment,
   listConnections,
   removeConnection,
+  updateConnectionModel,
   upsertConnection,
 } from '../../services/connections/store.js';
-import type { AgentSlot, Connection, ConnectionKind } from '../../services/connections/types.js';
+import type { AgentSlot, Connection, ConnectionKind, ThinkingEffort } from '../../services/connections/types.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { removeCursorOAuth } from '../../services/api/cursor/cursorOAuth.js';
 import { t, tf } from '../../i18n/t.js';
@@ -52,28 +61,26 @@ const ACTIVATION_MENU_ACTIONS: Record<string, { slot: AgentSlot; scope: Activati
   'activate:subagent:global': { slot: 'subagent', scope: 'global' },
 };
 
+type PendingActivation = { slot: AgentSlot; scope: ActivationScope };
+
 type View =
   | { mode: 'list' }
   | { mode: 'menu'; connectionId: string }
-  | {
-      mode: 'model-pick';
-      connectionId: string;
-      slot: AgentSlot;
-      scope: ActivationScope;
-    }
-  /** Pick which model to configure a context window for (menu entry). */
-  | { mode: 'ctx-model-pick'; connectionId: string }
   /**
-   * Context window input for one model. `next` carries the pending
-   * activation when this step was reached from the model picker;
-   * null = editing from the connection menu.
+   * Model picker for a connection. `next` carries the pending activation
+   * when this step guards an activate action (connection had no pinned
+   * model yet); null = "Change pinned model…" from the connection menu.
+   * Picking a model always pins it (updateConnectionModel).
    */
-  | {
-      mode: 'context-window';
-      connectionId: string;
-      model: string;
-      next: { slot: AgentSlot; scope: ActivationScope } | null;
-    }
+  | { mode: 'model-pick'; connectionId: string; next: PendingActivation | null }
+  /**
+   * Connection-level context window editor. `next` carries the pending
+   * activation when reached from the model picker (window unknown for the
+   * freshly pinned model); null = editing from the connection menu.
+   */
+  | { mode: 'context-window'; connectionId: string; next: PendingActivation | null }
+  | { mode: 'effort'; connectionId: string }
+  | { mode: 'duplicate'; connectionId: string }
   | { mode: 'add' }
   | { mode: 'edit'; connectionId: string }
   | { mode: 'confirm-delete'; connectionId: string }
@@ -133,46 +140,51 @@ function connectionDetail(connection: Connection): string {
   const parts: string[] = [kindDisplayName(connection.kind)];
   if (connection.accountEmail) parts.push(connection.accountEmail);
   else if (connection.baseUrl) parts.push(connection.baseUrl);
+  parts.push(connectionProfileSummary(connection));
   const badges = connectionBadges(connection);
   if (badges.length > 0) parts.push(badges.join(' · '));
   return parts.join(' · ');
 }
 
-/**
- * Models offered by the picker for a connection. For key-based third-party
- * kinds without a tier mapping the "Default" entry is dropped — an explicit
- * model id is required for the endpoint to work.
- */
-function pickerModels(connection: Connection, remoteModels: RemoteModel[]): CatalogModel[] {
-  let models = getStaticModelsForConnection(connection);
-  const needsExplicitModel =
-    (connection.kind === 'openai-compat' || connection.kind === 'gemini' || connection.kind === 'grok') &&
-    !connection.tierModels?.sonnet;
-  if (needsExplicitModel) {
-    models = models.filter(m => m.value !== null);
-  }
-  const seen = new Set(models.map(m => m.value ?? ''));
-  for (const model of remoteModels) {
-    if (seen.has(model.id)) continue;
-    seen.add(model.id);
-    models.push({
-      value: model.id,
-      label: model.id,
-      description: model.contextLength !== undefined ? `ctx ${formatContextWindow(model.contextLength)}` : undefined,
-    });
-  }
-  return models;
+/** Kinds where a connection-level context window entry is meaningful. */
+function hasContextConfig(kind: ConnectionKind): boolean {
+  return kind !== 'anthropic-oauth' && kind !== 'chatgpt-oauth';
 }
 
 /**
- * Whether picking `model` should route through the context window step:
- * third-party kinds only, and only when no window is known yet (auto,
- * manual or preset). Once configured the picker activates directly.
+ * Whether activating this connection should route through the context
+ * window step: third-party kinds only, and only when neither the
+ * connection-level window nor a per-model/preset window for the pinned
+ * model is known. Once configured, activation proceeds directly.
  */
-function needsContextWindowPrompt(connection: Connection, model: string | null): model is string {
-  if (!model) return false;
+function needsContextWindowPrompt(connection: Connection): boolean {
   if (!supportsRemoteModelList(connection.kind)) return false;
+  if (connection.contextWindow !== undefined) return false;
+  const model = connection.model;
+  if (!model) return true;
   return getModelContextWindowForConnection(connection, model) === undefined;
+}
+
+const EFFORT_VALUES: ThinkingEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+
+function effortLabel(effort: ThinkingEffort): string {
+  switch (effort) {
+    case 'off':
+      return t('Off — disable thinking');
+    case 'low':
+      return t('Low');
+    case 'medium':
+      return t('Medium');
+    case 'high':
+      return t('High');
+    case 'max':
+      return t('Max');
+    default: {
+      const _exhaustive: never = effort;
+      void _exhaustive;
+      return String(effort);
+    }
+  }
 }
 
 export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: Props): React.ReactNode {
@@ -207,7 +219,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
     // Reset the custom-model field between picker visits so a value typed in
     // one picker can't leak into another.
     setCustomModelInput('');
-    if (view.mode !== 'model-pick' && view.mode !== 'ctx-model-pick') {
+    if (view.mode !== 'model-pick') {
       // Keep the empty-array identity stable — a fresh [] on every view
       // change forces a pointless extra re-render of the active view.
       setRemoteModels(prev => (prev.length === 0 ? prev : []));
@@ -230,7 +242,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   }, [view]);
 
   const doActivate = useCallback(
-    async (connection: Connection, slot: AgentSlot, scope: ActivationScope, model: string | null) => {
+    async (connection: Connection, slot: AgentSlot, scope: ActivationScope, model?: string | null) => {
       const previous: View = { mode: 'menu', connectionId: connection.id };
       setView({ mode: 'busy', message: t('Switching…') });
       const result =
@@ -249,13 +261,16 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         onMainModelChange(result.mainLoopModel ?? null);
       }
       onAuthChanged();
+      const fresh = listConnections().find(c => c.id === connection.id) ?? connection;
+      const effectiveModel = model ?? fresh.model;
       let modelSuffix = '';
-      if (model) {
-        const fresh = listConnections().find(c => c.id === connection.id) ?? connection;
-        const ctx = supportsRemoteModelList(connection.kind)
-          ? getModelContextWindowForConnection(fresh, model)
-          : undefined;
-        modelSuffix = ctx ? ` (${model} · ctx ${formatContextWindow(ctx.tokens)})` : ` (${model})`;
+      if (effectiveModel) {
+        const ctx =
+          fresh.contextWindow ??
+          (supportsRemoteModelList(fresh.kind)
+            ? getModelContextWindowForConnection(fresh, effectiveModel)?.tokens
+            : undefined);
+        modelSuffix = ctx ? ` (${effectiveModel} · ctx ${formatContextWindow(ctx)})` : ` (${effectiveModel})`;
       }
       const message =
         slot === 'main'
@@ -280,6 +295,34 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       onDone(message);
     },
     [onDone, onMainModelChange, onAuthChanged],
+  );
+
+  /**
+   * Redeploy a connection to every slot it is currently active in, after a
+   * profile edit from the menu (pinned model / thinking effort). Global when
+   * the connection is the slot's global default (persisted deployment stays
+   * in sync), session-only when it is merely the session assignment.
+   */
+  const redeployIfActive = useCallback(
+    async (connectionId: string) => {
+      const fresh = findConnection(connectionId);
+      if (!fresh) return;
+      let touched = false;
+      for (const slot of ['main', 'subagent'] as const) {
+        const isDefault = getDefaultAssignment(slot)?.connectionId === fresh.id;
+        const isSession = getSessionAssignment(slot)?.connectionId === fresh.id;
+        if (!isDefault && !isSession) continue;
+        const result = isDefault
+          ? await activateConnectionGlobally(fresh, slot)
+          : await activateConnectionForSession(fresh, slot);
+        if (result.success && slot === 'main') {
+          onMainModelChange(result.mainLoopModel ?? null);
+        }
+        touched = true;
+      }
+      if (touched) onAuthChanged();
+    },
+    [onMainModelChange, onAuthChanged],
   );
 
   const doDelete = useCallback(
@@ -392,33 +435,63 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   label: t('Set as global default (subagents)'),
                   value: 'activate:subagent:global',
                 },
-                ...(supportsRemoteModelList(connection.kind)
+                {
+                  label: t('Change pinned model…'),
+                  value: 'model',
+                  description: connection.model,
+                },
+                ...(connection.kind !== 'cursor'
                   ? [
                       {
-                        label: t('Model context windows…'),
-                        value: 'ctx',
+                        label: t('Thinking effort…'),
+                        value: 'effort',
+                        description: connection.thinkingEffort,
                       },
                     ]
                   : []),
+                ...(hasContextConfig(connection.kind)
+                  ? [
+                      {
+                        label: t('Context window…'),
+                        value: 'ctx',
+                        description: connection.contextWindow
+                          ? formatContextWindow(connection.contextWindow)
+                          : undefined,
+                      },
+                    ]
+                  : []),
+                { label: t('Duplicate connection…'), value: 'duplicate' },
                 { label: t('Edit'), value: 'edit' },
                 { label: t('Delete'), value: 'delete' },
                 { label: t('Back'), value: 'back' },
               ]}
-              visibleOptionCount={8}
+              visibleOptionCount={11}
               onCancel={() => setView({ mode: 'list' })}
               onChange={value => {
                 const activation = ACTIVATION_MENU_ACTIONS[value];
                 if (activation) {
-                  setView({
-                    mode: 'model-pick',
-                    connectionId: connection.id,
-                    slot: activation.slot,
-                    scope: activation.scope,
-                  });
+                  // Activation deploys the connection profile as-is; only a
+                  // key-based third-party connection without a pinned model
+                  // needs the guided model pick first.
+                  if (!connection.model && connectionRequiresPinnedModel(connection.kind)) {
+                    setView({
+                      mode: 'model-pick',
+                      connectionId: connection.id,
+                      next: activation,
+                    });
+                  } else {
+                    void doActivate(connection, activation.slot, activation.scope);
+                  }
                   return;
                 }
-                if (value === 'ctx') {
-                  setView({ mode: 'ctx-model-pick', connectionId: connection.id });
+                if (value === 'model') {
+                  setView({ mode: 'model-pick', connectionId: connection.id, next: null });
+                } else if (value === 'effort') {
+                  setView({ mode: 'effort', connectionId: connection.id });
+                } else if (value === 'ctx') {
+                  setView({ mode: 'context-window', connectionId: connection.id, next: null });
+                } else if (value === 'duplicate') {
+                  setView({ mode: 'duplicate', connectionId: connection.id });
                 } else if (value === 'edit') {
                   setView({ mode: 'edit', connectionId: connection.id });
                 } else if (value === 'delete') {
@@ -438,20 +511,40 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           setView({ mode: 'list' });
           return null;
         }
-        const models = pickerModels(connection, remoteModels);
-        // Picking a model without a known context window inserts the
-        // (skippable) context window step before activating.
+        const models = pickerModelsForConnection(connection, remoteModels);
+        // Picking a concrete model pins it to the connection profile. On the
+        // guided activation path a still-unknown context window inserts the
+        // (skippable) window step before activating; on the menu path the
+        // active slots are redeployed so the change applies immediately.
         const pickModel = (model: string | null) => {
-          if (needsContextWindowPrompt(connection, model)) {
-            setView({
-              mode: 'context-window',
-              connectionId: connection.id,
-              model,
-              next: { slot: view.slot, scope: view.scope },
-            });
+          if (model === null) {
+            if (view.next) {
+              void doActivate(connection, view.next.slot, view.next.scope, null);
+            } else {
+              // Menu path: "Default" clears the pinned model (provider default)
+              upsertConnection(withPinnedModel(connection, undefined));
+              refresh();
+              setView({ mode: 'menu', connectionId: connection.id });
+            }
             return;
           }
-          void doActivate(connection, view.slot, view.scope, model);
+          updateConnectionModel(connection.id, model);
+          refresh();
+          const fresh = findConnection(connection.id) ?? connection;
+          if (view.next) {
+            if (needsContextWindowPrompt(fresh)) {
+              setView({
+                mode: 'context-window',
+                connectionId: connection.id,
+                next: view.next,
+              });
+              return;
+            }
+            void doActivate(fresh, view.next.slot, view.next.scope);
+            return;
+          }
+          void redeployIfActive(connection.id);
+          setView({ mode: 'menu', connectionId: connection.id });
         };
         type PickValue = string | null;
         const options = [
@@ -471,8 +564,20 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         ];
         return (
           <Box flexDirection="column" gap={1}>
-            <Text bold>{view.slot === 'main' ? t('Pick a model (main agent)') : t('Pick a model (subagents)')}</Text>
-            <Text dimColor>{view.scope === 'global' ? t('Persists across sessions') : t('This session only')}</Text>
+            <Text bold>
+              {view.next
+                ? view.next.slot === 'main'
+                  ? t('Pick a model (main agent)')
+                  : t('Pick a model (subagents)')
+                : tf('Change pinned model — {label}', { label: connection.label })}
+            </Text>
+            <Text dimColor>
+              {view.next
+                ? view.next.scope === 'global'
+                  ? t('Persists across sessions')
+                  : t('This session only')
+                : t('The selected model is pinned to this connection profile')}
+            </Text>
             <Select
               options={options}
               visibleOptionCount={10}
@@ -494,117 +599,46 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         );
       }
 
-      case 'ctx-model-pick': {
-        const connection = connections.find(c => c.id === view.connectionId);
-        if (!connection) {
-          setView({ mode: 'list' });
-          return null;
-        }
-        const models = pickerModels(connection, remoteModels).filter(m => m.value !== null);
-        type CtxPickValue = string;
-        const options = [
-          ...models.map(model => {
-            const ctx = getModelContextWindowForConnection(connection, model.value ?? '');
-            return {
-              label: model.label,
-              value: (model.value ?? '') as CtxPickValue,
-              description: ctx ? `ctx ${formatContextWindow(ctx.tokens)}` : t('ctx unknown, 200K assumed'),
-            };
-          }),
-          {
-            label: t('Custom model…'),
-            value: '__custom__' as CtxPickValue,
-            type: 'input' as const,
-            placeholder: t('type a model id, Enter to confirm'),
-            onChange: setCustomModelInput,
-          },
-          { label: t('Back'), value: '__back__' as CtxPickValue },
-        ];
-        return (
-          <Box flexDirection="column" gap={1}>
-            <Text bold>{t('Model context windows')}</Text>
-            <Text dimColor>
-              {t('Pick a model to set its context window (used for auto-compact and context display)')}
-            </Text>
-            <Select
-              options={options}
-              visibleOptionCount={10}
-              onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
-              onChange={value => {
-                if (value === '__back__') {
-                  setView({ mode: 'menu', connectionId: connection.id });
-                  return;
-                }
-                if (value === '__custom__') {
-                  const trimmed = customModelInput.trim();
-                  if (!trimmed) return;
-                  setView({
-                    mode: 'context-window',
-                    connectionId: connection.id,
-                    model: trimmed,
-                    next: null,
-                  });
-                  return;
-                }
-                setView({
-                  mode: 'context-window',
-                  connectionId: connection.id,
-                  model: value,
-                  next: null,
-                });
-              }}
-            />
-          </Box>
-        );
-      }
-
       case 'context-window': {
         const connection = connections.find(c => c.id === view.connectionId);
         if (!connection) {
           setView({ mode: 'list' });
           return null;
         }
-        const current = getModelContextWindowForConnection(connection, view.model);
+        const current = connection.contextWindow;
+        const detected =
+          current ??
+          (connection.model ? getModelContextWindowForConnection(connection, connection.model)?.tokens : undefined);
         const backView: View = view.next
-          ? {
-              mode: 'model-pick',
-              connectionId: connection.id,
-              slot: view.next.slot,
-              scope: view.next.scope,
-            }
-          : { mode: 'ctx-model-pick', connectionId: connection.id };
+          ? { mode: 'model-pick', connectionId: connection.id, next: view.next }
+          : { mode: 'menu', connectionId: connection.id };
         const proceed = () => {
           if (view.next) {
-            void doActivate(connection, view.next.slot, view.next.scope, view.model);
+            const fresh = findConnection(connection.id) ?? connection;
+            void doActivate(fresh, view.next.slot, view.next.scope);
           } else {
             refresh();
-            setView({ mode: 'ctx-model-pick', connectionId: connection.id });
+            setView({ mode: 'menu', connectionId: connection.id });
           }
         };
         return (
           <ConnectionForm
-            title={tf('Context window — {model}', { model: view.model })}
+            title={tf('Context window — {label}', { label: connection.label })}
             subtitle={
-              current
-                ? tf('Current: {value} tokens ({source})', {
-                    value: String(current.tokens),
-                    source:
-                      current.source === 'manual'
-                        ? t('set manually')
-                        : current.source === 'preset'
-                          ? t('from preset')
-                          : t('auto-detected'),
-                  })
-                : t('Not reported by the provider — enter it to size auto-compact correctly (200K assumed otherwise)')
+              current !== undefined
+                ? tf('Current: {value} tokens', { value: String(current) })
+                : detected !== undefined
+                  ? tf('Detected: {value} tokens — Enter to accept', { value: String(detected) })
+                  : t('Not reported by the provider — enter it to size auto-compact correctly (200K assumed otherwise)')
             }
             fields={[
               {
                 key: 'contextWindow',
                 label: t('Context window'),
-                initialValue: current?.source === 'manual' ? String(current.tokens) : '',
+                initialValue: detected !== undefined ? String(detected) : '',
                 placeholder: view.next
                   ? t('e.g. 128K or 1M — leave empty to skip')
-                  : t('e.g. 128K or 1M — leave empty to clear the manual value'),
+                  : t('e.g. 128K or 1M — leave empty to clear'),
               },
             ]}
             submitError={submitError}
@@ -617,8 +651,8 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               if (!raw) {
                 setSubmitError(null);
                 if (!view.next) {
-                  // Menu edit path: empty clears the manual override
-                  setManualContextWindow(connection.id, view.model, undefined);
+                  // Menu edit path: empty clears the connection-level window
+                  upsertConnection(withContextWindow(connection, undefined));
                 }
                 proceed();
                 return;
@@ -629,8 +663,93 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 return;
               }
               setSubmitError(null);
-              setManualContextWindow(connection.id, view.model, tokens);
+              upsertConnection(withContextWindow(connection, tokens));
               proceed();
+            }}
+          />
+        );
+      }
+
+      case 'effort': {
+        const connection = connections.find(c => c.id === view.connectionId);
+        if (!connection) {
+          setView({ mode: 'list' });
+          return null;
+        }
+        const apply = (effort: ThinkingEffort | undefined) => {
+          upsertConnection(withThinkingEffort(connection, effort));
+          refresh();
+          void redeployIfActive(connection.id);
+          setView({ mode: 'menu', connectionId: connection.id });
+        };
+        return (
+          <Box flexDirection="column" gap={1}>
+            <Text bold>{tf('Thinking effort — {label}', { label: connection.label })}</Text>
+            <Text dimColor>{t('Applied while this connection is active (Default = provider behavior)')}</Text>
+            <Select
+              options={[
+                {
+                  label: t('Default (not set)'),
+                  value: 'default',
+                  description: connection.thinkingEffort === undefined ? t('current') : undefined,
+                },
+                ...EFFORT_VALUES.map(effort => ({
+                  label: effortLabel(effort),
+                  value: effort as string,
+                  description: connection.thinkingEffort === effort ? t('current') : undefined,
+                })),
+                { label: t('Back'), value: '__back__' },
+              ]}
+              visibleOptionCount={8}
+              onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
+              onChange={value => {
+                if (value === '__back__') {
+                  setView({ mode: 'menu', connectionId: connection.id });
+                  return;
+                }
+                apply(value === 'default' ? undefined : (value as ThinkingEffort));
+              }}
+            />
+          </Box>
+        );
+      }
+
+      case 'duplicate': {
+        const connection = connections.find(c => c.id === view.connectionId);
+        if (!connection) {
+          setView({ mode: 'list' });
+          return null;
+        }
+        return (
+          <ConnectionForm
+            title={tf('Duplicate connection — {label}', { label: connection.label })}
+            subtitle={t(
+              'Copies credentials and profile (model, thinking effort, context window) into a new connection',
+            )}
+            fields={[
+              {
+                key: 'label',
+                label: t('Name'),
+                required: true,
+                initialValue: `${connection.label} 2`,
+              },
+            ]}
+            submitError={submitError}
+            onCancel={() => {
+              setSubmitError(null);
+              setView({ mode: 'menu', connectionId: connection.id });
+            }}
+            onSubmit={values => {
+              const label = values['label'] || `${connection.label} 2`;
+              try {
+                const copy = duplicateConnection(connection, generateConnectionId(label), label);
+                upsertConnection(copy);
+                refresh();
+                setSubmitError(null);
+                setView({ mode: 'menu', connectionId: copy.id });
+              } catch (err) {
+                setSubmitError(err instanceof Error ? err.message : String(err));
+              }
             }}
           />
         );
@@ -714,28 +833,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               placeholder: t('optional — auto-detected from the Cursor IDE'),
             });
           }
-          if (!hasPreset || isCursorManual) {
-            fields.push(
-              {
-                key: 'haiku',
-                label: t('Haiku'),
-                initialValue: connection.tierModels?.haiku ?? '',
-                placeholder: t('model for fast/background tasks (optional)'),
-              },
-              {
-                key: 'sonnet',
-                label: t('Sonnet'),
-                initialValue: connection.tierModels?.sonnet ?? '',
-                placeholder: t('default model (recommended)'),
-              },
-              {
-                key: 'opus',
-                label: t('Opus'),
-                initialValue: connection.tierModels?.opus ?? '',
-                placeholder: t('model for complex tasks (optional)'),
-              },
-            );
-          }
         }
 
         return (
@@ -760,20 +857,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 updated.apiKey = values['apiKey'] || undefined;
                 if (isCursorManual) {
                   updated.machineId = values['machineId'] || undefined;
-                }
-                if (!hasPreset || isCursorManual) {
-                  const haiku = values['haiku']?.trim();
-                  const sonnet = values['sonnet']?.trim();
-                  const opus = values['opus']?.trim();
-                  if (haiku || sonnet || opus) {
-                    updated.tierModels = {
-                      ...(haiku && { haiku }),
-                      ...(sonnet && { sonnet }),
-                      ...(opus && { opus }),
-                    };
-                  } else {
-                    delete updated.tierModels;
-                  }
                 }
               }
 
@@ -851,13 +934,15 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   // unmount hook (which invalidates the previous frame for a full repaint)
   // never fires, and rows from the taller previous view linger on screen.
   const viewKey =
-    view.mode === 'menu' || view.mode === 'edit' || view.mode === 'confirm-delete' || view.mode === 'ctx-model-pick'
+    view.mode === 'menu' ||
+    view.mode === 'edit' ||
+    view.mode === 'confirm-delete' ||
+    view.mode === 'effort' ||
+    view.mode === 'duplicate'
       ? `${view.mode}:${view.connectionId}`
-      : view.mode === 'model-pick'
-        ? `${view.mode}:${view.connectionId}:${view.slot}:${view.scope}`
-        : view.mode === 'context-window'
-          ? `${view.mode}:${view.connectionId}:${view.model}`
-          : view.mode;
+      : view.mode === 'model-pick' || view.mode === 'context-window'
+        ? `${view.mode}:${view.connectionId}:${view.next ? `${view.next.slot}:${view.next.scope}` : 'menu'}`
+        : view.mode;
 
   return (
     <Dialog title={t('Connections')} onCancel={() => onDone()}>
