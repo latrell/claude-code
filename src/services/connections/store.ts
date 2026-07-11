@@ -51,16 +51,14 @@ function emptyFile(): ConnectionsFile {
   return { version: CONNECTIONS_FILE_VERSION, connections: [] }
 }
 
-// ── Lazy migration (legacy catalog → pinned-model profile) ──────────────────
+// ── Profile derivation (legacy catalog → pinned-model profile) ──────────────
 
 /**
- * Derive the pinned model for a legacy connection, in priority order:
- * global main default assignment model (when this connection is the main
- * default) > subagent default assignment model > tierModels.sonnet >
- * first catalog entry. Undefined when no source exists (OAuth kinds may
- * legitimately have no pinned model and follow the provider default).
+ * Model explicitly assigned to this connection by the global default slot
+ * assignments (main first, then subagent) — the strongest legacy signal of
+ * what the user actually selected.
  */
-function deriveConnectionModel(
+function assignedDefaultModel(
   connection: Connection,
   defaults: ConnectionsFile['defaults'],
 ): string | undefined {
@@ -73,8 +71,37 @@ function deriveConnectionModel(
   ) {
     return defaults.subagent.model
   }
-  if (connection.tierModels?.sonnet) return connection.tierModels.sonnet
-  return connection.models?.[0]
+  return undefined
+}
+
+/**
+ * Fill in the pinned-model profile fields for a connection that lacks them.
+ * Shared by the lazy on-load migration and the fresh-registration paths
+ * (/login auto-register, legacy import) so both derive identically.
+ *
+ * model:         preferredModel (caller-known, e.g. login env *_MODEL or a
+ *                default slot assignment) > tierModels.sonnet > models[0];
+ *                stays unset when no source exists (OAuth kinds may follow
+ *                the provider default).
+ * contextWindow: synced from modelContextWindows[model].tokens when known.
+ *
+ * Pure and idempotent — returns the input object unchanged (same reference)
+ * when `model` is already pinned or nothing can be derived.
+ */
+export function deriveConnectionProfile<T extends Omit<Connection, 'id'>>(
+  candidate: T,
+  preferredModel?: string,
+): T {
+  if (candidate.model !== undefined) return candidate
+  const model =
+    preferredModel ?? candidate.tierModels?.sonnet ?? candidate.models?.[0]
+  if (model === undefined) return candidate
+  const derived = { ...candidate, model } as T
+  const window = candidate.modelContextWindows?.[model]
+  if (candidate.contextWindow === undefined && window) {
+    ;(derived as Omit<Connection, 'id'>).contextWindow = window.tokens
+  }
+  return derived
 }
 
 /**
@@ -87,15 +114,11 @@ function deriveConnectionModel(
 function migrateConnectionsFile(file: ConnectionsFile): ConnectionsFile | null {
   let changed = false
   const connections = file.connections.map(connection => {
-    if (connection.model !== undefined) return connection
-    const model = deriveConnectionModel(connection, file.defaults)
-    if (model === undefined) return connection
-    changed = true
-    const migrated: Connection = { ...connection, model }
-    const window = connection.modelContextWindows?.[model]
-    if (connection.contextWindow === undefined && window) {
-      migrated.contextWindow = window.tokens
-    }
+    const migrated = deriveConnectionProfile(
+      connection,
+      assignedDefaultModel(connection, file.defaults),
+    )
+    if (migrated !== connection) changed = true
     return migrated
   })
   return changed ? { ...file, connections } : null

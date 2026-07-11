@@ -15,6 +15,7 @@ mock.module('src/utils/log.ts', logMock)
 
 import {
   _invalidateConnectionsCache,
+  deriveConnectionProfile,
   findConnection,
   generateConnectionId,
   getConnectionsFilePath,
@@ -401,5 +402,43 @@ describe('updateConnectionModel', () => {
   test('is a no-op for unknown connection ids', () => {
     expect(() => updateConnectionModel('missing', 'some-model')).not.toThrow()
     expect(listConnections()).toHaveLength(0)
+  })
+})
+
+describe('deriveConnectionProfile', () => {
+  test('returns the same reference when model is already pinned', () => {
+    const c = sampleConnection({ model: 'pinned' })
+    expect(deriveConnectionProfile(c)).toBe(c)
+  })
+
+  test('preferredModel wins over tierModels.sonnet and models[0]', () => {
+    const c = sampleConnection({
+      tierModels: { sonnet: 'tier-sonnet' },
+      models: ['catalog-first'],
+    })
+    expect(deriveConnectionProfile(c, 'preferred').model).toBe('preferred')
+    expect(deriveConnectionProfile(c).model).toBe('tier-sonnet')
+    expect(
+      deriveConnectionProfile(sampleConnection({ models: ['catalog-first'] }))
+        .model,
+    ).toBe('catalog-first')
+  })
+
+  test('syncs contextWindow from the per-model window map', () => {
+    const c = sampleConnection({
+      models: ['deepseek-chat'],
+      modelContextWindows: {
+        'deepseek-chat': { tokens: 131_072, source: 'auto' },
+      },
+    })
+    const derived = deriveConnectionProfile(c)
+    expect(derived.model).toBe('deepseek-chat')
+    expect(derived.contextWindow).toBe(131_072)
+  })
+
+  test('returns the same reference when nothing can be derived', () => {
+    const c = sampleConnection({ models: undefined })
+    expect(deriveConnectionProfile(c)).toBe(c)
+    expect(deriveConnectionProfile(c).model).toBeUndefined()
   })
 })

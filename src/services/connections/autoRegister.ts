@@ -15,6 +15,7 @@ import {
   saveCurrentOAuthAccountToSlot,
 } from './oauthAccounts.js'
 import {
+  deriveConnectionProfile,
   generateConnectionId,
   listConnections,
   upsertConnection,
@@ -44,17 +45,29 @@ function findBySignature(
   )
 }
 
+/**
+ * Insert or update the connection matching the candidate's credential
+ * signature. New connections (and existing ones without a pin) get their
+ * pinned model derived immediately via deriveConnectionProfile — the
+ * registry must be usable in the same process, not only after the next
+ * startup's lazy migration. An existing pinned model is never clobbered:
+ * /model writes it deliberately and a re-login may not know it.
+ */
 function upsertCandidate(candidate: Omit<Connection, 'id'>): void {
   const existing = findBySignature(candidate)
   if (existing) {
-    upsertConnection({ ...existing, ...candidate, id: existing.id })
+    const merged: Connection = { ...existing, ...candidate, id: existing.id }
+    if (existing.model !== undefined) merged.model = existing.model
+    upsertConnection(deriveConnectionProfile(merged))
     return
   }
-  upsertConnection({
-    ...candidate,
-    id: generateConnectionId(candidate.label),
-    createdAt: new Date().toISOString(),
-  })
+  upsertConnection(
+    deriveConnectionProfile({
+      ...candidate,
+      id: generateConnectionId(candidate.label),
+      createdAt: new Date().toISOString(),
+    }),
+  )
 }
 
 function tiersFromEnv(
@@ -106,6 +119,10 @@ export function registerConnectionFromProviderLogin(
         kind: 'openai-compat',
         baseUrl: env.OPENAI_BASE_URL,
         apiKey: env.OPENAI_API_KEY,
+        // The model the login flow actually configured, when known —
+        // pinned directly; otherwise deriveConnectionProfile falls back
+        // to tierModels.sonnet / models[0].
+        ...(env.OPENAI_MODEL && { model: env.OPENAI_MODEL }),
         ...(tierModels && { tierModels }),
       })
       return
@@ -118,6 +135,7 @@ export function registerConnectionFromProviderLogin(
         kind: 'gemini',
         baseUrl: env.GEMINI_BASE_URL,
         apiKey: env.GEMINI_API_KEY,
+        ...(env.GEMINI_MODEL && { model: env.GEMINI_MODEL }),
         ...(tierModels && { tierModels }),
       })
       return
@@ -131,6 +149,7 @@ export function registerConnectionFromProviderLogin(
         kind: 'grok',
         baseUrl: env.GROK_BASE_URL,
         apiKey,
+        ...(env.GROK_MODEL && { model: env.GROK_MODEL }),
         ...(tierModels && { tierModels }),
       })
       return
@@ -143,6 +162,7 @@ export function registerConnectionFromProviderLogin(
       kind: 'anthropic-api',
       baseUrl: env.ANTHROPIC_BASE_URL,
       apiKey: env.ANTHROPIC_AUTH_TOKEN,
+      ...(env.ANTHROPIC_MODEL && { model: env.ANTHROPIC_MODEL }),
       ...(tierModels && { tierModels }),
     })
   } catch (err) {

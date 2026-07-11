@@ -60,9 +60,8 @@ const {
   registerConnectionFromOAuthLogin,
   registerConnectionFromProviderLogin,
 } = await import('../autoRegister.js')
-const { _invalidateConnectionsCache, listConnections } = await import(
-  '../store.js'
-)
+const { _invalidateConnectionsCache, listConnections, upsertConnection } =
+  await import('../store.js')
 
 afterAll(() => {
   _useMocks = false
@@ -105,6 +104,47 @@ describe('registerConnectionFromProviderLogin', () => {
     expect(conns[0]?.kind).toBe('openai-compat')
     expect(conns[0]?.label).toBe('api.deepseek.com')
     expect(conns[0]?.tierModels?.sonnet).toBe('deepseek-chat')
+    // No explicit *_MODEL in the login env → pinned model derived from the
+    // sonnet tier immediately, not on the next startup's lazy migration
+    expect(conns[0]?.model).toBe('deepseek-chat')
+  })
+
+  test('explicit OPENAI_MODEL wins over the sonnet tier as the pinned model', () => {
+    registerConnectionFromProviderLogin('openai', {
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-x',
+      OPENAI_MODEL: 'deepseek-reasoner',
+      OPENAI_DEFAULT_SONNET_MODEL: 'deepseek-chat',
+    })
+    expect(listConnections()[0]?.model).toBe('deepseek-reasoner')
+  })
+
+  test('re-login never clobbers an existing pinned model', () => {
+    registerConnectionFromProviderLogin('openai', {
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-x',
+      OPENAI_MODEL: 'deepseek-chat',
+    })
+    const first = listConnections()[0]
+    expect(first?.model).toBe('deepseek-chat')
+
+    // Simulate the user pinning a different model via /model
+    upsertConnection({
+      ...(first as NonNullable<typeof first>),
+      model: 'deepseek-reasoner',
+      contextWindow: 65_536,
+    })
+
+    // Same credentials, different login-time model → pin is preserved
+    registerConnectionFromProviderLogin('openai', {
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-x',
+      OPENAI_MODEL: 'deepseek-chat',
+    })
+    const conns = listConnections()
+    expect(conns).toHaveLength(1)
+    expect(conns[0]?.model).toBe('deepseek-reasoner')
+    expect(conns[0]?.contextWindow).toBe(65_536)
   })
 
   test('OPENAI_AUTH_MODE=chatgpt registers a chatgpt-oauth connection', () => {
@@ -115,6 +155,23 @@ describe('registerConnectionFromProviderLogin', () => {
     expect(conns).toHaveLength(1)
     expect(conns[0]?.kind).toBe('chatgpt-oauth')
     expect(conns[0]?.credentialRef).toBe('default')
+    // No model source for subscription logins → follows provider default
+    expect(conns[0]?.model).toBeUndefined()
+  })
+
+  test('gemini and grok logins pin their *_MODEL env values', () => {
+    registerConnectionFromProviderLogin('gemini', {
+      GEMINI_API_KEY: 'g-1',
+      GEMINI_MODEL: 'gemini-2.5-pro',
+    })
+    registerConnectionFromProviderLogin('grok', {
+      XAI_API_KEY: 'x-1',
+      GROK_MODEL: 'grok-4',
+    })
+    const gemini = listConnections().find(c => c.kind === 'gemini')
+    const grok = listConnections().find(c => c.kind === 'grok')
+    expect(gemini?.model).toBe('gemini-2.5-pro')
+    expect(grok?.model).toBe('grok-4')
   })
 
   test('same credentials update the existing connection instead of duplicating', () => {
@@ -183,6 +240,8 @@ describe('registerConnectionFromOAuthLogin', () => {
     expect(conns[0]?.kind).toBe('anthropic-oauth')
     expect(conns[0]?.credentialRef).toBe('u9')
     expect(conns[0]?.accountEmail).toBe('me@ex.com')
+    // Subscription accounts have no model source → provider default
+    expect(conns[0]?.model).toBeUndefined()
 
     // Second login with the same account does not duplicate
     registerConnectionFromOAuthLogin()

@@ -137,6 +137,24 @@ describe('importLegacyConnections', () => {
     expect(conn?.apiKey).toBe('sk-legacy')
     expect(conn?.tierModels?.sonnet).toBe('deepseek-chat')
     expect(conn?.models).toEqual(['deepseek-reasoner', 'deepseek-chat'])
+    // Pinned at import time from the sonnet tier (no OPENAI_MODEL in env)
+    expect(conn?.model).toBe('deepseek-chat')
+  })
+
+  test('explicit OPENAI_MODEL is pinned over the sonnet tier', () => {
+    writeProviderAuth({
+      openai: {
+        env: {
+          OPENAI_BASE_URL: 'https://api.deepseek.com',
+          OPENAI_API_KEY: 'sk-legacy',
+          OPENAI_MODEL: 'deepseek-reasoner',
+          OPENAI_DEFAULT_SONNET_MODEL: 'deepseek-chat',
+        },
+      },
+    })
+
+    expect(importLegacyConnections().imported).toBe(1)
+    expect(listConnections()[0]?.model).toBe('deepseek-reasoner')
   })
 
   test('imports ChatGPT subscription from OPENAI_AUTH_MODE marker', () => {
@@ -149,6 +167,8 @@ describe('importLegacyConnections', () => {
     const conn = listConnections()[0]
     expect(conn?.kind).toBe('chatgpt-oauth')
     expect(conn?.credentialRef).toBe('default')
+    // Subscription import has no model source → provider default
+    expect(conn?.model).toBeUndefined()
   })
 
   test('imports ChatGPT subscription from the default auth file', () => {
@@ -211,6 +231,10 @@ describe('importLegacyConnections', () => {
     const grok = listConnections().find(c => c.kind === 'grok')
     expect(grok?.apiKey).toBe('x-key')
     expect(grok?.models).toEqual(['grok-4'])
+    // Pinned from the explicit GROK_MODEL / derived from the gemini tier
+    expect(grok?.model).toBe('grok-4')
+    const gemini = listConnections().find(c => c.kind === 'gemini')
+    expect(gemini?.model).toBe('gemini-2.5-pro')
   })
 
   test('imports a cursor entry with token and machine id', () => {

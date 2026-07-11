@@ -26,6 +26,7 @@ import {
   saveCurrentOAuthAccountToSlot,
 } from './oauthAccounts.js'
 import {
+  deriveConnectionProfile,
   generateConnectionId,
   listConnections,
   upsertConnection,
@@ -164,6 +165,9 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
         kind: 'openai-compat',
         baseUrl: openaiEnv.OPENAI_BASE_URL,
         apiKey: openaiEnv.OPENAI_API_KEY,
+        // The model the legacy slot actually ran, when known — pinned
+        // directly; deriveConnectionProfile fills the rest at import time.
+        ...(openaiEnv.OPENAI_MODEL && { model: openaiEnv.OPENAI_MODEL }),
         tierModels,
         models: modelsFromTiers(tierModels, openaiEnv.OPENAI_MODEL),
         presetId: presetIdForBaseUrl(openaiEnv.OPENAI_BASE_URL),
@@ -179,6 +183,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       kind: 'gemini',
       baseUrl: geminiEnv.GEMINI_BASE_URL,
       apiKey: geminiEnv.GEMINI_API_KEY,
+      ...(geminiEnv.GEMINI_MODEL && { model: geminiEnv.GEMINI_MODEL }),
       tierModels,
       models: modelsFromTiers(tierModels, geminiEnv.GEMINI_MODEL),
     })
@@ -192,6 +197,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       kind: 'grok',
       baseUrl: grokEnv.GROK_BASE_URL,
       apiKey: grokEnv.GROK_API_KEY ?? grokEnv.XAI_API_KEY,
+      ...(grokEnv.GROK_MODEL && { model: grokEnv.GROK_MODEL }),
       tierModels,
       models: modelsFromTiers(tierModels, grokEnv.GROK_MODEL),
     })
@@ -209,6 +215,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       label: t('Cursor Account'),
       kind: 'cursor',
       credentialRef: cursorEnv.CURSOR_CREDENTIAL_SCOPE,
+      ...(cursorEnv.CURSOR_MODEL && { model: cursorEnv.CURSOR_MODEL }),
       tierModels,
       models: modelsFromTiers(tierModels, cursorEnv.CURSOR_MODEL),
     })
@@ -219,6 +226,7 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
       kind: 'cursor',
       apiKey: cursorEnv.CURSOR_API_KEY ?? cursorEnv.CURSOR_ACCESS_TOKEN,
       machineId: cursorEnv.CURSOR_MACHINE_ID,
+      ...(cursorEnv.CURSOR_MODEL && { model: cursorEnv.CURSOR_MODEL }),
       tierModels,
       models: modelsFromTiers(tierModels, cursorEnv.CURSOR_MODEL),
     })
@@ -240,6 +248,9 @@ function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
         kind: 'anthropic-api',
         baseUrl: settingsEnv.ANTHROPIC_BASE_URL,
         apiKey: settingsEnv.ANTHROPIC_AUTH_TOKEN,
+        ...(settingsEnv.ANTHROPIC_MODEL && {
+          model: settingsEnv.ANTHROPIC_MODEL,
+        }),
         tierModels,
         models: modelsFromTiers(tierModels, settingsEnv.ANTHROPIC_MODEL),
       })
@@ -296,11 +307,15 @@ export function importLegacyConnections(): { imported: number } {
       const signature = signatureOf(candidate)
       if (existingSignatures.has(signature)) continue
       existingSignatures.add(signature)
-      upsertConnection({
-        ...candidate,
-        id: generateConnectionId(candidate.label),
-        createdAt: new Date().toISOString(),
-      })
+      upsertConnection(
+        // Pin the model at import time (same derivation as the lazy
+        // on-load migration) so the connection is usable immediately.
+        deriveConnectionProfile({
+          ...candidate,
+          id: generateConnectionId(candidate.label),
+          createdAt: new Date().toISOString(),
+        }),
+      )
       imported++
     }
   } catch (err) {
