@@ -1,4 +1,9 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { setSessionAssignment } from '../../../services/connections/sessionAssignments.js'
+import { _invalidateConnectionsCache } from '../../../services/connections/store.js'
 import {
   FAST_CREDENTIAL_SCOPE,
   getFastProviderFromEnv,
@@ -6,6 +11,32 @@ import {
   setFastProviderCliOverride,
   setFastProviderConfigOverride,
 } from '../fastProvider.js'
+
+// getFastProviderRuntimeConfig falls back to getConnectionThinkingEffort
+// ('fast'), which reads the real connection registry. Point CLAUDE_CONFIG_DIR
+// at an empty temp dir so a developer's fast-slot connection (with a pinned
+// thinkingEffort) cannot leak into the expected configs below.
+let tmpDir: string
+let previousConfigDir: string | undefined
+
+beforeEach(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), 'ccb-fast-provider-test-'))
+  previousConfigDir = process.env['CLAUDE_CONFIG_DIR']
+  process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+  _invalidateConnectionsCache()
+  setSessionAssignment('fast', undefined)
+})
+
+afterEach(() => {
+  if (previousConfigDir === undefined) {
+    delete process.env['CLAUDE_CONFIG_DIR']
+  } else {
+    process.env['CLAUDE_CONFIG_DIR'] = previousConfigDir
+  }
+  _invalidateConnectionsCache()
+  setSessionAssignment('fast', undefined)
+  rmSync(tmpDir, { recursive: true, force: true })
+})
 
 describe('fast provider config', () => {
   test('returns undefined without fast settings or env override', () => {

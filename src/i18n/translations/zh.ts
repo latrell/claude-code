@@ -996,6 +996,12 @@ const zh: Record<string, string> = {
     '协调器模式已禁用 — 返回普通模式',
   'Coordinator mode enabled — use Agent(subagent_type: "worker") to dispatch tasks':
     '协调器模式已启用 — 使用 Agent(subagent_type: "worker") 来分派任务',
+  ' (saved as global default)': '（已保存为全局默认）',
+  ' (global default cleared)': '（已清除全局默认）',
+  'Coordinator mode is already enabled': '协调器模式已处于启用状态',
+  'Coordinator mode is already disabled': '协调器模式已处于禁用状态',
+  'Usage: /coordinator [on|off] [global]':
+    '用法：/coordinator [on|off] [global]',
   coordinator: '协调器',
   '/coordinator to toggle': '/coordinator 切换',
 

@@ -24,6 +24,24 @@ FEATURE_COORDINATOR_MODE=1 CLAUDE_CODE_COORDINATOR_MODE=1 bun run dev
 
 需要同时设置 feature flag 和环境变量。`CLAUDE_CODE_COORDINATOR_MODE` 可在会话恢复时自动切换（`matchSessionMode`）。
 
+### /coordinator 命令（会话级 + 全局）
+
+会话内通过 `/coordinator` 命令切换，支持两个层级：
+
+| 输入 | 行为 |
+|------|------|
+| `/coordinator` | toggle 当前会话 |
+| `/coordinator on` / `off` | 显式设置当前会话（状态未变时仅报告，不重复刷新/提醒） |
+| `/coordinator global` | toggle 当前会话 + 把新状态写入全局 settings |
+| `/coordinator on global` / `off global` | 显式设置当前会话 + 写全局 |
+
+**全局默认**持久化在 `settings.json` 的 `coordinatorMode` 字段（`src/coordinator/coordinatorGlobal.ts`），语义是"新会话的默认模式"：
+
+- 启动时（`main.tsx` 主 action 早期）若 `CLAUDE_CODE_COORDINATOR_MODE` **未设置**，`applyGlobalCoordinatorDefault()` 按 settings 部署环境变量
+- 显式设置的环境变量（truthy 或 falsy）始终优先——`CLAUDE_CODE_COORDINATOR_MODE=0` 可单次覆盖全局默认
+- 运行时唯一真相源仍是环境变量（`isCoordinatorMode()` 实时读取）；resume 时 `matchSessionMode` 按会话存储的模式覆盖
+- spawned teammate（`--agent-id`）跳过全局默认部署，不会因全局开关变成编排者
+
 ### 典型工作流
 
 ```
@@ -142,10 +160,21 @@ FEATURE_COORDINATOR_MODE=1 CLAUDE_CODE_COORDINATOR_MODE=1 \
 CLAUDE_CODE_SIMPLE=1 bun run dev
 ```
 
+会话内命令：
+
+```
+/coordinator              # toggle 当前会话
+/coordinator on global    # 开启并设为全局默认（写 settings.json）
+/coordinator off          # 仅关闭当前会话（全局默认不变）
+/coordinator off global   # 关闭并清除全局默认
+```
+
 ## 六、文件索引
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `src/coordinator/coordinatorMode.ts` | 370 | 模式检测 + 系统提示 + 用户上下文 |
+| `src/coordinator/coordinatorGlobal.ts` | — | 全局默认持久化（settings.coordinatorMode 读写 + 启动部署） |
 | `src/coordinator/workerAgent.ts` | — | Worker agent 定义（stub） |
+| `src/commands/coordinator.ts` | — | /coordinator 命令（会话级 + 全局参数解析） |
 | `src/constants/tools.ts` | — | `ASYNC_AGENT_ALLOWED_TOOLS` 工具白名单 |

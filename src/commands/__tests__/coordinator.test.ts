@@ -47,6 +47,17 @@ mock.module('src/coordinator/coordinatorMode.js', () => {
   }
 })
 
+// Mock coordinatorGlobal.js to capture global persistence calls without
+// touching the real settings module (which has module-level side effects).
+const setGlobalCalls: boolean[] = []
+mock.module('src/coordinator/coordinatorGlobal.js', () => ({
+  getGlobalCoordinatorSetting: () => false,
+  setGlobalCoordinatorSetting: (enabled: boolean) => {
+    setGlobalCalls.push(enabled)
+  },
+  applyGlobalCoordinatorDefault: () => {},
+}))
+
 mock.module(
   '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js',
   () => {
@@ -89,6 +100,7 @@ beforeEach(async () => {
   setOriginalCwd(tempDir)
   setProjectRoot(tempDir)
   delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+  setGlobalCalls.length = 0
   appState.agentDefinitions = {
     activeAgents: [{ agentType: 'general-purpose' }],
     allAgents: [{ agentType: 'general-purpose' }],
@@ -104,7 +116,7 @@ afterEach(async () => {
 })
 
 describe('/coordinator', () => {
-  async function callCoordinator(): Promise<{
+  async function callCoordinator(args = ''): Promise<{
     result: React.ReactNode
     onDoneText: string
     metaMessages: string[] | undefined
@@ -126,7 +138,7 @@ describe('/coordinator', () => {
         appState.agentDefinitions = next.agentDefinitions
       },
     }
-    const result = await mod.call(onDone as any, context as any)
+    const result = await mod.call(onDone as any, context as any, args)
     return { result, onDoneText, metaMessages }
   }
 
@@ -150,6 +162,8 @@ describe('/coordinator', () => {
     expect(
       metaMessages?.some(m => m.includes('Coordinator mode is now enabled')),
     ).toBe(true)
+    // No global persistence without the `global` argument
+    expect(setGlobalCalls).toEqual([])
   })
 
   test('disabling coordinator mode clears env var, refreshes agents, and emits correct message', async () => {
@@ -176,6 +190,7 @@ describe('/coordinator', () => {
     expect(
       metaMessages?.some(m => m.includes('Coordinator mode is now disabled')),
     ).toBe(true)
+    expect(setGlobalCalls).toEqual([])
   })
 
   test('command returns null JSX (onDone handles display)', async () => {
@@ -201,5 +216,130 @@ describe('/coordinator', () => {
     expect(
       process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
     ).toBeUndefined()
+  })
+
+  test('"on" enables explicitly', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    await callCoordinator('on')
+
+    expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
+      '1',
+    )
+    expect(setGlobalCalls).toEqual([])
+  })
+
+  test('"off" disables explicitly', async () => {
+    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+
+    await callCoordinator('off')
+
+    expect(
+      process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
+    ).toBeUndefined()
+    expect(setGlobalCalls).toEqual([])
+  })
+
+  test('"global" toggles the session and persists the new state globally', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    const { onDoneText } = await callCoordinator('global')
+
+    expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
+      '1',
+    )
+    expect(setGlobalCalls).toEqual([true])
+    // Message should mention the global persistence (English or Chinese)
+    expect(onDoneText.includes('global') || onDoneText.includes('全局')).toBe(
+      true,
+    )
+  })
+
+  test('"on global" enables and persists globally', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    await callCoordinator('on global')
+
+    expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
+      '1',
+    )
+    expect(setGlobalCalls).toEqual([true])
+  })
+
+  test('"off global" disables and clears the global default', async () => {
+    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+
+    await callCoordinator('off global')
+
+    expect(
+      process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
+    ).toBeUndefined()
+    expect(setGlobalCalls).toEqual([false])
+  })
+
+  test('explicit "on" when already enabled skips refresh and reminder but still reports', async () => {
+    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+    appState.agentDefinitions = {
+      activeAgents: [{ agentType: 'worker' }],
+      allAgents: [{ agentType: 'worker' }],
+    }
+
+    const { onDoneText, metaMessages } = await callCoordinator('on')
+
+    // Env stays on, agents untouched, no model-visible reminder
+    expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
+      '1',
+    )
+    expect(appState.agentDefinitions.activeAgents).toEqual([
+      { agentType: 'worker' },
+    ])
+    expect(metaMessages).toBeUndefined()
+    expect(onDoneText.length).toBeGreaterThan(0)
+  })
+
+  test('explicit "off global" when already disabled still clears the global default', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    const { metaMessages } = await callCoordinator('off global')
+
+    expect(
+      process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
+    ).toBeUndefined()
+    expect(setGlobalCalls).toEqual([false])
+    expect(metaMessages).toBeUndefined()
+  })
+
+  test('invalid arguments report usage without changing state', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    const { onDoneText } = await callCoordinator('bogus')
+
+    expect(
+      process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
+    ).toBeUndefined()
+    expect(setGlobalCalls).toEqual([])
+    expect(onDoneText).toContain('/coordinator [on|off] [global]')
+  })
+
+  test('duplicate tokens are rejected', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    const { onDoneText } = await callCoordinator('on off')
+
+    expect(
+      process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined,
+    ).toBeUndefined()
+    expect(onDoneText).toContain('/coordinator [on|off] [global]')
+  })
+
+  test('arguments are case-insensitive and order-insensitive', async () => {
+    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+
+    await callCoordinator('GLOBAL On')
+
+    expect(process.env.CLAUDE_CODE_COORDINATOR_MODE as string | undefined).toBe(
+      '1',
+    )
+    expect(setGlobalCalls).toEqual([true])
   })
 })

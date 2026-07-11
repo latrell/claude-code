@@ -870,6 +870,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'When true, poor mode is active — extract_memories and prompt_suggestion are disabled to save tokens.',
         ),
+      coordinatorMode: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, coordinator (multi-worker orchestration) mode is enabled by default for new sessions. An explicit CLAUDE_CODE_COORDINATOR_MODE env var takes precedence.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

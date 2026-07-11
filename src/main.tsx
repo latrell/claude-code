@@ -133,6 +133,9 @@ const getTeammateModeSnapshot = () =>
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js'))
   : null;
+const coordinatorGlobalModule = feature('COORDINATOR_MODE')
+  ? (require('./coordinator/coordinatorGlobal.js') as typeof import('./coordinator/coordinatorGlobal.js'))
+  : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 // Dead code elimination: conditional import for KAIROS (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1548,6 +1551,15 @@ async function run(): Promise<CommanderCommand> {
       // dir-walk). Must be set before setup() / any of the gated work runs.
       if ((options as { bare?: boolean }).bare) {
         process.env.CLAUDE_CODE_SIMPLE = '1';
+      }
+
+      // Deploy the global coordinator default (settings.coordinatorMode) to
+      // the env var before any read of CLAUDE_CODE_COORDINATOR_MODE. An
+      // explicitly set env var wins. Skip for spawned teammates (--agent-id):
+      // the tmux spawn env whitelist doesn't forward the coordinator var, and
+      // a teammate must never become a coordinator via the global default.
+      if (!(options as { agentId?: unknown }).agentId) {
+        coordinatorGlobalModule?.applyGlobalCoordinatorDefault();
       }
 
       // Ignore "code" as a prompt - treat it the same as no prompt
