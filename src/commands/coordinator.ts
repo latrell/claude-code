@@ -152,7 +152,7 @@ const coordinator = {
             {
               display: 'system',
               metaMessages: [
-                '<system-reminder>\nCoordinator mode is now enabled. You are an orchestrator. Use Agent({ subagent_type: "worker" }) to spawn workers, SendMessage to continue them, TaskStop to stop them. Do not use other tools directly.\n</system-reminder>',
+                '<system-reminder>\nCoordinator mode is now enabled. You are an orchestrator. Use Agent({ subagent_type: "worker" }) to spawn async workers, SendMessage to continue them, TaskStop to stop them. After launching workers, end your response and wait for <task-notification>; do not use Sleep, shell sleep/Start-Sleep, TaskOutput, or polling to wait. Do not use other tools directly.\n</system-reminder>',
               ],
             },
           )

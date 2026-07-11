@@ -831,6 +831,22 @@ function isForkBoilerplateMessage(message: MessageType): boolean {
   return message.message.content.some(isForkBoilerplateTextBlock);
 }
 
+function isSubmittedHumanTextMessage(message: MessageType): message is UserMessage {
+  if (!isHumanTurn(message)) return false;
+  if (message.isLocalCommandBreadcrumb || message.origin !== undefined) return false;
+
+  const text = getContentText(message.message.content as string | ContentBlockParam[]);
+  return typeof text === 'string' && text.trim().length > 0;
+}
+
+function hasNewSubmittedHumanTextAfterBaseline(prev: MessageType[], next: MessageType[], baseline: number): boolean {
+  const prevMessages = new Set(prev);
+  return next.some((message, index) => {
+    if (index < baseline || prevMessages.has(message)) return false;
+    return isSubmittedHumanTextMessage(message);
+  });
+}
+
 export function REPL({
   commands: initialCommands,
   debug,
@@ -1208,13 +1224,14 @@ export function REPL({
   // animation frame, avoiding a useInterval that re-renders the entire REPL.
   const [userInputOnProcessing, setUserInputOnProcessingRaw] = React.useState<string | undefined>(undefined);
   // messagesRef.current.length at the moment userInputOnProcessing was set.
-  // The placeholder hides once displayedMessages grows past this — i.e. the
-  // real user message has landed in the visible transcript.
+  // The placeholder hides once displayedMessages grows past this, and is also
+  // cleared eagerly when setMessages observes the real submitted user text.
   const userInputBaselineRef = React.useRef(0);
   // True while the submitted prompt is being processed but its user message
   // hasn't reached setMessages yet. setMessages uses this to keep the
   // baseline in sync when unrelated async messages (bridge status, hook
-  // results, scheduled tasks) land during that window.
+  // results, scheduled tasks) land during that window, and to clear the echo
+  // as soon as the real user turn lands.
   const userMessagePendingRef = React.useRef(false);
 
   // Wall-clock time tracking refs for accurate elapsed time calculation
@@ -1506,24 +1523,26 @@ export function REPL({
     const prev = messagesRef.current;
     const next = typeof action === 'function' ? action(messagesRef.current) : action;
     messagesRef.current = next;
-    if (next.length < userInputBaselineRef.current) {
+    if (
+      userMessagePendingRef.current &&
+      hasNewSubmittedHumanTextAfterBaseline(prev, next, userInputBaselineRef.current)
+    ) {
+      // The real submitted user turn has reached the transcript. Clear the
+      // temporary echo immediately instead of waiting for displayedMessages to
+      // catch up, which can lag behind under deferred rendering/filtering.
+      userMessagePendingRef.current = false;
+      setUserInputOnProcessingRaw(undefined);
+    } else if (next.length < userInputBaselineRef.current) {
       // Shrank (compact/rewind/clear) — clamp so placeholderText's length
       // check can't go stale.
       userInputBaselineRef.current = 0;
     } else if (next.length > prev.length && userMessagePendingRef.current) {
       // Grew while the submitted user message hasn't landed yet. If the
-      // added messages don't include it (bridge status, hook results,
-      // scheduled tasks landing async during processUserInputBase), bump
-      // baseline so the placeholder stays visible. Once the user message
-      // lands, stop tracking — later additions (assistant stream) should
-      // not re-show the placeholder.
-      const delta = next.length - prev.length;
-      const added = prev.length === 0 || next[0] === prev[0] ? next.slice(-delta) : next.slice(0, delta);
-      if (added.some(isHumanTurn)) {
-        userMessagePendingRef.current = false;
-      } else {
-        userInputBaselineRef.current = next.length;
-      }
+      // added messages are only bridge status, hook results, scheduled tasks,
+      // or other non-human/synthetic events landing async during
+      // processUserInputBase, bump baseline so the placeholder stays visible.
+      // Once the submitted text lands, the branch above clears the echo.
+      userInputBaselineRef.current = next.length;
     }
     rawSetMessages(next);
   }, []);
