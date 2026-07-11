@@ -47,6 +47,12 @@ const zh: Record<string, string> = {
     '已切换子 agent 到 {target}（本会话）',
   'Switched subagents to {target} and set it as the global default':
     '已切换子 agent 到 {target} 并设为全局默认',
+  'Switched fast (HAIKU) calls to {target} for this session':
+    '已切换快（HAIKU）调用到 {target}（本会话）',
+  'Switched fast (HAIKU) calls to {target} and set it as the global default':
+    '已切换快（HAIKU）调用到 {target} 并设为全局默认',
+  'Fast provider cleared. Small/fast (HAIKU) calls will now inherit the main provider.':
+    '已清除快（HAIKU）提供者。快（HAIKU）调用现在将继承主提供者。',
 
   // ── /lang command ──────────────────────────────────────────────
   // (Removed — language setting is now unified in /config's Language option)
@@ -2691,6 +2697,7 @@ const zh: Record<string, string> = {
   'Model picker closed': '已关闭模型选择器',
   'Select connection — main agent': '选择连接 — 主 agent',
   'Select connection — subagents': '选择连接 — 子 agent',
+  'Select connection — fast (HAIKU) calls': '选择连接 — 快（HAIKU）调用',
   'Search connections…': '搜索连接…',
   'No connections match — add connections via /connect':
     '没有匹配的连接 — 请先通过 /connect 添加连接',
