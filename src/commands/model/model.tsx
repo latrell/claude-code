@@ -330,12 +330,15 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
 
   // For env-mapped third-party providers, AppState.mainLoopModel is ignored at
   // send time, so the Anthropic-family ModelPicker can't switch the model. List
-  // the active connection's own models instead (selection activates it).
+  // the active connection's own models instead. Selection pins the model to the
+  // connection profile (ccb-connections.json) and redeploys it — no session-only
+  // model values for connections.
   const connection = activeEnvMappedConnection();
   if (connection) {
     return (
       <ModelsPicker
         connectionId={connection.id}
+        pinModelToConnection
         onDone={message => onDone(message ?? t('Model picker closed'), { display: 'system' })}
         onMainModelChange={model => {
           context.setAppState(prev => ({

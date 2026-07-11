@@ -15,7 +15,12 @@ import {
   type CatalogModel,
   type RemoteModel,
 } from '../../services/connections/modelCatalog.js';
-import { getDefaultAssignment, listConnections } from '../../services/connections/store.js';
+import {
+  findConnection,
+  getDefaultAssignment,
+  listConnections,
+  updateConnectionModel,
+} from '../../services/connections/store.js';
 import type { AgentSlot, Connection } from '../../services/connections/types.js';
 import { t, tf } from '../../i18n/t.js';
 import { Spinner } from '../Spinner.js';
@@ -39,6 +44,15 @@ type Props = {
    * actually applies (env-mapped providers ignore AppState.mainLoopModel).
    */
   connectionId?: string;
+  /**
+   * When true, selecting a concrete model pins it to the connection profile
+   * (updateConnectionModel → ccb-connections.json) instead of being a
+   * session-only value, then redeploys the connection. If the connection is
+   * the slot's global default the redeploy is global so the persisted
+   * deployment (settings/providerModels/credential stores) follows too.
+   * Used by /model when the main agent runs on a connection.
+   */
+  pinModelToConnection?: boolean;
 };
 
 function buildItems(connections: Connection[], remoteModels: Record<string, RemoteModel[]>): ModelPickItem[] {
@@ -88,6 +102,7 @@ export function ModelsPicker({
   onAuthChanged,
   initialSlot = 'main',
   connectionId,
+  pinModelToConnection = false,
 }: Props): React.ReactNode {
   const [slot, setSlot] = useState<AgentSlot>(initialSlot);
   const [query, setQuery] = useState('');
@@ -133,10 +148,24 @@ export function ModelsPicker({
     async (item: ModelPickItem, scope: 'session' | 'global') => {
       setBusy(t('Switching…'));
       setError(null);
+      let connection = item.connection;
+      let effectiveScope = scope;
+      // Pin mode (/model on a connection): the selection writes the model
+      // straight to the connection profile, then redeploys the refreshed
+      // connection. When the connection is the slot's global default, the
+      // redeploy is global so the persisted deployment stays in sync.
+      const pinned = pinModelToConnection && item.model.value !== null;
+      if (pinned && item.model.value) {
+        updateConnectionModel(connection.id, item.model.value);
+        connection = findConnection(connection.id) ?? connection;
+        if (getDefaultAssignment(slot)?.connectionId === connection.id) {
+          effectiveScope = 'global';
+        }
+      }
       const result =
-        scope === 'global'
-          ? await activateConnectionGlobally(item.connection, slot, item.model.value)
-          : await activateConnectionForSession(item.connection, slot, item.model.value);
+        effectiveScope === 'global'
+          ? await activateConnectionGlobally(connection, slot, item.model.value)
+          : await activateConnectionForSession(connection, slot, item.model.value);
       if (!result.success) {
         setBusy(null);
         setError(result.error ?? t('Failed to switch model.'));
@@ -146,18 +175,23 @@ export function ModelsPicker({
         onMainModelChange(result.mainLoopModel ?? null);
       }
       onAuthChanged();
-      let target = `${item.connection.label} / ${item.model.label}`;
-      if (item.model.value && supportsRemoteModelList(item.connection.kind)) {
+      let ctxSuffix = '';
+      if (item.model.value && supportsRemoteModelList(connection.kind)) {
         // Surface the effective context window so a wrong/missing detection
         // is visible right where the model was switched.
-        const fresh = listConnections().find(c => c.id === item.connection.id) ?? item.connection;
+        const fresh = listConnections().find(c => c.id === connection.id) ?? connection;
         const ctx = getModelContextWindowForConnection(fresh, item.model.value);
-        target += ctx
+        ctxSuffix = ctx
           ? ` · ctx ${formatContextWindow(ctx.tokens)}`
           : ` · ${t('ctx unknown, 200K assumed — set via /connect')}`;
       }
-      const message =
-        slot === 'main'
+      const target = `${connection.label} / ${item.model.label}${ctxSuffix}`;
+      const message = pinned
+        ? tf('Connection {label} model set to {target}', {
+            label: connection.label,
+            target: `${item.model.label}${ctxSuffix}`,
+          })
+        : slot === 'main'
           ? scope === 'global'
             ? tf('Global default model set to {target}', { target })
             : tf('Session model set to {target}', { target })
@@ -166,7 +200,7 @@ export function ModelsPicker({
             : tf('Session subagent model set to {target}', { target });
       onDone(message);
     },
-    [slot, onDone, onMainModelChange, onAuthChanged],
+    [slot, onDone, onMainModelChange, onAuthChanged, pinModelToConnection],
   );
 
   if (busy) {
