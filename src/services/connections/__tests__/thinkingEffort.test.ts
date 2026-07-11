@@ -11,6 +11,7 @@ const {
   asThinkingEffort,
   getConnectionThinkingEffort,
   mapThinkingEffortToEffortValue,
+  resolveQueryThinkingEffort,
 } = await import('../thinkingEffort.js')
 const { setSessionAssignment } = await import('../sessionAssignments.js')
 const { _invalidateConnectionsCache, setDefaultAssignment, upsertConnection } =
@@ -97,6 +98,48 @@ describe('getConnectionThinkingEffort', () => {
   test('returns undefined when the assigned connection is missing', () => {
     setSessionAssignment('main', { connectionId: 'gone' })
     expect(getConnectionThinkingEffort('main')).toBeUndefined()
+  })
+})
+
+describe('resolveQueryThinkingEffort', () => {
+  test('subagent query with runtime config uses its pinned effort, not the main slot', () => {
+    // Main slot pinned 'off' must NOT leak into a subagent whose own
+    // connection pins 'max'.
+    upsertConnection(conn({ id: 'main-off', thinkingEffort: 'off' }))
+    setSessionAssignment('main', { connectionId: 'main-off' })
+    expect(resolveQueryThinkingEffort({ thinkingEffort: 'max' })).toBe('max')
+  })
+
+  test('subagent runtime config without pinned effort returns undefined (no main-slot inheritance)', () => {
+    upsertConnection(conn({ id: 'main-high', thinkingEffort: 'high' }))
+    setSessionAssignment('main', { connectionId: 'main-high' })
+    expect(resolveQueryThinkingEffort({})).toBeUndefined()
+  })
+
+  test('subagent off is honored regardless of the main slot', () => {
+    upsertConnection(conn({ id: 'main-high', thinkingEffort: 'high' }))
+    setSessionAssignment('main', { connectionId: 'main-high' })
+    expect(resolveQueryThinkingEffort({ thinkingEffort: 'off' })).toBe('off')
+  })
+
+  test('main-agent query (no runtime config) resolves the main slot', () => {
+    upsertConnection(conn({ id: 'main-med', thinkingEffort: 'medium' }))
+    setSessionAssignment('main', { connectionId: 'main-med' })
+    expect(resolveQueryThinkingEffort(undefined)).toBe('medium')
+  })
+
+  test('subagent off does not affect the main-agent resolution', () => {
+    // Subagent slot pinned 'off', main slot pinned 'high': the main agent's
+    // query (no runtime config) must still see 'high'.
+    upsertConnection(conn({ id: 'main-high', thinkingEffort: 'high' }))
+    upsertConnection(conn({ id: 'sub-off', thinkingEffort: 'off' }))
+    setSessionAssignment('main', { connectionId: 'main-high' })
+    setSessionAssignment('subagent', { connectionId: 'sub-off' })
+    expect(resolveQueryThinkingEffort(undefined)).toBe('high')
+  })
+
+  test('no assignments anywhere resolves to undefined', () => {
+    expect(resolveQueryThinkingEffort(undefined)).toBeUndefined()
   })
 })
 

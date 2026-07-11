@@ -41,8 +41,8 @@ import type {
 } from './types/message.js'
 import { logError } from './utils/log.js'
 import {
-  getConnectionThinkingEffort,
   mapThinkingEffortToEffortValue,
+  resolveQueryThinkingEffort,
 } from './services/connections/thinkingEffort.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
@@ -895,6 +895,16 @@ async function* queryLoop(
 
     let attemptWithFallback = true
 
+    // Slot-aware connection thinking effort. Subagent queries carry a
+    // providerRuntimeConfig — use its pinned effort (possibly undefined when
+    // the subagent connection pins none) INSTEAD of the main slot's, so a
+    // main-slot 'off' cannot disable subagent thinking and a subagent never
+    // inherits the main profile's effort. Main-agent queries (no
+    // providerRuntimeConfig) resolve the main slot's connection as before.
+    const connectionThinkingEffort = resolveQueryThinkingEffort(
+      toolUseContext.options.providerRuntimeConfig,
+    )
+
     queryCheckpoint('query_api_loop_start')
     try {
       while (attemptWithFallback) {
@@ -910,7 +920,7 @@ async function* queryLoop(
             // thinkingConfig; OpenAI-compat additionally gets
             // OPENAI_ENABLE_THINKING=0 injected at activation).
             thinkingConfig:
-              getConnectionThinkingEffort('main') === 'off'
+              connectionThinkingEffort === 'off'
                 ? { type: 'disabled' as const }
                 : toolUseContext.options.thinkingConfig,
             tools: toolUseContext.options.tools,
@@ -946,12 +956,11 @@ async function* queryLoop(
               queryTracking,
               // Effort precedence: env CLAUDE_CODE_EFFORT_LEVEL (applied
               // downstream in resolveAppliedEffort) > user /effort (appState)
-              // > connection profile thinkingEffort > model default.
+              // > connection profile thinkingEffort (slot-aware, see above)
+              // > model default.
               effortValue:
                 appState.effortValue ??
-                mapThinkingEffortToEffortValue(
-                  getConnectionThinkingEffort('main'),
-                ),
+                mapThinkingEffortToEffortValue(connectionThinkingEffort),
               advisorModel: appState.advisorModel,
               skipCacheWrite,
               agentId: toolUseContext.agentId,

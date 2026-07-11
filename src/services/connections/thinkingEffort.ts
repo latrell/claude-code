@@ -51,6 +51,23 @@ export function mapThinkingEffortToEffortValue(
 }
 
 /**
+ * Slot-aware effort resolution for a query. Subagent queries carry a
+ * providerRuntimeConfig — their pinned effort (possibly undefined when the
+ * subagent connection pins none) is used INSTEAD of the main slot's, so a
+ * main-slot 'off' cannot disable subagent thinking and a subagent never
+ * inherits the main profile's effort. Main-agent queries — and subagents
+ * without a subagent-slot connection, which fully inherit the main
+ * connection — have no providerRuntimeConfig and resolve the main slot.
+ */
+export function resolveQueryThinkingEffort(
+  providerRuntimeConfig: { thinkingEffort?: ThinkingEffort } | undefined,
+): ThinkingEffort | undefined {
+  return providerRuntimeConfig
+    ? providerRuntimeConfig.thinkingEffort
+    : getConnectionThinkingEffort('main')
+}
+
+/**
  * Runtime validator for thinking-effort values carried through passthrough
  * config objects (e.g. settings.subagentProvider), where the static type is
  * unknown.

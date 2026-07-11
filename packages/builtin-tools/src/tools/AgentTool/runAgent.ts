@@ -60,6 +60,7 @@ import { getAgentModel } from 'src/utils/model/agent.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSubagentProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
 import { mapThinkingEffortToEffortValue } from 'src/services/connections/thinkingEffort.js'
+import { resolveSubagentThinkingConfig } from './resolveSubagentThinkingConfig.js'
 import {
   createSubagentTrace,
   endTrace,
@@ -695,12 +696,15 @@ export async function* runAgent({
     debug: toolUseContext.options.debug,
     verbose: toolUseContext.options.verbose,
     mainLoopModel: resolvedAgentModel,
-    // For fork children (useExactTools), inherit thinking config to match the
-    // parent's API request prefix for prompt cache hits. For regular
-    // sub-agents, disable thinking to control output token costs.
-    thinkingConfig: useExactTools
-      ? toolUseContext.options.thinkingConfig
-      : { type: 'disabled' as const },
+    // Fork children inherit the parent's thinking config (prompt cache);
+    // regular sub-agents follow the subagent connection profile's
+    // thinkingEffort ('off' disables, anything else keeps the parent/default
+    // config — see resolveSubagentThinkingConfig).
+    thinkingConfig: resolveSubagentThinkingConfig({
+      useExactTools,
+      parentThinkingConfig: toolUseContext.options.thinkingConfig,
+      providerRuntimeConfig,
+    }),
     mcpClients: mergedMcpClients,
     mcpResources: toolUseContext.options.mcpResources,
     agentDefinitions: toolUseContext.options.agentDefinitions,
