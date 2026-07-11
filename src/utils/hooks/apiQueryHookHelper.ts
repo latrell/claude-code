@@ -6,6 +6,8 @@ import { createAbortController } from '../../utils/abortController.js'
 import { logError } from '../../utils/log.js'
 import { toError } from '../errors.js'
 import { extractTextContent } from '../messages.js'
+import { getSmallFastModel } from '../model/model.js'
+import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import type { REPLHookContext } from './postSamplingHooks.js'
 
@@ -81,6 +83,12 @@ export function createApiQueryHook<TResult>(
       // Get model (lazy loaded)
       const model = config.getModel(context)
 
+      // Hooks that declare the small/fast model follow the fast slot
+      // (/fast-provider) when configured; explicit or main-loop models are
+      // untouched.
+      const fast =
+        model === getSmallFastModel() ? getFastModelAndRuntime() : undefined
+
       // Make API call
       const response = await queryModelWithoutStreaming({
         messages,
@@ -93,7 +101,8 @@ export function createApiQueryHook<TResult>(
             const appState = context.toolUseContext.getAppState()
             return appState.toolPermissionContext
           },
-          model,
+          model: fast?.model ?? model,
+          ...(fast?.runtime && { providerRuntimeConfig: fast.runtime }),
           toolChoice: undefined,
           isNonInteractiveSession:
             context.toolUseContext.options.isNonInteractiveSession,

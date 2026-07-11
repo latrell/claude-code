@@ -7,9 +7,9 @@ import { t } from '../../i18n/t.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   getMainLoopModel,
-  getSmallFastModel,
   parseUserSpecifiedModel,
 } from '../../utils/model/model.js'
+import { getFastModelAndRuntime } from '../../utils/model/fastProvider.js'
 import {
   type AutoModeRules,
   buildDefaultExternalSystemPrompt,
@@ -93,11 +93,13 @@ export async function autoModeCritiqueHandler(options: {
     return
   }
 
+  // Poor mode routes the critique to the small/fast model — honour the fast
+  // slot (/fast-provider) when configured. An explicit --model wins.
+  const fast =
+    !options.model && isPoorModeActive() ? getFastModelAndRuntime() : undefined
   const model = options.model
     ? parseUserSpecifiedModel(options.model)
-    : isPoorModeActive()
-      ? getSmallFastModel()
-      : getMainLoopModel()
+    : (fast?.model ?? getMainLoopModel())
 
   const defaults = getDefaultExternalAutoModeRules()
   const classifierPrompt = buildDefaultExternalSystemPrompt()
@@ -122,6 +124,7 @@ export async function autoModeCritiqueHandler(options: {
     response = await sideQuery({
       querySource: 'auto_mode_critique',
       model,
+      ...(fast?.runtime && { providerRuntimeConfig: fast.runtime }),
       system: CRITIQUE_SYSTEM_PROMPT,
       skipSystemPromptPrefix: true,
       max_tokens: 4096,

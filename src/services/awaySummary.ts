@@ -6,7 +6,7 @@ import {
   createUserMessage,
   getAssistantMessageText,
 } from '../utils/messages.js'
-import { getSmallFastModel } from '../utils/model/model.js'
+import { getFastModelAndRuntime } from '../utils/model/fastProvider.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { getResolvedLanguage } from '../utils/language.js'
 import { queryModelWithoutStreaming } from './api/claude.js'
@@ -45,12 +45,12 @@ export async function generateAwaySummary(
     return null
   }
 
-  const model = getSmallFastModel()
+  const { model, runtime } = getFastModelAndRuntime()
   const langfuseTrace = isLangfuseEnabled()
     ? createTrace({
         sessionId: getSessionId(),
         model,
-        provider: getAPIProvider(),
+        provider: runtime?.provider ?? getAPIProvider(),
         name: 'away-summary',
       })
     : null
@@ -68,6 +68,7 @@ export async function generateAwaySummary(
       options: {
         getToolPermissionContext: async () => getEmptyToolPermissionContext(),
         model,
+        ...(runtime && { providerRuntimeConfig: runtime }),
         toolChoice: undefined,
         isNonInteractiveSession: false,
         hasAppendSystemPrompt: false,

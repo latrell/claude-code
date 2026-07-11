@@ -27,6 +27,7 @@ import {
   extractTextContent,
 } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
+import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
@@ -226,12 +227,12 @@ export async function applySkillImprovement(
 
   const updateList = updates.map(u => `- ${u.section}: ${u.change}`).join('\n')
 
-  const model = getSmallFastModel()
+  const { model, runtime } = getFastModelAndRuntime()
   const langfuseTrace = isLangfuseEnabled()
     ? createTrace({
         sessionId: getSessionId(),
         model,
-        provider: getAPIProvider(),
+        provider: runtime?.provider ?? getAPIProvider(),
         name: 'skill-improvement-apply',
       })
     : null
@@ -266,6 +267,7 @@ Rules:
     options: {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
       model,
+      ...(runtime && { providerRuntimeConfig: runtime }),
       toolChoice: undefined,
       isNonInteractiveSession: false,
       hasAppendSystemPrompt: false,

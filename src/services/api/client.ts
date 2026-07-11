@@ -87,13 +87,36 @@ export async function getAnthropicClient({
   model,
   fetchOverride,
   source,
+  envOverride,
 }: {
   apiKey?: string
   maxRetries: number
   model?: string
   fetchOverride?: ClientOptions['fetch']
   source?: string
+  /**
+   * Scoped provider env (fast/subagent slot). Credential takeover only
+   * happens when the override carries ANTHROPIC_* credential keys (an
+   * anthropic-api connection): then the override fully determines
+   * credentials — the Bedrock/Vertex/Foundry env switches, the subscriber
+   * OAuth token and the apiKeyHelper fallback are all bypassed and the SDK
+   * env fallbacks are pinned so main-session secrets never leak into scoped
+   * requests. An override without credential keys (e.g. an anthropic-oauth
+   * profile whose env only carries CLAUDE_CODE_FAST_MODEL /
+   * CLAUDE_CODE_SUBAGENT_MODEL) shares the main session's credentials.
+   */
+  envOverride?: Record<string, string | undefined>
 }): Promise<Anthropic> {
+  // Model-routing variables (CLAUDE_CODE_FAST_MODEL…) also travel on the
+  // runtime env — only actual credential keys trigger the takeover.
+  const scopedCredentials =
+    envOverride &&
+    (envOverride.ANTHROPIC_AUTH_TOKEN ||
+      envOverride.ANTHROPIC_API_KEY ||
+      envOverride.ANTHROPIC_BASE_URL)
+      ? envOverride
+      : undefined
+
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID
   const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
   const clientApp = process.env.CLAUDE_AGENT_SDK_CLIENT_APP
@@ -102,7 +125,9 @@ export async function getAnthropicClient({
     'x-app': 'cli',
     'User-Agent': getUserAgent(),
     'X-Claude-Code-Session-Id': getSessionId(),
-    ...customHeaders,
+    // Main-session custom headers may carry an Authorization override —
+    // never spread them into a scoped-credential client.
+    ...(scopedCredentials ? {} : customHeaders),
     ...(containerId ? { 'x-claude-remote-container-id': containerId } : {}),
     ...(remoteSessionId
       ? { 'x-claude-remote-session-id': remoteSessionId }
@@ -132,7 +157,7 @@ export async function getAnthropicClient({
   await checkAndRefreshOAuthTokenIfNeeded()
   logForDebugging('[API:auth] OAuth token check complete')
 
-  if (!isClaudeAISubscriber()) {
+  if (!scopedCredentials && !isClaudeAISubscriber()) {
     await configureApiKeyHeaders(defaultHeaders, getIsNonInteractiveSession())
   }
 
@@ -149,6 +174,23 @@ export async function getAnthropicClient({
     ...(resolvedFetch && {
       fetch: resolvedFetch,
     }),
+  }
+
+  if (scopedCredentials) {
+    // Scoped-credential client: skip the Bedrock/Vertex/Foundry env switches
+    // below (they read main-session process.env). apiKey/authToken/baseURL
+    // are all pinned explicitly — the Anthropic SDK constructor otherwise
+    // falls back to process.env.ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN /
+    // ANTHROPIC_BASE_URL, which would leak the main session's credentials
+    // into (and send them to) the scoped connection's endpoint.
+    return new Anthropic({
+      apiKey: scopedCredentials.ANTHROPIC_API_KEY ?? null,
+      authToken: scopedCredentials.ANTHROPIC_AUTH_TOKEN ?? null,
+      baseURL:
+        scopedCredentials.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com',
+      ...ARGS,
+      ...(isDebugToStdErr() && { logger: createStderrLogger() }),
+    })
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     const { BedrockClient } = await import('./bedrockClient.js')

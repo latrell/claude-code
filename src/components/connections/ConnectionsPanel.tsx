@@ -3,6 +3,7 @@ import { Box, Dialog, Text } from '@anthropic/ink';
 import {
   activateConnectionForSession,
   activateConnectionGlobally,
+  clearFastDefault,
   clearSubagentDefault,
   getSessionAssignment,
 } from '../../services/connections/activate.js';
@@ -59,6 +60,8 @@ const ACTIVATION_MENU_ACTIONS: Record<string, { slot: AgentSlot; scope: Activati
   'activate:main:global': { slot: 'main', scope: 'global' },
   'activate:subagent:session': { slot: 'subagent', scope: 'session' },
   'activate:subagent:global': { slot: 'subagent', scope: 'global' },
+  'activate:fast:session': { slot: 'fast', scope: 'session' },
+  'activate:fast:global': { slot: 'fast', scope: 'global' },
 };
 
 type PendingActivation = { slot: AgentSlot; scope: ActivationScope };
@@ -127,11 +130,17 @@ function connectionBadges(connection: Connection): string[] {
   if (getDefaultAssignment('subagent')?.connectionId === connection.id) {
     badges.push(t('subagent default'));
   }
+  if (getDefaultAssignment('fast')?.connectionId === connection.id) {
+    badges.push(t('fast default'));
+  }
   if (getSessionAssignment('main')?.connectionId === connection.id) {
     badges.push(t('in use (main)'));
   }
   if (getSessionAssignment('subagent')?.connectionId === connection.id) {
     badges.push(t('in use (subagent)'));
+  }
+  if (getSessionAssignment('fast')?.connectionId === connection.id) {
+    badges.push(t('in use (fast)'));
   }
   return badges;
 }
@@ -283,15 +292,25 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 label: connection.label,
                 model: modelSuffix,
               })
-          : scope === 'global'
-            ? tf('{label}{model} is now the subagent default', {
-                label: connection.label,
-                model: modelSuffix,
-              })
-            : tf('Subagents use {label}{model} for this session', {
-                label: connection.label,
-                model: modelSuffix,
-              });
+          : slot === 'fast'
+            ? scope === 'global'
+              ? tf('{label}{model} is now the fast (HAIKU) default', {
+                  label: connection.label,
+                  model: modelSuffix,
+                })
+              : tf('Fast (HAIKU) calls use {label}{model} for this session', {
+                  label: connection.label,
+                  model: modelSuffix,
+                })
+            : scope === 'global'
+              ? tf('{label}{model} is now the subagent default', {
+                  label: connection.label,
+                  model: modelSuffix,
+                })
+              : tf('Subagents use {label}{model} for this session', {
+                  label: connection.label,
+                  model: modelSuffix,
+                });
       onDone(message);
     },
     [onDone, onMainModelChange, onAuthChanged],
@@ -308,7 +327,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       const fresh = findConnection(connectionId);
       if (!fresh) return;
       let touched = false;
-      for (const slot of ['main', 'subagent'] as const) {
+      for (const slot of ['main', 'subagent', 'fast'] as const) {
         const isDefault = getDefaultAssignment(slot)?.connectionId === fresh.id;
         const isSession = getSessionAssignment(slot)?.connectionId === fresh.id;
         if (!isDefault && !isSession) continue;
@@ -355,6 +374,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
     switch (view.mode) {
       case 'list': {
         const hasSubagentDefault = getDefaultAssignment('subagent') !== undefined;
+        const hasFastDefault = getDefaultAssignment('fast') !== undefined;
         const options: Array<{
           label: string;
           value: string;
@@ -371,6 +391,14 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 {
                   label: t('Clear subagent default (inherit main)'),
                   value: 'clear-subagent',
+                },
+              ]
+            : []),
+          ...(hasFastDefault
+            ? [
+                {
+                  label: t('Clear fast default (inherit main)'),
+                  value: 'clear-fast',
                 },
               ]
             : []),
@@ -397,6 +425,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   setView({ mode: 'add' });
                 } else if (value === 'clear-subagent') {
                   clearSubagentDefault();
+                  refresh();
+                } else if (value === 'clear-fast') {
+                  clearFastDefault();
                   refresh();
                 } else if (value === 'close') {
                   onDone();
@@ -434,6 +465,14 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 {
                   label: t('Set as global default (subagents)'),
                   value: 'activate:subagent:global',
+                },
+                {
+                  label: t('Use for this session (fast/HAIKU calls)'),
+                  value: 'activate:fast:session',
+                },
+                {
+                  label: t('Set as global default (fast/HAIKU calls)'),
+                  value: 'activate:fast:global',
                 },
                 {
                   label: t('Change pinned model…'),

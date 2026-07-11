@@ -17,7 +17,7 @@ type ConnectionPickItem = {
 };
 
 type Props = {
-  /** Agent slot the picker switches ('main' for /provider, 'subagent' for /subagent-provider). */
+  /** Agent slot the picker switches ('main' for /provider, 'subagent' for /subagent-provider, 'fast' for /fast-provider). */
   slot: AgentSlot;
   onDone: (message?: string) => void;
   /** Applied on main-slot switches so AppState.mainLoopModel follows the connection. */
@@ -50,9 +50,10 @@ function connectionDetails(connection: Connection): string {
 }
 
 /**
- * Connection selector for /provider (slot 'main') and /subagent-provider
- * (slot 'subagent'). Enter activates for this session, Shift+Tab persists the
- * connection as the slot's global default, Esc cancels.
+ * Connection selector for /provider (slot 'main'), /subagent-provider
+ * (slot 'subagent') and /fast-provider (slot 'fast'). Enter activates for
+ * this session, Shift+Tab persists the connection as the slot's global
+ * default, Esc cancels.
  */
 export function ConnectionPicker({ slot, onDone, onMainModelChange, onAuthChanged }: Props): React.ReactNode {
   const [query, setQuery] = useState('');
@@ -115,7 +116,13 @@ export function ConnectionPicker({ slot, onDone, onMainModelChange, onAuthChange
     <Box flexDirection="column">
       {error ? <Text color="error">{error}</Text> : null}
       <FuzzyPicker<ConnectionPickItem>
-        title={slot === 'main' ? t('Select connection — main agent') : t('Select connection — subagents')}
+        title={
+          slot === 'main'
+            ? t('Select connection — main agent')
+            : slot === 'fast'
+              ? t('Select connection — fast (HAIKU) calls')
+              : t('Select connection — subagents')
+        }
         placeholder={t('Search connections…')}
         items={filteredItems}
         getKey={item => item.connection.id}

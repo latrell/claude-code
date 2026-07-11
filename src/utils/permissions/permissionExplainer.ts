@@ -7,7 +7,8 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { logError } from '../log.js'
-import { getMainLoopModel, getSmallFastModel } from '../model/model.js'
+import { getMainLoopModel } from '../model/model.js'
+import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { sideQuery } from '../sideQuery.js'
 import { jsonStringify } from '../slowOperations.js'
@@ -175,11 +176,15 @@ ${conversationContext ? `\nRecent conversation context:\n${conversationContext}`
 
 Explain this command in context.`
 
-    const model = isPoorModeActive() ? getSmallFastModel() : getMainLoopModel()
+    // Poor mode routes to the small/fast model — honour the fast slot
+    // (/fast-provider) when configured. Non-poor mode uses the main model.
+    const fast = isPoorModeActive() ? getFastModelAndRuntime() : undefined
+    const model = fast?.model ?? getMainLoopModel()
 
     // Use sideQuery with forced tool choice for guaranteed structured output
     const response = await sideQuery({
       model,
+      ...(fast?.runtime && { providerRuntimeConfig: fast.runtime }),
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [EXPLAIN_COMMAND_TOOL],

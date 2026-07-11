@@ -52,6 +52,7 @@ import {
   anthropicToolsToGemini,
   anthropicToolChoiceToGemini,
 } from '@ant/model-provider'
+import type { ProviderRuntimeConfig } from './model/subagentProvider.js'
 import type { SystemPrompt } from './systemPromptType.js'
 
 type MessageParam = Anthropic.MessageParam
@@ -97,6 +98,13 @@ export type SideQueryOptions = {
   stop_sequences?: string[]
   /** Attributes this call in tengu_api_success for COGS joining against reporting.sampling_calls. */
   querySource: QuerySource
+  /**
+   * Scoped provider runtime (fast slot / --fast-provider): overrides the
+   * provider routing, credentials env and (for ChatGPT) the credentialScope.
+   * When set, `env` is used as a whole in place of process.env for
+   * provider-scoped reads — same semantics as queryModelOpenAI/Gemini/Grok.
+   */
+  providerRuntimeConfig?: ProviderRuntimeConfig
   /** Parent Langfuse span to nest this side query under the main agent trace. */
   parentSpan?: LangfuseSpan | null
   /** When true, API failures are recorded as WARNING instead of ERROR in Langfuse.
@@ -188,7 +196,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     stop_sequences,
   } = opts
 
-  const provider = getAPIProvider()
+  const provider = opts.providerRuntimeConfig?.provider ?? getAPIProvider()
   if (provider === 'openai' || provider === 'grok') {
     return sideQueryViaOpenAICompatible(opts)
   }
@@ -200,7 +208,15 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     maxRetries,
     model,
     source: 'side_query',
+    // Scoped ANTHROPIC_* credentials (fast slot with an anthropic-api
+    // connection). Absent env (e.g. anthropic-oauth profile) shares the
+    // main session's Anthropic credentials by design.
+    envOverride: opts.providerRuntimeConfig?.env,
   })
+  // Known dark corner: getModelBetas reads main-session globals
+  // (getAPIProvider/isClaudeAISubscriber) — a scoped anthropic-api runtime
+  // under a subscriber main session still carries the oauth beta header.
+  // Same pre-existing behaviour as the subagent runtime path.
   const betas = [...getModelBetas(model)]
   // Add structured-outputs beta if using output_format and provider supports it
   if (
@@ -545,14 +561,19 @@ async function sideQueryViaOpenAICompatible(
     signal,
   } = opts
 
-  const provider = getAPIProvider()
+  const runtime = opts.providerRuntimeConfig
+  const provider = runtime?.provider ?? getAPIProvider()
   const normalizedModel = normalizeModelStringForAPI(model)
+  // Whole-object fallback (not per-key): a runtime env replaces process.env
+  // for provider-scoped reads; a runtime without env inherits the main
+  // session's env — same semantics as queryModelOpenAI/Gemini/Grok.
+  const scopedEnv = runtime?.env ?? process.env
 
   // Resolve model name per provider
   const openaiModel =
     provider === 'grok'
-      ? resolveGrokModel(normalizedModel)
-      : resolveOpenAIModel(normalizedModel)
+      ? resolveGrokModel(normalizedModel, scopedEnv)
+      : resolveOpenAIModel(normalizedModel, scopedEnv)
 
   // Build system prompt text
   const systemText = extractSystemText(system)
@@ -589,7 +610,7 @@ async function sideQueryViaOpenAICompatible(
     if (openaiToolChoice) requestParams.tool_choice = openaiToolChoice
   }
 
-  if (provider === 'openai' && isChatGPTAuthEnabled()) {
+  if (provider === 'openai' && isChatGPTAuthEnabled(scopedEnv)) {
     const response = await collectAnthropicStreamToBetaMessage(
       adaptResponsesStreamToAnthropic(
         await createChatGPTResponsesStream({
@@ -600,6 +621,7 @@ async function sideQueryViaOpenAICompatible(
             toolChoice: openaiToolChoice,
           }),
           signal: signal ?? new AbortController().signal,
+          credentialScope: runtime?.credentialScope,
         }),
         openaiModel,
       ),
@@ -631,8 +653,14 @@ async function sideQueryViaOpenAICompatible(
 
   const client =
     provider === 'grok'
-      ? getGrokClient({ maxRetries: opts.maxRetries ?? 2 })
-      : getOpenAIClient({ maxRetries: opts.maxRetries ?? 2 })
+      ? getGrokClient({
+          maxRetries: opts.maxRetries ?? 2,
+          envOverride: runtime?.env,
+        })
+      : getOpenAIClient({
+          maxRetries: opts.maxRetries ?? 2,
+          envOverride: runtime?.env,
+        })
   const response = await client.chat.completions.create(
     requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
     { signal },
@@ -728,8 +756,11 @@ async function sideQueryViaGemini(
     signal,
   } = opts
 
+  const runtime = opts.providerRuntimeConfig
+  // Whole-object fallback — same semantics as sideQueryViaOpenAICompatible.
+  const scopedEnv = runtime?.env ?? process.env
   const normalizedModel = normalizeModelStringForAPI(model)
-  const geminiModel = resolveGeminiModel(normalizedModel)
+  const geminiModel = resolveGeminiModel(normalizedModel, scopedEnv)
 
   // Build Gemini contents from Anthropic MessageParam[]
   const contents: Array<{
@@ -773,7 +804,7 @@ async function sideQueryViaGemini(
     : undefined
 
   const baseUrl = (
-    process.env.GEMINI_BASE_URL ||
+    scopedEnv.GEMINI_BASE_URL ||
     'https://generativelanguage.googleapis.com/v1beta'
   ).replace(/\/+$/, '')
   const modelPath = geminiModel.startsWith('models/')
@@ -810,7 +841,7 @@ async function sideQueryViaGemini(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-goog-api-key': process.env.GEMINI_API_KEY || '',
+      'x-goog-api-key': scopedEnv.GEMINI_API_KEY || '',
     },
     body: JSON.stringify(body),
     signal,

@@ -67,6 +67,16 @@ function slotSwitchMessage(
         })
       : tf('Switched main agent to {target} for this session', { target })
   }
+  if (slot === 'fast') {
+    return scope === 'global'
+      ? tf(
+          'Switched fast (HAIKU) calls to {target} and set it as the global default',
+          { target },
+        )
+      : tf('Switched fast (HAIKU) calls to {target} for this session', {
+          target,
+        })
+  }
   return scope === 'global'
     ? tf('Switched subagents to {target} and set it as the global default', {
         target,

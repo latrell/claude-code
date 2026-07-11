@@ -90,6 +90,7 @@ import {
   getSmallFastModel,
   isNonCustomOpusModel,
 } from '../../utils/model/model.js'
+import { getFastModelAndRuntime } from '../../utils/model/fastProvider.js'
 import {
   asSystemPrompt,
   type SystemPrompt,
@@ -870,6 +871,7 @@ export async function* executeNonStreamingRequest(
     model: string
     fetchOverride?: Options['fetchOverride']
     source: string
+    envOverride?: Record<string, string | undefined>
   },
   retryOptions: {
     model: string
@@ -897,6 +899,7 @@ export async function* executeNonStreamingRequest(
         model: clientOptions.model,
         fetchOverride: clientOptions.fetchOverride,
         source: clientOptions.source,
+        envOverride: clientOptions.envOverride,
       }),
     async (anthropic, attempt, context) => {
       const start = Date.now()
@@ -1931,6 +1934,7 @@ async function* queryModel(
           model: options.model,
           fetchOverride: options.fetchOverride,
           source: options.querySource,
+          envOverride: options.providerRuntimeConfig?.env,
         }),
       async (anthropic, attempt, context) => {
         attemptNumber = attempt
@@ -2727,7 +2731,11 @@ async function* queryModel(
           : 'other') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
       const result = yield* executeNonStreamingRequest(
-        { model: options.model, source: options.querySource },
+        {
+          model: options.model,
+          source: options.querySource,
+          envOverride: options.providerRuntimeConfig?.env,
+        },
         {
           model: options.model,
           fallbackModel: options.fallbackModel,
@@ -2829,7 +2837,11 @@ async function* queryModel(
       try {
         // Fall back to non-streaming mode
         const result = yield* executeNonStreamingRequest(
-          { model: options.model, source: options.querySource },
+          {
+            model: options.model,
+            source: options.querySource,
+            envOverride: options.providerRuntimeConfig?.env,
+          },
           {
             model: options.model,
             fallbackModel: options.fallbackModel,
@@ -3475,6 +3487,10 @@ export async function queryHaiku({
         }),
       ]
 
+      // Small/fast calls route through the fast slot when configured
+      // (/fast-provider): the pinned model plus its ProviderRuntimeConfig
+      // (provider + env + credentials). Unconfigured = current behaviour.
+      const fast = getFastModelAndRuntime()
       const result = await queryModelWithoutStreaming({
         messages,
         systemPrompt,
@@ -3483,9 +3499,13 @@ export async function queryHaiku({
         signal,
         options: {
           ...options,
-          model: getSmallFastModel(),
+          model: fast.model,
           enablePromptCaching: options.enablePromptCaching ?? false,
           outputFormat,
+          ...(fast.runtime &&
+            !options.providerRuntimeConfig && {
+              providerRuntimeConfig: fast.runtime,
+            }),
           async getToolPermissionContext() {
             return getEmptyToolPermissionContext()
           },

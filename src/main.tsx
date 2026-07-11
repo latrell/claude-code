@@ -107,6 +107,7 @@ import { computeInitialTeamContext } from './utils/swarm/reconnection.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
 import { setSubagentProviderCliOverride } from './utils/model/subagentProvider.js';
+import { setFastProviderCliOverride } from './utils/model/fastProvider.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const connectionsCliModule = feature('PROVIDER_CONNECTIONS')
   ? (require('./services/connections/cliResolve.js') as typeof import('./services/connections/cliResolve.js'))
@@ -1524,6 +1525,12 @@ async function run(): Promise<CommanderCommand> {
         'Subagent connection for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
       ),
     )
+    .option(
+      '--fast-provider <name>',
+      t(
+        'Connection for small/fast (HAIKU) internal calls for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
+      ),
+    )
     .option('--disable-slash-commands', t('Disable all skills'), () => true)
     .option('--chrome', t('Enable Claude in Chrome integration'))
     .option('--no-chrome', t('Disable Claude in Chrome integration'))
@@ -1634,14 +1641,17 @@ async function run(): Promise<CommanderCommand> {
         includePartialMessages,
       } = options;
 
-      // Apply CLI --provider / --subagent-provider (process-scoped, not persisted).
+      // Apply CLI --provider / --subagent-provider / --fast-provider
+      // (process-scoped, not persisted).
       // Values are /connect registry names (id, label, or presetId).
-      // --subagent-provider unset forces the subagent to inherit the main connection.
+      // --subagent-provider/--fast-provider unset force the slot to inherit
+      // the main connection.
       // Commander stores multi-word flags camelCased: --subagent-provider lands on
       // options.subagentProvider ONLY. Reading the kebab-case key returns
       // undefined and once made this flag a silent no-op.
       const cliProvider = (options as { provider?: string }).provider;
       const cliSubagentProvider = (options as { subagentProvider?: string }).subagentProvider;
+      const cliFastProvider = (options as { fastProvider?: string }).fastProvider;
       const cliModelForActivation =
         typeof options.model === 'string' && options.model !== 'default' ? options.model : undefined;
       // Model returned by --provider connection activation; applied later when
@@ -1649,9 +1659,15 @@ async function run(): Promise<CommanderCommand> {
       // providerModels left by a previous global default).
       let cliActivatedMainModel: string | null | undefined;
 
-      if (cliProvider || (cliSubagentProvider && cliSubagentProvider !== 'unset')) {
+      if (
+        cliProvider ||
+        (cliSubagentProvider && cliSubagentProvider !== 'unset') ||
+        (cliFastProvider && cliFastProvider !== 'unset')
+      ) {
         if (!connectionsCliModule || !connectionsActivateModule) {
-          process.stderr.write(chalk.red(t('Error: --provider/--subagent-provider require PROVIDER_CONNECTIONS.\n')));
+          process.stderr.write(
+            chalk.red(t('Error: --provider/--subagent-provider/--fast-provider require PROVIDER_CONNECTIONS.\n')),
+          );
           process.exit(1);
         }
         connectionsMigrateModule?.importLegacyConnections();
@@ -1717,10 +1733,43 @@ async function run(): Promise<CommanderCommand> {
             process.exit(1);
           }
         }
+
+        if (cliFastProvider && cliFastProvider !== 'unset') {
+          const resolved = connectionsCliModule.resolveConnectionRef(cliFastProvider);
+          if (!resolved.ok) {
+            const message =
+              resolved.reason === 'not_found'
+                ? `${resolved.error}\n${connectionsCliModule.formatConnectionsList()}`
+                : resolved.error;
+            process.stderr.write(chalk.red(`${message}\n`));
+            process.exit(1);
+          }
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection);
+          const result = await connectionsActivateModule.activateConnectionForSession(
+            resolved.connection,
+            'fast',
+            model,
+          );
+          if (!result.success) {
+            process.stderr.write(
+              chalk.red(
+                tf('Failed to activate fast connection "{name}": {error}\n', {
+                  name: cliFastProvider,
+                  error: result.error ?? t('unknown error'),
+                }),
+              ),
+            );
+            process.exit(1);
+          }
+        }
       }
 
       if (cliSubagentProvider === 'unset') {
         setSubagentProviderCliOverride('unset');
+      }
+
+      if (cliFastProvider === 'unset') {
+        setFastProviderCliOverride('unset');
       }
 
       if (options.prefill) {

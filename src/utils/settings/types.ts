@@ -68,6 +68,13 @@ const ProviderModelConfigSchema = lazySchema(() =>
         .nullable()
         .optional()
         .describe('Default subagent model for this provider'),
+      fastModel: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Default small/fast (HAIKU) model for this provider, used by internal side queries',
+        ),
     })
     .passthrough(),
 )
@@ -415,6 +422,11 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Provider/account override used only by Agent/subagent sessions. When unset, subagents inherit the global login provider.',
+        ),
+      fastProvider: ProviderLoginConfigSchema()
+        .optional()
+        .describe(
+          'Provider/account override used only by small/fast (HAIKU) internal calls (session titles, notification summaries, side queries). When unset, fast calls inherit the global login provider.',
         ),
       providerModels: z
         .object({

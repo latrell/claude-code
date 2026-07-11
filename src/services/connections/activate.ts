@@ -10,12 +10,16 @@
  *   subagent slot → setSubagentProviderConfigOverride() with a full
  *                   ProviderLoginConfig (env + model), consumed by
  *                   getSubagentProviderRuntimeConfig().
+ *   fast slot     → setFastProviderConfigOverride(), consumed by
+ *                   getFastProviderRuntimeConfig() for small/fast (HAIKU)
+ *                   internal calls (queryHaiku / sideQuery).
  *
  * Global scope (persists, then applies the session activation too):
  *   main slot     → ccb-provider-auth.json / settings.env credentials,
  *                   settings.modelType, providerModels.<key>.model
  *   subagent slot → settings.subagentProvider, providerModels.<key>.subagentModel
- *   both          → defaults recorded in ccb-connections.json (UI display)
+ *   fast slot     → settings.fastProvider, providerModels.<key>.fastModel
+ *   all           → defaults recorded in ccb-connections.json (UI display)
  */
 
 import { copyFileSync } from 'fs'
@@ -38,10 +42,17 @@ import {
   type APIProvider,
 } from '../../utils/model/providers.js'
 import {
+  FAST_CREDENTIAL_SCOPE,
+  setFastProviderConfigOverride,
+} from '../../utils/model/fastProvider.js'
+import {
   SUBAGENT_CREDENTIAL_SCOPE,
   setSubagentProviderConfigOverride,
 } from '../../utils/model/subagentProvider.js'
-import type { SettingsJson } from '../../utils/settings/types.js'
+import type {
+  ProviderLoginConfig,
+  SettingsJson,
+} from '../../utils/settings/types.js'
 import { activateOAuthAccountSlot } from './oauthAccounts.js'
 import { setSessionAssignment } from './sessionAssignments.js'
 import { setSessionProviderEnvOverlay } from './sessionEnvOverlay.js'
@@ -424,8 +435,8 @@ export async function activateConnectionForSession(
   slot: AgentSlot,
   model?: string | null,
 ): Promise<ActivationResult> {
-  if (slot === 'subagent') {
-    return activateSubagentForSession(connection, model)
+  if (slot === 'subagent' || slot === 'fast') {
+    return activateScopedSlotForSession(connection, slot, model)
   }
   const resolvedModel = resolveActivationModel(connection, model)
 
@@ -464,15 +475,33 @@ export async function activateConnectionForSession(
   }
 }
 
+/** Scoped slots that deploy via a ProviderLoginConfig override. */
+type ScopedSlot = 'subagent' | 'fast'
+
+function scopedCredentialScope(slot: ScopedSlot): string {
+  return slot === 'subagent' ? SUBAGENT_CREDENTIAL_SCOPE : FAST_CREDENTIAL_SCOPE
+}
+
+function setScopedConfigOverride(
+  slot: ScopedSlot,
+  config: ProviderLoginConfig | undefined,
+): void {
+  if (slot === 'subagent') {
+    setSubagentProviderConfigOverride(config)
+  } else {
+    setFastProviderConfigOverride(config)
+  }
+}
+
 /**
- * Subagent config for a ChatGPT connection: the credentialScope routes
+ * Scoped-slot config for a ChatGPT connection: the credentialScope routes
  * getValidChatGPTAuth() to this connection's openai-chatgpt-auth.<scope>.json
  * file ('default' resolves to the unsuffixed default file).
  */
-function chatgptSubagentConfig(
+function chatgptSlotConfig(
   connection: Connection,
   model?: string | null,
-): SettingsJson['subagentProvider'] {
+): ProviderLoginConfig {
   return {
     modelType: 'openai',
     env: { OPENAI_AUTH_MODE: 'chatgpt' },
@@ -484,12 +513,34 @@ function chatgptSubagentConfig(
   }
 }
 
-function subagentLoginConfig(
+/**
+ * Scoped-slot config for an Anthropic OAuth connection. Identity switching
+ * would require scoped OAuth credentials in the Anthropic client path, which
+ * does not exist yet — scoped slots share the main session's Anthropic
+ * credentials (model/thinking-effort still apply).
+ */
+function anthropicOAuthSlotConfig(
   connection: Connection,
-  model?: string | null,
-): SettingsJson['subagentProvider'] {
+  model: string | null,
+  credentialScope: string,
+): ProviderLoginConfig {
+  return {
+    modelType: 'anthropic',
+    ...(model && { model }),
+    ...(connection.thinkingEffort && {
+      thinkingEffort: connection.thinkingEffort,
+    }),
+    credentialScope,
+  }
+}
+
+function slotLoginConfig(
+  connection: Connection,
+  model: string | null | undefined,
+  credentialScope: string,
+): ProviderLoginConfig {
   const env = envForConnection(connection, model)
-  // subagentProvider.env is Record<string,string>; drop deletion markers.
+  // ProviderLoginConfig.env is Record<string,string>; drop deletion markers.
   // The runtime env override replaces process.env for provider-scoped reads,
   // so unset keys simply fall back to the connection-provided values.
   const cleanEnv: Record<string, string> = {}
@@ -503,44 +554,45 @@ function subagentLoginConfig(
     ...(connection.thinkingEffort && {
       thinkingEffort: connection.thinkingEffort,
     }),
-    credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    credentialScope,
   }
 }
 
-async function activateSubagentForSession(
+/** Build the ProviderLoginConfig deployed for a scoped slot activation. */
+function scopedSlotConfig(
   connection: Connection,
+  slot: ScopedSlot,
+  model: string | null,
+): ProviderLoginConfig {
+  const credentialScope = scopedCredentialScope(slot)
+  if (connection.kind === 'anthropic-oauth') {
+    return anthropicOAuthSlotConfig(connection, model, credentialScope)
+  }
+  if (connection.kind === 'chatgpt-oauth') {
+    return chatgptSlotConfig(connection, model)
+  }
+  return slotLoginConfig(connection, model, credentialScope)
+}
+
+async function activateScopedSlotForSession(
+  connection: Connection,
+  slot: ScopedSlot,
   model?: string | null,
 ): Promise<ActivationResult> {
   const resolvedModel = resolveActivationModel(connection, model)
-  // Anthropic OAuth subagent identity switching would require scoped OAuth
-  // credentials in the Anthropic client path, which does not exist yet —
-  // subagents share the main session's Anthropic credentials.
-  if (connection.kind === 'anthropic-oauth') {
-    setSubagentProviderConfigOverride({
-      modelType: 'anthropic',
-      ...(resolvedModel && { model: resolvedModel }),
-      ...(connection.thinkingEffort && {
-        thinkingEffort: connection.thinkingEffort,
-      }),
-      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
-    })
-  } else if (connection.kind === 'chatgpt-oauth') {
+  if (connection.kind === 'chatgpt-oauth') {
     const checked = await checkChatGPTCredential(connection)
     if (!checked.success) return checked
-    setSubagentProviderConfigOverride(
-      chatgptSubagentConfig(connection, resolvedModel),
-    )
-  } else {
-    if (connection.kind === 'cursor') {
-      const checked = await checkCursorCredential(connection)
-      if (!checked.success) return checked
-    }
-    setSubagentProviderConfigOverride(
-      subagentLoginConfig(connection, resolvedModel),
-    )
+  } else if (connection.kind === 'cursor') {
+    const checked = await checkCursorCredential(connection)
+    if (!checked.success) return checked
   }
+  setScopedConfigOverride(
+    slot,
+    scopedSlotConfig(connection, slot, resolvedModel),
+  )
   touchConnectionUsage(connection.id)
-  setSessionAssignment('subagent', {
+  setSessionAssignment(slot, {
     connectionId: connection.id,
     model: resolvedModel ?? undefined,
   })
@@ -625,25 +677,20 @@ export async function activateConnectionGlobally(
       } as unknown as SettingsJson)
       if (error) return { success: false, error: error.message }
     } else {
-      // Subagent slot: persist through the existing subagentProvider pipeline
-      const subagentProvider =
-        connection.kind === 'anthropic-oauth'
-          ? {
-              modelType: 'anthropic' as const,
-              ...(resolvedModel && { model: resolvedModel }),
-              ...(connection.thinkingEffort && {
-                thinkingEffort: connection.thinkingEffort,
-              }),
-              credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
-            }
-          : connection.kind === 'chatgpt-oauth'
-            ? chatgptSubagentConfig(connection, resolvedModel)
-            : subagentLoginConfig(connection, resolvedModel)
+      // Scoped slots (subagent/fast): persist through the existing
+      // ProviderLoginConfig pipeline (settings.subagentProvider /
+      // settings.fastProvider).
+      const scopedConfig = scopedSlotConfig(connection, slot, resolvedModel)
       const { error } = writeUserSettings({
-        subagentProvider,
+        ...(slot === 'subagent'
+          ? { subagentProvider: scopedConfig }
+          : { fastProvider: scopedConfig }),
         ...(providerKey && {
           providerModels: {
-            [providerKey]: { subagentModel: resolvedModel ?? undefined },
+            [providerKey]:
+              slot === 'subagent'
+                ? { subagentModel: resolvedModel ?? undefined }
+                : { fastModel: resolvedModel ?? undefined },
           },
         }),
       } as unknown as SettingsJson)
@@ -674,5 +721,15 @@ export function clearSubagentDefault(): { error: Error | null } {
   setSessionAssignment('subagent', undefined)
   return writeUserSettings({
     subagentProvider: undefined,
+  } as unknown as SettingsJson)
+}
+
+/** Clear the global fast default (HAIKU calls inherit the main provider). */
+export function clearFastDefault(): { error: Error | null } {
+  setFastProviderConfigOverride(undefined)
+  setDefaultAssignment('fast', undefined)
+  setSessionAssignment('fast', undefined)
+  return writeUserSettings({
+    fastProvider: undefined,
   } as unknown as SettingsJson)
 }

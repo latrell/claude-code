@@ -316,7 +316,9 @@ export function getDefaultAssignment(
   slot: AgentSlot,
 ): SlotAssignment | undefined {
   const defaults = loadConnectionsFile().defaults
-  return slot === 'main' ? defaults?.main : defaults?.subagent
+  if (slot === 'main') return defaults?.main
+  if (slot === 'subagent') return defaults?.subagent
+  return defaults?.fast
 }
 
 export function setDefaultAssignment(
@@ -327,15 +329,18 @@ export function setDefaultAssignment(
   const defaults = { ...(file.defaults ?? {}) }
   if (slot === 'main') {
     defaults.main = assignment
-  } else {
+  } else if (slot === 'subagent') {
     defaults.subagent = assignment
+  } else {
+    defaults.fast = assignment
   }
   const cleaned =
-    !defaults.main && !defaults.subagent
+    !defaults.main && !defaults.subagent && !defaults.fast
       ? undefined
       : {
           ...(defaults.main && { main: defaults.main }),
           ...(defaults.subagent && { subagent: defaults.subagent }),
+          ...(defaults.fast && { fast: defaults.fast }),
         }
   writeConnectionsFile({ ...file, defaults: cleaned })
 }

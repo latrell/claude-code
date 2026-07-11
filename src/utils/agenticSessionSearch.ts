@@ -2,7 +2,7 @@ import type { LogOption, SerializedMessage } from '../types/logs.js'
 import { count } from './array.js'
 import { logForDebugging } from './debug.js'
 import { getLogDisplayTitle, logError } from './log.js'
-import { getSmallFastModel } from './model/model.js'
+import { getFastModelAndRuntime } from './model/fastProvider.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from './sideQuery.js'
 import { jsonParse } from './slowOperations.js'
@@ -258,11 +258,12 @@ Find the sessions that are most relevant to this query.`
   )
 
   try {
-    const model = getSmallFastModel()
+    const { model, runtime } = getFastModelAndRuntime()
     logForDebugging(`Agentic search using model: ${model}`)
 
     const response = await sideQuery({
       model,
+      ...(runtime && { providerRuntimeConfig: runtime }),
       system: SESSION_SEARCH_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
       signal,

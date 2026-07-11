@@ -67,6 +67,7 @@ const {
   _setSettingsWriterForTest,
   activateConnectionForSession,
   activateConnectionGlobally,
+  clearFastDefault,
   envForConnection,
 } = await import('../activate.js')
 
@@ -108,6 +109,9 @@ _setSettingsWriterForTest(value => {
 })
 const { getSubagentProviderConfig, setSubagentProviderConfigOverride } =
   await import('../../../utils/model/subagentProvider.js')
+const { getFastProviderConfig, setFastProviderConfigOverride } = await import(
+  '../../../utils/model/fastProvider.js'
+)
 const {
   applySessionProviderEnvOverlay,
   getSessionProviderEnvOverlay,
@@ -129,6 +133,7 @@ afterAll(() => {
   _setSettingsWriterForTest(null)
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
+  setFastProviderConfigOverride(undefined)
 })
 
 const ENV_KEYS = [
@@ -191,6 +196,7 @@ beforeEach(() => {
   userSettingsState = {}
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
+  setFastProviderConfigOverride(undefined)
   setSessionProviderEnvOverlay(null)
 })
 
@@ -212,6 +218,7 @@ afterEach(() => {
   setOauthAccount(undefined)
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
+  setFastProviderConfigOverride(undefined)
   setSessionProviderEnvOverlay(null)
   rmSync(tmpDir, { recursive: true, force: true })
 })
@@ -935,5 +942,160 @@ describe('activateConnectionGlobally', () => {
     expect(settings['modelType']).toBe('anthropic')
     // Nothing written into the openai/gemini/grok credential file
     expect(readCCBProviderAuthData()).toEqual({})
+  })
+})
+
+describe('activateConnectionForSession (fast slot)', () => {
+  test('openai-compat: sets full fast provider override', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(
+      conn,
+      'fast',
+      'deepseek-chat',
+    )
+    expect(result.success).toBe(true)
+
+    const config = getFastProviderConfig({}, {})
+    expect(config?.modelType).toBe('openai')
+    expect(config?.model).toBe('deepseek-chat')
+    expect(config?.env?.OPENAI_API_KEY).toBe('sk-a')
+    expect(config?.env?.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
+  })
+
+  test('chatgpt-oauth: routes credentialScope to the connection scope', async () => {
+    writeChatGPTAuthFile('gpt-work')
+    const conn: Connection = {
+      id: 'gpt-work',
+      label: 'ChatGPT Work',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'gpt-work',
+    }
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'fast', null)
+    expect(result.success).toBe(true)
+
+    const config = getFastProviderConfig({}, {})
+    expect(config?.modelType).toBe('openai')
+    expect(config?.credentialScope).toBe('gpt-work')
+    expect(config?.env?.OPENAI_AUTH_MODE).toBe('chatgpt')
+  })
+
+  test('anthropic-api: fast config carries scoped ANTHROPIC_* credentials', async () => {
+    const conn: Connection = {
+      id: 'gateway-fast',
+      label: 'Gateway Fast',
+      kind: 'anthropic-api',
+      baseUrl: 'https://gw.example.com',
+      apiKey: 'tok-fast',
+      model: 'glm-4.7-flash',
+    }
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'fast')
+    expect(result.success).toBe(true)
+
+    const config = getFastProviderConfig({}, {})
+    expect(config?.modelType).toBe('anthropic')
+    expect(config?.model).toBe('glm-4.7-flash')
+    expect(config?.env?.ANTHROPIC_BASE_URL).toBe('https://gw.example.com')
+    expect(config?.env?.ANTHROPIC_AUTH_TOKEN).toBe('tok-fast')
+  })
+
+  test('does not touch process.env, main provider or the subagent slot', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionForSession(conn, 'fast', 'deepseek-chat')
+    expect(process.env.OPENAI_API_KEY).toBeUndefined()
+    expect(getAPIProvider({}, {})).toBe('firstParty')
+    expect(getSubagentProviderConfig({}, {})).toBeUndefined()
+    expect(getSessionProviderEnvOverlay()).toBeNull()
+  })
+
+  test('model omitted: fast config pins the connection model', async () => {
+    const conn = openaiConn({ model: 'deepseek-v4-flash' })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'fast')
+    expect(result.success).toBe(true)
+    expect(getFastProviderConfig({}, {})?.model).toBe('deepseek-v4-flash')
+  })
+
+  test('thinkingEffort off puts OPENAI_ENABLE_THINKING=0 in the fast env', async () => {
+    const conn = openaiConn({
+      model: 'deepseek-v4-flash',
+      thinkingEffort: 'off',
+    })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'fast')
+    expect(result.success).toBe(true)
+    const config = getFastProviderConfig({}, {})
+    expect(config?.env?.OPENAI_ENABLE_THINKING).toBe('0')
+  })
+
+  test('chatgpt-oauth fast activation fails when no credential exists', async () => {
+    const result = await activateConnectionForSession(chatgptConn(), 'fast')
+    expect(result.success).toBe(false)
+    expect(getFastProviderConfig({}, {})).toBeUndefined()
+  })
+})
+
+describe('activateConnectionGlobally (fast slot)', () => {
+  test('persists fastProvider, fastModel and the fast default', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+
+    const result = await activateConnectionGlobally(
+      conn,
+      'fast',
+      'deepseek-chat',
+    )
+    expect(result.success).toBe(true)
+
+    const settings = readUserSettings() as {
+      fastProvider?: { modelType: string; env?: Record<string, string> }
+      providerModels?: Record<string, { fastModel?: string }>
+    }
+    expect(settings.fastProvider?.modelType).toBe('openai')
+    expect(settings.fastProvider?.env?.OPENAI_API_KEY).toBe('sk-a')
+    expect(settings.providerModels?.['openai']?.fastModel).toBe('deepseek-chat')
+
+    expect(getDefaultAssignment('fast')).toEqual({
+      connectionId: 'deepseek-a',
+      model: 'deepseek-chat',
+    })
+
+    // Session applied too, without touching process.env
+    expect(getFastProviderConfig({}, {})?.model).toBe('deepseek-chat')
+    expect(process.env.OPENAI_API_KEY).toBeUndefined()
+  })
+
+  test('does not clobber the subagent default', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'subagent', 'deepseek-chat')
+    await activateConnectionGlobally(conn, 'fast', 'deepseek-v4-flash')
+
+    expect(getDefaultAssignment('subagent')?.model).toBe('deepseek-chat')
+    expect(getDefaultAssignment('fast')?.model).toBe('deepseek-v4-flash')
+    const settings = readUserSettings() as {
+      subagentProvider?: { model?: string }
+      fastProvider?: { model?: string }
+    }
+    expect(settings.subagentProvider?.model).toBe('deepseek-chat')
+    expect(settings.fastProvider?.model).toBe('deepseek-v4-flash')
+  })
+})
+
+describe('clearFastDefault', () => {
+  test('clears the override, assignments and settings.fastProvider', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'fast', 'deepseek-chat')
+    expect(getFastProviderConfig({}, {})).toBeDefined()
+
+    const { error } = clearFastDefault()
+    expect(error).toBeNull()
+    expect(getFastProviderConfig({}, {})).toBeUndefined()
+    expect(getDefaultAssignment('fast')).toBeUndefined()
+    expect(readUserSettings()['fastProvider']).toBeUndefined()
   })
 })

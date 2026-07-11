@@ -11,6 +11,7 @@ import type { HookResult } from '../hooks.js'
 import { safeParseJSON } from '../json.js'
 import { createUserMessage, extractTextContent } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
+import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
@@ -59,6 +60,9 @@ export async function execPromptHook(
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
     try {
+      // Hook model resolution: an explicit hook.model wins (no fast runtime
+      // injection); otherwise route through the fast slot when configured.
+      const fast = hook.model ? undefined : getFastModelAndRuntime()
       const response = await queryModelWithoutStreaming({
         messages: messagesToQuery,
         systemPrompt: asSystemPrompt([
@@ -76,7 +80,8 @@ Your response must be a JSON object matching one of the following schemas:
             const appState = toolUseContext.getAppState()
             return appState.toolPermissionContext
           },
-          model: hook.model ?? getSmallFastModel(),
+          model: hook.model ?? fast?.model ?? getSmallFastModel(),
+          ...(fast?.runtime && { providerRuntimeConfig: fast.runtime }),
           toolChoice: undefined,
           isNonInteractiveSession: true,
           hasAppendSystemPrompt: false,

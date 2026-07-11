@@ -141,11 +141,17 @@ function connectionFlags(connection: Connection): string[] {
   if (getDefaultAssignment('subagent')?.connectionId === connection.id) {
     flags.push('subagent-default')
   }
+  if (getDefaultAssignment('fast')?.connectionId === connection.id) {
+    flags.push('fast-default')
+  }
   if (getSessionAssignment('main')?.connectionId === connection.id) {
     flags.push('in-use-main')
   }
   if (getSessionAssignment('subagent')?.connectionId === connection.id) {
     flags.push('in-use-subagent')
+  }
+  if (getSessionAssignment('fast')?.connectionId === connection.id) {
+    flags.push('in-use-fast')
   }
   return flags
 }
