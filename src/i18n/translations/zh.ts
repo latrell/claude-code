@@ -2551,6 +2551,7 @@ const zh: Record<string, string> = {
     '还没有任何连接。添加一个以管理提供者和账号。',
   '+ Add connection…': '+ 添加连接…',
   'Clear subagent default (inherit main)': '清除子 agent 默认（继承主 agent）',
+  'Clear fast default (inherit main)': '清除快（HAIKU）默认（继承主 agent）',
   'Claude account': 'Claude 账号',
   'Anthropic compatible': 'Anthropic 兼容',
   'ChatGPT account': 'ChatGPT 账号',
@@ -2559,10 +2560,14 @@ const zh: Record<string, string> = {
   'subagent default': '子 agent 默认',
   'in use (main)': '本会话使用中（主）',
   'in use (subagent)': '本会话使用中（子）',
+  'in use (fast)': '本会话使用中（快）',
+  'fast default': '快（HAIKU）默认',
   'Use for this session (main agent)': '本会话使用（主 agent）',
   'Set as global default (main agent)': '设为全局默认（主 agent）',
   'Use for this session (subagents)': '本会话使用（子 agent）',
   'Set as global default (subagents)': '设为全局默认（子 agent）',
+  'Use for this session (fast/HAIKU calls)': '本会话使用（快 / HAIKU 调用）',
+  'Set as global default (fast/HAIKU calls)': '设为全局默认（快 / HAIKU 调用）',
   Delete: '删除',
   'Edit connection': '编辑连接',
   'Rename connection': '重命名连接',
@@ -2619,6 +2624,10 @@ const zh: Record<string, string> = {
     '{label}{model} 已设为子 agent 默认',
   'Subagents use {label}{model} for this session':
     '本会话子 agent 使用 {label}{model}',
+  '{label}{model} is now the fast (HAIKU) default':
+    '{label}{model} 已设为快（HAIKU）默认',
+  'Fast (HAIKU) calls use {label}{model} for this session':
+    '本会话快（HAIKU）调用使用 {label}{model}',
   'Add connection': '添加连接',
   'Pick a provider preset or connection type': '选择提供者预设或连接类型',
   'OpenAI Compatible (custom endpoint)': 'OpenAI 兼容（自定义端点）',
