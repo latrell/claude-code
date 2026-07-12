@@ -46,6 +46,10 @@ function getContentItems(content: MessageContent | undefined): ContentItem[] {
 import { getDisplayPath } from './file.js'
 import { isFullscreenEnvEnabled } from './fullscreen.js'
 import {
+  getSearchReadOperationText,
+  joinActivitySummaryParts,
+} from './searchReadSummaryText.js'
+import {
   isAutoManagedMemoryFile,
   isAutoManagedMemoryPattern,
   isMemoryDirectory,
@@ -1092,27 +1096,25 @@ export function getSearchReadSummaryText(
   }
 
   if (searchCount > 0) {
-    const searchVerb = isActive
-      ? parts.length === 0
-        ? 'Searching for'
-        : 'searching for'
-      : parts.length === 0
-        ? 'Searched for'
-        : 'searched for'
     parts.push(
-      `${searchVerb} ${searchCount} ${searchCount === 1 ? 'pattern' : 'patterns'}`,
+      getSearchReadOperationText(
+        'search',
+        searchCount,
+        isActive,
+        parts.length === 0,
+      ),
     )
   }
 
   if (readCount > 0) {
-    const readVerb = isActive
-      ? parts.length === 0
-        ? 'Reading'
-        : 'reading'
-      : parts.length === 0
-        ? 'Read'
-        : 'read'
-    parts.push(`${readVerb} ${readCount} ${readCount === 1 ? 'file' : 'files'}`)
+    parts.push(
+      getSearchReadOperationText(
+        'read',
+        readCount,
+        isActive,
+        parts.length === 0,
+      ),
+    )
   }
 
   if (listCount > 0) {
@@ -1133,7 +1135,7 @@ export function getSearchReadSummaryText(
     parts.push(`${replVerb} ${replCount} ${replCount === 1 ? 'time' : 'times'}`)
   }
 
-  const text = parts.join(', ')
+  const text = joinActivitySummaryParts(parts)
   return isActive ? `${text}…` : text
 }
 

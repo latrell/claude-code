@@ -13,7 +13,7 @@ import { t, tf } from 'src/i18n/t.js'
 function printUsage(): void {
   process.stdout.write(
     t(
-      'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nSession enablement:\n  ccb --channels plugin:weixin@builtin',
+      'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nOne-time plugin enablement:\n  ccb plugin enable weixin@builtin\n\nSession channel opt-in:\n  ccb --channels plugin:weixin@builtin',
     ) + '\n',
   )
 }
@@ -29,7 +29,7 @@ async function runLogin(clear = false): Promise<void> {
   if (existing) {
     process.stdout.write(
       tf(
-        'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
+        'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nEnable the built-in plugin once:\n  ccb plugin enable weixin@builtin\nThen restart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
         {
           userId: existing.userId || 'unknown',
           savedAt: existing.savedAt,
@@ -69,7 +69,7 @@ async function runLogin(clear = false): Promise<void> {
 
   process.stdout.write(
     tf(
-      'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
+      'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nEnable the built-in plugin once:\n  ccb plugin enable weixin@builtin\nThen restart Claude Code with:\n  ccb --channels plugin:weixin@builtin',
       {
         userId: result.userId || 'unknown',
         baseUrl: result.baseUrl || DEFAULT_BASE_URL,

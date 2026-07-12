@@ -10,7 +10,7 @@ Channel 是一个 MCP 服务器，它将外部事件推送到你运行中的 Cla
 - **官方文档**：[使用 channels 将事件推送到运行中的会话](https://code.claude.com/docs/zh-CN/channels)
 - **飞书插件**：[claude-code-feishu-channel](https://github.com/whobot-ai/claude-code-feishu-channel) — 社区首个飞书 Channel 插件，支持双向消息、配对认证、群组聊天、文件附件
 
-本仓库现在内置了 **微信 WeChat channel**，不需要单独安装外部 marketplace 插件。
+本仓库现在内置了 **微信 WeChat channel**，不需要单独安装外部 marketplace 插件。该插件默认禁用，需要先显式启用一次。
 
 ## 快速开始
 
@@ -18,8 +18,9 @@ Channel 是一个 MCP 服务器，它将外部事件推送到你运行中的 Cla
 # 启用频道监听（plugin 格式）
 ccb --channels plugin:feishu@claude-code-feishu-channel
 
-# 启用内置微信 channel
+# 登录并启用内置微信 channel
 ccb weixin login
+ccb plugin enable weixin@builtin
 ccb --channels plugin:weixin@builtin
 
 # 启用频道监听（server 格式）
@@ -40,7 +41,7 @@ ccb --dangerously-load-development-channels server:my-custom-channel
 | **Discord** | 官方 Discord Bot 集成 | `/plugin install discord@claude-plugins-official` |
 | **iMessage** | macOS 原生消息 | `/plugin install imessage@claude-plugins-official` |
 | **飞书 (Feishu/Lark)** | 双向消息、群组聊天、文件附件 | `/plugin install feishu@claude-code-feishu-channel` |
-| **微信 (WeChat)** | 内置 channel，支持扫码登录、双向消息、附件透传 | `ccb weixin login` + `ccb --channels plugin:weixin@builtin` |
+| **微信 (WeChat)** | 内置 channel，默认禁用；支持扫码登录、双向消息、附件透传 | `ccb weixin login` + `ccb plugin enable weixin@builtin` + `ccb --channels plugin:weixin@builtin` |
 
 ## 微信内置 Channel
 
@@ -56,9 +57,13 @@ ccb weixin login
 ccb weixin login clear
 ```
 
-### 会话启用
+### 启用插件与会话监听
 
 ```bash
+# 一次性启用内置插件
+ccb plugin enable weixin@builtin
+
+# 每个需要接收微信消息的会话都要显式启用 channel
 ccb --channels plugin:weixin@builtin
 ```
 

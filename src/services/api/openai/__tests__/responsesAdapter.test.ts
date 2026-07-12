@@ -26,6 +26,18 @@ describe('buildResponsesRequest', () => {
     expect(request.reasoning).toEqual({ effort: 'xhigh' })
   })
 
+  test('forwards max reasoning effort without clamping it', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'max',
+    })
+
+    expect(request.reasoning).toEqual({ effort: 'max' })
+  })
+
   test('does not include unsupported max_output_tokens parameter', () => {
     const request = buildResponsesRequest({
       model: 'gpt-5.5',

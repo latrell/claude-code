@@ -7,7 +7,12 @@ import { getProxyFetchOptions } from '../../../utils/proxy.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
-export type ResponsesReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+export type ResponsesReasoningEffort =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
 
 type ResponsesRequest = {
   model: string

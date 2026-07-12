@@ -10,6 +10,9 @@ import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getAntModelOverrideConfig } from './model/antModels.js'
 import {
+  chatGPTCodexModelSupportsEffortLevel,
+  getChatGPTCodexDefaultEffortLevel,
+  getChatGPTCodexSupportedEffortLevels,
   isChatGPTAuthMode,
   isChatGPTCodexReasoningModel,
 } from './model/chatgptModels.js'
@@ -83,22 +86,58 @@ export function modelSupportsEffort(model: string): boolean {
   return getAPIProvider() === 'firstParty'
 }
 
-// Effort max/xhigh restrictions removed — all models that support effort
-// can now use these levels. API errors are the user's responsibility.
-export function modelSupportsMaxEffort(_model: string): boolean {
-  const supported3P = get3PModelCapabilityOverride(_model, 'max_effort')
+export function modelSupportsMaxEffort(model: string): boolean {
+  const supported3P = get3PModelCapabilityOverride(model, 'max_effort')
   if (supported3P !== undefined) {
     return supported3P
+  }
+  if (
+    getAPIProvider() === 'openai' &&
+    isChatGPTAuthMode() &&
+    isChatGPTCodexReasoningModel(model)
+  ) {
+    return chatGPTCodexModelSupportsEffortLevel(model, 'max')
   }
   return true
 }
 
-export function modelSupportsXhighEffort(_model: string): boolean {
-  const supported3P = get3PModelCapabilityOverride(_model, 'xhigh_effort')
+export function modelSupportsXhighEffort(model: string): boolean {
+  const supported3P = get3PModelCapabilityOverride(model, 'xhigh_effort')
   if (supported3P !== undefined) {
     return supported3P
   }
+  if (
+    getAPIProvider() === 'openai' &&
+    isChatGPTAuthMode() &&
+    isChatGPTCodexReasoningModel(model)
+  ) {
+    return chatGPTCodexModelSupportsEffortLevel(model, 'xhigh')
+  }
   return true
+}
+
+/**
+ * Ordered effort choices advertised for a model.
+ *
+ * ChatGPT Codex models use their catalog order verbatim. Other providers keep
+ * the existing capability-filtered global order.
+ */
+export function getSupportedEffortLevelsForModel(
+  model: string,
+): readonly EffortLevel[] {
+  if (!modelSupportsEffort(model)) return []
+  if (
+    getAPIProvider() === 'openai' &&
+    isChatGPTAuthMode() &&
+    isChatGPTCodexReasoningModel(model)
+  ) {
+    return getChatGPTCodexSupportedEffortLevels(model) ?? []
+  }
+  return EFFORT_LEVELS.filter(level => {
+    if (level === 'xhigh') return modelSupportsXhighEffort(model)
+    if (level === 'max') return modelSupportsMaxEffort(model)
+    return true
+  })
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {
@@ -201,15 +240,16 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // OpenAI Responses uses xhigh as its highest public reasoning effort.
-  // Keep /effort max usable as a familiar alias in ChatGPT subscription mode.
+  // Keep /effort max usable across the ChatGPT Codex roster. Newer models
+  // accept max natively; models whose catalog tops out at xhigh are clamped
+  // to their highest supported wire value.
   if (
     resolved === 'max' &&
     getAPIProvider() === 'openai' &&
     isChatGPTAuthMode() &&
-    modelSupportsXhighEffort(model)
+    !modelSupportsMaxEffort(model)
   ) {
-    return 'xhigh'
+    return modelSupportsXhighEffort(model) ? 'xhigh' : 'high'
   }
   return resolved
 }
@@ -253,7 +293,7 @@ export function getDisplayedEffortLevel(
  * Returns empty string if neither the user (/effort, --effort) nor the
  * active connection profile pins an effort value.
  * Delegates to resolveAppliedEffort() so the displayed level matches what
- * the API actually receives (including max→high clamp for non-Opus models).
+ * the API actually receives (including model-specific effort clamping).
  */
 export function getEffortSuffix(
   model: string,
@@ -382,7 +422,7 @@ export function getDefaultEffortForModel(
     isChatGPTAuthMode() &&
     isChatGPTCodexReasoningModel(model)
   ) {
-    return 'medium'
+    return getChatGPTCodexDefaultEffortLevel(model) ?? 'medium'
   }
 
   // Default effort on Opus 4.6+ to high for Pro.

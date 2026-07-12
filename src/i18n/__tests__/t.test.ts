@@ -13,6 +13,15 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 const { t, tf } = await import('../t.js')
+const { createCacheWarningMessage } = await import(
+  '../../utils/cacheWarning.js'
+)
+const {
+  getActivitySummarySeparator,
+  getSearchReadOperationText,
+  getSearchReadOperationTextParts,
+  joinActivitySummaryParts,
+} = await import('../../utils/searchReadSummaryText.js')
 
 describe('t', () => {
   test('returns key as-is when language is en', () => {
@@ -188,6 +197,73 @@ describe('t', () => {
     expect(tf('Review complete: {count} annotation(s)', { count: 2 })).toBe(
       '审查完成：2 条注释',
     )
+  })
+
+  test('translates cache hit rate warnings', () => {
+    mockLanguage = '简体中文'
+    expect(
+      createCacheWarningMessage({
+        hitRate: 51,
+        threshold: 80,
+        trend: 51,
+        shouldWarn: true,
+      }).content,
+    ).toBe('缓存命中率 51%，低于 80% 阈值（^51%）')
+    expect(
+      createCacheWarningMessage({
+        hitRate: 51,
+        threshold: 80,
+        trend: null,
+        shouldWarn: true,
+      }).content,
+    ).toBe('缓存命中率 51%，低于 80% 阈值')
+
+    mockLanguage = 'English'
+    expect(
+      createCacheWarningMessage({
+        hitRate: 51,
+        threshold: 80,
+        trend: 51,
+        shouldWarn: true,
+      }).content,
+    ).toBe('Cache hit rate 51%, below 80% threshold (^51%)')
+  })
+
+  test('translates compact search and read summaries', () => {
+    mockLanguage = '简体中文'
+    const activeParts = [
+      getSearchReadOperationText('search', 6, true, true),
+      getSearchReadOperationText('read', 5, true, false),
+    ]
+    expect(`${joinActivitySummaryParts(activeParts)}…`).toBe(
+      '正在搜索 6 个模式，读取 5 个文件…',
+    )
+    expect(getSearchReadOperationText('search', 3, true, true)).toBe(
+      '正在搜索 3 个模式',
+    )
+    expect(getSearchReadOperationText('search', 1, false, true)).toBe(
+      '已搜索 1 个模式',
+    )
+    expect(getSearchReadOperationText('read', 1, false, false)).toBe(
+      '读取了 1 个文件',
+    )
+    expect(getActivitySummarySeparator()).toBe('，')
+
+    const [beforeCount, afterCount] = getSearchReadOperationTextParts(
+      'read',
+      5,
+      true,
+      false,
+    )
+    expect(`${beforeCount}5${afterCount}`).toBe('读取 5 个文件')
+
+    mockLanguage = 'English'
+    expect(
+      `${joinActivitySummaryParts([
+        getSearchReadOperationText('search', 6, true, true),
+        getSearchReadOperationText('read', 5, true, false),
+      ])}…`,
+    ).toBe('Searching for 6 patterns, reading 5 files…')
   })
 
   test('translates auto mode opt-in copy', () => {

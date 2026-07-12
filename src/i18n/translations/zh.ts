@@ -3708,6 +3708,23 @@ const zh: Record<string, string> = {
   '(Results are truncated. Consider using a more specific path or pattern.)':
     '（结果已被截断。请考虑使用更具体的路径或模式。）',
   Searching: '正在搜索',
+  'Searching for {count} pattern': '正在搜索 {count} 个模式',
+  'Searching for {count} patterns': '正在搜索 {count} 个模式',
+  'searching for {count} pattern': '搜索 {count} 个模式',
+  'searching for {count} patterns': '搜索 {count} 个模式',
+  'Searched for {count} pattern': '已搜索 {count} 个模式',
+  'Searched for {count} patterns': '已搜索 {count} 个模式',
+  'searched for {count} pattern': '搜索了 {count} 个模式',
+  'searched for {count} patterns': '搜索了 {count} 个模式',
+  'Reading {count} file': '正在读取 {count} 个文件',
+  'Reading {count} files': '正在读取 {count} 个文件',
+  'reading {count} file': '读取 {count} 个文件',
+  'reading {count} files': '读取 {count} 个文件',
+  'Read {count} file': '已读取 {count} 个文件',
+  'Read {count} files': '已读取 {count} 个文件',
+  'read {count} file': '读取了 {count} 个文件',
+  'read {count} files': '读取了 {count} 个文件',
+  '{first}, {second}': '{first}，{second}',
   'Found {numFiles} {fileWord}': '找到 {numFiles} 个{fileWord}',
   'Found {matches} total {matchWord} across {files} {fileWord}':
     '在 {files} 个{fileWord}中共找到 {matches} 处{matchWord}',
@@ -4538,10 +4555,10 @@ const zh: Record<string, string> = {
     '当前努力级别：{effectiveValue}（来自连接档案：{description}）',
   'Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL={envRaw} still controls this session':
     '已从设置中清除努力级别，但 CLAUDE_CODE_EFFORT_LEVEL={envRaw} 仍控制本会话',
-  'Invalid argument: {args}. Valid options are: low, medium, high, max, auto':
-    '无效参数：{args}。有效选项为：low、medium、high、max、auto',
-  'Usage: /effort [low|medium|high|xhigh|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extended reasoning beyond high, short of max; including ChatGPT Codex models\n- max: Maximum capability with deepest reasoning; maps to xhigh for ChatGPT Codex models\n- auto: Use the default effort level for your model':
-    '用法：/effort [low|medium|high|xhigh|max|auto]\n\n努力级别：\n- low：快速、直接的实现\n- medium：平衡策略，标准测试\n- high：全面实现，广泛测试\n- xhigh：推理强度高于 high、低于 max；包括 ChatGPT Codex 模型\n- max：最强能力，最深入的推理；对 ChatGPT Codex 模型映射为 xhigh\n- auto：使用模型的默认努力级别',
+  'Invalid argument: {args}. Valid options are: low, medium, high, xhigh, max, auto':
+    '无效参数：{args}。有效选项为：low、medium、high、xhigh、max、auto',
+  'Usage: /effort [low|medium|high|xhigh|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- xhigh: Extra-high reasoning for complex problems\n- max: Maximum reasoning on supported models; otherwise uses the highest supported level\n- auto: Use the default effort level for your model':
+    '用法：/effort [low|medium|high|xhigh|max|auto]\n\n思考强度：\n- low：快速、直接的实现\n- medium：平衡策略与标准测试\n- high：全面实现与广泛测试\n- xhigh：用于复杂问题的超高强度推理\n- max：支持的模型使用最高强度；其他模型使用其支持的最高档位\n- auto：使用模型的默认思考强度',
   'Found {count} other running IDE(s). However, their workspace/project directories do not match the current cwd.':
     '发现 {count} 个其他正在运行的 IDE。但它们的工作区/项目目录与当前 cwd 不匹配。',
   '↑/↓ to select · Enter to continue': '↑/↓ 选择 · Enter 继续',
@@ -5249,6 +5266,10 @@ const zh: Record<string, string> = {
   ' save ~{tokens}': ' 节省约 {tokens}',
   'Cache hit rate: {rate}%': '缓存命中率：{rate}%',
   ' (below {threshold}% threshold)': ' （低于 {threshold}% 阈值）',
+  'Cache hit rate {rate}%, below {threshold}% threshold':
+    '缓存命中率 {rate}%，低于 {threshold}% 阈值',
+  'Cache hit rate {rate}%, below {threshold}% threshold ({trendIcon}{trendPercent}%)':
+    '缓存命中率 {rate}%，低于 {threshold}% 阈值（{trendIcon}{trendPercent}%）',
   "You've spent $5 on the Anthropic API this session.":
     '本次会话您已在 Anthropic API 上花费 $5。',
   'Got it, thanks!': '知道了，谢谢！',
@@ -7010,17 +7031,17 @@ const zh: Record<string, string> = {
   'Environment {environmentId} not found': '未找到环境 {environmentId}',
   'Environment {environmentId} is not active (status: {status})':
     '环境 {environmentId} 未激活（状态：{status}）',
-  'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nSession enablement:\n  ccb --channels plugin:weixin@builtin':
-    '用法：\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\n会话启用：\n  ccb --channels plugin:weixin@builtin',
+  'Usage:\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\nOne-time plugin enablement:\n  ccb plugin enable weixin@builtin\n\nSession channel opt-in:\n  ccb --channels plugin:weixin@builtin':
+    '用法：\n  ccb weixin serve\n  ccb weixin login\n  ccb weixin login clear\n  ccb weixin access pair <code>\n\n一次性启用插件：\n  ccb plugin enable weixin@builtin\n\n当前会话启用 Channel：\n  ccb --channels plugin:weixin@builtin',
   'WeChat account cleared.': '微信账号已清除。',
-  'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
-    '已连接：\n  用户 ID：{userId}\n  连接时间：{savedAt}\n\n运行 `ccb weixin login clear` 断开连接。\n使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
+  'Already connected:\n  User ID: {userId}\n  Connected since: {savedAt}\n\nRun `ccb weixin login clear` to disconnect.\nEnable the built-in plugin once:\n  ccb plugin enable weixin@builtin\nThen restart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
+    '已连接：\n  用户 ID：{userId}\n  连接时间：{savedAt}\n\n运行 `ccb weixin login clear` 断开连接。\n一次性启用内置插件：\n  ccb plugin enable weixin@builtin\n然后使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
   'Starting WeChat QR login...': '正在启动微信扫码登录...',
   'Scan the QR code above with WeChat, or open this URL:':
     '使用微信扫描上方二维码，或打开此 URL：',
   'Login failed: {message}': '登录失败：{message}',
-  'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nRestart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
-    '连接成功！\n  用户 ID：{userId}\n  Base URL：{baseUrl}\n\n使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
+  'Connected successfully!\n  User ID: {userId}\n  Base URL: {baseUrl}\n\nEnable the built-in plugin once:\n  ccb plugin enable weixin@builtin\nThen restart Claude Code with:\n  ccb --channels plugin:weixin@builtin':
+    '连接成功！\n  用户 ID：{userId}\n  Base URL：{baseUrl}\n\n一次性启用内置插件：\n  ccb plugin enable weixin@builtin\n然后使用以下命令重启 Claude Code：\n  ccb --channels plugin:weixin@builtin',
   'Invalid or expired pairing code.': '配对码无效或已过期。',
   'Paired successfully: {userId}': '配对成功：{userId}',
   '[weixin] serve handler not available in this context.':
@@ -7349,8 +7370,8 @@ const zh: Record<string, string> = {
     '正在通过 Ultraplan 优化方案 —— 请等待结果。',
   'Claude Code - starts an interactive session by default, use -p/--print for non-interactive output':
     'Claude Code - 默认启动交互式会话，使用 -p/--print 进行非交互式输出',
-  'Effort level for the current session (low, medium, high, max)':
-    '当前会话的投入级别（低、中、高、最大）',
+  'Effort level for the current session (low, medium, high, xhigh, max)':
+    '当前会话的思考强度（low、medium、high、xhigh、max）',
   '<source> <outputFile>': '<来源> <输出文件>',
   '/buddy': '/buddy',
   ' · ./path/to/marketplace': ' · ./路径/到/市场目录',

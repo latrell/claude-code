@@ -29,7 +29,7 @@ export type UnifiedInstalledItem =
       description: string | undefined // manifest 描述
       marketplace: string // 所属市场
       scope: PersistablePluginScope | 'builtin' // 安装/展示作用域（内置单独标）
-      isEnabled: boolean // 是否在 merged settings 中启用
+      isEnabled: boolean // 合并显式设置与插件默认值后的有效启用状态
       errorCount: number // 与该插件关联的错误条数
       errors: PluginError[] // 结构化错误列表
       plugin: LoadedPlugin // 已解析的 manifest 与路径等

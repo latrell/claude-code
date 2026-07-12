@@ -1,7 +1,23 @@
+/**
+ * Reasoning efforts sent on the ChatGPT Responses wire.
+ * Codex's product-level `ultra` choice is `max` plus proactive multi-agent
+ * delegation, so it remains separate from this raw effort type.
+ */
+export type ChatGPTCodexEffortLevel =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
 export type ChatGPTCodexModelOption = {
   value: string
   label: string
   description: string
+  /** Reasoning effort Codex selects when the user leaves effort on auto. */
+  defaultEffortLevel: ChatGPTCodexEffortLevel
+  /** Reasoning efforts accepted by this model, ordered from lowest to highest. */
+  supportedEffortLevels: readonly ChatGPTCodexEffortLevel[]
   /** Default Codex product context window, in tokens. */
   contextWindow: number
   /** Largest context window Codex currently advertises for explicit opt-in. */
@@ -41,6 +57,18 @@ const REASONING_CODEX_WINDOWS: Record<string, number> = {
 export const CHATGPT_CODEX_DEFAULT_MODEL = 'gpt-5.6-sol'
 export const CHATGPT_CODEX_FAST_MODEL = 'gpt-5.6-luna'
 
+const CHATGPT_CODEX_EFFORTS_TO_XHIGH = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const satisfies readonly ChatGPTCodexEffortLevel[]
+
+const CHATGPT_CODEX_EFFORTS_TO_MAX = [
+  ...CHATGPT_CODEX_EFFORTS_TO_XHIGH,
+  'max',
+] as const satisfies readonly ChatGPTCodexEffortLevel[]
+
 /**
  * Curated ChatGPT-authenticated Codex roster.
  *
@@ -53,6 +81,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     value: 'gpt-5.6-sol',
     label: 'GPT-5.6-Sol',
     description: 'Latest frontier agentic coding model',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
     contextWindow: 372_000,
     maxContextWindow: 372_000,
   },
@@ -60,6 +90,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     value: 'gpt-5.6-terra',
     label: 'GPT-5.6-Terra',
     description: 'Balanced agentic coding model for everyday work',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
     contextWindow: 372_000,
     maxContextWindow: 372_000,
   },
@@ -67,6 +99,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     value: 'gpt-5.6-luna',
     label: 'GPT-5.6-Luna',
     description: 'Fast and affordable agentic coding model',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
     contextWindow: 372_000,
     maxContextWindow: 372_000,
   },
@@ -75,6 +109,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     label: 'GPT-5.5',
     description:
       'Frontier model for complex coding, research, and real-world work',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
     contextWindow: 272_000,
     maxContextWindow: 272_000,
   },
@@ -82,6 +118,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     value: 'gpt-5.4',
     label: 'GPT-5.4',
     description: 'Strong model for everyday coding',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
     contextWindow: 272_000,
     maxContextWindow: 1_000_000,
   },
@@ -90,6 +128,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     label: 'GPT-5.4-Mini',
     description:
       'Small, fast, and cost-efficient model for simpler coding tasks',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
     contextWindow: 272_000,
     maxContextWindow: 272_000,
   },
@@ -98,6 +138,8 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     label: 'GPT-5.3-Codex-Spark',
     description:
       'Ultra-fast text-only coding model (ChatGPT Pro research preview)',
+    defaultEffortLevel: 'high',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
     contextWindow: 128_000,
     maxContextWindow: 128_000,
     requiredPlan: 'pro',
@@ -118,6 +160,31 @@ function getChatGPTCodexModelOption(
   const canonical = CHATGPT_CODEX_MODEL_ALIASES[base] ?? base
   return CHATGPT_CODEX_MODEL_OPTIONS.find(
     option => option.value.toLowerCase() === canonical,
+  )
+}
+
+/** Codex's default reasoning effort for a known model or alias. */
+export function getChatGPTCodexDefaultEffortLevel(
+  model: string,
+): ChatGPTCodexEffortLevel | undefined {
+  return getChatGPTCodexModelOption(model)?.defaultEffortLevel
+}
+
+/** Supported Codex reasoning efforts for a known model or alias. */
+export function getChatGPTCodexSupportedEffortLevels(
+  model: string,
+): readonly ChatGPTCodexEffortLevel[] | undefined {
+  return getChatGPTCodexModelOption(model)?.supportedEffortLevels
+}
+
+/** Whether a known Codex model accepts the requested reasoning effort. */
+export function chatGPTCodexModelSupportsEffortLevel(
+  model: string,
+  level: ChatGPTCodexEffortLevel,
+): boolean {
+  return (
+    getChatGPTCodexModelOption(model)?.supportedEffortLevels.includes(level) ??
+    false
   )
 }
 

@@ -11,6 +11,7 @@ import { getToolUseIdsFromCollapsedGroup } from '../../utils/collapseReadSearch.
 import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatSecondsShort } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { getActivitySummarySeparator, getSearchReadOperationTextParts } from '../../utils/searchReadSummaryText.js';
 import type { buildMessageLookups } from '../../utils/messages.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
@@ -291,11 +292,12 @@ export function CollapsedReadSearchContent({
   // Build non-memory parts first (search, read, repl, mcp, bash) — these render
   // before memory so the line reads "Ran 3 bash commands, recalled 1 memory".
   const nonMemParts: React.ReactNode[] = [];
+  const summarySeparator = getActivitySummarySeparator();
 
   // Git operations lead the line — they're the load-bearing outcome.
   function pushPart(key: string, verb: string, body: React.ReactNode): void {
     const isFirst = nonMemParts.length === 0;
-    if (!isFirst) nonMemParts.push(<Text key={`comma-${key}`}>, </Text>);
+    if (!isFirst) nonMemParts.push(<Text key={`comma-${key}`}>{summarySeparator}</Text>);
     nonMemParts.push(
       <Text key={key}>
         {isFirst ? verb[0]!.toUpperCase() + verb.slice(1) : verb} {body}
@@ -345,32 +347,40 @@ export function CollapsedReadSearchContent({
 
   if (searchCount > 0) {
     const isFirst = nonMemParts.length === 0;
-    const searchVerb = isActiveGroup
-      ? isFirst
-        ? 'Searching for'
-        : 'searching for'
-      : isFirst
-        ? 'Searched for'
-        : 'searched for';
+    const [beforeCount, afterCount] = getSearchReadOperationTextParts(
+      'search',
+      searchCount,
+      isActiveGroup === true,
+      isFirst,
+    );
     if (!isFirst) {
-      nonMemParts.push(<Text key="comma-s">, </Text>);
+      nonMemParts.push(<Text key="comma-s">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="search">
-        {searchVerb} <Text bold>{searchCount}</Text> {searchCount === 1 ? 'pattern' : 'patterns'}
+        {beforeCount}
+        <Text bold>{searchCount}</Text>
+        {afterCount}
       </Text>,
     );
   }
 
   if (readCount > 0) {
     const isFirst = nonMemParts.length === 0;
-    const readVerb = isActiveGroup ? (isFirst ? 'Reading' : 'reading') : isFirst ? 'Read' : 'read';
+    const [beforeCount, afterCount] = getSearchReadOperationTextParts(
+      'read',
+      readCount,
+      isActiveGroup === true,
+      isFirst,
+    );
     if (!isFirst) {
-      nonMemParts.push(<Text key="comma-r">, </Text>);
+      nonMemParts.push(<Text key="comma-r">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="read">
-        {readVerb} <Text bold>{readCount}</Text> {readCount === 1 ? 'file' : 'files'}
+        {beforeCount}
+        <Text bold>{readCount}</Text>
+        {afterCount}
       </Text>,
     );
   }
@@ -379,7 +389,7 @@ export function CollapsedReadSearchContent({
     const isFirst = nonMemParts.length === 0;
     const listVerb = isActiveGroup ? (isFirst ? 'Listing' : 'listing') : isFirst ? 'Listed' : 'listed';
     if (!isFirst) {
-      nonMemParts.push(<Text key="comma-l">, </Text>);
+      nonMemParts.push(<Text key="comma-l">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="list">
@@ -391,7 +401,7 @@ export function CollapsedReadSearchContent({
   if (replCount > 0) {
     const replVerb = isActiveGroup ? "REPL'ing" : "REPL'd";
     if (nonMemParts.length > 0) {
-      nonMemParts.push(<Text key="comma-repl">, </Text>);
+      nonMemParts.push(<Text key="comma-repl">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="repl">
@@ -405,7 +415,7 @@ export function CollapsedReadSearchContent({
     const isFirst = nonMemParts.length === 0;
     const verb = isActiveGroup ? (isFirst ? 'Querying' : 'querying') : isFirst ? 'Queried' : 'queried';
     if (!isFirst) {
-      nonMemParts.push(<Text key="comma-mcp">, </Text>);
+      nonMemParts.push(<Text key="comma-mcp">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="mcp">
@@ -424,7 +434,7 @@ export function CollapsedReadSearchContent({
     const isFirst = nonMemParts.length === 0;
     const verb = isActiveGroup ? (isFirst ? 'Running' : 'running') : isFirst ? 'Ran' : 'ran';
     if (!isFirst) {
-      nonMemParts.push(<Text key="comma-bash">, </Text>);
+      nonMemParts.push(<Text key="comma-bash">{summarySeparator}</Text>);
     }
     nonMemParts.push(
       <Text key="bash">
@@ -441,7 +451,7 @@ export function CollapsedReadSearchContent({
     const isFirst = !hasPrecedingNonMem && memParts.length === 0;
     const verb = isActiveGroup ? (isFirst ? 'Recalling' : 'recalling') : isFirst ? 'Recalled' : 'recalled';
     if (!isFirst) {
-      memParts.push(<Text key="comma-mr">, </Text>);
+      memParts.push(<Text key="comma-mr">{summarySeparator}</Text>);
     }
     memParts.push(
       <Text key="mem-read">
@@ -454,7 +464,7 @@ export function CollapsedReadSearchContent({
     const isFirst = !hasPrecedingNonMem && memParts.length === 0;
     const verb = isActiveGroup ? (isFirst ? 'Searching' : 'searching') : isFirst ? 'Searched' : 'searched';
     if (!isFirst) {
-      memParts.push(<Text key="comma-ms">, </Text>);
+      memParts.push(<Text key="comma-ms">{summarySeparator}</Text>);
     }
     memParts.push(<Text key="mem-search">{`${verb} memories`}</Text>);
   }
@@ -463,7 +473,7 @@ export function CollapsedReadSearchContent({
     const isFirst = !hasPrecedingNonMem && memParts.length === 0;
     const verb = isActiveGroup ? (isFirst ? 'Writing' : 'writing') : isFirst ? 'Wrote' : 'wrote';
     if (!isFirst) {
-      memParts.push(<Text key="comma-mw">, </Text>);
+      memParts.push(<Text key="comma-mw">{summarySeparator}</Text>);
     }
     memParts.push(
       <Text key="mem-write">

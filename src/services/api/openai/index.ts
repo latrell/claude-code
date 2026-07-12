@@ -27,8 +27,8 @@ import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createChatGPTResponsesStream,
-  type ResponsesReasoningEffort,
 } from './responsesAdapter.js'
+import { resolveChatGPTResponsesReasoningEffort } from './reasoningEffort.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import {
@@ -78,17 +78,6 @@ import {
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 
-function convertToResponsesReasoningEffort(
-  effortValue: unknown,
-): ResponsesReasoningEffort | undefined {
-  if (effortValue === 'low') return 'low'
-  if (effortValue === 'medium') return 'medium'
-  if (effortValue === 'high') return 'high'
-  if (effortValue === 'xhigh' || effortValue === 'max') return 'xhigh'
-  if (typeof effortValue === 'number') return 'high'
-  return undefined
-}
-
 /**
  * Chat Completions `reasoning_effort` from the resolved effort value.
  * The public Chat Completions field only accepts low/medium/high, so
@@ -108,19 +97,6 @@ function convertToChatCompletionsReasoningEffort(
     return 'high'
   }
   return undefined
-}
-
-function getChatGPTResponsesReasoningEffort(
-  effortValue: unknown,
-  env: Record<string, string | undefined> = process.env,
-): ResponsesReasoningEffort | undefined {
-  const envOverride = env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
-  if (envOverride === 'auto' || envOverride === 'unset') return undefined
-  return (
-    convertToResponsesReasoningEffort(envOverride) ??
-    convertToResponsesReasoningEffort(effortValue) ??
-    'medium'
-  )
 }
 
 /**
@@ -333,7 +309,8 @@ export async function* queryModelOpenAI(
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
-    const reasoningEffort = getChatGPTResponsesReasoningEffort(
+    const reasoningEffort = resolveChatGPTResponsesReasoningEffort(
+      openaiModel,
       options.effortValue,
       providerEnv,
     )

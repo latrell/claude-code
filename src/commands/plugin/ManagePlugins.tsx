@@ -77,6 +77,7 @@ import { plural } from '../../utils/stringUtils.js';
 import { formatErrorMessage, getErrorGuidance } from './PluginErrors.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
 import { PluginOptionsFlow } from './PluginOptionsFlow.js';
+import { resolvePluginEnabled } from './pluginEnabledState.js';
 import type { ViewState as ParentViewState } from './types.js';
 import { UnifiedInstalledCell } from './UnifiedInstalledCell.js';
 import type { UnifiedInstalledItem, UnifiedInstalledScope } from './unifiedTypes.js';
@@ -631,7 +632,7 @@ export function ManagePlugins({
 
     for (const state of pluginStates) {
       const pluginId = `${state.plugin.name}@${state.marketplace}`;
-      const isEnabled = mergedSettings?.enabledPlugins?.[pluginId] !== false;
+      const isEnabled = resolvePluginEnabled(state.plugin, mergedSettings?.enabledPlugins?.[pluginId]);
       const errors = pluginErrors.filter(
         e =>
           ('plugin' in e && e.plugin === state.plugin.name) ||
@@ -972,7 +973,7 @@ export function ManagePlugins({
         for (const [name, plugins] of Object.entries(pluginsByMarketplace)) {
           const enabledCount = count(plugins, p => {
             const pluginId = `${p.name}@${name}`;
-            return mergedSettings?.enabledPlugins?.[pluginId] !== false;
+            return resolvePluginEnabled(p, mergedSettings?.enabledPlugins?.[pluginId]);
           });
           const disabledCount = plugins.length - enabledCount;
 
@@ -1200,7 +1201,7 @@ export function ManagePlugins({
       // nothing needs filling, it calls onDone('skipped') immediately.
       const pluginIdNow = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
       const settingsAfter = getSettings_DEPRECATED();
-      const enabledAfter = settingsAfter?.enabledPlugins?.[pluginIdNow] !== false;
+      const enabledAfter = resolvePluginEnabled(selectedPlugin.plugin, settingsAfter?.enabledPlugins?.[pluginIdNow]);
       if (enabledAfter) {
         setIsProcessing(false);
         setViewState({ type: 'plugin-options' });
@@ -1260,7 +1261,7 @@ export function ManagePlugins({
       const pluginId = `${item.plugin.name}@${item.marketplace}`;
       const mergedSettings = getSettings_DEPRECATED();
       const currentPending = pendingToggles.get(pluginId);
-      const isEnabled = mergedSettings?.enabledPlugins?.[pluginId] !== false;
+      const isEnabled = resolvePluginEnabled(item.plugin, mergedSettings?.enabledPlugins?.[pluginId]);
       const pluginScope = item.scope;
       const isBuiltin = pluginScope === 'builtin';
       if (isBuiltin || isInstallableScope(pluginScope as PersistablePluginScope)) {
@@ -1399,7 +1400,7 @@ export function ManagePlugins({
 
     const mergedSettings = getSettings_DEPRECATED();
     const pluginId = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
-    const isEnabled = mergedSettings?.enabledPlugins?.[pluginId] !== false;
+    const isEnabled = resolvePluginEnabled(selectedPlugin.plugin, mergedSettings?.enabledPlugins?.[pluginId]);
     const isBuiltin = selectedPlugin.marketplace === 'builtin';
 
     const menuItems: Array<{ label: string; action: () => void }> = [];
@@ -2016,7 +2017,7 @@ export function ManagePlugins({
   if (viewState === 'plugin-details' && selectedPlugin) {
     const mergedSettings = getSettings_DEPRECATED(); // Use merged settings to respect all layers
     const pluginId = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
-    const isEnabled = mergedSettings?.enabledPlugins?.[pluginId] !== false;
+    const isEnabled = resolvePluginEnabled(selectedPlugin.plugin, mergedSettings?.enabledPlugins?.[pluginId]);
 
     // Compute plugin errors section
     const filteredPluginErrors = pluginErrors.filter(

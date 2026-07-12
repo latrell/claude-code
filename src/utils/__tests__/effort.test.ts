@@ -43,6 +43,11 @@ const {
   getConnectionEffortValue,
   getDisplayedEffortLevel,
   getEffortSuffix,
+  getDefaultEffortForModel,
+  getSupportedEffortLevelsForModel,
+  modelSupportsMaxEffort,
+  modelSupportsXhighEffort,
+  resolveAppliedEffort,
   EFFORT_LEVELS,
 } = await import('src/utils/effort.js')
 const { setSessionAssignment } = await import(
@@ -56,6 +61,79 @@ const { _invalidateConnectionsCache, setDefaultAssignment, upsertConnection } =
 describe('EFFORT_LEVELS', () => {
   test('contains the five canonical levels', () => {
     expect(EFFORT_LEVELS).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+})
+
+describe('ChatGPT Codex model effort calibration', () => {
+  const ENV_KEYS = [
+    'CLAUDE_CODE_USE_OPENAI',
+    'OPENAI_AUTH_MODE',
+    'CLAUDE_CODE_EFFORT_LEVEL',
+    'USER_TYPE',
+  ] as const
+  let savedEnv: Record<(typeof ENV_KEYS)[number], string | undefined>
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(
+      ENV_KEYS.map(key => [key, process.env[key]]),
+    ) as Record<(typeof ENV_KEYS)[number], string | undefined>
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_AUTH_MODE = 'chatgpt'
+    delete process.env.CLAUDE_CODE_EFFORT_LEVEL
+    delete process.env.USER_TYPE
+  })
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      const value = savedEnv[key]
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  test('uses the Codex catalog default for each ChatGPT model', () => {
+    expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('medium')
+    expect(getDefaultEffortForModel('gpt-5.4')).toBe('medium')
+    expect(getDefaultEffortForModel('gpt-5.3-codex-spark')).toBe('high')
+  })
+
+  test('exposes max only for the models that advertise it', () => {
+    for (const model of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+      expect(modelSupportsMaxEffort(model)).toBe(true)
+      expect(modelSupportsXhighEffort(model)).toBe(true)
+    }
+    for (const model of [
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.3-codex-spark',
+    ]) {
+      expect(modelSupportsMaxEffort(model)).toBe(false)
+      expect(modelSupportsXhighEffort(model)).toBe(true)
+    }
+  })
+
+  test('preserves the Codex catalog order for picker and SDK consumers', () => {
+    expect(getSupportedEffortLevelsForModel('gpt-5.6-sol')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+    expect(getSupportedEffortLevelsForModel('gpt-5.4')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+  })
+
+  test('keeps native max and clamps older models to xhigh', () => {
+    expect(resolveAppliedEffort('gpt-5.6-sol', 'max')).toBe('max')
+    expect(resolveAppliedEffort('gpt-5.6-luna', 'max')).toBe('max')
+    expect(resolveAppliedEffort('gpt-5.5', 'max')).toBe('xhigh')
+    expect(resolveAppliedEffort('gpt-5.4-mini', 'max')).toBe('xhigh')
   })
 })
 

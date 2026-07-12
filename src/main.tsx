@@ -1461,16 +1461,17 @@ async function run(): Promise<CommanderCommand> {
       ),
     )
     .addOption(
-      new Option('--effort <level>', t(`Effort level for the current session (low, medium, high, max)`)).argParser(
-        (rawValue: string) => {
-          const value = rawValue.toLowerCase();
-          const allowed = ['low', 'medium', 'high', 'max'];
-          if (!allowed.includes(value)) {
-            throw new InvalidArgumentError(tf('It must be one of: {values}', { values: allowed.join(', ') }));
-          }
-          return value;
-        },
-      ),
+      new Option(
+        '--effort <level>',
+        t(`Effort level for the current session (low, medium, high, xhigh, max)`),
+      ).argParser((rawValue: string) => {
+        const value = rawValue.toLowerCase();
+        const allowed = ['low', 'medium', 'high', 'xhigh', 'max'];
+        if (!allowed.includes(value)) {
+          throw new InvalidArgumentError(tf('It must be one of: {values}', { values: allowed.join(', ') }));
+        }
+        return value;
+      }),
     )
     .option('--agent <agent>', t(`Agent for the current session. Overrides the 'agent' setting.`))
     .option('--betas <betas...>', t('Beta headers to include in API requests (API key users only)'))

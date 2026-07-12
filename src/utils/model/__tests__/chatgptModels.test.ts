@@ -3,11 +3,14 @@ import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_FAST_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
+  chatGPTCodexModelSupportsEffortLevel,
   formatChatGPTCodexContextWindow,
   getChatGPTCodexContextWindow,
+  getChatGPTCodexDefaultEffortLevel,
   getChatGPTCodexModelContextWindow,
   getChatGPTCodexModelDisplayName,
   getChatGPTCodexModelMaxContextWindow,
+  getChatGPTCodexSupportedEffortLevels,
   isChatGPTCodexReasoningModel,
   isChatGPTCodexModelAvailable,
   isChatGPTCodexModelUnavailable,
@@ -21,6 +24,16 @@ const MODEL_WINDOWS = [
   ['gpt-5.4', 272_000, 1_000_000],
   ['gpt-5.4-mini', 272_000, 272_000],
   ['gpt-5.3-codex-spark', 128_000, 128_000],
+] as const
+
+const MODEL_EFFORTS = [
+  ['gpt-5.6-sol', 'medium', ['low', 'medium', 'high', 'xhigh', 'max']],
+  ['gpt-5.6-terra', 'medium', ['low', 'medium', 'high', 'xhigh', 'max']],
+  ['gpt-5.6-luna', 'medium', ['low', 'medium', 'high', 'xhigh', 'max']],
+  ['gpt-5.5', 'medium', ['low', 'medium', 'high', 'xhigh']],
+  ['gpt-5.4', 'medium', ['low', 'medium', 'high', 'xhigh']],
+  ['gpt-5.4-mini', 'medium', ['low', 'medium', 'high', 'xhigh']],
+  ['gpt-5.3-codex-spark', 'high', ['low', 'medium', 'high', 'xhigh']],
 ] as const
 
 const LEGACY_MODELS = [
@@ -109,6 +122,43 @@ describe('ChatGPT Codex model context windows', () => {
     [1_050_000, '1.05M'],
   ] as const)('formats %i tokens as %s', (tokens, formatted) => {
     expect(formatChatGPTCodexContextWindow(tokens)).toBe(formatted)
+  })
+})
+
+describe('ChatGPT Codex model effort metadata', () => {
+  test.each(
+    MODEL_EFFORTS,
+  )('%s defaults to %s and exposes its supported effort levels', (model, defaultEffort, supportedEfforts) => {
+    expect(getChatGPTCodexDefaultEffortLevel(model)).toBe(defaultEffort)
+    expect(getChatGPTCodexSupportedEffortLevels(model)).toEqual(
+      supportedEfforts,
+    )
+  })
+
+  test('normalizes aliases, case, whitespace, and the optional [1m] suffix', () => {
+    expect(getChatGPTCodexDefaultEffortLevel('  GPT-5.6  ')).toBe('medium')
+    expect(getChatGPTCodexSupportedEffortLevels('GPT-5.4[1M]')).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+  })
+
+  test.each(
+    MODEL_EFFORTS,
+  )('%s accepts exactly its advertised effort levels', (model, _defaultEffort, supportedEfforts) => {
+    for (const level of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      expect(chatGPTCodexModelSupportsEffortLevel(model, level)).toBe(
+        (supportedEfforts as readonly string[]).includes(level),
+      )
+    }
+  })
+
+  test('returns no effort metadata for unknown models', () => {
+    expect(getChatGPTCodexDefaultEffortLevel('gpt-4')).toBeUndefined()
+    expect(getChatGPTCodexSupportedEffortLevels('gpt-4')).toBeUndefined()
+    expect(chatGPTCodexModelSupportsEffortLevel('gpt-4', 'high')).toBe(false)
   })
 })
 
