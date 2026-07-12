@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { setChatGPTSubscriptionPlan } from '../../../bootstrap/state.js'
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
 // Pin the display language to English: getModelOptions() renders its
 // descriptions through i18n t()/tf(), which reads settings.language —
@@ -14,11 +15,12 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 const { getModelOptions } = await import('../modelOptions.js')
-
-/**
- * Verifies that ChatGPT Codex model options display human-readable
- * model names (e.g. GPT-5.5) rather than raw model IDs (e.g. gpt-5.5).
- */
+const {
+  CHATGPT_CODEX_DEFAULT_MODEL,
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  formatChatGPTCodexContextWindow,
+  getChatGPTCodexModelDisplayName,
+} = await import('../chatgptModels.js')
 
 const envKeys = [
   'CLAUDE_CODE_USE_BEDROCK',
@@ -33,9 +35,10 @@ const envKeys = [
 
 const savedEnv: Record<string, string | undefined> = {}
 
-function enableChatGPTCodexMode(): void {
+function enableChatGPTCodexMode(plan = 'pro'): void {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   process.env.OPENAI_AUTH_MODE = 'chatgpt'
+  setChatGPTSubscriptionPlan(plan)
 }
 
 describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
@@ -44,6 +47,7 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
       savedEnv[key] = process.env[key]
       delete process.env[key]
     }
+    setChatGPTSubscriptionPlan(null)
     resetSettingsCache()
   })
 
@@ -55,34 +59,36 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
         delete process.env[key]
       }
     }
+    setChatGPTSubscriptionPlan(null)
   })
 
   describe('default ChatGPT Codex model option', () => {
-    test('description uses display name GPT-5.5 not raw ID gpt-5.5', () => {
+    test('uses the current default display name', () => {
       enableChatGPTCodexMode()
       const options = getModelOptions()
       const defaultOpt = options.find(o => o.value === null)
       expect(defaultOpt).toBeDefined()
-      // Must contain the human-readable display name
-      expect(defaultOpt!.description).toContain('GPT-5.5')
-      // Must NOT leak the raw model ID in the parenthesized model slot
-      expect(defaultOpt!.description).not.toContain('(currently gpt-5.5)')
-      expect(defaultOpt!.description).not.toContain('(当前 gpt-5.5)')
-      // Falls back to English key when locale is not zh
+      const displayName = getChatGPTCodexModelDisplayName(
+        CHATGPT_CODEX_DEFAULT_MODEL,
+      )
+      expect(displayName).toBeTruthy()
+      expect(defaultOpt!.description).toContain(displayName!)
+      expect(defaultOpt!.description).not.toContain(
+        `(currently ${CHATGPT_CODEX_DEFAULT_MODEL})`,
+      )
       expect(defaultOpt!.description).toContain('default ChatGPT Codex')
+      expect(defaultOpt!.description).toContain('ctx 372K')
     })
 
-    test('descriptionForModel uses display name GPT-5.5 not raw ID gpt-5.5', () => {
+    test('descriptionForModel uses the display name', () => {
       enableChatGPTCodexMode()
       const options = getModelOptions()
       const defaultOpt = options.find(o => o.value === null)
       expect(defaultOpt).toBeDefined()
       expect(defaultOpt!.descriptionForModel).toBeDefined()
-      expect(defaultOpt!.descriptionForModel).toContain('GPT-5.5')
-      expect(defaultOpt!.descriptionForModel).not.toContain(
-        '(currently gpt-5.5)',
+      expect(defaultOpt!.descriptionForModel).toContain(
+        getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL)!,
       )
-      expect(defaultOpt!.descriptionForModel).not.toContain('(当前 gpt-5.5)')
     })
 
     test('default model value is null (unchanged)', () => {
@@ -95,47 +101,48 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
   })
 
   describe('non-default ChatGPT Codex model options', () => {
-    test('descriptionForModel uses model.label not model.value', () => {
-      enableChatGPTCodexMode()
-      const options = getModelOptions()
-      const gpt55Opt = options.find(o => o.value === 'gpt-5.5')
-      expect(gpt55Opt).toBeDefined()
-      // descriptionForModel should use the label (GPT-5.5) not raw value (gpt-5.5)
-      expect(gpt55Opt!.descriptionForModel).toBeDefined()
-      expect(gpt55Opt!.descriptionForModel).toContain('(GPT-5.5)')
-      expect(gpt55Opt!.descriptionForModel).not.toContain('(gpt-5.5)')
-    })
-
-    test('gpt-5.5-pro descriptionForModel uses label GPT-5.5 Pro', () => {
-      enableChatGPTCodexMode()
-      const options = getModelOptions()
-      const proOpt = options.find(o => o.value === 'gpt-5.5-pro')
-      expect(proOpt).toBeDefined()
-      expect(proOpt!.descriptionForModel).toContain('(GPT-5.5 Pro)')
-      expect(proOpt!.descriptionForModel).not.toContain('(gpt-5.5-pro)')
-    })
-
-    test('gpt-5.4-mini descriptionForModel uses label GPT-5.4-Mini', () => {
-      enableChatGPTCodexMode()
-      const options = getModelOptions()
-      const miniOpt = options.find(o => o.value === 'gpt-5.4-mini')
-      expect(miniOpt).toBeDefined()
-      expect(miniOpt!.descriptionForModel).toContain('(GPT-5.4-Mini)')
-      expect(miniOpt!.descriptionForModel).not.toContain('(gpt-5.4-mini)')
-    })
-
-    test('model value is unchanged (raw ID preserved for API calls)', () => {
+    test('preserves the exact current roster for API calls', () => {
       enableChatGPTCodexMode()
       const options = getModelOptions()
       const values = options.map(o => o.value)
-      expect(values).toContain('gpt-5.5')
-      expect(values).toContain('gpt-5.5-pro')
-      expect(values).toContain('gpt-5.4')
-      expect(values).toContain('gpt-5.4-mini')
-      expect(values).toContain('gpt-5.4-nano')
-      expect(values).toContain('gpt-5.3-codex')
-      expect(values).toContain('gpt-5.3-codex-spark')
-      expect(values).toContain('gpt-5.2')
+      expect(values).toEqual([
+        null,
+        'gpt-5.6-sol',
+        'gpt-5.6-terra',
+        'gpt-5.6-luna',
+        'gpt-5.5',
+        'gpt-5.4',
+        'gpt-5.4-mini',
+        'gpt-5.3-codex-spark',
+      ])
+    })
+
+    test.each(
+      CHATGPT_CODEX_MODEL_OPTIONS.map(option => [option] as const),
+    )('$value renders its curated label and context window', model => {
+      enableChatGPTCodexMode()
+      const option = getModelOptions().find(o => o.value === model.value)
+      const formatted = formatChatGPTCodexContextWindow(model.contextWindow)
+
+      expect(option).toBeDefined()
+      expect(option!.label).toBe(model.label)
+      expect(option!.description).toContain(`ctx ${formatted}`)
+      expect(option!.descriptionForModel).toContain(model.label)
+      expect(option!.descriptionForModel).toContain(`ctx ${formatted}`)
+      expect(option!.descriptionForModel).not.toContain(`(${model.value})`)
+    })
+
+    test('filters gated models and displays effective plan windows', () => {
+      enableChatGPTCodexMode('plus')
+      const options = getModelOptions()
+
+      expect(
+        options.some(option => option.value === 'gpt-5.3-codex-spark'),
+      ).toBe(false)
+      expect(
+        options.find(option => option.value === 'gpt-5.6-sol')?.description,
+      ).toContain('ctx 256K')
+      expect(options[0]?.description).toContain('ctx 256K')
     })
   })
 })

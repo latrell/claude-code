@@ -1,5 +1,8 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import { getInitialMainLoopModel } from '../../bootstrap/state.js'
+import {
+  getChatGPTSubscriptionPlan,
+  getInitialMainLoopModel,
+} from '../../bootstrap/state.js'
 import {
   isClaudeAISubscriber,
   isMaxSubscriber,
@@ -36,8 +39,11 @@ import { getGlobalConfig } from '../config.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
+  formatChatGPTCodexContextWindow,
+  getChatGPTCodexContextWindow,
   getChatGPTCodexModelDisplayName,
   isChatGPTAuthMode,
+  isChatGPTCodexModelAvailable,
 } from './chatgptModels.js'
 import { CURSOR_MODELS } from '../../services/api/cursor/models.js'
 import { t, tf } from '../../i18n/t.js'
@@ -509,33 +515,44 @@ function getCursorModelOptions(): ModelOption[] {
 }
 
 function getChatGPTCodexModelOptions(): ModelOption[] {
+  const plan = getChatGPTSubscriptionPlan()
+  const defaultDisplayName =
+    getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
+    CHATGPT_CODEX_DEFAULT_MODEL
+  const defaultContextWindow = getChatGPTCodexContextWindow(
+    plan,
+    CHATGPT_CODEX_DEFAULT_MODEL,
+  )
+  const defaultContextSuffix = defaultContextWindow
+    ? ` · ctx ${formatChatGPTCodexContextWindow(defaultContextWindow)}`
+    : ''
+
   return [
     {
       value: null,
       label: t('Default (recommended)'),
-      description: tf(
+      description: `${tf(
         'Use the default ChatGPT Codex model (currently {model})',
-        {
-          model:
-            getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
-            CHATGPT_CODEX_DEFAULT_MODEL,
-        },
-      ),
-      descriptionForModel: tf(
+        { model: defaultDisplayName },
+      )}${defaultContextSuffix}`,
+      descriptionForModel: `${tf(
         'Default ChatGPT Codex model (currently {model})',
-        {
-          model:
-            getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
-            CHATGPT_CODEX_DEFAULT_MODEL,
-        },
-      ),
+        { model: defaultDisplayName },
+      )}${defaultContextSuffix}`,
     },
-    ...CHATGPT_CODEX_MODEL_OPTIONS.map(model => ({
-      value: model.value,
-      label: model.label,
-      description: t(model.description),
-      descriptionForModel: `${t(model.description)} (${model.label})`,
-    })),
+    ...CHATGPT_CODEX_MODEL_OPTIONS.filter(model =>
+      isChatGPTCodexModelAvailable(model.value, plan),
+    ).map(model => {
+      const contextWindow =
+        getChatGPTCodexContextWindow(plan, model.value) ?? model.contextWindow
+      const description = `${t(model.description)} · ctx ${formatChatGPTCodexContextWindow(contextWindow)}`
+      return {
+        value: model.value,
+        label: model.label,
+        description,
+        descriptionForModel: `${description} (${model.label})`,
+      }
+    }),
   ]
 }
 

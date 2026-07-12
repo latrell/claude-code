@@ -3,6 +3,18 @@ import {
   getChatGPTSubscriptionPlan,
   setChatGPTSubscriptionPlan,
 } from '../../bootstrap/state.js'
+import { setProviderCliOverride } from '../model/providers.js'
+
+const PLAN_WINDOWS = [
+  ['free', 27_000],
+  ['go', 256_000],
+  ['plus', 256_000],
+  ['pro', 400_000],
+  ['team', 256_000],
+  ['business', 256_000],
+  ['enterprise', 256_000],
+  ['edu', 256_000],
+] as const
 
 describe('getChatGPTSubscriptionPlan state', () => {
   const saved = process.env.OPENAI_AUTH_MODE
@@ -42,10 +54,16 @@ describe('getChatGPTSubscriptionPlan state', () => {
 describe('getContextWindowForModel with ChatGPT plan', () => {
   let origOpenAIAuthMode: string | undefined
   let origClaudeCodeUseOpenAI: string | undefined
+  let origDisable1mContext: string | undefined
 
   beforeEach(() => {
     origOpenAIAuthMode = process.env.OPENAI_AUTH_MODE
     origClaudeCodeUseOpenAI = process.env.CLAUDE_CODE_USE_OPENAI
+    origDisable1mContext = process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+    process.env.OPENAI_AUTH_MODE = 'chatgpt'
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+    setProviderCliOverride('openai')
   })
 
   afterEach(() => {
@@ -59,32 +77,80 @@ describe('getContextWindowForModel with ChatGPT plan', () => {
     } else {
       process.env.CLAUDE_CODE_USE_OPENAI = origClaudeCodeUseOpenAI
     }
+    if (origDisable1mContext === undefined) {
+      delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+    } else {
+      process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = origDisable1mContext
+    }
+    setProviderCliOverride(undefined)
     setChatGPTSubscriptionPlan(null)
   })
 
-  // This test suite validates that the getChatGPTCodexContextWindow lookup
-  // itself is correct. The full getContextWindowForModel integration is
-  // verified separately via the queryModelOpenAI.isolated.ts mock chain
-  // which stubs getContextWindowForModel → the context window size feeds
-  // into the request builder.
-
-  test('getChatGPTCodexContextWindow returns correct values for all known plans', async () => {
-    // Dynamic import avoids affecting other test files' module state
+  test('getChatGPTCodexContextWindow applies every known plan cap', async () => {
     const { getChatGPTCodexContextWindow } = await import(
       '../../utils/model/chatgptModels.js'
     )
 
-    expect(getChatGPTCodexContextWindow('free')).toBe(27_000)
-    expect(getChatGPTCodexContextWindow('go')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('plus')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('pro')).toBe(400_000)
-    expect(getChatGPTCodexContextWindow('team')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('business')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('enterprise')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('edu')).toBe(256_000)
+    for (const [plan, contextWindow] of PLAN_WINDOWS) {
+      expect(getChatGPTCodexContextWindow(plan)).toBe(contextWindow)
+    }
     expect(getChatGPTCodexContextWindow(null)).toBeUndefined()
     expect(getChatGPTCodexContextWindow(undefined)).toBeUndefined()
     expect(getChatGPTCodexContextWindow('unknown')).toBeUndefined()
+  })
+
+  test('getChatGPTCodexContextWindow uses the lower plan or model cap', async () => {
+    const { getChatGPTCodexContextWindow } = await import(
+      '../../utils/model/chatgptModels.js'
+    )
+
+    const cases = [
+      ['pro', 'gpt-5.6-sol', 372_000],
+      ['plus', 'gpt-5.6-sol', 256_000],
+      ['pro', 'gpt-5.5', 272_000],
+      ['pro', 'gpt-5.3-codex-spark', 128_000],
+    ] as const
+    for (const [plan, model, contextWindow] of cases) {
+      expect(getChatGPTCodexContextWindow(plan, model)).toBe(contextWindow)
+    }
+  })
+
+  test('runtime caps unsupported [1m] variants at their model window', async () => {
+    const { getContextWindowForModel } = await import('../context.js')
+    setChatGPTSubscriptionPlan('pro')
+
+    const unsupported1mVariants = [
+      ['gpt-5.6-sol[1m]', 372_000],
+      ['gpt-5.6-terra[1m]', 372_000],
+      ['gpt-5.6-luna[1m]', 372_000],
+      ['gpt-5.5[1m]', 272_000],
+      ['gpt-5.4-mini[1m]', 272_000],
+      ['gpt-5.3-codex-spark[1m]', 128_000],
+    ] as const
+    for (const [model, contextWindow] of unsupported1mVariants) {
+      expect(getContextWindowForModel(model)).toBe(contextWindow)
+    }
+  })
+
+  test('runtime allows the supported GPT-5.4 [1m] variant', async () => {
+    const { getContextWindowForModel } = await import('../context.js')
+    setChatGPTSubscriptionPlan('pro')
+
+    expect(getContextWindowForModel('gpt-5.4[1m]')).toBe(1_000_000)
+  })
+
+  test('runtime applies the lower plan or model cap without [1m]', async () => {
+    const { getContextWindowForModel } = await import('../context.js')
+
+    const cases = [
+      ['pro', 'gpt-5.6-sol', 372_000],
+      ['plus', 'gpt-5.6-sol', 256_000],
+      ['pro', 'gpt-5.3-codex-spark', 128_000],
+    ] as const
+    for (const [plan, model, contextWindow] of cases) {
+      setChatGPTSubscriptionPlan(plan)
+      expect(getContextWindowForModel(model)).toBe(contextWindow)
+    }
   })
 
   test('plan cached via setChatGPTSubscriptionPlan is readable', () => {

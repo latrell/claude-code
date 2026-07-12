@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
+import { setChatGPTSubscriptionPlan } from '../../../bootstrap/state.js'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
 
@@ -8,6 +9,16 @@ mock.module('src/utils/debug.ts', debugMock)
 const { fetchRemoteModelsForConnection, getStaticModelsForConnection } =
   await import('../modelCatalog.js')
 import type { Connection } from '../types.js'
+
+const CHATGPT_CODEX_MODELS = [
+  ['gpt-5.6-sol', '372K'],
+  ['gpt-5.6-terra', '372K'],
+  ['gpt-5.6-luna', '372K'],
+  ['gpt-5.5', '272K'],
+  ['gpt-5.4', '272K'],
+  ['gpt-5.4-mini', '272K'],
+  ['gpt-5.3-codex-spark', '128K'],
+] as const
 
 describe('getStaticModelsForConnection', () => {
   test('anthropic kinds expose default + alias entries', () => {
@@ -24,18 +35,51 @@ describe('getStaticModelsForConnection', () => {
     )
   })
 
-  test('chatgpt-oauth exposes the Codex option list', () => {
+  test('chatgpt-oauth exposes the current Codex roster with context windows', () => {
     const conn: Connection = {
       id: 'gpt',
       label: 'ChatGPT',
       kind: 'chatgpt-oauth',
       credentialRef: 'default',
     }
-    const models = getStaticModelsForConnection(conn)
-    expect(models[0]?.value).toBeNull()
-    expect(models.map(m => m.value)).toEqual(
-      expect.arrayContaining(['gpt-5.5', 'gpt-5.4-mini']),
-    )
+    setChatGPTSubscriptionPlan('pro')
+    try {
+      const models = getStaticModelsForConnection(conn)
+      expect(models[0]?.value).toBeNull()
+      expect(models.map(m => m.value)).toEqual([
+        null,
+        ...CHATGPT_CODEX_MODELS.map(([model]) => model),
+      ])
+
+      for (const [model, contextWindow] of CHATGPT_CODEX_MODELS) {
+        const entry = models.find(candidate => candidate.value === model)
+        expect(entry).toBeDefined()
+        expect(entry?.description).toContain(`ctx ${contextWindow}`)
+      }
+    } finally {
+      setChatGPTSubscriptionPlan(null)
+    }
+  })
+
+  test('chatgpt-oauth filters gated models and applies plan windows', () => {
+    const conn: Connection = {
+      id: 'gpt-plus',
+      label: 'ChatGPT Plus',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'default',
+    }
+    setChatGPTSubscriptionPlan('plus')
+    try {
+      const models = getStaticModelsForConnection(conn)
+      expect(models.some(model => model.value === 'gpt-5.3-codex-spark')).toBe(
+        false,
+      )
+      expect(
+        models.find(model => model.value === 'gpt-5.6-sol')?.description,
+      ).toContain('ctx 256K')
+    } finally {
+      setChatGPTSubscriptionPlan(null)
+    }
   })
 
   test('cursor exposes the curated default + model list', () => {

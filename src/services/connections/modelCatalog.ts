@@ -12,11 +12,16 @@
  * captured so it can be recorded on the connection.
  */
 
-import { CHATGPT_CODEX_MODEL_OPTIONS } from '../../utils/model/chatgptModels.js'
-import { CURSOR_MODELS } from '../api/cursor/models.js'
+import { getChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
+import { t } from '../../i18n/t.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { t } from '../../i18n/t.js'
+import {
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  getChatGPTCodexContextWindow,
+  isChatGPTCodexModelAvailable,
+} from '../../utils/model/chatgptModels.js'
+import { CURSOR_MODELS } from '../api/cursor/models.js'
 import {
   formatContextWindow,
   recordAutoDetectedContextWindows,
@@ -118,11 +123,16 @@ export function getStaticModelsForConnection(
       break
     }
     case 'chatgpt-oauth': {
+      const plan = getChatGPTSubscriptionPlan()
       for (const option of CHATGPT_CODEX_MODEL_OPTIONS) {
+        if (!isChatGPTCodexModelAvailable(option.value, plan)) continue
+        const contextWindow =
+          getChatGPTCodexContextWindow(plan, option.value) ??
+          option.contextWindow
         dedupePush(out, seen, {
           value: option.value,
           label: option.label,
-          description: t(option.description),
+          description: `${t(option.description)} · ctx ${formatContextWindow(contextWindow)}`,
         })
       }
       break

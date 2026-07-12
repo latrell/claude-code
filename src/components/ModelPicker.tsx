@@ -1,7 +1,10 @@
 import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
-import { has1mContext } from '../utils/context.js';
+import { getChatGPTSubscriptionPlan } from '../bootstrap/state.js';
+import { has1mContext, modelSupports1M } from '../utils/context.js';
+import { isChatGPTAuthMode, isChatGPTCodexModelUnavailable } from '../utils/model/chatgptModels.js';
+import { getAPIProvider } from '../utils/model/providers.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -82,7 +85,7 @@ export function ModelPicker({
   const isFastMode = useAppState(s => (isFastModeEnabled() ? s.fastMode : false));
 
   const [marked1MValues, setMarked1MValues] = useState<Set<string>>(() => {
-    if (!has1mContext(initialValue)) return new Set();
+    if (!has1mContext(initialValue) || !optionSupports1M(initialValue)) return new Set();
     const base = initialValue.replace(/\[1m\]/i, '');
     const marks = [base];
     // A restored default1mContext preference pins the resolved default model
@@ -95,7 +98,7 @@ export function ModelPicker({
   });
 
   const handleToggle1M = useCallback(() => {
-    if (!focusedValue) return;
+    if (!focusedValue || !optionSupports1M(focusedValue)) return;
     // Key on the base value so lookups in handleSelect / is1MMarked match the
     // initializer — predefined 1M options arrive with a `[1m]` suffix in
     // `focusedValue`, which would diverge from the base-value key set.
@@ -118,13 +121,18 @@ export function ModelPicker({
   );
 
   // Memoize all derived values to prevent re-renders
-  const modelOptions = useMemo(() => getModelOptions(isFastMode ?? false), [isFastMode]);
+  const chatGPTPlan = getChatGPTSubscriptionPlan();
+  const modelOptions = useMemo(() => getModelOptions(isFastMode ?? false), [isFastMode, chatGPTPlan]);
 
   // Ensure the initial value is in the options list
   // This handles edge cases where the user's current model (e.g., 'haiku' for 3P users)
   // is not in the base options but should still be selectable and shown as selected
   const optionsWithInitial = useMemo(() => {
-    if (initial !== null && !modelOptions.some(opt => opt.value === initial)) {
+    if (
+      initial !== null &&
+      !modelOptions.some(opt => opt.value === initial) &&
+      shouldRestoreInitialModelOption(initial, chatGPTPlan)
+    ) {
       return [
         ...modelOptions,
         {
@@ -135,7 +143,7 @@ export function ModelPicker({
       ];
     }
     return modelOptions;
-  }, [modelOptions, initial]);
+  }, [modelOptions, initial, chatGPTPlan]);
 
   const selectOptions = useMemo(
     () =>
@@ -154,7 +162,9 @@ export function ModelPicker({
 
   const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
   const focusedModel = resolveOptionModel(focusedValue);
-  const is1MMarked = focusedValue !== undefined && marked1MValues.has(focusedValue.replace(/\[1m\]/i, ''));
+  const focusedSupports1M = optionSupports1M(focusedValue);
+  const is1MMarked =
+    focusedSupports1M && focusedValue !== undefined && marked1MValues.has(focusedValue.replace(/\[1m\]/i, ''));
   const focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
   const focusedSupportsXhigh = focusedModel ? modelSupportsXhighEffort(focusedModel) : false;
   const focusedSupportsMax = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
@@ -230,7 +240,7 @@ export function ModelPicker({
       // "Default" has no model string to carry a [1m] suffix (model = null,
       // resolved at runtime). When 1M is toggled on it, pin the resolved
       // default model setting with [1m] instead of passing null.
-      if (marked1MValues.has(NO_PREFERENCE)) {
+      if (marked1MValues.has(NO_PREFERENCE) && selectedModel && modelAllows1M(selectedModel)) {
         if (!skipSettingsWrite) {
           // Persist the preference so the 1M toggle on Default survives
           // restarts (restored via resolveInitialMainLoopModelSetting).
@@ -252,7 +262,7 @@ export function ModelPicker({
     // base form — not `value`, which may carry a `[1m]` suffix from predefined
     // 1M options and would never match.
     const baseValue = value.replace(/\[1m\]/i, '');
-    const wants1M = marked1MValues.has(baseValue);
+    const wants1M = marked1MValues.has(baseValue) && selectedModel !== undefined && modelAllows1M(selectedModel);
     const finalValue = wants1M ? `${baseValue}[1m]` : baseValue;
     onSelect(finalValue, selectedEffort);
   }
@@ -267,7 +277,7 @@ export function ModelPicker({
           <Text dimColor>
             {headerText ??
               t(
-                'Choose a model for this and future sessions. Use \u2190 \u2192 to adjust effort, Space to toggle 1M context.',
+                'Choose a model for this and future sessions. Use \u2190 \u2192 for effort; Space toggles 1M context when supported.',
               )}
           </Text>
           {sessionModel && (
@@ -312,18 +322,20 @@ export function ModelPicker({
               {focusedModelName ? tf(' for {model}', { model: focusedModelName }) : ''}
             </Text>
           )}
-          {is1MMarked ? (
-            <Text dimColor>
-              <EffortLevelIndicator effort={'high'} /> {t('1M context on')}
-              <Text color="subtle">{t(' \u00b7 Space to toggle')}</Text>
-            </Text>
-          ) : (
-            <Text color="subtle">
-              <EffortLevelIndicator effort={undefined} /> {t('1M context off')}
-              {focusedModelName ? tf(' for {model}', { model: focusedModelName }) : ''}
-              <Text color="subtle">{t(' \u00b7 Space to toggle')}</Text>
-            </Text>
-          )}
+          {focusedSupports1M ? (
+            is1MMarked ? (
+              <Text dimColor>
+                <EffortLevelIndicator effort={'high'} /> {t('1M context on')}
+                <Text color="subtle">{t(' \u00b7 Space to toggle')}</Text>
+              </Text>
+            ) : (
+              <Text color="subtle">
+                <EffortLevelIndicator effort={undefined} /> {t('1M context off')}
+                {focusedModelName ? tf(' for {model}', { model: focusedModelName }) : ''}
+                <Text color="subtle">{t(' \u00b7 Space to toggle')}</Text>
+              </Text>
+            )
+          ) : null}
         </Box>
 
         {isFastModeEnabled() ? (
@@ -378,6 +390,23 @@ export function ModelPicker({
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
   return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
+}
+
+function optionSupports1M(value?: string): boolean {
+  const model = resolveOptionModel(value);
+  return model !== undefined && modelAllows1M(model);
+}
+
+function modelAllows1M(model: string): boolean {
+  if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
+    return modelSupports1M(model);
+  }
+  return true;
+}
+
+function shouldRestoreInitialModelOption(model: string, plan: string | null): boolean {
+  if (getAPIProvider() !== 'openai' || !isChatGPTAuthMode()) return true;
+  return !isChatGPTCodexModelUnavailable(model, plan);
 }
 
 function EffortLevelIndicator({ effort }: { effort?: EffortLevel }): React.ReactNode {

@@ -250,7 +250,7 @@ describe('sonnet provider config', () => {
     try {
       const resolved = getSonnetModelAndRuntime()
 
-      expect(resolved.model).toBe('gpt-5.5')
+      expect(resolved.model).toBe('gpt-5.6-sol')
       expect(resolved.runtime?.provider).toBe('openai')
     } finally {
       setSonnetProviderConfigOverride(undefined)

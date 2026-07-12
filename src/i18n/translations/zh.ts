@@ -275,8 +275,8 @@ const zh: Record<string, string> = {
   // ── ModelPicker ────────────────────────────────────────────────
   'Select mode': '选择模式',
   'Select model': '选择模型',
-  'Choose a model for this and future sessions. Use \u2190 \u2192 to adjust effort, Space to toggle 1M context.':
-    '为此会话及后续会话选择模型。使用 ← → 调整努力级别，空格键切换 1M 上下文。',
+  'Choose a model for this and future sessions. Use \u2190 \u2192 for effort; Space toggles 1M context when supported.':
+    '为此会话及后续会话选择模型。使用 ← → 调整努力级别；模型支持时可用空格键切换 1M 上下文。',
   'Currently using {model} for this session (set by plan mode). Selecting a model will undo this.':
     '当前会话正在使用 {model}（由计划模式设置）。选择模型将覆盖此设置。',
   'and {count} more\u2026': '还有 {count} 个…',
@@ -298,6 +298,10 @@ const zh: Record<string, string> = {
   High: '高',
   Low: '低',
   // ── ChatGPT Codex model descriptions ───────────────────────────
+  'Latest frontier agentic coding model': '最新的前沿智能体编码模型',
+  'Balanced agentic coding model for everyday work':
+    '适合日常工作的均衡型智能体编码模型',
+  'Fast and affordable agentic coding model': '快速且经济的智能体编码模型',
   'Frontier model for complex coding, research, and real-world work':
     '用于复杂编码、研究和实际工作的前沿模型',
   'Smarter, more precise responses for the most demanding reasoning tasks':
@@ -309,6 +313,8 @@ const zh: Record<string, string> = {
     '用于分类、提取和大规模子智能体的超低延迟、最低成本模型',
   'Coding-optimized model': '编码优化模型',
   'Ultra-fast coding model': '超快速编码模型',
+  'Ultra-fast text-only coding model (ChatGPT Pro research preview)':
+    '超快速纯文本编码模型（ChatGPT Pro 研究预览）',
   'Optimized for professional work and long-running agents':
     '为专业工作和长时间运行的智能体优化',
   // ── Claude model descriptions ──────────────────────────────────

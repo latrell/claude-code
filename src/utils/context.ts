@@ -10,6 +10,7 @@ import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import {
   getChatGPTCodexContextWindow,
+  getChatGPTCodexModelMaxContextWindow,
   isChatGPTAuthMode,
 } from './model/chatgptModels.js'
 import { getAPIProvider } from './model/providers.js'
@@ -53,6 +54,9 @@ export function modelSupports1M(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
+  if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
+    return (getChatGPTCodexModelMaxContextWindow(model) ?? 0) >= 1_000_000
+  }
   const canonical = getCanonicalName(model)
   return (
     canonical.includes('claude-fable-5') ||
@@ -82,9 +86,15 @@ export function getContextWindowForModel(
     }
   }
 
-  // [1m] suffix — explicit client-side opt-in, respected over all detection
+  const isChatGPTCodex = getAPIProvider() === 'openai' && isChatGPTAuthMode()
+
+  // [1m] suffix — explicit client-side opt-in. ChatGPT Codex only honors it
+  // when the product catalog advertises a 1M maximum for this exact model;
+  // otherwise an unsupported suffix must not bypass the real model window.
   if (has1mContext(model)) {
-    return 1_000_000
+    if (!isChatGPTCodex || modelSupports1M(model)) {
+      return 1_000_000
+    }
   }
 
   // Cursor: resolve from the curated catalog (Max Mode aware), mapping family
@@ -131,11 +141,11 @@ export function getContextWindowForModel(
     }
   }
 
-  // ChatGPT Codex auth mode: look up the plan-specific context window.
-  // Plan is cached from the Codex /wham/usage endpoint (fetchCodexUsage).
-  if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
+  // ChatGPT Codex auth mode: use the model catalog window, capped by the
+  // subscription tier cached from the Codex /wham/usage endpoint.
+  if (isChatGPTCodex) {
     const plan = getChatGPTSubscriptionPlan()
-    const planWindow = getChatGPTCodexContextWindow(plan)
+    const planWindow = getChatGPTCodexContextWindow(plan, model)
     if (planWindow !== undefined) {
       return planWindow
     }

@@ -3,256 +3,240 @@ import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_FAST_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
+  formatChatGPTCodexContextWindow,
   getChatGPTCodexContextWindow,
+  getChatGPTCodexModelContextWindow,
   getChatGPTCodexModelDisplayName,
+  getChatGPTCodexModelMaxContextWindow,
   isChatGPTCodexReasoningModel,
+  isChatGPTCodexModelAvailable,
+  isChatGPTCodexModelUnavailable,
 } from '../chatgptModels.js'
 
+const MODEL_WINDOWS = [
+  ['gpt-5.6-sol', 372_000, 372_000],
+  ['gpt-5.6-terra', 372_000, 372_000],
+  ['gpt-5.6-luna', 372_000, 372_000],
+  ['gpt-5.5', 272_000, 272_000],
+  ['gpt-5.4', 272_000, 1_000_000],
+  ['gpt-5.4-mini', 272_000, 272_000],
+  ['gpt-5.3-codex-spark', 128_000, 128_000],
+] as const
+
+const LEGACY_MODELS = [
+  'gpt-5.5-pro',
+  'gpt-5.4-nano',
+  'gpt-5.3-codex',
+  'gpt-5.2',
+] as const
+
+const PLAN_WINDOWS = [
+  ['free', 27_000],
+  ['go', 256_000],
+  ['plus', 256_000],
+  ['pro', 400_000],
+  ['team', 256_000],
+  ['business', 256_000],
+  ['enterprise', 256_000],
+  ['edu', 256_000],
+] as const
+
 describe('CHATGPT_CODEX_MODEL_OPTIONS', () => {
-  test('default model is gpt-5.5', () => {
-    expect(CHATGPT_CODEX_DEFAULT_MODEL).toBe('gpt-5.5')
+  test('uses the current default and fast models', () => {
+    expect(CHATGPT_CODEX_DEFAULT_MODEL).toBe('gpt-5.6-sol')
+    expect(CHATGPT_CODEX_FAST_MODEL).toBe('gpt-5.6-luna')
   })
 
-  test('fast model is gpt-5.4-mini', () => {
-    expect(CHATGPT_CODEX_FAST_MODEL).toBe('gpt-5.4-mini')
+  test('contains the current seven-model roster and context metadata', () => {
+    expect(
+      CHATGPT_CODEX_MODEL_OPTIONS.map(
+        ({ value, contextWindow, maxContextWindow }) => [
+          value,
+          contextWindow,
+          maxContextWindow,
+        ],
+      ),
+    ).toEqual(MODEL_WINDOWS.map(entry => [...entry]))
   })
 
-  test('includes all recommended models', () => {
-    const values = CHATGPT_CODEX_MODEL_OPTIONS.map(o => o.value)
-    expect(values).toContain('gpt-5.5')
-    expect(values).toContain('gpt-5.5-pro')
-    expect(values).toContain('gpt-5.4')
-    expect(values).toContain('gpt-5.4-mini')
-    expect(values).toContain('gpt-5.4-nano')
-    expect(values).toContain('gpt-5.3-codex')
-    expect(values).toContain('gpt-5.3-codex-spark')
-    expect(values).toContain('gpt-5.2')
-  })
-
-  test('model count is 8', () => {
-    expect(CHATGPT_CODEX_MODEL_OPTIONS).toHaveLength(8)
-  })
-
-  test('every option has a non-empty value, label, and description', () => {
-    for (const opt of CHATGPT_CODEX_MODEL_OPTIONS) {
-      expect(opt.value).toBeTruthy()
-      expect(opt.label).toBeTruthy()
-      expect(opt.description).toBeTruthy()
+  test('does not retain superseded roster entries', () => {
+    const values = new Set(CHATGPT_CODEX_MODEL_OPTIONS.map(o => o.value))
+    for (const model of LEGACY_MODELS) {
+      expect(values.has(model)).toBe(false)
     }
   })
 
-  test('values are unique', () => {
+  test('every option has unique, non-empty display metadata', () => {
     const values = CHATGPT_CODEX_MODEL_OPTIONS.map(o => o.value)
     expect(new Set(values).size).toBe(values.length)
+    for (const option of CHATGPT_CODEX_MODEL_OPTIONS) {
+      expect(option.value).toBeTruthy()
+      expect(option.label).toBeTruthy()
+      expect(option.description).toBeTruthy()
+    }
+  })
+})
+
+describe('ChatGPT Codex model context windows', () => {
+  test.each(
+    MODEL_WINDOWS,
+  )('%s exposes its normal and maximum context windows', (model, contextWindow, maxContextWindow) => {
+    expect(getChatGPTCodexModelContextWindow(model)).toBe(contextWindow)
+    expect(getChatGPTCodexModelMaxContextWindow(model)).toBe(maxContextWindow)
+  })
+
+  test('maps the gpt-5.6 alias to gpt-5.6-sol metadata', () => {
+    expect(getChatGPTCodexModelContextWindow('gpt-5.6')).toBe(372_000)
+    expect(getChatGPTCodexModelMaxContextWindow('gpt-5.6')).toBe(372_000)
+  })
+
+  test('normalizes case and an optional [1m] suffix for metadata lookup', () => {
+    expect(getChatGPTCodexModelContextWindow('GPT-5.4[1M]')).toBe(272_000)
+    expect(getChatGPTCodexModelMaxContextWindow('GPT-5.4[1M]')).toBe(1_000_000)
+  })
+
+  test('returns undefined for unknown models', () => {
+    expect(getChatGPTCodexModelContextWindow('gpt-4')).toBeUndefined()
+    expect(getChatGPTCodexModelMaxContextWindow('gpt-4')).toBeUndefined()
+  })
+
+  test.each([
+    [27_000, '27K'],
+    [128_000, '128K'],
+    [272_000, '272K'],
+    [372_000, '372K'],
+    [1_000_000, '1M'],
+    [1_050_000, '1.05M'],
+  ] as const)('formats %i tokens as %s', (tokens, formatted) => {
+    expect(formatChatGPTCodexContextWindow(tokens)).toBe(formatted)
   })
 })
 
 describe('isChatGPTCodexReasoningModel', () => {
-  test('gpt-5.5 is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.5')).toBe(true)
+  test.each(
+    MODEL_WINDOWS.map(([model]) => [model]),
+  )('%s is a reasoning model', model => {
+    expect(isChatGPTCodexReasoningModel(model)).toBe(true)
   })
 
-  test('gpt-5.5-pro is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.5-pro')).toBe(true)
+  test.each([
+    'gpt-5.6',
+    'GPT-5.6',
+    'GPT-5.6-SOL',
+    'gpt-5.4[1m]',
+  ])('recognizes normalized model id %s', model => {
+    expect(isChatGPTCodexReasoningModel(model)).toBe(true)
   })
 
-  test('gpt-5.4 is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.4')).toBe(true)
+  test.each([
+    'gpt-4',
+    ...LEGACY_MODELS,
+  ])('%s is not in the current reasoning roster', model => {
+    expect(isChatGPTCodexReasoningModel(model)).toBe(false)
+  })
+})
+
+describe('isChatGPTCodexModelAvailable', () => {
+  test('keeps standard models available for every or unknown plan', () => {
+    expect(isChatGPTCodexModelAvailable('gpt-5.6-sol', 'plus')).toBe(true)
+    expect(isChatGPTCodexModelAvailable('gpt-5.6-sol', null)).toBe(true)
   })
 
-  test('gpt-5.4-mini is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.4-mini')).toBe(true)
+  test('limits Codex Spark to ChatGPT Pro', () => {
+    expect(isChatGPTCodexModelAvailable('gpt-5.3-codex-spark', 'pro')).toBe(
+      true,
+    )
+    expect(isChatGPTCodexModelAvailable('gpt-5.3-codex-spark', 'plus')).toBe(
+      false,
+    )
+    expect(isChatGPTCodexModelAvailable('gpt-5.3-codex-spark', null)).toBe(
+      false,
+    )
   })
 
-  test('gpt-5.4-nano is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.4-nano')).toBe(true)
-  })
-
-  test('gpt-5.3-codex is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.3-codex')).toBe(true)
-  })
-
-  test('gpt-5.3-codex-spark is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.3-codex-spark')).toBe(true)
-  })
-
-  test('gpt-5.2 is a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.2')).toBe(true)
-  })
-
-  test('unknown model is not a reasoning model', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-4')).toBe(false)
-  })
-
-  test('case insensitive match', () => {
-    expect(isChatGPTCodexReasoningModel('GPT-5.5')).toBe(true)
-    expect(isChatGPTCodexReasoningModel('Gpt-5.5-Pro')).toBe(true)
-  })
-
-  test('strip [1m] suffix before matching', () => {
-    expect(isChatGPTCodexReasoningModel('gpt-5.5[1m]')).toBe(true)
-    expect(isChatGPTCodexReasoningModel('gpt-5.4-nano[1m]')).toBe(true)
+  test('only marks recognized gated models unavailable', () => {
+    expect(isChatGPTCodexModelUnavailable('gpt-5.3-codex-spark', 'plus')).toBe(
+      true,
+    )
+    expect(isChatGPTCodexModelUnavailable('gpt-5.3-codex-spark', 'pro')).toBe(
+      false,
+    )
+    expect(isChatGPTCodexModelUnavailable('custom-model', 'plus')).toBe(false)
   })
 })
 
 describe('getChatGPTCodexContextWindow', () => {
-  // ---------------------------------------------------------------------------
-  // Known plans — reasoning/coding tier context windows
-  // ---------------------------------------------------------------------------
-
-  test('free plan returns 27_000', () => {
-    expect(getChatGPTCodexContextWindow('free')).toBe(27_000)
+  test.each(PLAN_WINDOWS)('%s plan has a %i-token cap', (plan, window) => {
+    expect(getChatGPTCodexContextWindow(plan)).toBe(window)
   })
 
-  test('go plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('go')).toBe(256_000)
+  test.each([
+    ['pro', 'gpt-5.6-sol', 372_000],
+    ['plus', 'gpt-5.6-sol', 256_000],
+    ['pro', 'gpt-5.5', 272_000],
+    ['pro', 'gpt-5.3-codex-spark', 128_000],
+    ['free', 'gpt-5.3-codex-spark', 27_000],
+  ] as const)('uses the lower of the %s plan and %s model caps', (plan, model, window) => {
+    expect(getChatGPTCodexContextWindow(plan, model)).toBe(window)
   })
 
-  test('plus plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('plus')).toBe(256_000)
+  test('uses a known model cap when the plan is unavailable', () => {
+    expect(getChatGPTCodexContextWindow(null, 'gpt-5.6-sol')).toBe(372_000)
+    expect(getChatGPTCodexContextWindow('unknown', 'gpt-5.5')).toBe(272_000)
   })
 
-  test('pro plan returns 400_000', () => {
-    expect(getChatGPTCodexContextWindow('pro')).toBe(400_000)
+  test('preserves a known plan cap when the model is unavailable', () => {
+    expect(getChatGPTCodexContextWindow('pro', 'gpt-4')).toBe(400_000)
   })
 
-  test('team plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('team')).toBe(256_000)
+  test('matches plan strings case-insensitively and trims whitespace', () => {
+    expect(getChatGPTCodexContextWindow('  PRO  ', 'gpt-5.6-sol')).toBe(372_000)
+    expect(getChatGPTCodexContextWindow('\tFREE\n', 'gpt-5.6-sol')).toBe(27_000)
   })
 
-  test('business plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('business')).toBe(256_000)
-  })
-
-  test('enterprise plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('enterprise')).toBe(256_000)
-  })
-
-  test('edu plan returns 256_000', () => {
-    expect(getChatGPTCodexContextWindow('edu')).toBe(256_000)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Case insensitivity
-  // ---------------------------------------------------------------------------
-
-  test('matches plan strings case-insensitively', () => {
-    expect(getChatGPTCodexContextWindow('FREE')).toBe(27_000)
-    expect(getChatGPTCodexContextWindow('Free')).toBe(27_000)
-    expect(getChatGPTCodexContextWindow('PRO')).toBe(400_000)
-    expect(getChatGPTCodexContextWindow('Pro')).toBe(400_000)
-    expect(getChatGPTCodexContextWindow('PLUS')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('Plus')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('TEAM')).toBe(256_000)
-    expect(getChatGPTCodexContextWindow('Business')).toBe(256_000)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Whitespace tolerance
-  // ---------------------------------------------------------------------------
-
-  test('trims whitespace around plan strings', () => {
-    expect(getChatGPTCodexContextWindow('  pro  ')).toBe(400_000)
-    expect(getChatGPTCodexContextWindow('\tfree\n')).toBe(27_000)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Null / undefined / empty
-  // ---------------------------------------------------------------------------
-
-  test('returns undefined for null', () => {
-    expect(getChatGPTCodexContextWindow(null)).toBeUndefined()
-  })
-
-  test('returns undefined for undefined', () => {
-    expect(getChatGPTCodexContextWindow(undefined)).toBeUndefined()
-  })
-
-  test('returns undefined for empty string', () => {
-    expect(getChatGPTCodexContextWindow('')).toBeUndefined()
-  })
-
-  test('returns undefined for whitespace-only string', () => {
-    expect(getChatGPTCodexContextWindow('   ')).toBeUndefined()
-  })
-
-  // ---------------------------------------------------------------------------
-  // Unknown plans
-  // ---------------------------------------------------------------------------
-
-  test('returns undefined for unknown plan strings', () => {
-    expect(getChatGPTCodexContextWindow('basic')).toBeUndefined()
-    expect(getChatGPTCodexContextWindow('premium')).toBeUndefined()
-    expect(getChatGPTCodexContextWindow('starter')).toBeUndefined()
-  })
-
-  test('returns undefined for garbage input', () => {
-    expect(getChatGPTCodexContextWindow('xyzzy')).toBeUndefined()
-    expect(getChatGPTCodexContextWindow('not-a-plan')).toBeUndefined()
+  test.each([
+    null,
+    undefined,
+    '',
+    '   ',
+    'unknown',
+  ])('returns undefined when neither plan nor model supplies a cap: %p', plan => {
+    expect(getChatGPTCodexContextWindow(plan)).toBeUndefined()
   })
 })
 
 describe('getChatGPTCodexModelDisplayName', () => {
-  test('gpt-5.5 returns GPT-5.5', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.5')).toBe('GPT-5.5')
+  test.each(
+    CHATGPT_CODEX_MODEL_OPTIONS.map(option => [option] as const),
+  )('$value uses its curated label', option => {
+    expect(getChatGPTCodexModelDisplayName(option.value)).toBe(option.label)
   })
 
-  test('gpt-5.5-pro returns GPT-5.5 Pro', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.5-pro')).toBe('GPT-5.5 Pro')
+  test('resolves the gpt-5.6 alias to the Sol display name', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.6')).toBe('GPT-5.6-Sol')
   })
 
-  test('gpt-5.4 returns GPT-5.4', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.4')).toBe('GPT-5.4')
-  })
-
-  test('gpt-5.4-mini returns GPT-5.4-Mini', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.4-mini')).toBe('GPT-5.4-Mini')
-  })
-
-  test('gpt-5.4-nano returns GPT-5.4-Nano', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.4-nano')).toBe('GPT-5.4-Nano')
-  })
-
-  test('gpt-5.3-codex returns GPT-5.3-Codex', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex')).toBe(
-      'GPT-5.3-Codex',
+  test('marks the supported 1M variant in the display name', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.4[1m]')).toBe(
+      'GPT-5.4 (1M context)',
     )
   })
 
-  test('gpt-5.3-codex-spark returns GPT-5.3-Codex-Spark', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark')).toBe(
+  test('does not advertise 1M for models without a 1M product cap', () => {
+    expect(getChatGPTCodexModelDisplayName('gpt-5.6-sol[1m]')).toBe(
+      'GPT-5.6-Sol',
+    )
+    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark[1m]')).toBe(
       'GPT-5.3-Codex-Spark',
     )
   })
 
-  test('gpt-5.2 returns GPT-5.2', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.2')).toBe('GPT-5.2')
-  })
-
-  test('gpt-5.5[1m] returns GPT-5.5 (1M context)', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.5[1m]')).toBe(
-      'GPT-5.5 (1M context)',
-    )
-  })
-
-  test('gpt-5.5-pro[1m] returns GPT-5.5 Pro (1M context)', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.5-pro[1m]')).toBe(
-      'GPT-5.5 Pro (1M context)',
-    )
-  })
-
-  test('gpt-5.3-codex-spark[1m] returns GPT-5.3-Codex-Spark (1M context)', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark[1m]')).toBe(
-      'GPT-5.3-Codex-Spark (1M context)',
-    )
-  })
-
-  test('unknown model returns null', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-4')).toBeNull()
-    expect(getChatGPTCodexModelDisplayName('gpt-4o')).toBeNull()
-  })
-
-  test('empty string returns null', () => {
-    expect(getChatGPTCodexModelDisplayName('')).toBeNull()
+  test.each([
+    'gpt-4',
+    'gpt-4o',
+    '',
+    ...LEGACY_MODELS,
+  ])('returns null for unknown model %p', model => {
+    expect(getChatGPTCodexModelDisplayName(model)).toBeNull()
   })
 })
