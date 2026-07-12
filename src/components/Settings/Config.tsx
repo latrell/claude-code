@@ -347,9 +347,18 @@ export function Config({
       value: settingsData?.cacheWarningEnabled ?? true,
       type: 'boolean' as const,
       onChange(cacheWarningEnabled: boolean) {
-        updateSettingsForSource('localSettings', {
+        updateSettingsForSource('userSettings', {
           cacheWarningEnabled,
         });
+        // Earlier versions wrote this key to localSettings, which shadows
+        // userSettings in the merge order — delete the stale local value so
+        // the global setting takes effect. Guarded so toggling never creates
+        // a settings.local.json in projects that don't have one.
+        if (getSettingsForSource('localSettings')?.cacheWarningEnabled !== undefined) {
+          updateSettingsForSource('localSettings', {
+            cacheWarningEnabled: undefined,
+          });
+        }
         setSettingsData(prev => ({
           ...prev,
           cacheWarningEnabled,
@@ -1401,6 +1410,9 @@ export function Config({
     const il = initialLocalSettings;
     updateSettingsForSource('localSettings', {
       spinnerTipsEnabled: il?.spinnerTipsEnabled,
+      // cacheWarningEnabled now lives in userSettings, but its onChange may
+      // have deleted a stale local value — restore it on revert.
+      cacheWarningEnabled: il?.cacheWarningEnabled,
       prefersReducedMotion: il?.prefersReducedMotion,
       defaultView: il?.defaultView,
       outputStyle: il?.outputStyle,
@@ -1408,6 +1420,7 @@ export function Config({
     const iu = initialUserSettings;
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
+      cacheWarningEnabled: iu?.cacheWarningEnabled,
       fastMode: iu?.fastMode,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
       autoUpdatesChannel: iu?.autoUpdatesChannel,
