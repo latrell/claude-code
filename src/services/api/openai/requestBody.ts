@@ -7,6 +7,23 @@ import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/
 import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
 
 /**
+ * Whether the endpoint/model recognizes the thinking-control request fields
+ * (`thinking` / `enable_thinking` / `chat_template_kwargs`), i.e. whether an
+ * explicit thinking-disable payload can be sent without tripping a strict
+ * endpoint's unknown-field validation. Unlike isOpenAIThinkingEnabled, an
+ * explicit OPENAI_ENABLE_THINKING=0 does NOT remove the capability — the
+ * endpoint still understands the fields, the user just wants thinking off.
+ */
+export function openAICompatSupportsThinkingControl(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (isEnvTruthy(env.OPENAI_ENABLE_THINKING)) return true
+  const modelLower = model.toLowerCase()
+  return modelLower.includes('deepseek') || modelLower.includes('mimo')
+}
+
+/**
  * Detect whether thinking mode should be enabled for this model.
  *
  * Enabled when:
@@ -24,13 +41,11 @@ export function isOpenAIThinkingEnabled(
 ): boolean {
   // Explicit disable takes priority (overrides model auto-detect)
   if (isEnvDefinedFalsy(env.OPENAI_ENABLE_THINKING)) return false
-  // Explicit enable
-  if (isEnvTruthy(env.OPENAI_ENABLE_THINKING)) return true
-  // Auto-detect from model name (DeepSeek and MiMo models support thinking mode).
-  // Grok is intentionally excluded — Grok reasoning models reason automatically
-  // and do NOT require thinking/enable_thinking request body parameters.
-  const modelLower = model.toLowerCase()
-  return modelLower.includes('deepseek') || modelLower.includes('mimo')
+  // Explicit enable, or auto-detect from model name (DeepSeek and MiMo models
+  // support thinking mode). Grok is intentionally excluded — Grok reasoning
+  // models reason automatically and do NOT require thinking/enable_thinking
+  // request body parameters.
+  return openAICompatSupportsThinkingControl(model, env)
 }
 
 /**

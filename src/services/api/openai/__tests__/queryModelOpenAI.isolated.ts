@@ -126,16 +126,26 @@ async function* eventStream(events: BetaRawMessageStreamEvent[]) {
   for (const e of events) yield e
 }
 
+type StreamFactory = () => AsyncGenerator<BetaRawMessageStreamEvent, void>
+
 /** Collect all outputs from queryModelOpenAI into typed buckets */
 async function runQueryModel(
-  events: BetaRawMessageStreamEvent[],
+  events: BetaRawMessageStreamEvent[] = [],
   envOverrides: Record<string, string | undefined> = {},
+  streamFactories: StreamFactory[] = [],
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
+  _nextStreamFactories = [...streamFactories]
+  _createCallCount = 0
   // Save + apply env overrides
+  const defaultEnvOverrides = {
+    OPENAI_API_KEY: 'test-key',
+    OPENAI_AUTH_MODE: undefined,
+  } satisfies Record<string, string | undefined>
+  const effectiveEnvOverrides = { ...defaultEnvOverrides, ...envOverrides }
   const saved: Record<string, string | undefined> = {}
-  for (const [k, v] of Object.entries(envOverrides)) {
+  for (const [k, v] of Object.entries(effectiveEnvOverrides)) {
     saved[k] = process.env[k]
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
@@ -196,7 +206,9 @@ async function runQueryModel(
 // We mock at module level. Bun's mock.module replaces the module for the
 // entire file, so we configure the stream per-test via a shared variable.
 let _nextEvents: BetaRawMessageStreamEvent[] = []
+let _nextStreamFactories: StreamFactory[] = []
 let _searchExtraToolsEnabled = false
+let _createCallCount = 0
 
 /** Captured arguments from the last chat.completions.create() call */
 let _lastCreateArgs: Record<string, any> | null = null
@@ -204,7 +216,7 @@ let _lastCreateArgs: Record<string, any> | null = null
 mock.module('@ant/model-provider', () => ({
   resolveOpenAIModel: (m: string) => m,
   adaptOpenAIStreamToAnthropic: (_stream: any, _model: string) =>
-    eventStream(_nextEvents),
+    _nextStreamFactories.shift()?.() ?? eventStream(_nextEvents),
   anthropicMessagesToOpenAI: (messages: any[]) =>
     messages.map(msg => ({
       role: msg.message?.role ?? 'user',
@@ -223,19 +235,279 @@ mock.module('@ant/model-provider', () => ({
 }))
 
 mock.module('../../../../utils/envUtils.js', () => ({
-  isEnvTruthy: (value: string | undefined) =>
-    value === '1' || value === 'true' || value === 'yes' || value === 'on',
-  isEnvDefinedFalsy: (value: string | undefined) =>
-    value === '0' || value === 'false' || value === 'no' || value === 'off',
+  getAWSRegion: () => 'us-east-1',
+  getClaudeConfigHomeDir: () => '/tmp/ccb-test-home',
+  getDefaultVertexRegion: () => 'us-east5',
+  getTeamsDir: () => '/tmp/ccb-test-home/teams',
+  getVertexRegionForModel: () => 'us-east5',
+  hasNodeOption: () => false,
+  isBareMode: () => false,
+  isEnvTruthy: (value: string | boolean | undefined) =>
+    value === true ||
+    value === '1' ||
+    value === 'true' ||
+    value === 'yes' ||
+    value === 'on',
+  isEnvDefinedFalsy: (value: string | boolean | undefined) =>
+    value === false ||
+    value === '0' ||
+    value === 'false' ||
+    value === 'no' ||
+    value === 'off',
+  isInProtectedNamespace: () => false,
+  isRunningOnHomespace: () => false,
+  parseEnvVars: () => ({}),
+  shouldMaintainProjectWorkingDir: () => false,
 }))
 
 mock.module('../../../../services/analytics/growthbook.js', () => ({
+  checkGate_CACHED_OR_BLOCKING: async () => false,
+  checkSecurityRestrictionGate: async () => false,
+  checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
+  clearGrowthBookConfigOverrides: () => {},
+  getAllGrowthBookFeatures: () => ({}),
+  getApiBaseUrlHost: () => undefined,
+  getDynamicConfig_BLOCKS_ON_INIT: async (_key: string, fallback: unknown) =>
+    fallback,
+  getDynamicConfig_CACHED_MAY_BE_STALE: (_key: string, fallback: unknown) =>
+    fallback,
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, fallback: unknown) =>
     fallback,
+  getFeatureValue_CACHED_WITH_REFRESH: (_key: string, fallback: unknown) =>
+    fallback,
+  getFeatureValue_DEPRECATED: async (_key: string, fallback: unknown) =>
+    fallback,
+  getGrowthBookConfigOverrides: () => ({}),
+  hasGrowthBookEnvOverride: () => false,
+  initializeGrowthBook: async () => {},
+  onGrowthBookRefresh: () => () => {},
+  refreshGrowthBookAfterAuthChange: () => {},
+  refreshGrowthBookFeatures: async () => {},
+  resetGrowthBook: () => {},
+  setGrowthBookConfigOverride: () => {},
+  setupPeriodicGrowthBookRefresh: () => {},
+  stopPeriodicGrowthBookRefresh: () => {},
+}))
+
+mock.module('src/utils/sleep.js', () => ({
+  sleep: async () => {},
+}))
+
+mock.module('src/utils/slowOperations.js', () => ({
+  callerFrame: () => '',
+  clone: <T>(value: T) => value,
+  cloneDeep: <T>(value: T) => value,
+  jsonParse: JSON.parse,
+  jsonStringify: JSON.stringify,
+  measureSlowOperation: async <T>(_: string, fn: () => Promise<T>) => fn(),
+  measureSlowOperationSync: <T>(_: string, fn: () => T) => fn(),
+  slowLogging: <T>(_: string, fn: () => T) => fn(),
+  writeFileSync_DEPRECATED: () => {},
 }))
 
 mock.module('src/bootstrap/state.js', () => ({
+  addInvokedSkill: () => {},
+  addSessionCronTask: () => {},
+  addSlowOperation: () => {},
+  addToInMemoryErrorLog: () => {},
+  addToToolDuration: () => {},
+  addToTotalCostState: () => {},
+  addToTotalDurationState: () => {},
+  addToTotalLinesChanged: () => {},
+  addToTurnClassifierDuration: () => {},
+  addToTurnHookDuration: () => {},
+  clearBetaHeaderLatches: () => {},
+  clearInvokedSkills: () => {},
+  clearInvokedSkillsForAgent: () => {},
+  clearRegisteredPluginHooks: () => {},
+  clearSystemPromptSectionState: () => {},
+  consumePostCompaction: () => false,
+  flushInteractionTime: () => {},
+  getActiveTimeCounter: () => null,
+  getAdditionalDirectoriesForClaudeMd: () => [],
+  getAfkModeHeaderLatched: () => null,
+  getAgentColorMap: () => new Map(),
+  getAllowedChannels: () => [],
+  getAllowedSettingSources: () => ['project', 'user', 'local'],
+  getApiKeyFromFd: () => null,
+  getBudgetContinuationCount: () => 0,
+  getCacheEditingHeaderLatched: () => null,
+  getCachedClaudeMdContent: () => null,
+  getChatGPTSubscriptionPlan: () => null,
+  getChromeFlagOverride: () => undefined,
+  getClientType: () => 'test',
+  getCodeEditToolDecisionCounter: () => null,
+  getCommitCounter: () => null,
+  getCostCounter: () => null,
+  getCurrentTurnTokenBudget: () => null,
+  getCwdState: () => process.cwd(),
+  getDirectConnectServerUrl: () => undefined,
+  getEventLogger: () => null,
+  getFastModeHeaderLatched: () => null,
+  getFlagSettingsInline: () => null,
+  getFlagSettingsPath: () => undefined,
+  getHasDevChannels: () => false,
+  getInitJsonSchema: () => null,
+  getInitialMainLoopModel: () => undefined,
+  getInvokedSkillsForAgent: () => [],
+  getIsInteractive: () => false,
+  getIsNonInteractiveSession: () => true,
+  getIsRemoteMode: () => false,
+  getIsScrollDraining: () => false,
+  getKairosActive: () => false,
+  getLastAPIRequest: () => null,
+  getLastAPIRequestMessages: () => null,
+  getLastApiCompletionTimestamp: () => null,
+  getLastClassifierRequests: () => null,
+  getLastEmittedDate: () => null,
+  getLastInteractionTime: () => Date.now(),
+  getLastMainRequestId: () => undefined,
+  getLocCounter: () => null,
+  getLoggerProvider: () => null,
+  getMainLoopModelOverride: () => undefined,
+  getMainThreadAgentType: () => undefined,
+  getMeter: () => null,
+  getMeterProvider: () => null,
+  getModelStrings: () => null,
+  getModelUsage: () => ({}),
+  getOauthTokenFromFd: () => null,
+  getOriginalCwd: () => process.cwd(),
+  getParentSessionId: () => undefined,
+  getPlanSlugCache: () => new Map(),
+  getPrCounter: () => null,
+  getProjectRoot: () => process.cwd(),
+  getPromptCache1hAllowlist: () => null,
+  getPromptCache1hEligible: () => null,
+  getPromptId: () => null,
+  getQuestionPreviewFormat: () => undefined,
+  getSdkAgentProgressSummariesEnabled: () => false,
+  getSdkBetas: () => undefined,
+  getSessionBypassPermissionsMode: () => false,
+  getSessionCounter: () => null,
+  getSessionCreatedTeams: () => new Set(),
+  getSessionCronTasks: () => [],
+  getSessionId: () => 'test-session',
+  getSessionIngressToken: () => null,
+  getSessionPersistenceDisabled: () => false,
+  getSessionProjectDir: () => null,
+  getSessionTrustAccepted: () => true,
+  getScheduledTasksEnabled: () => false,
+  getSlowOperations: () => [],
+  getStatsStore: () => null,
+  getStrictToolResultPairing: () => false,
+  getSystemPromptSectionCache: () => new Map(),
+  getTeleportedSessionInfo: () => null,
+  getTokenCounter: () => null,
+  getTotalAPIDuration: () => 0,
+  getTotalAPIDurationWithoutRetries: () => 0,
+  getTotalCacheCreationInputTokens: () => 0,
+  getTotalCacheReadInputTokens: () => 0,
+  getTotalCostUSD: () => 0,
+  getTotalDuration: () => 0,
+  getTotalInputTokens: () => 0,
+  getTotalLinesAdded: () => 0,
+  getTotalLinesRemoved: () => 0,
+  getTotalOutputTokens: () => 0,
+  getTotalToolDuration: () => 0,
+  getTotalWebSearchRequests: () => 0,
+  getTracerProvider: () => null,
+  getTurnClassifierCount: () => 0,
+  getTurnClassifierDurationMs: () => 0,
+  getTurnHookCount: () => 0,
+  getTurnHookDurationMs: () => 0,
+  getTurnOutputTokens: () => 0,
+  getTurnToolCount: () => 0,
+  getTurnToolDurationMs: () => 0,
+  getUsageForModel: () => undefined,
+  getUseCoworkPlugins: () => false,
+  getUserMsgOptIn: () => false,
+  hasExitedPlanModeInSession: () => false,
+  hasShownLspRecommendationThisSession: () => false,
+  hasUnknownModelCost: () => false,
+  incrementBudgetContinuationCount: () => {},
   isReplBridgeActive: () => false,
+  isSessionPersistenceDisabled: () => false,
+  markFirstTeleportMessageLogged: () => {},
+  markPostCompaction: () => {},
+  needsAutoModeExitAttachment: () => false,
+  needsPlanModeExitAttachment: () => false,
+  onSessionSwitch: () => () => {},
+  preferThirdPartyAuthentication: () => false,
+  regenerateSessionId: () => 'test-session',
+  registerHookCallbacks: () => {},
+  removeSessionCronTasks: () => 0,
+  resetCostState: () => {},
+  resetModelStringsForTestingOnly: () => {},
+  resetSdkInitState: () => {},
+  resetStateForTests: () => {},
+  resetTotalDurationStateAndCost_FOR_TESTS_ONLY: () => {},
+  resetTurnClassifierDuration: () => {},
+  resetTurnHookDuration: () => {},
+  resetTurnToolDuration: () => {},
+  setAfkModeHeaderLatched: () => {},
+  setAllowedChannels: () => {},
+  setAllowedSettingSources: () => {},
+  setApiKeyFromFd: () => {},
+  setCacheEditingHeaderLatched: () => {},
+  setCachedClaudeMdContent: () => {},
+  setChatGPTSubscriptionPlan: () => {},
+  setChromeFlagOverride: () => {},
+  setClientType: () => {},
+  setCostStateForRestore: () => {},
+  setDirectConnectServerUrl: () => {},
+  setEventLogger: () => {},
+  setFastModeHeaderLatched: () => {},
+  setFlagSettingsInline: () => {},
+  setFlagSettingsPath: () => {},
+  setHasDevChannels: () => {},
+  setHasExitedPlanMode: () => {},
+  setInitJsonSchema: () => {},
+  setInitialMainLoopModel: () => {},
+  setIsInteractive: () => {},
+  setIsRemoteMode: () => {},
+  setKairosActive: () => {},
+  setLastAPIRequest: () => {},
+  setLastAPIRequestMessages: () => {},
+  setLastApiCompletionTimestamp: () => {},
+  setLastClassifierRequests: () => {},
+  setLastEmittedDate: () => {},
+  setLastMainRequestId: () => {},
+  setLoggerProvider: () => {},
+  setLspRecommendationShownThisSession: () => {},
+  setMainLoopModelOverride: () => {},
+  setMainThreadAgentType: () => {},
+  setMeter: () => {},
+  setMeterProvider: () => {},
+  setModelStrings: () => {},
+  setNeedsAutoModeExitAttachment: () => {},
+  setNeedsPlanModeExitAttachment: () => {},
+  setOauthTokenFromFd: () => {},
+  setOriginalCwd: () => {},
+  setPlanSlugCacheEntry: () => {},
+  setProjectRoot: () => {},
+  setPromptCache1hAllowlist: () => {},
+  setPromptCache1hEligible: () => {},
+  setPromptId: () => {},
+  setQuestionPreviewFormat: () => {},
+  setScheduledTasksEnabled: () => {},
+  setSdkAgentProgressSummariesEnabled: () => {},
+  setSdkBetas: () => {},
+  setSessionBypassPermissionsMode: () => {},
+  setSessionIngressToken: () => {},
+  setSessionPersistenceDisabled: () => {},
+  setSessionSource: () => {},
+  setSessionTrustAccepted: () => {},
+  setStatsStore: () => {},
+  setStrictToolResultPairing: () => {},
+  setSystemPromptSectionCacheEntry: () => {},
+  setTeleportedSessionInfo: () => {},
+  setTracerProvider: () => {},
+  setUseCoworkPlugins: () => {},
+  setUserMsgOptIn: () => {},
+  snapshotOutputTokensForTurn: () => {},
+  switchSession: () => {},
+  updateLastInteractionTime: () => {},
+  waitForScrollIdle: async () => {},
 }))
 
 mock.module('bun:bundle', () => ({
@@ -247,6 +519,7 @@ mock.module('../client.js', () => ({
     chat: {
       completions: {
         create: async (args: Record<string, any>) => {
+          _createCallCount++
           _lastCreateArgs = args
           return { [Symbol.asyncIterator]: async function* () {} }
         },
@@ -257,7 +530,7 @@ mock.module('../client.js', () => ({
 
 mock.module('../streamAdapter.js', () => ({
   adaptOpenAIStreamToAnthropic: (_stream: any, _model: string) =>
-    eventStream(_nextEvents),
+    _nextStreamFactories.shift()?.() ?? eventStream(_nextEvents),
 }))
 
 mock.module('../modelMapping.js', () => ({
@@ -265,7 +538,11 @@ mock.module('../modelMapping.js', () => ({
 }))
 
 mock.module('../convertMessages.js', () => ({
-  anthropicMessagesToOpenAI: () => [],
+  anthropicMessagesToOpenAI: (messages: any[]) =>
+    messages.map(msg => ({
+      role: msg.message?.role ?? 'user',
+      content: msg.message?.content ?? '',
+    })),
 }))
 
 mock.module('../convertTools.js', () => ({
@@ -316,16 +593,38 @@ mock.module('../../../../utils/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
 }))
 
-mock.module('../../../../utils/searchExtraTools.js', () => ({
+const searchExtraToolsMock = () => ({
   isSearchExtraToolsEnabled: async () => _searchExtraToolsEnabled,
   extractDiscoveredToolNames: () => new Set(),
   isDeferredToolsDeltaEnabled: () => false,
-}))
+})
 
-mock.module('../../../../tools/SearchExtraToolsTool/prompt.js', () => ({
-  isDeferredTool: () => false,
-  SEARCH_EXTRA_TOOLS_TOOL_NAME: '__tool_search__',
-}))
+mock.module('src/utils/searchExtraTools.js', searchExtraToolsMock)
+
+mock.module('../../../utils/searchExtraTools.js', searchExtraToolsMock)
+
+mock.module('../../../../utils/searchExtraTools.js', searchExtraToolsMock)
+
+const searchExtraToolsPromptMock = () => ({
+  formatDeferredToolLine: (tool: { name: string }) => tool.name,
+  isDeferredTool: (tool: { isMcp?: boolean }) => tool.isMcp === true,
+  SEARCH_EXTRA_TOOLS_TOOL_NAME: 'SearchExtraTools',
+})
+
+mock.module(
+  '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js',
+  searchExtraToolsPromptMock,
+)
+
+mock.module(
+  '../../../../tools/SearchExtraToolsTool/prompt.js',
+  searchExtraToolsPromptMock,
+)
+
+mock.module(
+  '../../../../../packages/builtin-tools/src/tools/SearchExtraToolsTool/prompt.ts',
+  searchExtraToolsPromptMock,
+)
 
 mock.module('../../../../cost-tracker.js', () => ({
   addToTotalSessionCost: () => {},
@@ -586,6 +885,100 @@ describe('queryModelOpenAI — stream_events forwarded', () => {
   })
 })
 
+describe('queryModelOpenAI — stream recovery boundary', () => {
+  test('retries empty adapted stream before semantic output and then succeeds', async () => {
+    async function* endsBeforeSemanticEvent(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      if (false) yield makeMessageStart()
+    }
+
+    async function* succeedsAfterRetry(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 5)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, otherOutputs } = await runQueryModel([], {}, [
+      endsBeforeSemanticEvent,
+      succeedsAfterRetry,
+    ])
+
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages).toHaveLength(1)
+    const contentBlocks = assistantMessages[0]!.message.content as unknown[]
+    expect((contentBlocks[0] as { text?: string }).text).toBe('recovered')
+    expect(otherOutputs.some(item => item.type === 'system')).toBe(true)
+  })
+
+  test('retries terminated before the first adapted event and then succeeds', async () => {
+    async function* failsBeforeSemanticEvent(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      if (false) yield makeMessageStart()
+      throw new TypeError('terminated')
+    }
+
+    async function* succeedsAfterRetry(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 5)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, otherOutputs } = await runQueryModel([], {}, [
+      failsBeforeSemanticEvent,
+      succeedsAfterRetry,
+    ])
+
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages).toHaveLength(1)
+    const contentBlocks = assistantMessages[0]!.message.content as unknown[]
+    expect((contentBlocks[0] as { text?: string }).text).toBe('recovered')
+    expect(
+      assistantMessages.some(msg =>
+        JSON.stringify(msg.message).includes('API Error: terminated'),
+      ),
+    ).toBe(false)
+    expect(otherOutputs.some(item => item.type === 'system')).toBe(true)
+  })
+
+  test('does not retry terminated after adapted output was yielded', async () => {
+    async function* breaksAfterTextDelta(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'partial')
+      throw new TypeError('terminated')
+    }
+
+    const { assistantMessages } = await runQueryModel([], {}, [
+      breaksAfterTextDelta,
+    ])
+
+    expect(_createCallCount).toBe(1)
+    expect(assistantMessages).toHaveLength(1)
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'API Error: terminated',
+    )
+  })
+})
+
 describe('queryModelOpenAI — max_tokens forwarded to request', () => {
   test('buildOpenAIRequestBody includes max_tokens in the request payload', async () => {
     _nextEvents = [
@@ -608,6 +1001,12 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
   test('prepends available deferred MCP tools to OpenAI messages', async () => {
     _searchExtraToolsEnabled = true
     _nextEvents = [makeMessageStart(), makeMessageStop()]
+    _lastCreateArgs = null
+    _createCallCount = 0
+    const savedOpenAIAuthMode = process.env.OPENAI_AUTH_MODE
+    const savedOpenAIAPIKey = process.env.OPENAI_API_KEY
+    delete process.env.OPENAI_AUTH_MODE
+    process.env.OPENAI_API_KEY = 'test-key'
 
     try {
       const { queryModelOpenAI } = await import('../index.js')
@@ -656,6 +1055,10 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
       )
     } finally {
       _searchExtraToolsEnabled = false
+      if (savedOpenAIAuthMode === undefined) delete process.env.OPENAI_AUTH_MODE
+      else process.env.OPENAI_AUTH_MODE = savedOpenAIAuthMode
+      if (savedOpenAIAPIKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = savedOpenAIAPIKey
     }
   })
 })

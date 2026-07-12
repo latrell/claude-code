@@ -31,6 +31,8 @@ import { resolveAntModel } from '../model/antModels.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { getSonnetModelAndRuntime } from '../model/sonnetProvider.js'
 import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
+import { getAPIProvider } from '../model/providers.js'
+import { isKnownAdaptiveThinkingModel } from '../thinking.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
 import { sideQuery } from '../sideQuery.js'
@@ -45,6 +47,10 @@ import {
   extractToolUseBlock,
   parseClassifierResponse,
 } from './classifierShared.js'
+import {
+  type ClassifierXmlMode,
+  resolveClassifierXmlMode,
+} from './classifierRouting.js'
 import { getClaudeTempDir } from './filesystem.js'
 
 type ClassifierProviderRuntimeConfig = Parameters<
@@ -680,13 +686,18 @@ function replaceOutputFormatWithXml(systemPrompt: string): string {
  *
  * For most models: send { type: 'disabled' } via sideQuery's `thinking: false`.
  *
- * Models with alwaysOnThinking (declared in tengu_ant_model_override) default
- * to adaptive thinking server-side and reject `disabled` with a 400. For those:
- * don't pass `thinking: false`, instead pad max_tokens so adaptive thinking
- * (observed 0–1114 tokens replaying go/ccshare/shawnm-20260310-202833) doesn't
- * exhaust the budget before <block> is emitted. Without headroom,
- * stop_reason=max_tokens yields an empty text response → parseXmlBlock('')
- * → null → "unparseable" → safe commands blocked.
+ * Models with adaptive thinking (external allowlist in
+ * isKnownAdaptiveThinkingModel — fable-5, opus-4-6+, sonnet-4-6+ — or
+ * tengu_ant_model_override's alwaysOnThinking for ant builds) default to
+ * adaptive thinking server-side and reject `disabled` with a 400 ("not
+ * supported for this model. Thinking defaults to adaptive mode when not
+ * specified"), which made the auto-mode classifier permanently unavailable
+ * on those models. For those: don't pass `thinking: false`, instead pad
+ * max_tokens so adaptive thinking (observed 0–1114 tokens replaying
+ * go/ccshare/shawnm-20260310-202833) doesn't exhaust the budget before
+ * <block> is emitted. Without headroom, stop_reason=max_tokens yields an
+ * empty text response → parseXmlBlock('') → null → "unparseable" → safe
+ * commands blocked.
  *
  * Returns [disableThinking, headroom] — tuple instead of named object so
  * property-name strings don't survive minification into external builds.
@@ -698,6 +709,9 @@ function getClassifierThinkingConfig(
     process.env.USER_TYPE === 'ant' &&
     resolveAntModel(model)?.alwaysOnThinking
   ) {
+    return [undefined, 2048]
+  }
+  if (isKnownAdaptiveThinkingModel(model)) {
     return [undefined, 2048]
   }
   return [false, 0]
@@ -742,7 +756,7 @@ async function classifyYoloActionXml(
     messages: number
     action: string
   },
-  mode: TwoStageMode,
+  mode: ClassifierXmlMode,
   parentSpan?: LangfuseSpan | null,
 ): Promise<YoloClassifierResult> {
   const classifierType =
@@ -1147,8 +1161,14 @@ export async function classifyYoloAction(
     sonnet?.model ??
     getClassifierModel()
 
-  // Dispatch to 2-stage XML classifier if enabled via GrowthBook
-  if (isTwoStageClassifierEnabled()) {
+  // Cursor's agent-tuned models ignore custom MCP tools, so route them through
+  // the XML text classifier even when the rollout setting is disabled.
+  const classifierProvider = providerRuntimeConfig?.provider ?? getAPIProvider()
+  const xmlMode = resolveClassifierXmlMode(
+    classifierProvider,
+    resolveTwoStageClassifier(),
+  )
+  if (xmlMode) {
     return classifyYoloActionXml(
       prefixMessages,
       systemPrompt,
@@ -1166,7 +1186,7 @@ export async function classifyYoloAction(
         messages: messages.length,
         action: actionCompact,
       },
-      getTwoStageMode(),
+      xmlMode,
       parentSpan,
     )
   }
@@ -1349,8 +1369,6 @@ export async function classifyYoloAction(
   }
 }
 
-type TwoStageMode = 'both' | 'fast' | 'thinking'
-
 type AutoModeConfig = {
   model?: string
   /**
@@ -1432,14 +1450,6 @@ function resolveTwoStageClassifier():
     {} as AutoModeConfig,
   )
   return config?.twoStageClassifier
-}
-
-/**
- * Check if the XML classifier is enabled (any truthy value including 'fast'/'thinking').
- */
-function isTwoStageClassifierEnabled(): boolean {
-  const v = resolveTwoStageClassifier()
-  return v === true || v === 'fast' || v === 'thinking'
 }
 
 function isJsonlTranscriptEnabled(): boolean {
@@ -1534,15 +1544,6 @@ function detectPromptTooLong(
     return undefined
   }
   return parsePromptTooLongTokenCounts(error.message)
-}
-
-/**
- * Get which stage(s) the XML classifier should run.
- * Only meaningful when isTwoStageClassifierEnabled() is true.
- */
-function getTwoStageMode(): TwoStageMode {
-  const v = resolveTwoStageClassifier()
-  return v === 'fast' || v === 'thinking' ? v : 'both'
 }
 
 /**

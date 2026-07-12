@@ -14,14 +14,14 @@ import type {
 } from '../services/oauth/types.js'
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
+import {
+  type AutoUpdaterDisabledReason,
+  resolveAutoUpdaterDisabledReason,
+} from './autoUpdaterDisabledReason.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'
-import {
-  getClaudeConfigHomeDir,
-  isEnvDefinedFalsy,
-  isEnvTruthy,
-} from './envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -1729,11 +1729,7 @@ export function shouldSkipPluginAutoupdate(): boolean {
   )
 }
 
-export type AutoUpdaterDisabledReason =
-  | { type: 'development' }
-  | { type: 'env'; envVar: string }
-  | { type: 'config' }
-  | { type: 'default' }
+export type { AutoUpdaterDisabledReason }
 
 export function formatAutoUpdaterDisabledReason(
   reason: AutoUpdaterDisabledReason,
@@ -1746,38 +1742,25 @@ export function formatAutoUpdaterDisabledReason(
     case 'config':
       return 'config'
     case 'default':
-      return 'default, set DISABLE_AUTOUPDATER=0 to enable'
+      return 'default, set DISABLE_AUTOUPDATER=0 or ENABLE_AUTOUPDATER=1 to enable'
   }
 }
 
 export function getAutoUpdaterDisabledReason(): AutoUpdaterDisabledReason | null {
-  if (process.env.NODE_ENV === 'development') {
-    return { type: 'development' }
-  }
-  if (isEnvTruthy(process.env.DISABLE_AUTOUPDATER)) {
-    return { type: 'env', envVar: 'DISABLE_AUTOUPDATER' }
-  }
-  // 本项目 DISABLE_AUTOUPDATER 缺省视为 1（默认禁用自动更新）；
-  // 显式 DISABLE_AUTOUPDATER=0 或 ENABLE_AUTOUPDATER=1 可重新开启
-  if (
-    !isEnvDefinedFalsy(process.env.DISABLE_AUTOUPDATER) &&
-    !isEnvTruthy(process.env.ENABLE_AUTOUPDATER)
-  ) {
-    return { type: 'default' }
-  }
-  const essentialTrafficEnvVar = getEssentialTrafficOnlyReason()
-  if (essentialTrafficEnvVar) {
-    return { type: 'env', envVar: essentialTrafficEnvVar }
-  }
-  const config = getGlobalConfig()
-  if (
-    config.autoUpdates === false &&
-    (config.installMethod !== 'native' ||
-      config.autoUpdatesProtectedForNative !== true)
-  ) {
-    return { type: 'config' }
-  }
-  return null
+  return resolveAutoUpdaterDisabledReason({
+    nodeEnv: process.env.NODE_ENV,
+    disableAutoUpdater: process.env.DISABLE_AUTOUPDATER,
+    enableAutoUpdater: process.env.ENABLE_AUTOUPDATER,
+    getEssentialTrafficReason: getEssentialTrafficOnlyReason,
+    isConfigDisabled: () => {
+      const config = getGlobalConfig()
+      return (
+        config.autoUpdates === false &&
+        (config.installMethod !== 'native' ||
+          config.autoUpdatesProtectedForNative !== true)
+      )
+    },
+  })
 }
 
 export function getOrCreateUserID(): string {

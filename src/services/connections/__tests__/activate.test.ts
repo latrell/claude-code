@@ -70,13 +70,15 @@ const {
   clearFastDefault,
   clearSonnetDefault,
   envForConnection,
+  getSessionAssignment,
+  removeConnectionWithRuntimeCleanup,
 } = await import('../activate.js')
 
 // Settings writes are captured through the activate.ts test seam and merged
 // into an in-memory object (mirrors updateSettingsForSource's merge for the
 // shallow keys used here; undefined deletes a key).
 let userSettingsState: Record<string, unknown> = {}
-_setSettingsWriterForTest(value => {
+const writeUserSettingsForTest = (value: unknown) => {
   const patch = value as Record<string, unknown>
   for (const [key, patchValue] of Object.entries(patch)) {
     if (patchValue === undefined) {
@@ -107,7 +109,8 @@ _setSettingsWriterForTest(value => {
     }
   }
   return { error: null }
-})
+}
+_setSettingsWriterForTest(writeUserSettingsForTest)
 const { getSubagentProviderConfig, setSubagentProviderConfigOverride } =
   await import('../../../utils/model/subagentProvider.js')
 const { getFastProviderConfig, setFastProviderConfigOverride } = await import(
@@ -123,8 +126,12 @@ const {
 const { getAPIProvider, setProviderCliOverride } = await import(
   '../../../utils/model/providers.js'
 )
-const { _invalidateConnectionsCache, getDefaultAssignment, upsertConnection } =
-  await import('../store.js')
+const {
+  _invalidateConnectionsCache,
+  findConnection,
+  getDefaultAssignment,
+  upsertConnection,
+} = await import('../store.js')
 const { readCCBProviderAuthData } = await import(
   '../../../utils/ccbProviderAuth.js'
 )
@@ -198,6 +205,7 @@ beforeEach(() => {
   storageData = null
   setOauthAccount(undefined)
   userSettingsState = {}
+  _setSettingsWriterForTest(writeUserSettingsForTest)
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
@@ -1229,11 +1237,75 @@ describe('clearSonnetDefault', () => {
     upsertConnection(conn)
     await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
     expect(getSonnetProviderConfig({}, {})).toBeDefined()
+    const existingProviderModels = userSettingsState[
+      'providerModels'
+    ] as Record<string, { sonnetModel?: string }>
+    existingProviderModels['gemini'] = {
+      sonnetModel: 'stale-gemini-sonnet',
+    }
 
     const { error } = clearSonnetDefault()
     expect(error).toBeNull()
     expect(getSonnetProviderConfig({}, {})).toBeUndefined()
     expect(getDefaultAssignment('sonnet')).toBeUndefined()
     expect(readUserSettings()['sonnetProvider']).toBeUndefined()
+    const providerModels = readUserSettings()['providerModels'] as
+      | Record<string, { sonnetModel?: string }>
+      | undefined
+    expect(providerModels?.['openai']?.sonnetModel).toBeUndefined()
+    expect(providerModels?.['gemini']?.sonnetModel).toBeUndefined()
+  })
+
+  test('deleting the active sonnet connection clears runtime and persisted references', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
+
+    const { error } = removeConnectionWithRuntimeCleanup(conn)
+
+    expect(error).toBeNull()
+    expect(findConnection(conn.id)).toBeUndefined()
+    expect(getSonnetProviderConfig({}, {})).toBeUndefined()
+    expect(getDefaultAssignment('sonnet')).toBeUndefined()
+    expect(getSessionAssignment('sonnet')).toBeUndefined()
+    expect(readUserSettings()['sonnetProvider']).toBeUndefined()
+    const providerModels = readUserSettings()['providerModels'] as
+      | Record<string, { sonnetModel?: string }>
+      | undefined
+    expect(providerModels?.['openai']?.sonnetModel).toBeUndefined()
+  })
+
+  test('keeps runtime and assignments when the settings cleanup write fails', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
+    _setSettingsWriterForTest(() => ({
+      error: new Error('settings are read-only'),
+    }))
+
+    const { error } = clearSonnetDefault()
+
+    expect(error?.message).toBe('settings are read-only')
+    expect(getSonnetProviderConfig({}, {})?.model).toBe('deepseek-v4-pro')
+    expect(getDefaultAssignment('sonnet')?.connectionId).toBe(conn.id)
+    expect(getSessionAssignment('sonnet')?.connectionId).toBe(conn.id)
+    expect(readUserSettings()['sonnetProvider']).toBeDefined()
+  })
+
+  test('keeps the connection when deletion cannot persist Sonnet cleanup', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
+    _setSettingsWriterForTest(() => ({
+      error: new Error('settings are read-only'),
+    }))
+
+    const { error } = removeConnectionWithRuntimeCleanup(conn)
+
+    expect(error?.message).toBe('settings are read-only')
+    expect(findConnection(conn.id)).toBeDefined()
+    expect(getSonnetProviderConfig({}, {})?.model).toBe('deepseek-v4-pro')
+    expect(getDefaultAssignment('sonnet')?.connectionId).toBe(conn.id)
+    expect(getSessionAssignment('sonnet')?.connectionId).toBe(conn.id)
   })
 })

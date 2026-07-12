@@ -10,6 +10,7 @@
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { afterEach, describe, expect, test } from 'bun:test'
+import { APIConnectionError } from 'openai'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import {
   hasExhaustedCompatRetries,
@@ -119,6 +120,9 @@ describe('isCompatConnectionInterruptionError', () => {
         new Error('The socket connection was closed unexpectedly'),
       ),
     ).toBe(true)
+    expect(
+      isCompatConnectionInterruptionError(new TypeError('fetch failed')),
+    ).toBe(true)
   })
 
   test('纯 HTTP 429/5xx 不触发 keep-alive 熔断', () => {
@@ -128,6 +132,95 @@ describe('isCompatConnectionInterruptionError', () => {
     expect(
       isCompatConnectionInterruptionError(new MockAPIError(503, 'overloaded')),
     ).toBe(false)
+  })
+
+  test('连接可达性错误可重试但不触发 keep-alive 熔断', () => {
+    for (const code of [
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'ENETUNREACH',
+      'ETIMEDOUT',
+      'ConnectionRefused',
+      'FailedToOpenSocket',
+    ]) {
+      const error = Object.assign(new Error(code), { code })
+      expect(isRetryableCompatError(error)).toBe(true)
+      expect(isCompatConnectionInterruptionError(error)).toBe(false)
+    }
+
+    for (const code of [
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'ENETUNREACH',
+      'ETIMEDOUT',
+    ]) {
+      const error = Object.assign(new TypeError('fetch failed'), {
+        cause: { code },
+      })
+      expect(isRetryableCompatError(error)).toBe(true)
+      expect(isCompatConnectionInterruptionError(error)).toBe(false)
+    }
+
+    expect(
+      isCompatConnectionInterruptionError(
+        Object.assign(new MockAPIConnectionError('fetch failed'), {
+          cause: { code: 'ENOTFOUND' },
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  test('真实 OpenAI SDK 嵌套 DNS 错误可重试但不触发 keep-alive 熔断', () => {
+    const dnsError = Object.assign(new Error('getaddrinfo ENOTFOUND'), {
+      code: 'ENOTFOUND',
+    })
+    const fetchError = Object.assign(new TypeError('fetch failed'), {
+      cause: dnsError,
+    })
+    const error = new APIConnectionError({ cause: fetchError })
+
+    expect(isRetryableCompatError(error)).toBe(true)
+    expect(isCompatConnectionInterruptionError(error)).toBe(false)
+  })
+
+  test('真实 OpenAI SDK 深层 ECONNRESET 仍触发 keep-alive 熔断', () => {
+    const socketError = Object.assign(new Error('connection reset by peer'), {
+      code: 'ECONNRESET',
+    })
+    const fetchError = Object.assign(new TypeError('fetch failed'), {
+      cause: socketError,
+    })
+    const error = new APIConnectionError({ cause: fetchError })
+
+    expect(isRetryableCompatError(error)).toBe(true)
+    expect(isCompatConnectionInterruptionError(error)).toBe(true)
+  })
+
+  test('外层未知 code 不会遮蔽 cause 链中的已知网络错误', () => {
+    const staleError = Object.assign(new Error('request failed'), {
+      code: 'ERR_NETWORK',
+      cause: Object.assign(new Error('socket closed'), {
+        code: 'ECONNRESET',
+      }),
+    })
+    expect(isRetryableCompatError(staleError)).toBe(true)
+    expect(isCompatConnectionInterruptionError(staleError)).toBe(true)
+
+    const reachabilityError = Object.assign(new Error('request failed'), {
+      code: 'ERR_NETWORK',
+      cause: Object.assign(new Error('dns lookup failed'), {
+        code: 'ENOTFOUND',
+      }),
+    })
+    expect(isRetryableCompatError(reachabilityError)).toBe(true)
+    expect(isCompatConnectionInterruptionError(reachabilityError)).toBe(false)
+  })
+
+  test('循环 cause 链不会无限遍历', () => {
+    const error = new Error('ordinary failure') as Error & { cause?: unknown }
+    error.cause = error
+
+    expect(isCompatConnectionInterruptionError(error)).toBe(false)
   })
 })
 
@@ -173,6 +266,49 @@ describe('isRetryableCompatError', () => {
 
   test('generic APIError with 409 status 可重试', () => {
     expect(isRetryableCompatError(new MockAPIError(409, 'Conflict'))).toBe(true)
+  })
+
+  test('Responses 流内瞬态错误码可重试，invalid 错误码不可重试', () => {
+    for (const code of [
+      'server_error',
+      'rate_limit_exceeded',
+      'vector_store_timeout',
+    ]) {
+      const error = Object.assign(new Error(code), { code })
+      expect(isRetryableCompatError(error)).toBe(true)
+      expect(isCompatConnectionInterruptionError(error)).toBe(false)
+    }
+
+    expect(
+      isRetryableCompatError(
+        Object.assign(new Error('bad prompt'), { code: 'invalid_prompt' }),
+      ),
+    ).toBe(false)
+  })
+
+  test('明确的非重试 4xx status 优先于错误码和 cause 链', () => {
+    const error = Object.assign(new Error('bad request'), {
+      status: 400,
+      code: 'server_error',
+      cause: Object.assign(new Error('socket closed'), {
+        code: 'ECONNRESET',
+      }),
+    })
+
+    expect(isRetryableCompatError(error)).toBe(false)
+    expect(isCompatConnectionInterruptionError(error)).toBe(false)
+  })
+
+  test('APIUserAbortError 优先于可重试 status 和错误码', () => {
+    const error = Object.assign(new Error('user aborted'), {
+      name: 'APIUserAbortError',
+      status: 503,
+      code: 'server_error',
+      cause: { code: 'ECONNRESET' },
+    })
+
+    expect(isRetryableCompatError(error)).toBe(false)
+    expect(isCompatConnectionInterruptionError(error)).toBe(false)
   })
 
   test('Error 消息包含 fetch failed 可重试', () => {
@@ -428,6 +564,29 @@ describe('withCompatRetry', () => {
     )
   })
 
+  test('普通网络故障重试不禁用 keep-alive', async () => {
+    _resetKeepAliveForTesting()
+    const signal = new AbortController().signal
+    const gen = withCompatRetry(
+      async () => {
+        throw Object.assign(new Error('connect ECONNREFUSED'), {
+          code: 'ECONNREFUSED',
+        })
+      },
+      { maxRetries: 0, signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (err) {
+      expect((err as Error).message).toContain('ECONNREFUSED')
+    }
+    expect(getProxyFetchOptions({ forAnthropicAPI: false }).keepalive).toBe(
+      undefined,
+    )
+  })
+
   test('重试后成功返回结果', async () => {
     const signal = new AbortController().signal
     let callCount = 0
@@ -667,11 +826,16 @@ describe('startStreamEagerly', () => {
     expect(out).toEqual(['message_start', 'delta', 'stop'])
   })
 
-  test('空流产出空流', async () => {
-    const eager = await startStreamEagerly(lazyStream([]))
-    const out: string[] = []
-    for await (const event of eager) out.push(event)
-    expect(out).toEqual([])
+  test('首事件前空流在调用处抛出可重试错误', async () => {
+    try {
+      await startStreamEagerly(lazyStream([]))
+      expect(true).toBe(false)
+    } catch (err) {
+      expect((err as Error).message).toBe(
+        'Stream ended before receiving any semantic events',
+      )
+      expect(isRetryableCompatError(err)).toBe(true)
+    }
   })
 
   test('首事件前的错误在调用处抛出（而非下游消费时）', async () => {
@@ -682,6 +846,33 @@ describe('startStreamEagerly', () => {
       expect(err).toBeInstanceOf(TypeError)
       expect((err as Error).message).toBe('terminated')
     }
+  })
+
+  test('配合 withCompatRetry：首事件前空流被重试并恢复', async () => {
+    const signal = new AbortController().signal
+    let attempt = 0
+    const gen = withCompatRetry(
+      async () => {
+        attempt++
+        return startStreamEagerly(
+          lazyStream(attempt === 1 ? [] : ['message_start', 'delta']),
+        )
+      },
+      { maxRetries: 2, signal, provider: 'test' },
+    )
+
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    expect((progress.value as SystemAPIErrorMessage).type).toBe('system')
+
+    const result = await gen.next()
+    expect(result.done).toBe(true)
+    const out: string[] = []
+    for await (const event of result.value as AsyncGenerator<string, void>) {
+      out.push(event)
+    }
+    expect(out).toEqual(['message_start', 'delta'])
+    expect(attempt).toBe(2)
   })
 
   test('配合 withCompatRetry：模型开口前的 terminated 断连被重试并恢复', async () => {

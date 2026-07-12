@@ -62,9 +62,17 @@ import type {
   SettingsJson,
 } from '../../utils/settings/types.js'
 import { activateOAuthAccountSlot } from './oauthAccounts.js'
-import { setSessionAssignment } from './sessionAssignments.js'
+import {
+  getSessionAssignment,
+  setSessionAssignment,
+} from './sessionAssignments.js'
 import { setSessionProviderEnvOverlay } from './sessionEnvOverlay.js'
-import { setDefaultAssignment, touchConnectionUsage } from './store.js'
+import {
+  getDefaultAssignment,
+  removeConnection,
+  setDefaultAssignment,
+  touchConnectionUsage,
+} from './store.js'
 import { kindToModelType, type AgentSlot, type Connection } from './types.js'
 
 export { getSessionAssignment } from './sessionAssignments.js'
@@ -753,15 +761,62 @@ export function clearFastDefault(): { error: Error | null } {
   } as unknown as SettingsJson)
 }
 
+function clearedSonnetProviderModels(): NonNullable<
+  SettingsJson['providerModels']
+> {
+  return {
+    anthropic: { sonnetModel: undefined },
+    openai: { sonnetModel: undefined },
+    gemini: { sonnetModel: undefined },
+    grok: { sonnetModel: undefined },
+    cursor: { sonnetModel: undefined },
+  }
+}
+
 /**
  * Clear the global sonnet default (internal SONNET-tier calls inherit the
  * main provider).
  */
 export function clearSonnetDefault(): { error: Error | null } {
+  const result = writeUserSettings({
+    sonnetProvider: undefined,
+    providerModels: clearedSonnetProviderModels(),
+  } as unknown as SettingsJson)
+  if (result.error) return result
+
   setSonnetProviderConfigOverride(undefined)
   setDefaultAssignment('sonnet', undefined)
   setSessionAssignment('sonnet', undefined)
-  return writeUserSettings({
-    sonnetProvider: undefined,
-  } as unknown as SettingsJson)
+  return result
+}
+
+/**
+ * Remove a connection while also detaching a Sonnet-slot runtime/default that
+ * points at it. The registry store can clear dangling display defaults, but
+ * only the activation layer owns module overrides and persisted settings.
+ */
+export function removeConnectionWithRuntimeCleanup(connection: Connection): {
+  error: Error | null
+} {
+  const isSonnetDefault =
+    getDefaultAssignment('sonnet')?.connectionId === connection.id
+  const isSonnetSession =
+    getSessionAssignment('sonnet')?.connectionId === connection.id
+
+  if (isSonnetDefault) {
+    const result = writeUserSettings({
+      sonnetProvider: undefined,
+      providerModels: clearedSonnetProviderModels(),
+    } as unknown as SettingsJson)
+    if (result.error) return result
+    setDefaultAssignment('sonnet', undefined)
+  }
+
+  if (isSonnetSession) {
+    setSonnetProviderConfigOverride(undefined)
+    setSessionAssignment('sonnet', undefined)
+  }
+
+  removeConnection(connection.id)
+  return { error: null }
 }

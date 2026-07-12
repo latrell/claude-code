@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { openaiAdapter } from 'src/services/providerUsage/adapters/openai.js'
 import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getProxyFetchOptions, isKeepAliveDisabled } from 'src/utils/proxy.js'
 
 /**
  * Environment variables:
@@ -13,6 +13,8 @@ import { getProxyFetchOptions } from 'src/utils/proxy.js'
  */
 
 let cachedClient: OpenAI | null = null
+let cachedClientKeepAliveDisabled = false
+let cachedClientMaxRetries = 0
 
 /**
  * Wrap a fetch so that every response's rate-limit headers are fed into the
@@ -48,7 +50,17 @@ export function getOpenAIClient(options?: {
   source?: string
   envOverride?: Record<string, string | undefined>
 }): OpenAI {
-  if (!options?.envOverride && cachedClient) return cachedClient
+  const keepAliveDisabled = isKeepAliveDisabled()
+  const maxRetries = options?.maxRetries ?? 0
+  if (
+    !options?.fetchOverride &&
+    !options?.envOverride &&
+    cachedClient &&
+    cachedClientKeepAliveDisabled === keepAliveDisabled &&
+    cachedClientMaxRetries === maxRetries
+  ) {
+    return cachedClient
+  }
 
   const env = options?.envOverride ?? process.env
   const apiKey = env.OPENAI_API_KEY || ''
@@ -60,7 +72,7 @@ export function getOpenAIClient(options?: {
   const client = new OpenAI({
     apiKey,
     ...(baseURL && { baseURL }),
-    maxRetries: options?.maxRetries ?? 0,
+    maxRetries,
     timeout: parseInt(env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
     ...(env.OPENAI_ORG_ID && {
@@ -75,6 +87,8 @@ export function getOpenAIClient(options?: {
 
   if (!options?.fetchOverride && !options?.envOverride) {
     cachedClient = client
+    cachedClientKeepAliveDisabled = keepAliveDisabled
+    cachedClientMaxRetries = maxRetries
   }
 
   return client
@@ -83,4 +97,6 @@ export function getOpenAIClient(options?: {
 /** Clear the cached client (useful when env vars change). */
 export function clearOpenAIClientCache(): void {
   cachedClient = null
+  cachedClientKeepAliveDisabled = isKeepAliveDisabled()
+  cachedClientMaxRetries = 0
 }

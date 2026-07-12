@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto'
  * Adapt an OpenAI streaming response into Anthropic BetaRawMessageStreamEvent.
  *
  * Mapping:
- *   First chunk              → message_start
+ *   First semantic chunk     → message_start (pure role/bootstrap chunks are ignored)
  *   delta.reasoning_content  → content_block_start(thinking) + thinking_delta + content_block_stop
  *   delta.reasoning          → same as reasoning_content (vLLM ≥0.16 renamed field)
  *   delta.content            → content_block_start(text) + text_delta + content_block_stop
@@ -35,6 +35,24 @@ import { randomUUID } from 'crypto'
  *   OpenAI reports cached tokens in usage.prompt_tokens_details.cached_tokens.
  *   This is mapped to Anthropic's cache_read_input_tokens.
  */
+function hasSemanticDelta(
+  chunk: ChatCompletionChunk,
+  delta: ChatCompletionChunk['choices'][number]['delta'] | undefined,
+): boolean {
+  const choice = chunk.choices?.[0]
+  if (choice?.finish_reason) return true
+  if (!delta) return false
+
+  const reasoningContent =
+    (delta as any).reasoning_content ?? (delta as any).reasoning
+  if (reasoningContent != null) return true
+  if (delta.content != null && delta.content !== '') return true
+  if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0)
+    return true
+
+  return false
+}
+
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
   model: string,
@@ -90,8 +108,13 @@ export async function* adaptOpenAIStreamToAnthropic(
       cachedReadTokens = rawCached
     }
 
-    // Emit message_start on first chunk
-    if (!started) {
+    // OpenAI-compatible endpoints commonly send an initial bootstrap chunk like
+    // `{ delta: { role: 'assistant', content: '' } }` before the model has
+    // produced text, thinking, tool calls, or a finish reason. Do not surface
+    // message_start for that transport-only frame; otherwise a later upstream
+    // disconnect during long prefill/thinking is misclassified as a mid-output
+    // interruption and cannot be safely retried.
+    if (!started && hasSemanticDelta(chunk, delta)) {
       started = true
 
       yield {
@@ -114,8 +137,8 @@ export async function* adaptOpenAIStreamToAnthropic(
       } as unknown as BetaRawMessageStreamEvent
     }
 
-    // Skip chunks that carry only usage data (no delta content)
-    if (!delta) continue
+    // Skip chunks that carry only bootstrap data or usage data (no delta content)
+    if (!delta || !started) continue
 
     // Handle reasoning_content → Anthropic thinking block.
     // Empty string is a valid signal: DeepSeek v4 thinking mode sometimes

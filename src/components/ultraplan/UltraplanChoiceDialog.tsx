@@ -39,6 +39,7 @@ interface UltraplanChoiceDialogProps {
   memorySelector?: unknown;
   getAppState: () => AppState;
   setConversationId?: (id: UUID) => void;
+  onConversationClear?: () => void;
   resultDedupState?: unknown;
 }
 
@@ -55,6 +56,7 @@ export function UltraplanChoiceDialog({
   memorySelector: _memorySelector,
   getAppState,
   setConversationId,
+  onConversationClear,
   resultDedupState: _resultDedupState,
 }: UltraplanChoiceDialogProps): React.ReactNode {
   useRegisterOverlay('ultraplan-choice');
@@ -134,6 +136,7 @@ export function UltraplanChoiceDialog({
             getAppState,
             setAppState,
             setConversationId,
+            onConversationClear,
           });
 
           if (transcriptSaved) {
@@ -177,7 +180,17 @@ export function UltraplanChoiceDialog({
       // Archive the remote CCR session.
       archiveRemoteSession(sessionId);
     },
-    [plan, sessionId, taskId, setMessages, getAppState, setAppState, readFileState, setConversationId],
+    [
+      plan,
+      sessionId,
+      taskId,
+      setMessages,
+      getAppState,
+      setAppState,
+      readFileState,
+      setConversationId,
+      onConversationClear,
+    ],
   );
 
   // ── Menu options ───────────────────────────────────────────────────

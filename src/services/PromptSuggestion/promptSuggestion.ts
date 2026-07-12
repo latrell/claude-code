@@ -364,7 +364,7 @@ const CJK_CHAR_RE =
  * whitespace splitting undercounts them ("运行测试" would be 1 "word") and
  * short Chinese suggestions get killed by the too_few_words filter while
  * long ones sail past too_many_words. Count CJK chars at 2-per-word and
- * whitespace-delimited segments with word characters as 1 each.
+ * whitespace-delimited segments with Unicode letters/numbers as 1 each.
  */
 export function countSuggestionWords(suggestion: string): number {
   const trimmed = suggestion.trim()
@@ -373,7 +373,7 @@ export function countSuggestionWords(suggestion: string): number {
   const nonCjkWords = trimmed
     .replace(CJK_CHAR_RE, ' ')
     .split(/\s+/)
-    .filter(segment => /\w/.test(segment)).length
+    .filter(segment => /[\p{L}\p{M}\p{N}]/u.test(segment)).length
   return nonCjkWords + Math.ceil(cjkChars / 2)
 }
 

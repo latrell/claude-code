@@ -19,6 +19,10 @@ import {
 } from '../context.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
+import {
+  CLAUDE_SONNET_5_CONFIG,
+  toStaticModelConfigProvider,
+} from './configs.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
@@ -278,36 +282,90 @@ export function getDefaultOpusModel(): ModelName {
   return getModelStrings().opus48
 }
 
+/**
+ * Resolve the default Sonnet-tier model for an explicit provider/env pair.
+ *
+ * Scoped connections (fast/sonnet/subagent slots) deliberately do not mutate
+ * the main process provider. Their model resolution therefore must not read
+ * getAPIProvider() or process.env implicitly: doing so can send an Anthropic
+ * model id to a scoped ChatGPT/OpenAI/Gemini connection.
+ */
+export function getDefaultSonnetModelForProvider(
+  provider: APIProvider,
+  env: Record<string, string | undefined> = process.env,
+): ModelName {
+  if (provider === 'openai' && env.OPENAI_AUTH_MODE === 'chatgpt') {
+    return CHATGPT_CODEX_DEFAULT_MODEL
+  }
+  // For OpenAI provider, check OPENAI_DEFAULT_SONNET_MODEL first
+  if (provider === 'openai' && env.OPENAI_DEFAULT_SONNET_MODEL) {
+    return env.OPENAI_DEFAULT_SONNET_MODEL
+  }
+  if (provider === 'openai' && env.OPENAI_DEFAULT_MODEL) {
+    return env.OPENAI_DEFAULT_MODEL
+  }
+  // For Gemini provider, check GEMINI_DEFAULT_SONNET_MODEL
+  if (provider === 'gemini' && env.GEMINI_DEFAULT_SONNET_MODEL) {
+    return env.GEMINI_DEFAULT_SONNET_MODEL
+  }
+  if (provider === 'gemini' && env.GEMINI_DEFAULT_MODEL) {
+    return env.GEMINI_DEFAULT_MODEL
+  }
+  // For Grok provider, check GROK_DEFAULT_SONNET_MODEL
+  if (provider === 'grok' && env.GROK_DEFAULT_SONNET_MODEL) {
+    return env.GROK_DEFAULT_SONNET_MODEL
+  }
+  if (provider === 'grok' && env.GROK_DEFAULT_MODEL) {
+    return env.GROK_DEFAULT_MODEL
+  }
+  // For Cursor provider, check CURSOR_DEFAULT_SONNET_MODEL
+  if (provider === 'cursor' && env.CURSOR_DEFAULT_SONNET_MODEL) {
+    return env.CURSOR_DEFAULT_SONNET_MODEL
+  }
+  if (provider === 'cursor' && env.CURSOR_DEFAULT_MODEL) {
+    return env.CURSOR_DEFAULT_MODEL
+  }
+  // Anthropic-specific override (for first-party and other 3P providers)
+  if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
+    return env.ANTHROPIC_DEFAULT_SONNET_MODEL
+  }
+  // 3P providers: fall back to user's primary model instead of a hardcoded
+  // Anthropic model name. Prevents background API calls from being routed to
+  // Anthropic when the user configured a third-party endpoint.
+  const primaryModel =
+    provider === 'openai'
+      ? env.OPENAI_MODEL
+      : provider === 'gemini'
+        ? env.GEMINI_MODEL
+        : provider === 'grok'
+          ? env.GROK_MODEL
+          : provider === 'cursor'
+            ? env.CURSOR_MODEL
+            : undefined
+  if (primaryModel) return primaryModel
+  return CLAUDE_SONNET_5_CONFIG[toStaticModelConfigProvider(provider)]
+}
+
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
 export function getDefaultSonnetModel(): ModelName {
   const provider = getAPIProvider()
   if (provider === 'openai' && isChatGPTAuthMode()) {
     return CHATGPT_CODEX_DEFAULT_MODEL
   }
-  // For OpenAI provider, check OPENAI_DEFAULT_SONNET_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_SONNET_MODEL) {
     return process.env.OPENAI_DEFAULT_SONNET_MODEL
   }
-  // For Gemini provider, check GEMINI_DEFAULT_SONNET_MODEL
   if (provider === 'gemini' && process.env.GEMINI_DEFAULT_SONNET_MODEL) {
     return process.env.GEMINI_DEFAULT_SONNET_MODEL
   }
-  // For Cursor provider, check CURSOR_DEFAULT_SONNET_MODEL
   if (provider === 'cursor' && process.env.CURSOR_DEFAULT_SONNET_MODEL) {
     return process.env.CURSOR_DEFAULT_SONNET_MODEL
   }
-  // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   }
-  // 3P providers: fall back to user's primary model instead of a hardcoded
-  // Anthropic model name. Prevents background API calls from being routed to
-  // Anthropic when the user configured a third-party endpoint.
   const primaryModel = getProviderPrimaryModel()
   if (primaryModel) return primaryModel
-  if (provider !== 'firstParty') {
-    return getModelStrings().sonnet50
-  }
   return getModelStrings().sonnet50
 }
 

@@ -34,6 +34,7 @@ import {
 } from 'src/services/analytics/index.js';
 import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
+import { getAutoUpdaterDisabledDialogCopy } from './autoUpdaterMessages.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
 import {
@@ -263,6 +264,7 @@ export function Config({
   const shouldShowExternalIncludesToggle = hasExternalClaudeMdIncludes(memoryFiles);
 
   const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
+  const autoUpdaterDisabledDialogCopy = getAutoUpdaterDisabledDialogCopy(autoUpdaterDisabledReason);
 
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel;
@@ -1977,16 +1979,14 @@ export function Config({
           hideBorder
           hideInputGuide
         >
-          {autoUpdaterDisabledReason?.type !== 'config' ? (
+          {autoUpdaterDisabledDialogCopy ? (
             <>
-              <Text>
-                {autoUpdaterDisabledReason?.type === 'env'
-                  ? t('Auto-updates are controlled by an environment variable and cannot be changed here.')
-                  : t('Auto-updates are disabled in development builds.')}
-              </Text>
-              {autoUpdaterDisabledReason?.type === 'env' && (
+              <Text>{t(autoUpdaterDisabledDialogCopy.message)}</Text>
+              {autoUpdaterDisabledDialogCopy.hint && (
                 <Text dimColor>
-                  {tf('Unset {envVar} to re-enable auto-updates.', { envVar: autoUpdaterDisabledReason.envVar ?? '' })}
+                  {autoUpdaterDisabledDialogCopy.envVar
+                    ? tf(autoUpdaterDisabledDialogCopy.hint, { envVar: autoUpdaterDisabledDialogCopy.envVar })
+                    : t(autoUpdaterDisabledDialogCopy.hint)}
                 </Text>
               )}
             </>

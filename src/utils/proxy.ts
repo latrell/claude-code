@@ -35,6 +35,10 @@ export function disableKeepAlive(): void {
   keepAliveDisabled = true
 }
 
+export function isKeepAliveDisabled(): boolean {
+  return keepAliveDisabled
+}
+
 export function _resetKeepAliveForTesting(): void {
   keepAliveDisabled = false
 }

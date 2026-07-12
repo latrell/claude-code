@@ -4,16 +4,21 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type { Connection } from 'src/services/connections/types.js'
 import { logMock } from '../../../tests/mocks/log'
+import * as realSettings from '../settings/settings.js'
+import * as realThinking from '../thinking.js'
 
 // Mock heavy dependencies to avoid import chain issues.
 // log.ts must be mocked before any import that transitively loads it
 // (effort.ts → connections/thinkingEffort.ts → store.ts → log.ts).
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/thinking.js', () => ({
+  ...realThinking,
   isUltrathinkEnabled: () => false,
 }))
 mock.module('src/utils/settings/settings.js', () => ({
+  ...realSettings,
   getInitialSettings: () => ({}),
+  getSettingsWithErrors: () => ({ settings: {}, errors: [] }),
 }))
 mock.module('src/utils/auth.js', () => ({
   isProSubscriber: () => false,

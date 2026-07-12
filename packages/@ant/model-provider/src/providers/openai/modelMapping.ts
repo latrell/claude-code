@@ -6,6 +6,7 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-20250514': 'gpt-4o',
   'claude-sonnet-4-5-20250929': 'gpt-4o',
   'claude-sonnet-4-6': 'gpt-4o',
+  'claude-sonnet-5': 'gpt-4o',
   'claude-fable-5': 'gpt-4o',
   'claude-opus-4-20250514': 'o3',
   'claude-opus-4-1-20250805': 'o3',

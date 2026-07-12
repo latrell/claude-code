@@ -111,24 +111,36 @@ export function modelSupportsThinking(model: string): boolean {
 }
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports adaptive thinking.
-export function modelSupportsAdaptiveThinking(model: string): boolean {
-  const supported3P = get3PModelCapabilityOverride(model, 'adaptive_thinking')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
+/**
+ * Known Claude adaptive-thinking model families. These models default to
+ * adaptive thinking server-side and reject `thinking: { type: 'disabled' }`
+ * with a 400 ("not supported for this model. Thinking defaults to adaptive
+ * mode when not specified"). Pure name-list check with no provider fallback,
+ * so third-party slot models (e.g. deepseek-*) never match.
+ */
+export function isKnownAdaptiveThinkingModel(model: string): boolean {
   const canonical = getCanonicalName(model)
-  // Supported by a subset of Claude 4+ models
   // Fable 5: adaptive thinking is always on
-  if (
+  return (
     canonical.includes('fable-5') ||
     canonical.includes('opus-4-8') ||
     canonical.includes('opus-4-7') ||
     canonical.includes('opus-4-6') ||
     canonical.includes('sonnet-5') ||
     canonical.includes('sonnet-4-6')
-  ) {
+  )
+}
+
+export function modelSupportsAdaptiveThinking(model: string): boolean {
+  const supported3P = get3PModelCapabilityOverride(model, 'adaptive_thinking')
+  if (supported3P !== undefined) {
+    return supported3P
+  }
+  // Supported by a subset of Claude 4+ models
+  if (isKnownAdaptiveThinkingModel(model)) {
     return true
   }
+  const canonical = getCanonicalName(model)
   // Exclude any other known legacy models (allowlist above catches newer variants first)
   if (
     canonical.includes('opus') ||

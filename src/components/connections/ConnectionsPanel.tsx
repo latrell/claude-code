@@ -7,6 +7,7 @@ import {
   clearSonnetDefault,
   clearSubagentDefault,
   getSessionAssignment,
+  removeConnectionWithRuntimeCleanup,
 } from '../../services/connections/activate.js';
 import {
   formatContextWindow,
@@ -35,7 +36,6 @@ import {
   generateConnectionId,
   getDefaultAssignment,
   listConnections,
-  removeConnection,
   updateConnectionModel,
   upsertConnection,
 } from '../../services/connections/store.js';
@@ -366,6 +366,8 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
   const doDelete = useCallback(
     (connection: Connection) => {
       try {
+        const { error } = removeConnectionWithRuntimeCleanup(connection);
+        if (error) throw error;
         if (connection.kind === 'anthropic-oauth' && connection.credentialRef) {
           removeOAuthAccountSlot(connection.credentialRef);
         }
@@ -375,7 +377,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         if (connection.kind === 'cursor' && connection.credentialRef && connection.credentialRef !== 'default') {
           void removeCursorOAuth(connection.credentialRef).catch(() => {});
         }
-        removeConnection(connection.id);
         refresh();
         setView({ mode: 'list' });
       } catch (err) {

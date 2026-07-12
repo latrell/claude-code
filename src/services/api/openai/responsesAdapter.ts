@@ -264,6 +264,53 @@ function mapStopReason(response: Record<string, unknown> | undefined): string {
   return 'end_turn'
 }
 
+class ChatGPTResponsesAPIError extends Error {
+  readonly status: number | undefined
+  readonly code: string | undefined
+
+  constructor(
+    message: string,
+    options: { status?: number; code?: string } = {},
+  ) {
+    super(message)
+    this.name = 'ChatGPTResponsesAPIError'
+    this.status = options.status
+    this.code = options.code
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function createResponsesStreamError(
+  event: Record<string, unknown>,
+): ChatGPTResponsesAPIError {
+  const type = event.type
+  const response = asRecord(event.response)
+  const nestedError =
+    type === 'response.failed'
+      ? asRecord(response?.error)
+      : asRecord(event.error)
+  const error = nestedError ?? event
+  const message =
+    typeof error.message === 'string'
+      ? error.message
+      : type === 'response.failed'
+        ? 'ChatGPT Responses API failed'
+        : 'ChatGPT Responses API error'
+  const code = typeof error.code === 'string' ? error.code : undefined
+  const status =
+    typeof error.status === 'number'
+      ? error.status
+      : typeof event.status === 'number'
+        ? event.status
+        : undefined
+  return new ChatGPTResponsesAPIError(message, { status, code })
+}
+
 export async function* adaptResponsesStreamToAnthropic(
   stream: AsyncIterable<Record<string, unknown>>,
   model: string,
@@ -305,10 +352,10 @@ export async function* adaptResponsesStreamToAnthropic(
   }
 
   for await (const event of stream) {
-    for await (const startedEvent of ensureStarted()) yield startedEvent
     const type = event.type
 
     if (type === 'response.output_text.delta') {
+      for await (const startedEvent of ensureStarted()) yield startedEvent
       if (!textBlockOpen) {
         if (thinkingBlockOpen) {
           yield {
@@ -336,6 +383,7 @@ export async function* adaptResponsesStreamToAnthropic(
     }
 
     if (type === 'response.reasoning_text.delta') {
+      for await (const startedEvent of ensureStarted()) yield startedEvent
       if (!thinkingBlockOpen) {
         if (textBlockOpen) {
           yield {
@@ -365,6 +413,7 @@ export async function* adaptResponsesStreamToAnthropic(
       const outputIndex =
         typeof event.output_index === 'number' ? event.output_index : -1
       if (item?.type === 'function_call' && outputIndex >= 0) {
+        for await (const startedEvent of ensureStarted()) yield startedEvent
         if (textBlockOpen) {
           yield {
             type: 'content_block_stop',
@@ -407,6 +456,7 @@ export async function* adaptResponsesStreamToAnthropic(
         typeof event.output_index === 'number' ? event.output_index : -1
       const block = toolBlocks.get(outputIndex)
       if (block) {
+        for await (const startedEvent of ensureStarted()) yield startedEvent
         yield {
           type: 'content_block_delta',
           index: block.contentIndex,
@@ -440,6 +490,7 @@ export async function* adaptResponsesStreamToAnthropic(
           responseTextByOutputIndex.get(outputIndex) ||
           ''
         if (text) {
+          for await (const startedEvent of ensureStarted()) yield startedEvent
           if (thinkingBlockOpen) {
             yield {
               type: 'content_block_stop',
@@ -468,18 +519,20 @@ export async function* adaptResponsesStreamToAnthropic(
       continue
     }
 
-    if (type === 'response.error') {
-      const error = event.error as Record<string, unknown> | undefined
-      throw new Error(String(error?.message ?? 'ChatGPT Responses API error'))
-    }
-
-    if (type === 'response.failed') {
-      const response = event.response as Record<string, unknown> | undefined
-      const error = response?.error as Record<string, unknown> | undefined
-      throw new Error(String(error?.message ?? 'ChatGPT Responses API failed'))
+    if (
+      type === 'error' ||
+      type === 'response.error' ||
+      type === 'response.failed'
+    ) {
+      throw createResponsesStreamError(event)
     }
 
     if (type === 'response.completed' || type === 'response.incomplete') {
+      // A completion without content is still a valid assistant message. Start
+      // it here, but do not start on transport-only lifecycle events such as
+      // response.created/response.in_progress: a disconnect after those events
+      // must remain inside startStreamEagerly's retry scope.
+      for await (const startedEvent of ensureStarted()) yield startedEvent
       if (textBlockOpen) {
         yield {
           type: 'content_block_stop',
@@ -537,8 +590,9 @@ export async function createChatGPTResponsesStream(params: {
   )
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    throw new Error(
+    throw new ChatGPTResponsesAPIError(
       `ChatGPT Responses API request failed (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`,
+      { status: response.status },
     )
   }
   // Feed response headers into the provider usage store so the status-line

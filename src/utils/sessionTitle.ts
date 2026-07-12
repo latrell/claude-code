@@ -92,6 +92,54 @@ const titleSchema = lazySchema(() => z.object({ title: z.string() }))
 
 const FALLBACK_TITLE_MAX_CHARS = 32
 
+export type SessionTitleRequest = Readonly<{
+  generation: number
+  sessionId: string
+  signal: AbortSignal
+}>
+
+export type SessionTitleRequestGuard = {
+  begin: (sessionId: string) => SessionTitleRequest
+  invalidate: () => void
+  isCurrent: (request: SessionTitleRequest, currentSessionId: string) => boolean
+}
+
+/**
+ * Keeps async title generation scoped to the session that started it.
+ * Starting or invalidating a request aborts the previous controller, while
+ * the generation and session checks keep late promise callbacks harmless
+ * even when a provider ignores cancellation.
+ */
+export function createSessionTitleRequestGuard(): SessionTitleRequestGuard {
+  let generation = 0
+  let controller: AbortController | undefined
+
+  return {
+    begin(sessionId) {
+      controller?.abort()
+      controller = new AbortController()
+      generation += 1
+      return {
+        generation,
+        sessionId,
+        signal: controller.signal,
+      }
+    },
+    invalidate() {
+      generation += 1
+      controller?.abort()
+      controller = undefined
+    },
+    isCurrent(request, currentSessionId) {
+      return (
+        request.generation === generation &&
+        request.sessionId === currentSessionId &&
+        !request.signal.aborted
+      )
+    },
+  }
+}
+
 /**
  * Local, model-free fallback title: first non-empty line of the user's
  * message, truncated. Used when the Haiku call fails or returns unparseable

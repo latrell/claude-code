@@ -8,6 +8,7 @@ import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import {
   apiProviderToSettingsProviderKey,
   getDefaultSonnetModel,
+  getDefaultSonnetModelForProvider,
 } from './model.js'
 import { getAPIProvider, type APIProvider } from './providers.js'
 import type { ProviderRuntimeConfig } from './subagentProvider.js'
@@ -259,7 +260,12 @@ export function getSonnetModelAndRuntime(): {
   const runtime = getSonnetProviderRuntimeConfig()
   if (!runtime) return { model: getDefaultSonnetModel() }
   return {
-    model: runtime.model ?? getDefaultSonnetModel(),
+    model:
+      runtime.model ??
+      getDefaultSonnetModelForProvider(
+        runtime.provider,
+        runtime.env ?? process.env,
+      ),
     runtime,
   }
 }

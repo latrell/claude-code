@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,
+  openAICompatSupportsThinkingControl,
 } from '../requestBody.js'
 
 // Re-register envUtils.js with correct isEnvDefinedFalsy and isEnvTruthy to
@@ -201,6 +202,59 @@ describe('isOpenAIThinkingEnabled', () => {
       process.env.OPENAI_ENABLE_THINKING = '1'
       expect(isOpenAIThinkingEnabled('deepseek-reasoner')).toBe(true)
     })
+  })
+})
+
+describe('openAICompatSupportsThinkingControl', () => {
+  const originalEnv = {
+    OPENAI_ENABLE_THINKING: process.env.OPENAI_ENABLE_THINKING,
+  }
+
+  beforeEach(() => {
+    delete process.env.OPENAI_ENABLE_THINKING
+  })
+
+  afterEach(() => {
+    if (originalEnv.OPENAI_ENABLE_THINKING === undefined) {
+      delete process.env.OPENAI_ENABLE_THINKING
+    } else {
+      process.env.OPENAI_ENABLE_THINKING = originalEnv.OPENAI_ENABLE_THINKING
+    }
+  })
+
+  test('returns true for deepseek models', () => {
+    expect(openAICompatSupportsThinkingControl('deepseek-v4-flash')).toBe(true)
+    expect(openAICompatSupportsThinkingControl('deepseek-v4-pro')).toBe(true)
+    expect(openAICompatSupportsThinkingControl('DeepSeek-Reasoner')).toBe(true)
+  })
+
+  test('returns true for mimo models', () => {
+    expect(openAICompatSupportsThinkingControl('mimo-v2-pro')).toBe(true)
+  })
+
+  test('returns false for non-thinking-family models', () => {
+    expect(openAICompatSupportsThinkingControl('gpt-4o')).toBe(false)
+    expect(openAICompatSupportsThinkingControl('qwen-3')).toBe(false)
+    expect(openAICompatSupportsThinkingControl('grok-4')).toBe(false)
+  })
+
+  test('OPENAI_ENABLE_THINKING=1 marks any model as thinking-capable', () => {
+    process.env.OPENAI_ENABLE_THINKING = '1'
+    expect(openAICompatSupportsThinkingControl('qwen-3')).toBe(true)
+  })
+
+  test('OPENAI_ENABLE_THINKING=0 does NOT remove the capability (unlike isOpenAIThinkingEnabled)', () => {
+    process.env.OPENAI_ENABLE_THINKING = '0'
+    expect(openAICompatSupportsThinkingControl('deepseek-v4-flash')).toBe(true)
+    expect(isOpenAIThinkingEnabled('deepseek-v4-flash')).toBe(false)
+  })
+
+  test('uses scoped env instead of process env when provided', () => {
+    expect(
+      openAICompatSupportsThinkingControl('qwen-3', {
+        OPENAI_ENABLE_THINKING: '1',
+      }),
+    ).toBe(true)
   })
 })
 

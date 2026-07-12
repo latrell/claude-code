@@ -81,6 +81,52 @@ describe('adaptOpenAIStreamToAnthropic', () => {
     expect(events[0].type).toBe('message_start')
     expect(events[0].message.role).toBe('assistant')
     expect(events[0].message.model).toBe('gpt-4o')
+    expect(events[1].type).toBe('content_block_start')
+  })
+
+  test('ignores transport-only bootstrap chunks before semantic output', async () => {
+    const events = await collectEvents([
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { role: 'assistant', content: '' },
+            finish_reason: null,
+          },
+        ],
+      }),
+    ])
+
+    expect(events).toHaveLength(0)
+  })
+
+  test('does not emit message_start before a bootstrap-only stream error', async () => {
+    async function* failingStream(): AsyncGenerator<ChatCompletionChunk, void> {
+      yield makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { role: 'assistant', content: '' },
+            finish_reason: null,
+          },
+        ],
+      })
+      throw new TypeError('terminated')
+    }
+
+    const events: any[] = []
+    await expect(
+      (async () => {
+        for await (const event of adaptOpenAIStreamToAnthropic(
+          failingStream(),
+          'gpt-4o',
+        )) {
+          events.push(event)
+        }
+      })(),
+    ).rejects.toThrow('terminated')
+
+    expect(events).toHaveLength(0)
   })
 
   test('converts text content stream', async () => {

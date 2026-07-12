@@ -57,6 +57,7 @@ describe('resolveOpenAIModel', () => {
 
   test('maps known Anthropic model via DEFAULT_MODEL_MAP', () => {
     expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('gpt-4o')
+    expect(resolveOpenAIModel('claude-sonnet-5')).toBe('gpt-4o')
   })
 
   test('fable resolves via OPENAI_DEFAULT_SONNET_MODEL (default tier)', () => {

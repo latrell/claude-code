@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import { randomUUID } from 'crypto'
 import {
   getLastApiCompletionTimestamp,
   getSessionId,
@@ -35,6 +36,7 @@ import { getAPIProvider } from './model/providers.js'
 import { getProxyFetchOptions } from './proxy.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 import { getOpenAIClient } from '../services/api/openai/client.js'
+import { openAICompatSupportsThinkingControl } from '../services/api/openai/requestBody.js'
 import { getGrokClient } from '../services/api/grok/client.js'
 import { isChatGPTAuthEnabled } from '../services/api/openai/chatgptAuth.js'
 import {
@@ -42,6 +44,21 @@ import {
   buildResponsesRequest,
   createChatGPTResponsesStream,
 } from '../services/api/openai/responsesAdapter.js'
+import {
+  startStreamEagerly,
+  withCompatRetry,
+} from '../services/api/compatRetry.js'
+import { resolveCursorCredentials } from '../services/api/cursor/auth.js'
+import {
+  resolveReasoningEffort,
+  streamCursorChat,
+} from '../services/api/cursor/client.js'
+import { adaptCursorFramesToAnthropic } from '../services/api/cursor/streamAdapter.js'
+import {
+  convertOpenAIMessagesToCursor,
+  type OpenAIMessage,
+} from '../services/api/cursor/translator.js'
+import type { CursorTool } from '../services/api/cursor/protobufSchema.js'
 import {
   anthropicMessagesToOpenAI,
   resolveOpenAIModel,
@@ -51,9 +68,11 @@ import {
   resolveGeminiModel,
   anthropicToolsToGemini,
   anthropicToolChoiceToGemini,
+  resolveCursorModel,
 } from '@ant/model-provider'
 import type { ProviderRuntimeConfig } from './model/subagentProvider.js'
 import type { SystemPrompt } from './systemPromptType.js'
+import { isKnownAdaptiveThinkingModel } from './thinking.js'
 
 type MessageParam = Anthropic.MessageParam
 type TextBlockParam = Anthropic.TextBlockParam
@@ -203,6 +222,9 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
   if (provider === 'gemini') {
     return sideQueryViaGemini(opts)
   }
+  if (provider === 'cursor') {
+    return sideQueryViaCursor(opts)
+  }
 
   const client = await getAnthropicClient({
     maxRetries,
@@ -254,7 +276,14 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
 
   let thinkingConfig: BetaThinkingConfigParam | undefined
   if (thinking === false) {
-    thinkingConfig = { type: 'disabled' }
+    // Adaptive-thinking models (fable-5, opus-4-6+, sonnet-4-6+) reject an
+    // explicit { type: 'disabled' } with a 400 ("not supported for this
+    // model. Thinking defaults to adaptive mode when not specified") — omit
+    // the field for those so the server falls back to adaptive mode. This
+    // kept the auto-mode classifier permanently unavailable on such models.
+    thinkingConfig = isKnownAdaptiveThinkingModel(model)
+      ? undefined
+      : { type: 'disabled' }
   } else if (thinking !== undefined) {
     thinkingConfig = {
       type: 'enabled',
@@ -537,6 +566,209 @@ async function collectAnthropicStreamToBetaMessage(
 }
 
 /**
+ * Run a lazy compatible-provider stream factory inside the shared retry
+ * policy and discard retry-progress transcript messages. sideQuery callers
+ * only consume the final BetaMessage, so progress remains debug/telemetry
+ * state rather than leaking into the caller's conversation.
+ */
+async function createRetriedSideQueryStream<T>(
+  createStream: (signal: AbortSignal) => Promise<T>,
+  options: {
+    signal: AbortSignal
+    provider: string
+    maxRetries: number
+  },
+): Promise<T> {
+  const retry = withCompatRetry(createStream, options)
+  let next = await retry.next()
+  while (!next.done) {
+    next = await retry.next()
+  }
+  return next.value
+}
+
+function cursorForcedToolSchema(
+  tools: SideQueryOptions['tools'],
+  forcedToolName: string,
+): string {
+  const forcedTool = tools?.find(tool => {
+    const candidate = tool as unknown as Record<string, unknown>
+    return candidate['name'] === forcedToolName
+  }) as unknown as Record<string, unknown> | undefined
+  const schema = forcedTool?.['input_schema'] ?? {
+    type: 'object',
+    properties: {},
+  }
+  try {
+    return JSON.stringify(schema)
+  } catch {
+    return '{"type":"object","properties":{}}'
+  }
+}
+
+/**
+ * Cursor's agent-tuned models can ignore custom MCP tools. When a forced-tool
+ * prompt returns one strict JSON object instead, synthesize the equivalent
+ * Anthropic tool_use block. Callers still validate the input with their own
+ * schema/Zod parser; loose JSON extraction and Markdown fences are rejected.
+ */
+function synthesizeCursorForcedToolUse(
+  response: BetaMessage,
+  forcedToolName: string,
+): BetaMessage {
+  const hasRequestedTool = response.content.some(
+    block => block.type === 'tool_use' && block.name === forcedToolName,
+  )
+  const hasOtherTool = response.content.some(block => block.type === 'tool_use')
+  if (hasRequestedTool || hasOtherTool) return response
+
+  const text = response.content
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('')
+    .trim()
+  if (!text) return response
+
+  let input: unknown
+  try {
+    input = JSON.parse(text) as unknown
+  } catch {
+    return response
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return response
+  }
+
+  const nonTextContent = response.content.filter(block => block.type !== 'text')
+  return {
+    ...response,
+    content: [
+      ...nonTextContent,
+      {
+        type: 'tool_use',
+        id: `toolu_cursor_forced_${randomUUID().replace(/-/g, '').slice(0, 20)}`,
+        name: forcedToolName,
+        input,
+      },
+    ] as BetaMessage['content'],
+    stop_reason: 'tool_use',
+  }
+}
+
+/**
+ * Cursor side query. Cursor's API is ConnectRPC/protobuf rather than an
+ * Anthropic or OpenAI endpoint, so use the same translation and stream
+ * adapter as the main Cursor query path, then collect it into the BetaMessage
+ * shape expected by side-query callers.
+ */
+async function sideQueryViaCursor(
+  opts: SideQueryOptions,
+): Promise<BetaMessage> {
+  const {
+    model,
+    system,
+    messages,
+    tools,
+    tool_choice,
+    signal = new AbortController().signal,
+    thinking,
+  } = opts
+  const runtime = opts.providerRuntimeConfig
+  const scopedEnv = runtime?.env ?? process.env
+  const cursorModel = resolveCursorModel(
+    normalizeModelStringForAPI(model),
+    scopedEnv,
+  )
+
+  const forcedToolName =
+    tool_choice?.type === 'tool' ? tool_choice.name : undefined
+  const forcedToolInstruction = forcedToolName
+    ? `Call the ${forcedToolName} tool exactly once. If this model cannot call that custom tool, return exactly one raw JSON object matching this input schema instead: ${cursorForcedToolSchema(tools, forcedToolName)}. Do not use Markdown fences or include any text before or after the JSON.`
+    : ''
+  const systemText = [extractSystemText(system), forcedToolInstruction]
+    .filter(Boolean)
+    .join('\n\n')
+  const openaiMessages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }> = []
+  if (systemText) openaiMessages.push({ role: 'system', content: systemText })
+  openaiMessages.push(...messageParamsToOpenAIRoleContent(messages))
+
+  const cursorMessages = convertOpenAIMessagesToCursor(
+    openaiMessages as OpenAIMessage[],
+  )
+  if (cursorMessages.length === 0) {
+    throw new Error('No messages to send to Cursor after conversion.')
+  }
+  const cursorTools = (tools && tools.length > 0
+    ? anthropicToolsToOpenAI(tools as BetaToolUnion[])
+    : []) as unknown as CursorTool[]
+  const effort =
+    thinking === false
+      ? undefined
+      : typeof thinking === 'number'
+        ? thinking
+        : runtime?.thinkingEffort === 'off'
+          ? undefined
+          : runtime?.thinkingEffort
+  const reasoningEffort =
+    thinking === false ? null : resolveReasoningEffort(scopedEnv, effort)
+  const credentials = await resolveCursorCredentials({
+    envOverride: runtime?.env,
+  })
+  const start = Date.now()
+  const adaptedStream = await createRetriedSideQueryStream(
+    async innerSignal => {
+      const frames = streamCursorChat({
+        model: cursorModel,
+        messages: cursorMessages,
+        tools: cursorTools,
+        reasoningEffort,
+        credentials,
+        signal: innerSignal,
+        envOverride: runtime?.env,
+      })
+      return startStreamEagerly(
+        adaptCursorFramesToAnthropic(frames, cursorModel, cursorTools),
+      )
+    },
+    {
+      signal,
+      provider: 'cursor',
+      maxRetries: opts.maxRetries ?? 2,
+    },
+  )
+  const collectedResponse = await collectAnthropicStreamToBetaMessage(
+    adaptedStream,
+    cursorModel,
+  )
+  const response = forcedToolName
+    ? synthesizeCursorForcedToolUse(collectedResponse, forcedToolName)
+    : collectedResponse
+
+  const now = Date.now()
+  const lastCompletion = getLastApiCompletionTimestamp()
+  logEvent('tengu_api_success', {
+    requestId:
+      response.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    querySource:
+      opts.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    model:
+      cursorModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cachedInputTokens: response.usage.cache_read_input_tokens ?? 0,
+    uncachedInputTokens: response.usage.input_tokens,
+    durationMsIncludingRetries: now - start,
+    timeSinceLastApiCallMs:
+      lastCompletion !== null ? now - lastCompletion : undefined,
+  })
+  setLastApiCompletionTimestamp(now)
+  return response
+}
+
+/**
  * OpenAI-compatible side query for OpenAI and Grok providers.
  * Both use the OpenAI SDK with different base URLs.
  *
@@ -558,6 +790,7 @@ async function sideQueryViaOpenAICompatible(
     tool_choice,
     max_tokens = 1024,
     temperature,
+    thinking,
     signal,
   } = opts
 
@@ -609,22 +842,55 @@ async function sideQueryViaOpenAICompatible(
     requestParams.tools = openaiTools
     if (openaiToolChoice) requestParams.tool_choice = openaiToolChoice
   }
+  // Callers like the auto-mode classifier pass `thinking: false` to request a
+  // text/tool-only response. DeepSeek v4 endpoints default to thinking mode
+  // server-side even when no thinking field is sent, and thinking mode
+  // rejects forced/named tool_choice with a 400 ("Thinking mode does not
+  // support this tool_choice") — which made the classifier permanently
+  // unavailable when the fast slot pointed at DeepSeek. Send an explicit
+  // disable in all three endpoint formats (mirrors buildOpenAIRequestBody's
+  // enable formats; unrecognized fields are ignored by each endpoint). Only
+  // sent when the endpoint is known to understand thinking-control fields —
+  // strict OpenAI-compatible endpoints would otherwise reject unknown params.
+  if (
+    thinking === false &&
+    openAICompatSupportsThinkingControl(openaiModel, scopedEnv)
+  ) {
+    requestParams.thinking = { type: 'disabled' }
+    requestParams.enable_thinking = false
+    requestParams.chat_template_kwargs = {
+      thinking: false,
+      enable_thinking: false,
+    }
+  }
 
   if (provider === 'openai' && isChatGPTAuthEnabled(scopedEnv)) {
+    const requestSignal = signal ?? new AbortController().signal
+    const adaptedStream = await createRetriedSideQueryStream(
+      async innerSignal =>
+        startStreamEagerly(
+          adaptResponsesStreamToAnthropic(
+            await createChatGPTResponsesStream({
+              request: buildResponsesRequest({
+                model: openaiModel,
+                messages: openaiMessages,
+                tools: openaiTools ?? [],
+                toolChoice: openaiToolChoice,
+              }),
+              signal: innerSignal,
+              credentialScope: runtime?.credentialScope,
+            }),
+            openaiModel,
+          ),
+        ),
+      {
+        signal: requestSignal,
+        provider: 'chatgpt',
+        maxRetries: opts.maxRetries ?? 2,
+      },
+    )
     const response = await collectAnthropicStreamToBetaMessage(
-      adaptResponsesStreamToAnthropic(
-        await createChatGPTResponsesStream({
-          request: buildResponsesRequest({
-            model: openaiModel,
-            messages: openaiMessages,
-            tools: openaiTools ?? [],
-            toolChoice: openaiToolChoice,
-          }),
-          signal: signal ?? new AbortController().signal,
-          credentialScope: runtime?.credentialScope,
-        }),
-        openaiModel,
-      ),
+      adaptedStream,
       openaiModel,
     )
 

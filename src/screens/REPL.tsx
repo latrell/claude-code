@@ -246,7 +246,7 @@ import {
   createCommandInputMessage,
   formatCommandInputTags,
 } from '../utils/messages.js';
-import { fallbackSessionTitle, generateSessionTitle } from '../utils/sessionTitle.js';
+import { createSessionTitleRequestGuard, fallbackSessionTitle, generateSessionTitle } from '../utils/sessionTitle.js';
 import {
   BASH_INPUT_TAG,
   COMMAND_MESSAGE_TAG,
@@ -1438,10 +1438,17 @@ export function REPL({
   const terminalTitleFromRename = useAppState(s => s.settings.terminalTitleFromRename) !== false;
   const sessionTitle = terminalTitleFromRename ? getCurrentSessionTitle(getSessionId()) : undefined;
   const [haikuTitle, setHaikuTitle] = useState<string>();
+  const [titleRequestGuard] = useState(createSessionTitleRequestGuard);
   // Gates the one-shot Haiku call that generates the tab title. Seeded true
   // on resume (initialMessages present) so we don't re-title a resumed
   // session from mid-conversation context.
   const haikuTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
+  const resetGeneratedTitleForClear = useCallback(() => {
+    titleRequestGuard.invalidate();
+    haikuTitleAttemptedRef.current = false;
+    setHaikuTitle(undefined);
+  }, [titleRequestGuard]);
+  useEffect(() => () => titleRequestGuard.invalidate(), [titleRequestGuard]);
   const agentTitle = mainThreadAgentDefinition?.agentType;
   const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? t('Claude Code');
   const isWaitingForApproval =
@@ -2256,6 +2263,7 @@ export function REPL({
         // Switch session (id + project dir atomically). fullPath may point to
         // a different project (cross-worktree, /branch); null derives from
         // current originalCwd.
+        titleRequestGuard.invalidate();
         switchSession(asSessionId(sessionId), log.fullPath ? dirname(log.fullPath) : null);
         // Rename asciicast recording to match the resumed session ID
         const { renameRecordingForSession } = await import('../utils/asciicast.js');
@@ -2368,7 +2376,7 @@ export function REPL({
         throw error;
       }
     },
-    [resetLoadingState, setAppState],
+    [resetLoadingState, setAppState, titleRequestGuard],
   );
 
   // Lazy init: useRef(createX()) would call createX on every render and
@@ -3050,6 +3058,7 @@ export function REPL({
         },
         resume,
         setConversationId,
+        onConversationClear: resetGeneratedTitleForClear,
         requestPrompt: feature('HOOK_PROMPTS') ? requestPrompt : undefined,
         contentReplacementState: contentReplacementStateRef.current,
       };
@@ -3071,6 +3080,7 @@ export function REPL({
       setMessages,
       onChangeDynamicMcpConfig,
       resume,
+      resetGeneratedTitleForClear,
       requestPrompt,
       disabled,
       customSystemPrompt,
@@ -3410,11 +3420,14 @@ export function REPL({
           // json_schema support, 503s), and re-open the gate so the next user
           // message retries the AI title. Functional update guards the race
           // where a late failure handler would overwrite a retry's AI title.
+          const titleRequest = titleRequestGuard.begin(getSessionId());
           const applyFallbackTitle = () => {
+            if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
             setHaikuTitle(prev => prev ?? fallbackSessionTitle(text) ?? undefined);
             haikuTitleAttemptedRef.current = false;
           };
-          void generateSessionTitle(text, new AbortController().signal).then(title => {
+          void generateSessionTitle(text, titleRequest.signal).then(title => {
+            if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
             if (title) setHaikuTitle(title);
             else applyFallbackTitle();
           }, applyFallbackTitle);
@@ -3639,6 +3652,7 @@ export function REPL({
       onQueryEvent,
       sessionTitle,
       titleDisabled,
+      titleRequestGuard,
     ],
   );
 
@@ -3898,9 +3912,8 @@ export function REPL({
           getAppState: () => store.getState(),
           setAppState,
           setConversationId,
+          onConversationClear: resetGeneratedTitleForClear,
         });
-        haikuTitleAttemptedRef.current = false;
-        setHaikuTitle(undefined);
         bashTools.current.clear();
         bashToolsProcessedIdx.current = 0;
 
@@ -6283,9 +6296,8 @@ export function REPL({
                           getAppState: () => store.getState(),
                           setAppState,
                           setConversationId,
+                          onConversationClear: resetGeneratedTitleForClear,
                         });
-                        haikuTitleAttemptedRef.current = false;
-                        setHaikuTitle(undefined);
                         bashTools.current.clear();
                         bashToolsProcessedIdx.current = 0;
                       }
@@ -6398,6 +6410,7 @@ export function REPL({
                         readFileState={readFileState.current}
                         getAppState={() => store.getState()}
                         setConversationId={setConversationId}
+                        onConversationClear={resetGeneratedTitleForClear}
                       />
                     )
                   : null}

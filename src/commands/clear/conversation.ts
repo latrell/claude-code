@@ -75,6 +75,7 @@ export async function clearConversation({
   getAppState,
   setAppState,
   setConversationId,
+  onConversationClear,
 }: {
   setMessages: (updater: (prev: Message[]) => Message[]) => void
   readFileState: FileStateCache
@@ -83,7 +84,13 @@ export async function clearConversation({
   getAppState?: () => AppState
   setAppState?: (f: (prev: AppState) => AppState) => void
   setConversationId?: (id: UUID) => void
+  onConversationClear?: () => void
 }): Promise<void> {
+  // Invalidate session-scoped async UI work before the first await. A title
+  // provider may ignore AbortSignal, so callers also guard late callbacks by
+  // session/generation after this notification.
+  onConversationClear?.()
+
   // Execute SessionEnd hooks before clearing (bounded by
   // CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS, default 1.5s)
   const sessionEndTimeoutMs = getSessionEndHookTimeoutMs()

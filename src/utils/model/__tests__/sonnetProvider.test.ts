@@ -6,11 +6,13 @@ import { setSessionAssignment } from '../../../services/connections/sessionAssig
 import { _invalidateConnectionsCache } from '../../../services/connections/store.js'
 import {
   SONNET_CREDENTIAL_SCOPE,
+  getSonnetModelAndRuntime,
   getSonnetProviderFromEnv,
   getSonnetProviderRuntimeConfig,
   setSonnetProviderCliOverride,
   setSonnetProviderConfigOverride,
 } from '../sonnetProvider.js'
+import { setProviderCliOverride } from '../providers.js'
 
 // getSonnetProviderRuntimeConfig falls back to getConnectionThinkingEffort
 // ('sonnet'), which reads the real connection registry. Point
@@ -29,6 +31,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setProviderCliOverride(undefined)
   if (previousConfigDir === undefined) {
     delete process.env['CLAUDE_CONFIG_DIR']
   } else {
@@ -235,6 +238,106 @@ describe('sonnet provider config', () => {
       expect(config?.thinkingEffort).toBe('high')
     } finally {
       setSonnetProviderConfigOverride(undefined)
+    }
+  })
+
+  test('un-pinned scoped ChatGPT connection uses the ChatGPT default model', () => {
+    setSonnetProviderConfigOverride({
+      modelType: 'openai',
+      env: { OPENAI_AUTH_MODE: 'chatgpt' },
+      credentialScope: SONNET_CREDENTIAL_SCOPE,
+    })
+    try {
+      const resolved = getSonnetModelAndRuntime()
+
+      expect(resolved.model).toBe('gpt-5.5')
+      expect(resolved.runtime?.provider).toBe('openai')
+    } finally {
+      setSonnetProviderConfigOverride(undefined)
+    }
+  })
+
+  test('un-pinned scoped OpenAI connection uses its general provider default', () => {
+    setSonnetProviderConfigOverride({
+      modelType: 'openai',
+      env: { OPENAI_DEFAULT_MODEL: 'gpt-4o-mini' },
+      credentialScope: SONNET_CREDENTIAL_SCOPE,
+    })
+    try {
+      const resolved = getSonnetModelAndRuntime()
+
+      expect(resolved.model).toBe('gpt-4o-mini')
+      expect(resolved.runtime?.provider).toBe('openai')
+    } finally {
+      setSonnetProviderConfigOverride(undefined)
+    }
+  })
+
+  test('un-pinned scoped providers use their general provider defaults', () => {
+    const cases: Array<{
+      modelType: 'gemini' | 'grok' | 'cursor'
+      env: Record<string, string>
+      expected: string
+    }> = [
+      {
+        modelType: 'gemini',
+        env: { GEMINI_DEFAULT_MODEL: 'gemini-general-default' },
+        expected: 'gemini-general-default',
+      },
+      {
+        modelType: 'grok',
+        env: { GROK_DEFAULT_MODEL: 'grok-general-default' },
+        expected: 'grok-general-default',
+      },
+      {
+        modelType: 'cursor',
+        env: { CURSOR_DEFAULT_MODEL: 'cursor-general-default' },
+        expected: 'cursor-general-default',
+      },
+    ]
+
+    for (const testCase of cases) {
+      setSonnetProviderConfigOverride({
+        modelType: testCase.modelType,
+        env: testCase.env,
+        credentialScope: SONNET_CREDENTIAL_SCOPE,
+      })
+      expect(getSonnetModelAndRuntime().model).toBe(testCase.expected)
+    }
+    setSonnetProviderConfigOverride(undefined)
+  })
+
+  test('un-pinned scoped provider resolves its own env instead of the main provider env', () => {
+    const previousMainDefault = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'main-anthropic-sonnet'
+    setSonnetProviderConfigOverride({
+      modelType: 'gemini',
+      env: { GEMINI_DEFAULT_SONNET_MODEL: 'gemini-sonnet-scoped' },
+      credentialScope: SONNET_CREDENTIAL_SCOPE,
+    })
+    try {
+      expect(getSonnetModelAndRuntime().model).toBe('gemini-sonnet-scoped')
+    } finally {
+      setSonnetProviderConfigOverride(undefined)
+      if (previousMainDefault === undefined) {
+        delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+      } else {
+        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = previousMainDefault
+      }
+    }
+  })
+
+  test('un-pinned scoped Anthropic provider does not reuse the main OpenAI model strings', () => {
+    setProviderCliOverride('openai')
+    setSonnetProviderConfigOverride({
+      modelType: 'anthropic',
+      credentialScope: SONNET_CREDENTIAL_SCOPE,
+    })
+    try {
+      expect(getSonnetModelAndRuntime().model).toBe('claude-sonnet-5')
+    } finally {
+      setSonnetProviderConfigOverride(undefined)
+      setProviderCliOverride(undefined)
     }
   })
 })

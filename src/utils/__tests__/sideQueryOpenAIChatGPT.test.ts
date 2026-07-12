@@ -3,6 +3,9 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { sideQuery } from '../sideQuery.js'
+import { decodeMessage } from '../../services/api/cursor/protobufDecoder.js'
+import { encodeField } from '../../services/api/cursor/protobufEncoder.js'
+import { FIELD, WIRE_TYPE } from '../../services/api/cursor/protobufSchema.js'
 
 type EnvKey =
   | 'CLAUDE_CODE_USE_OPENAI'
@@ -153,6 +156,78 @@ describe('sideQuery ChatGPT auth', () => {
     )
   })
 
+  test('Gemini side queries preserve forced schema tools', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body ?? '{}')) as Record<
+        string,
+        unknown
+      >
+      return Promise.resolve(
+        Response.json({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'select_relevant_memories',
+                      args: { selected_memories: ['project.md'] },
+                    },
+                  },
+                ],
+              },
+              finishReason: 'STOP',
+            },
+          ],
+        }),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'gemini-test-model',
+      messages: [{ role: 'user', content: 'Pick a memory' }],
+      tools: [
+        {
+          type: 'custom',
+          name: 'select_relevant_memories',
+          description: 'Select memories',
+          input_schema: {
+            type: 'object',
+            properties: {
+              selected_memories: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+            required: ['selected_memories'],
+          },
+        },
+      ] as any,
+      tool_choice: { type: 'tool', name: 'select_relevant_memories' },
+      querySource: 'memdir_relevance',
+      providerRuntimeConfig: {
+        provider: 'gemini',
+        env: {
+          GEMINI_API_KEY: 'gemini-key',
+          GEMINI_MODEL: 'gemini-test-model',
+        },
+      },
+    })
+
+    expect(capturedBody?.toolConfig).toEqual({
+      functionCallingConfig: {
+        mode: 'ANY',
+        allowedFunctionNames: ['select_relevant_memories'],
+      },
+    })
+    expect(result.content[0]).toMatchObject({
+      type: 'tool_use',
+      name: 'select_relevant_memories',
+      input: { selected_memories: ['project.md'] },
+    })
+  })
+
   test('uses ChatGPT Responses backend and returns tool_use content', async () => {
     let capturedUrl = ''
     let capturedAuth = ''
@@ -251,5 +326,288 @@ describe('sideQuery ChatGPT auth', () => {
       shouldBlock: false,
       reason: 'prints a constant',
     })
+  })
+
+  test('retries a retryable Responses stream error before semantic output', async () => {
+    const toSSE = (events: Record<string, unknown>[]) =>
+      events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('')
+    const failed = toSSE([
+      { type: 'response.created', response: { status: 'in_progress' } },
+      {
+        type: 'response.failed',
+        response: {
+          status: 'failed',
+          error: { code: 'server_error', message: 'backend overloaded' },
+        },
+      },
+    ])
+    const recovered = toSSE([
+      { type: 'response.created', response: { status: 'in_progress' } },
+      { type: 'response.output_text.delta', delta: 'recovered' },
+      {
+        type: 'response.completed',
+        response: { status: 'completed', usage: {} },
+      },
+    ])
+    let callCount = 0
+    globalThis.fetch = mock(() => {
+      callCount++
+      return Promise.resolve(
+        new Response(callCount === 1 ? failed : recovered, { status: 200 }),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'hello' }],
+      maxRetries: 1,
+      querySource: 'model_validation',
+    })
+
+    expect(callCount).toBe(2)
+    const textBlock = result.content.find(block => block.type === 'text')
+    expect(textBlock).toMatchObject({ type: 'text', text: 'recovered' })
+  })
+})
+
+describe('sideQuery OpenAI-compatible thinking control', () => {
+  let originalFetch: typeof globalThis.fetch
+  let capturedBody: Record<string, unknown> | undefined
+
+  const CHAT_COMPLETION_RESPONSE = {
+    id: 'chatcmpl-1',
+    choices: [
+      {
+        message: {
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'classify_yolo_action',
+                arguments: '{"shouldBlock":false}',
+              },
+            },
+          ],
+        },
+        finish_reason: 'tool_calls',
+      },
+    ],
+    usage: { prompt_tokens: 10, completion_tokens: 5 },
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch
+    capturedBody = undefined
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body ?? '{}')) as Record<
+        string,
+        unknown
+      >
+      return Promise.resolve(Response.json(CHAT_COMPLETION_RESPONSE))
+    }) as unknown as typeof globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const CLASSIFIER_TOOL = {
+    type: 'custom',
+    name: 'classify_yolo_action',
+    description: 'Classify action safety',
+    input_schema: {
+      type: 'object',
+      properties: { shouldBlock: { type: 'boolean' } },
+      required: ['shouldBlock'],
+    },
+  }
+
+  const runtimeFor = (model: string) => ({
+    provider: 'openai' as const,
+    env: {
+      OPENAI_API_KEY: 'test-key',
+      OPENAI_BASE_URL: 'https://api.example.test/v1',
+      OPENAI_MODEL: model,
+    },
+  })
+
+  const classifierQuery = (model: string, thinking?: false) =>
+    sideQuery({
+      model,
+      system: 'classify the action',
+      messages: [{ role: 'user', content: 'Bash ls -la' }],
+      tools: [CLASSIFIER_TOOL] as any,
+      tool_choice: { type: 'tool', name: 'classify_yolo_action' },
+      ...(thinking === false && { thinking }),
+      querySource: 'auto_mode',
+      providerRuntimeConfig: runtimeFor(model),
+    })
+
+  test('thinking:false sends all three disable formats for DeepSeek models', async () => {
+    // DeepSeek v4 endpoints default to thinking mode server-side, and
+    // thinking mode rejects forced tool_choice with a 400 — the explicit
+    // disable keeps the auto-mode classifier's named tool_choice working.
+    await classifierQuery('deepseek-v4-flash', false)
+
+    expect(capturedBody?.thinking).toEqual({ type: 'disabled' })
+    expect(capturedBody?.enable_thinking).toBe(false)
+    expect(capturedBody?.chat_template_kwargs).toEqual({
+      thinking: false,
+      enable_thinking: false,
+    })
+    // The forced tool_choice must be preserved
+    expect(capturedBody?.tool_choice).toEqual({
+      type: 'function',
+      function: { name: 'classify_yolo_action' },
+    })
+  })
+
+  test('thinking:false sends no thinking fields for non-thinking-family models', async () => {
+    await classifierQuery('gpt-4o-mini', false)
+
+    expect(capturedBody).toBeDefined()
+    expect(Object.keys(capturedBody!)).not.toContain('thinking')
+    expect(Object.keys(capturedBody!)).not.toContain('enable_thinking')
+    expect(Object.keys(capturedBody!)).not.toContain('chat_template_kwargs')
+  })
+
+  test('omitted thinking sends no thinking fields even for DeepSeek models', async () => {
+    await classifierQuery('deepseek-v4-flash')
+
+    expect(capturedBody).toBeDefined()
+    expect(Object.keys(capturedBody!)).not.toContain('thinking')
+    expect(Object.keys(capturedBody!)).not.toContain('enable_thinking')
+    expect(Object.keys(capturedBody!)).not.toContain('chat_template_kwargs')
+  })
+})
+
+describe('sideQuery Cursor routing', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  function cursorTextResponse(text: string): ArrayBuffer {
+    const responseInner = encodeField(
+      FIELD.ChatResponse.TEXT,
+      WIRE_TYPE.LEN,
+      text,
+    )
+    const payload = encodeField(
+      FIELD.Response.RESPONSE,
+      WIRE_TYPE.LEN,
+      responseInner,
+    )
+    const header = Buffer.alloc(5)
+    header.writeUInt32BE(payload.length, 1)
+    const body = Buffer.concat([header, Buffer.from(payload)])
+    return body.buffer.slice(
+      body.byteOffset,
+      body.byteOffset + body.byteLength,
+    ) as ArrayBuffer
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  test('uses the Cursor ConnectRPC path and thinking:false overrides env effort', async () => {
+    const responseBody = cursorTextResponse('hello from cursor')
+    let capturedUrl = ''
+    let capturedThinkingLevel: number | undefined
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      capturedUrl = typeof input === 'string' ? input : input.toString()
+      const requestFrame = Buffer.from(init?.body as Uint8Array)
+      const top = decodeMessage(requestFrame.subarray(5))
+      const request = top.get(FIELD.Request.REQUEST)?.[0]?.value as Uint8Array
+      const chat = decodeMessage(request)
+      capturedThinkingLevel = chat.get(FIELD.Chat.THINKING_LEVEL)?.[0]?.value as
+        | number
+        | undefined
+      return Promise.resolve(new Response(responseBody))
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'claude-sonnet-4-5-20250929',
+      messages: [{ role: 'user', content: 'Hi' }],
+      querySource: 'memdir_relevance',
+      thinking: false,
+      providerRuntimeConfig: {
+        provider: 'cursor',
+        thinkingEffort: 'high',
+        env: {
+          CURSOR_API_KEY: 'cursor-token',
+          CURSOR_MACHINE_ID: 'cursor-machine',
+          CURSOR_BASE_URL: 'https://cursor.example.test',
+          CURSOR_HTTP2: '0',
+          CURSOR_REASONING_EFFORT: 'high',
+        },
+      },
+    })
+
+    expect(capturedUrl).toBe(
+      'https://cursor.example.test/aiserver.v1.ChatService/StreamUnifiedChatWithTools',
+    )
+    expect(capturedThinkingLevel).toBe(0)
+    expect(result.model).toBe('claude-4.5-sonnet')
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: 'hello from cursor',
+    })
+  })
+
+  test('synthesizes a forced tool_use from one strict JSON text object', async () => {
+    const responseBody = cursorTextResponse(
+      '{"riskLevel":"high","explanation":"Deletes files"}',
+    )
+    globalThis.fetch = mock(() =>
+      Promise.resolve(new Response(responseBody)),
+    ) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'claude-sonnet-4-5-20250929',
+      messages: [{ role: 'user', content: 'Explain this command' }],
+      tools: [
+        {
+          type: 'custom',
+          name: 'explain_command',
+          description: 'Explain a command',
+          input_schema: {
+            type: 'object',
+            properties: {
+              riskLevel: { type: 'string' },
+              explanation: { type: 'string' },
+            },
+            required: ['riskLevel', 'explanation'],
+          },
+        },
+      ] as any,
+      tool_choice: { type: 'tool', name: 'explain_command' },
+      querySource: 'permission_explainer',
+      providerRuntimeConfig: {
+        provider: 'cursor',
+        env: {
+          CURSOR_API_KEY: 'cursor-token',
+          CURSOR_MACHINE_ID: 'cursor-machine',
+          CURSOR_BASE_URL: 'https://cursor.example.test',
+          CURSOR_HTTP2: '0',
+        },
+      },
+    })
+
+    expect(result.stop_reason).toBe('tool_use')
+    expect(result.content).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_use',
+        name: 'explain_command',
+        input: {
+          riskLevel: 'high',
+          explanation: 'Deletes files',
+        },
+      }),
+    )
   })
 })

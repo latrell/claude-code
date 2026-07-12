@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getProxyFetchOptions, isKeepAliveDisabled } from 'src/utils/proxy.js'
 
 /**
  * Environment variables:
@@ -11,6 +11,8 @@ import { getProxyFetchOptions } from 'src/utils/proxy.js'
 const DEFAULT_BASE_URL = 'https://api.x.ai/v1'
 
 let cachedClient: OpenAI | null = null
+let cachedClientKeepAliveDisabled = false
+let cachedClientMaxRetries = 0
 
 export function getGrokClient(options?: {
   maxRetries?: number
@@ -18,7 +20,17 @@ export function getGrokClient(options?: {
   source?: string
   envOverride?: Record<string, string | undefined>
 }): OpenAI {
-  if (!options?.envOverride && cachedClient) return cachedClient
+  const keepAliveDisabled = isKeepAliveDisabled()
+  const maxRetries = options?.maxRetries ?? 0
+  if (
+    !options?.fetchOverride &&
+    !options?.envOverride &&
+    cachedClient &&
+    cachedClientKeepAliveDisabled === keepAliveDisabled &&
+    cachedClientMaxRetries === maxRetries
+  ) {
+    return cachedClient
+  }
 
   const env = options?.envOverride ?? process.env
   const apiKey = env.GROK_API_KEY || env.XAI_API_KEY || ''
@@ -27,7 +39,7 @@ export function getGrokClient(options?: {
   const client = new OpenAI({
     apiKey,
     baseURL,
-    maxRetries: options?.maxRetries ?? 0,
+    maxRetries,
     timeout: parseInt(env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
@@ -36,6 +48,8 @@ export function getGrokClient(options?: {
 
   if (!options?.fetchOverride && !options?.envOverride) {
     cachedClient = client
+    cachedClientKeepAliveDisabled = keepAliveDisabled
+    cachedClientMaxRetries = maxRetries
   }
 
   return client
@@ -43,4 +57,6 @@ export function getGrokClient(options?: {
 
 export function clearGrokClientCache(): void {
   cachedClient = null
+  cachedClientKeepAliveDisabled = isKeepAliveDisabled()
+  cachedClientMaxRetries = 0
 }

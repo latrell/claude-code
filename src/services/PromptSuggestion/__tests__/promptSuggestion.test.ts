@@ -39,8 +39,15 @@ describe('countSuggestionWords', () => {
     expect(countSuggestionWords('运行 bun test')).toBe(3)
   })
 
+  test('counts whitespace-delimited words in non-Latin scripts', () => {
+    expect(countSuggestionWords('запусти все тесты')).toBe(3)
+    expect(countSuggestionWords('شغّل كل الاختبارات')).toBe(3)
+    expect(countSuggestionWords('הרץ את הבדיקות')).toBe(3)
+  })
+
   test('ignores punctuation-only segments', () => {
     expect(countSuggestionWords('yes')).toBe(1)
+    expect(countSuggestionWords('... — !!!')).toBe(0)
     expect(countSuggestionWords('')).toBe(0)
     expect(countSuggestionWords('   ')).toBe(0)
   })
@@ -49,6 +56,16 @@ describe('countSuggestionWords', () => {
 describe('shouldFilterSuggestion', () => {
   test('keeps multi-word English suggestions', () => {
     expect(shouldFilterSuggestion('run the tests', 'user_intent')).toBe(false)
+  })
+
+  test('keeps multi-word suggestions in non-Latin scripts', () => {
+    expect(shouldFilterSuggestion('запусти все тесты', 'user_intent')).toBe(
+      false,
+    )
+    expect(shouldFilterSuggestion('شغّل كل الاختبارات', 'user_intent')).toBe(
+      false,
+    )
+    expect(shouldFilterSuggestion('הרץ את הבדיקות', 'user_intent')).toBe(false)
   })
 
   test('keeps short Chinese action suggestions (CJK fix)', () => {

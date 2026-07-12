@@ -3,6 +3,10 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  isRetryableCompatError,
+  startStreamEagerly,
+} from '../../compatRetry.js'
+import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createChatGPTResponsesStream,
@@ -121,9 +125,177 @@ describe('createChatGPTResponsesStream', () => {
       expect(bunTimeout).toBe(false)
     }
   })
+
+  test('preserves HTTP status so transient responses are retryable', async () => {
+    for (const status of [408, 409, 429, 500, 503]) {
+      const fetchOverride = (async () =>
+        new Response('temporarily unavailable', {
+          status,
+        })) as unknown as typeof fetch
+
+      try {
+        await createChatGPTResponsesStream({
+          request: buildResponsesRequest({
+            model: 'gpt-5.5',
+            messages: [{ role: 'user', content: 'hello' }],
+            tools: [],
+            toolChoice: undefined,
+          }),
+          signal: new AbortController().signal,
+          fetchOverride,
+        })
+        expect(true).toBe(false)
+      } catch (error) {
+        expect((error as { status?: number }).status).toBe(status)
+        expect(isRetryableCompatError(error)).toBe(true)
+      }
+    }
+  })
+
+  test('preserves non-retryable HTTP status', async () => {
+    const fetchOverride = (async () =>
+      new Response('invalid request', {
+        status: 400,
+      })) as unknown as typeof fetch
+
+    try {
+      await createChatGPTResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'hello' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      })
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as { status?: number }).status).toBe(400)
+      expect(isRetryableCompatError(error)).toBe(false)
+    }
+  })
 })
 
 describe('adaptResponsesStreamToAnthropic', () => {
+  test('does not emit message_start for transport-only lifecycle events', async () => {
+    const rawStream = (async function* () {
+      yield { type: 'response.created', response: { status: 'in_progress' } }
+      yield {
+        type: 'response.in_progress',
+        response: { status: 'in_progress' },
+      }
+      throw new TypeError('terminated')
+    })()
+
+    try {
+      await startStreamEagerly(
+        adaptResponsesStreamToAnthropic(rawStream, 'gpt-5.5'),
+      )
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as Error).message).toBe('terminated')
+    }
+  })
+
+  test('preserves retryable stream error codes across all Responses event shapes', async () => {
+    const cases = [
+      {
+        event: {
+          type: 'response.failed',
+          response: {
+            error: { code: 'server_error', message: 'backend overloaded' },
+          },
+        },
+        code: 'server_error',
+      },
+      {
+        event: {
+          type: 'response.error',
+          error: {
+            code: 'rate_limit_exceeded',
+            message: 'slow down',
+            status: 429,
+          },
+        },
+        code: 'rate_limit_exceeded',
+        status: 429,
+      },
+      {
+        event: {
+          type: 'error',
+          code: 'vector_store_timeout',
+          message: 'vector store timed out',
+        },
+        code: 'vector_store_timeout',
+      },
+    ]
+
+    for (const testCase of cases) {
+      const rawStream = (async function* () {
+        yield { type: 'response.created', response: { status: 'in_progress' } }
+        yield testCase.event
+      })()
+
+      try {
+        await startStreamEagerly(
+          adaptResponsesStreamToAnthropic(rawStream, 'gpt-5.5'),
+        )
+        expect(true).toBe(false)
+      } catch (error) {
+        expect((error as { code?: string }).code).toBe(testCase.code)
+        expect((error as { status?: number }).status).toBe(testCase.status)
+        expect(isRetryableCompatError(error)).toBe(true)
+      }
+    }
+  })
+
+  test('standard invalid stream errors remain non-retryable', async () => {
+    const rawStream = (async function* () {
+      yield { type: 'response.created', response: { status: 'in_progress' } }
+      yield {
+        type: 'error',
+        code: 'invalid_prompt',
+        message: 'prompt is invalid',
+      }
+    })()
+
+    try {
+      await startStreamEagerly(
+        adaptResponsesStreamToAnthropic(rawStream, 'gpt-5.5'),
+      )
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as Error).message).toBe('prompt is invalid')
+      expect((error as { code?: string }).code).toBe('invalid_prompt')
+      expect(isRetryableCompatError(error)).toBe(false)
+    }
+  })
+
+  test('emits a legal message for an empty completed response', async () => {
+    const rawStream = (async function* () {
+      yield { type: 'response.created', response: { status: 'in_progress' } }
+      yield {
+        type: 'response.completed',
+        response: { status: 'completed' },
+      }
+    })()
+    const output = []
+
+    for await (const event of adaptResponsesStreamToAnthropic(
+      rawStream,
+      'gpt-5.5',
+    )) {
+      output.push(event)
+    }
+
+    expect(output.map(event => event.type)).toEqual([
+      'message_start',
+      'message_delta',
+      'message_stop',
+    ])
+  })
+
   test('emits text from completed message output items when text deltas are absent', async () => {
     const events = [
       {

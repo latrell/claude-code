@@ -2,27 +2,24 @@ import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { getSonnetModelAndRuntime } from '../utils/model/sonnetProvider.js'
+import { getAPIProvider } from '../utils/model/providers.js'
 import { sideQuery } from '../utils/sideQuery.js'
 import type { LangfuseSpan } from '../services/langfuse/index.js'
-import { jsonParse } from '../utils/slowOperations.js'
 import {
   formatMemoryManifest,
   type MemoryHeader,
   scanMemoryFiles,
 } from './memoryScan.js'
+import {
+  getMemorySelectionRequestConfig,
+  selectedMemoriesFromJsonTextResult,
+  selectedMemoriesFromToolResult,
+} from './memorySelection.js'
 
 export type RelevantMemory = {
   path: string
   mtimeMs: number
 }
-
-const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be useful to Claude Code as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
-
-Return a list of filenames for the memories that will clearly be useful to Claude Code as it processes the user's query (up to 5). Only include memories that you are certain will be helpful based on their name and description.
-- If you are unsure if a memory will be useful in processing the user's query, then do not include it in your list. Be selective and discerning.
-- If there are no memories in the list that would clearly be useful, feel free to return an empty list.
-- If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools (Claude Code is already exercising them). DO still select memories containing warnings, gotchas, or known issues about those tools — active use is exactly when those matter.
-`
 
 /**
  * Find memory files relevant to a query by scanning memory file headers
@@ -103,10 +100,12 @@ async function selectRelevantMemories(
     // when configured; unconfigured = main provider's default Sonnet model
     // with no runtime override (current behaviour).
     const sonnet = getSonnetModelAndRuntime()
+    const provider = sonnet.runtime?.provider ?? getAPIProvider()
+    const requestConfig = getMemorySelectionRequestConfig(provider)
     const result = await sideQuery({
       model: sonnet.model,
       ...(sonnet.runtime && { providerRuntimeConfig: sonnet.runtime }),
-      system: SELECT_MEMORIES_SYSTEM_PROMPT,
+      ...requestConfig.sideQueryFields,
       skipSystemPromptPrefix: true,
       messages: [
         {
@@ -115,30 +114,15 @@ async function selectRelevantMemories(
         },
       ],
       max_tokens: 256,
-      output_format: {
-        type: 'json_schema',
-        schema: {
-          type: 'object',
-          properties: {
-            selected_memories: { type: 'array', items: { type: 'string' } },
-          },
-          required: ['selected_memories'],
-          additionalProperties: false,
-        },
-      },
       signal,
       querySource: 'memdir_relevance',
       optional: true,
       parentSpan,
     })
 
-    const textBlock = result.content.find(block => block.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') {
-      return []
-    }
-
-    const parsed: { selected_memories: string[] } = jsonParse(textBlock.text)
-    return parsed.selected_memories.filter(f => validFilenames.has(f))
+    return requestConfig.responseFormat === 'json_text'
+      ? selectedMemoriesFromJsonTextResult(result.content, validFilenames)
+      : selectedMemoriesFromToolResult(result.content, validFilenames)
   } catch (e) {
     if (signal.aborted) {
       return []

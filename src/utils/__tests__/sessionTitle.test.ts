@@ -21,9 +21,39 @@ mock.module('bun:bundle', () => ({
 import type { Message } from '../../types/message'
 import {
   buildSessionTitleSystemPrompt,
+  createSessionTitleRequestGuard,
   extractConversationText,
   fallbackSessionTitle,
 } from '../sessionTitle'
+
+describe('createSessionTitleRequestGuard', () => {
+  test('invalidates and aborts a pending request on session reset', () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('old-session')
+
+    guard.invalidate()
+
+    expect(request.signal.aborted).toBe(true)
+    expect(guard.isCurrent(request, 'old-session')).toBe(false)
+  })
+
+  test('rejects late callbacks after switching sessions', () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('old-session')
+
+    expect(guard.isCurrent(request, 'new-session')).toBe(false)
+  })
+
+  test('only treats the latest request generation as current', () => {
+    const guard = createSessionTitleRequestGuard()
+    const first = guard.begin('session')
+    const second = guard.begin('session')
+
+    expect(first.signal.aborted).toBe(true)
+    expect(guard.isCurrent(first, 'session')).toBe(false)
+    expect(guard.isCurrent(second, 'session')).toBe(true)
+  })
+})
 
 describe('buildSessionTitleSystemPrompt', () => {
   test('keeps the base prompt instructions', () => {

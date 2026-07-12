@@ -497,12 +497,19 @@ const zh: Record<string, string> = {
     '自动更新由环境变量控制，无法在此处更改。',
   'Auto-updates are disabled in development builds.':
     '自动更新在开发版本中已禁用。',
+  'Auto-updates are disabled by default.': '自动更新默认已禁用。',
+  'Set DISABLE_AUTOUPDATER=0 to re-enable auto-updates.':
+    '设置 DISABLE_AUTOUPDATER=0 以重新启用自动更新。',
+  'Set DISABLE_AUTOUPDATER=0 or ENABLE_AUTOUPDATER=1 to re-enable auto-updates.':
+    '设置 DISABLE_AUTOUPDATER=0 或 ENABLE_AUTOUPDATER=1 以重新启用自动更新。',
   'Unset {envVar} to re-enable auto-updates.':
     '取消设置 {envVar} 以重新启用自动更新。',
   'Enable with latest channel': '启用最新版通道',
   'Enable with stable channel': '启用稳定版通道',
   // auto-update disabled reason strings
   'development build': '开发版本',
+  'default, set DISABLE_AUTOUPDATER=0 or ENABLE_AUTOUPDATER=1 to enable':
+    '默认禁用；设置 DISABLE_AUTOUPDATER=0 或 ENABLE_AUTOUPDATER=1 可启用',
   '{envVar} set': '{envVar} 已设置',
   config: '配置',
   'No settings match "{query}"': '未找到匹配 "{query}" 的设置',

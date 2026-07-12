@@ -70,14 +70,57 @@ function getErrorName(error: unknown): string | undefined {
     : getStringField(getErrorRecord(error), 'name')
 }
 
-function getErrorCode(error: unknown): string | undefined {
-  const record = getErrorRecord(error)
-  const cause = getErrorRecord(record?.cause)
-  return (
-    getStringField(record, 'code') ??
-    getStringField(cause, 'code') ??
-    getStringField(cause, 'errno')
-  )
+const MAX_ERROR_CAUSE_DEPTH = 8
+
+const STALE_CONNECTION_CODES = new Set([
+  'connectionclosed',
+  'econnreset',
+  'epipe',
+  'und_err_socket',
+])
+
+const REACHABILITY_CONNECTION_CODES = new Set([
+  'connectionrefused',
+  'failedtoopensocket',
+  'etimedout',
+  'econnrefused',
+  'enetunreach',
+  'enotfound',
+  'eai_again',
+  'und_err_connect_timeout',
+  'und_err_headers_timeout',
+  'und_err_body_timeout',
+])
+
+const RETRYABLE_NETWORK_CODES = new Set([
+  ...STALE_CONNECTION_CODES,
+  ...REACHABILITY_CONNECTION_CODES,
+])
+
+const RETRYABLE_PROVIDER_ERROR_CODES = new Set([
+  'server_error',
+  'rate_limit_exceeded',
+  'vector_store_timeout',
+])
+
+function getErrorCodes(error: unknown): string[] {
+  const seen = new Set<object>()
+  const codes: string[] = []
+  let current = getErrorRecord(error)
+
+  for (let depth = 0; current && depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
+    if (seen.has(current)) break
+    seen.add(current)
+
+    const code = getStringField(current, 'code')
+    const errno = getStringField(current, 'errno')
+    if (code !== undefined) codes.push(code.toLowerCase())
+    if (errno !== undefined && errno !== code) codes.push(errno.toLowerCase())
+
+    current = getErrorRecord(current.cause)
+  }
+
+  return codes
 }
 
 function getErrorStatus(error: unknown): number | undefined {
@@ -94,13 +137,14 @@ function getErrorCauseMessage(error: unknown): string | undefined {
 }
 
 /**
- * Network/socket interruptions where retrying should also stop reusing pooled
- * keep-alive sockets. Deliberately excludes pure HTTP 429/5xx responses.
+ * Stale pooled-socket failures where retrying should also stop reusing
+ * keep-alive connections. Reachability failures such as DNS lookup errors,
+ * connection refusal, and timeouts remain retryable but must not permanently
+ * change the process-wide connection policy.
  */
 export function isCompatConnectionInterruptionError(error: unknown): boolean {
   if (error instanceof Error && error.name === 'AbortError') return false
 
-  const record = getErrorRecord(error)
   const name = getErrorName(error)
   const ctorName = getConstructorName(error)
   if (name === 'APIUserAbortError' || ctorName === 'APIUserAbortError') {
@@ -108,30 +152,9 @@ export function isCompatConnectionInterruptionError(error: unknown): boolean {
   }
   if (getErrorStatus(error) !== undefined) return false
 
-  if (
-    ctorName === 'APIConnectionError' ||
-    ctorName === 'APIConnectionTimeoutError' ||
-    name === 'APIConnectionError' ||
-    name === 'APIConnectionTimeoutError'
-  ) {
-    return true
-  }
-
-  const code = getErrorCode(error)?.toLowerCase()
-  if (
-    code === 'connectionclosed' ||
-    code === 'connectionrefused' ||
-    code === 'failedtoopensocket' ||
-    code === 'econnreset' ||
-    code === 'epipe' ||
-    code === 'etimedout' ||
-    code === 'econnrefused' ||
-    code === 'enetunreach' ||
-    code === 'enotfound' ||
-    code === 'und_err_socket'
-  ) {
-    return true
-  }
+  const codes = getErrorCodes(error)
+  if (codes.some(code => STALE_CONNECTION_CODES.has(code))) return true
+  if (codes.some(code => REACHABILITY_CONNECTION_CODES.has(code))) return false
 
   const msg =
     `${getErrorMessage(error)} ${getErrorCauseMessage(error) ?? ''}`.toLowerCase()
@@ -141,22 +164,15 @@ export function isCompatConnectionInterruptionError(error: unknown): boolean {
     msg.includes('socket connection was closed') ||
     msg.includes('econnreset') ||
     msg.includes('epipe') ||
-    msg.includes('econnrefused') ||
-    msg.includes('enetunreach') ||
-    msg.includes('etimedout') ||
-    msg.includes('enotfound') ||
     msg.includes('und_err_socket') ||
     msg.includes('connectionclosed') ||
-    msg.includes('connectionrefused') ||
-    msg.includes('failedtoopensocket')
+    msg.includes('connection reset by peer') ||
+    msg.includes('broken pipe')
   ) {
     return true
   }
 
-  return (
-    typeof record?.message === 'string' &&
-    record.message.toLowerCase().includes('connection error')
-  )
+  return false
 }
 
 /**
@@ -181,7 +197,31 @@ export function isCompatConnectionInterruptionError(error: unknown): boolean {
  */
 export function isRetryableCompatError(error: unknown): boolean {
   // --- Abort signals ---
-  if (error instanceof Error && error.name === 'AbortError') return false
+  const errorName = getErrorName(error)
+  const ctorName = getConstructorName(error)
+  if (
+    errorName === 'AbortError' ||
+    errorName === 'APIUserAbortError' ||
+    ctorName === 'APIUserAbortError'
+  ) {
+    return false
+  }
+
+  // An explicit HTTP client-error status is authoritative. In particular,
+  // a nested ECONNRESET or a provider-style `server_error` code must not
+  // turn a rejected request (400/401/403/etc.) into a retryable operation.
+  const status = getErrorStatus(error)
+  if (status === 408 || status === 409 || status === 429) return true
+  if (status !== undefined && status >= 500 && status < 600) return true
+  if (status !== undefined && status >= 400 && status < 500) return false
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    explicitlyRetryableCompatErrors.has(error)
+  ) {
+    return true
+  }
 
   // --- OpenAI SDK error hierarchy ---
   // 使用运行时 duck-type 检测，避免对 openai 包的硬依赖（此模块也会被
@@ -190,8 +230,6 @@ export function isRetryableCompatError(error: unknown): boolean {
   if (err && typeof err === 'object') {
     // APIConnectionError extends APIError<undefined, undefined, undefined>
     // → status === undefined 且 "APIConnectionError" in name/constructor
-    const ctorName =
-      (err.constructor as { name?: string } | undefined)?.name ?? ''
     if (
       ctorName === 'APIConnectionError' ||
       ctorName === 'APIConnectionTimeoutError' ||
@@ -207,23 +245,13 @@ export function isRetryableCompatError(error: unknown): boolean {
     // InternalServerError extends APIError<number>
     if (ctorName === 'InternalServerError') return true
 
-    // Generic APIError: check status
-    if ('status' in err) {
-      const status = err.status as number | undefined
-      if (status === 429) return true
-      if (status !== undefined && status >= 500 && status < 600) return true
-      if (status === 408 || status === 409) return true
-    }
-
-    // APIUserAbortError: never retry
-    if (ctorName === 'APIUserAbortError') return false
-
-    // Bun fetch socket errors carry a `code` property (not a Node errno).
-    const bunCode = err.code
+    const errorCodes = getErrorCodes(error)
     if (
-      bunCode === 'ConnectionClosed' ||
-      bunCode === 'ConnectionRefused' ||
-      bunCode === 'FailedToOpenSocket'
+      errorCodes.some(
+        code =>
+          RETRYABLE_NETWORK_CODES.has(code) ||
+          RETRYABLE_PROVIDER_ERROR_CODES.has(code),
+      )
     ) {
       return true
     }
@@ -309,6 +337,14 @@ function createRetryProgressMessage(
 // 在错误对象上挂属性，避免改写（可能被冻结的）第三方错误实例。
 const exhaustedRetryErrors = new WeakSet<object>()
 
+const explicitlyRetryableCompatErrors = new WeakSet<object>()
+
+export function createRetryableCompatError(message: string): Error {
+  const error = new Error(message)
+  explicitlyRetryableCompatErrors.add(error)
+  return error
+}
+
 /**
  * 判断错误是否由 withCompatRetry 重试耗尽后抛出。
  *
@@ -357,7 +393,13 @@ export async function* prependFirstEvent<T>(
 export async function startStreamEagerly<T>(
   stream: AsyncGenerator<T, void>,
 ): Promise<AsyncGenerator<T, void>> {
-  return prependFirstEvent(await stream.next(), stream)
+  const first = await stream.next()
+  if (first.done) {
+    throw createRetryableCompatError(
+      'Stream ended before receiving any semantic events',
+    )
+  }
+  return prependFirstEvent(first, stream)
 }
 
 /**
