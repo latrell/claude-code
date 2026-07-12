@@ -38,7 +38,7 @@ import {
   normalizeContentFromAPI,
 } from '../../../utils/messages.js'
 import { resolveCursorCredentials } from './auth.js'
-import { streamCursorChat } from './client.js'
+import { resolveReasoningEffort, streamCursorChat } from './client.js'
 import {
   convertOpenAIMessagesToCursor,
   type OpenAIMessage,
@@ -98,7 +98,13 @@ export async function* queryModelCursor(
       openaiMessages as unknown as OpenAIMessage[],
     )
     const cursorTools = openaiTools as unknown as CursorTool[]
-    const reasoningEffort = resolveReasoningEffort(providerEnv)
+    // options.effortValue carries the query-level merge (appState /effort ??
+    // connection profile thinkingEffort) from query.ts; the env override and
+    // clamping live in resolveReasoningEffort.
+    const reasoningEffort = resolveReasoningEffort(
+      providerEnv,
+      options.effortValue,
+    )
 
     if (cursorMessages.length === 0) {
       throw new Error(t('No messages to send to Cursor after conversion.'))
@@ -249,12 +255,4 @@ export async function* queryModelCursor(
         : new Error(String(error))) as unknown as SDKAssistantMessageError,
     })
   }
-}
-
-function resolveReasoningEffort(
-  env: Record<string, string | undefined>,
-): string | null {
-  const raw = env.CURSOR_REASONING_EFFORT?.trim().toLowerCase()
-  if (raw === 'medium' || raw === 'high') return raw
-  return null
 }

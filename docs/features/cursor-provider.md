@@ -124,7 +124,7 @@ Cursor 已接入连接注册表（`~/.claude/ccb-connections.json`），可像�
 | `CURSOR_MODEL` | 强制所有请求使用的 Cursor 模型名 | — |
 | `CURSOR_MODEL_MAP` | 按 family 覆盖映射的 JSON，如 `{"opus":"claude-4-opus"}` | — |
 | `CURSOR_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` | 按 family 覆盖默认模型 | — |
-| `CURSOR_REASONING_EFFORT` | `medium` / `high`，映射为 Cursor thinking level | — |
+| `CURSOR_REASONING_EFFORT` | `medium` / `high`，显式覆盖 thinking level；未设时回落查询 effort（/effort、`--effort`、连接档案思考强度：medium→MEDIUM，high/xhigh/max→HIGH，low 不发） | 跟随查询 effort |
 | `CURSOR_GHOST_MODE` | `0`/`false` 关闭 ghost mode（默认开启，不留存对话） | `true` |
 | `CURSOR_COMPRESS_REQUESTS` | `1`/`0` 覆盖请求体 gzip 策略（默认 ≥3 条消息时压缩） | 自动 |
 | `CURSOR_HTTP2` | `0`/`false` 关闭对聊天请求强制 HTTP/2（见「传输」） | 自动开启（Bun） |

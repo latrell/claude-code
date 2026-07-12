@@ -20,6 +20,7 @@ import {
 import { getUndiciTimeoutOptions } from 'src/utils/fetchTimeouts.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import type { EffortValue } from '../../../utils/effort.js'
 import type {
   CursorApiCredentials,
   CursorMessage,
@@ -45,6 +46,36 @@ export function getCursorChatUrl(
   const baseUrl = (env.CURSOR_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '')
   const chatPath = env.CURSOR_CHAT_PATH || DEFAULT_CHAT_PATH
   return `${baseUrl}${chatPath}`
+}
+
+/**
+ * Reasoning effort sent as the protobuf THINKING_LEVEL (field 49).
+ * Explicit CURSOR_REASONING_EFFORT wins, then the query's effort value
+ * (user /effort, CLI --effort, or the connection profile's pinned
+ * thinkingEffort merged in query.ts) — mirroring how the other 3P compat
+ * layers consume options.effortValue. Cursor only has MEDIUM/HIGH levels:
+ * max/xhigh clamp to high, numeric (ant-only) follows the openai layer and
+ * maps to high, low maps to null (UNSPECIFIED, the backend default —
+ * Cursor has no LOW level). Note effort-suffixed model ids
+ * (claude-sonnet-5-thinking-high, gpt-5.5-medium…) encode their own effort;
+ * this field mainly affects unsuffixed models such as Auto/default.
+ */
+export function resolveReasoningEffort(
+  env: Record<string, string | undefined>,
+  effortValue?: EffortValue,
+): string | null {
+  const raw = env.CURSOR_REASONING_EFFORT?.trim().toLowerCase()
+  if (raw === 'medium' || raw === 'high') return raw
+  if (effortValue === 'medium') return 'medium'
+  if (
+    effortValue === 'high' ||
+    effortValue === 'xhigh' ||
+    effortValue === 'max' ||
+    typeof effortValue === 'number'
+  ) {
+    return 'high'
+  }
+  return null
 }
 
 /**

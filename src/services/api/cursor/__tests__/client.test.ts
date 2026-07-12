@@ -7,8 +7,58 @@ import {
   cursorTransportOptions,
   getCursorChatUrl,
   getNodeH2Dispatcher,
+  resolveReasoningEffort,
   streamCursorChat,
 } from '../client.js'
+
+describe('resolveReasoningEffort', () => {
+  test('returns null when neither env nor effort value is set', () => {
+    expect(resolveReasoningEffort({})).toBeNull()
+    expect(resolveReasoningEffort({}, undefined)).toBeNull()
+  })
+
+  test('explicit CURSOR_REASONING_EFFORT wins over the effort value', () => {
+    expect(
+      resolveReasoningEffort({ CURSOR_REASONING_EFFORT: 'medium' }, 'max'),
+    ).toBe('medium')
+    expect(
+      resolveReasoningEffort({ CURSOR_REASONING_EFFORT: 'high' }, 'medium'),
+    ).toBe('high')
+  })
+
+  test('env override is trimmed and case-insensitive', () => {
+    expect(resolveReasoningEffort({ CURSOR_REASONING_EFFORT: ' HIGH ' })).toBe(
+      'high',
+    )
+  })
+
+  test('invalid env values fall through to the effort value', () => {
+    expect(
+      resolveReasoningEffort({ CURSOR_REASONING_EFFORT: 'low' }, 'medium'),
+    ).toBe('medium')
+    expect(
+      resolveReasoningEffort({ CURSOR_REASONING_EFFORT: 'banana' }, 'high'),
+    ).toBe('high')
+    expect(
+      resolveReasoningEffort({ CURSOR_REASONING_EFFORT: 'low' }),
+    ).toBeNull()
+  })
+
+  test('maps query effort onto Cursor thinking levels (max/xhigh clamp to high)', () => {
+    expect(resolveReasoningEffort({}, 'medium')).toBe('medium')
+    expect(resolveReasoningEffort({}, 'high')).toBe('high')
+    expect(resolveReasoningEffort({}, 'xhigh')).toBe('high')
+    expect(resolveReasoningEffort({}, 'max')).toBe('high')
+  })
+
+  test('numeric (ant-only) effort maps to high, mirroring the openai layer', () => {
+    expect(resolveReasoningEffort({}, 85)).toBe('high')
+  })
+
+  test('low maps to null — Cursor has no LOW level (UNSPECIFIED default)', () => {
+    expect(resolveReasoningEffort({}, 'low')).toBeNull()
+  })
+})
 
 describe('getCursorChatUrl', () => {
   test('defaults to api2.cursor.sh StreamUnifiedChatWithTools', () => {
