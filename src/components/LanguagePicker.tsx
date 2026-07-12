@@ -1,7 +1,7 @@
 import figures from 'figures';
 import React, { useMemo, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { useKeybinding } from '../keybindings/useKeybinding.js';
+import { useKeybinding, useKeybindings } from '../keybindings/useKeybinding.js';
 import TextInput from './TextInput.js';
 import { T } from '../i18n/TText.js';
 import { t } from '../i18n/t.js';
@@ -58,35 +58,22 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
       }
       onCancel();
     },
-    { context: 'Settings' },
+    { context: 'Confirmation' },
   );
 
-  // Arrow key navigation in select phase
-  useKeybinding(
-    'confirm:previous',
-    () => {
-      if (phase === 'select') {
+  // Arrow key navigation + Enter confirm in select phase.
+  // confirm:* actions are bound to up/down/enter in the Confirmation context
+  // (not Settings, where up/down resolve to select:* and enter to settings:close).
+  // isActive gates these off in the custom phase so Enter reaches TextInput's onSubmit.
+  useKeybindings(
+    {
+      'confirm:previous': () => {
         setSelectedIndex(i => (i - 1 + options.length) % options.length);
-      }
-    },
-    { context: 'Settings' },
-  );
-
-  useKeybinding(
-    'confirm:next',
-    () => {
-      if (phase === 'select') {
+      },
+      'confirm:next': () => {
         setSelectedIndex(i => (i + 1) % options.length);
-      }
-    },
-    { context: 'Settings' },
-  );
-
-  // Enter confirms selection
-  useKeybinding(
-    'confirm:yes',
-    () => {
-      if (phase === 'select') {
+      },
+      'confirm:yes': () => {
         const selected = options[selectedIndex];
         if (selected === undefined) return;
         if (selected.value === CUSTOM_SENTINEL) {
@@ -94,9 +81,9 @@ export function LanguagePicker({ initialLanguage, onComplete, onCancel }: Props)
           return;
         }
         onComplete(selected.value);
-      }
+      },
     },
-    { context: 'Settings' },
+    { context: 'Confirmation', isActive: phase === 'select' },
   );
 
   function handleCustomSubmit(): void {

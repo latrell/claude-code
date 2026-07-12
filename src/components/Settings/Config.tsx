@@ -1913,7 +1913,7 @@ export function Config({
               <KeyboardShortcutHint shortcut="Enter" action={t('confirm')} />
               <ConfigurableShortcutHint
                 action="confirm:no"
-                context="Settings"
+                context="Confirmation"
                 fallback="Esc"
                 description={t('cancel')}
               />
