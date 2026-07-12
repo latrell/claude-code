@@ -13,6 +13,10 @@ import {
   isChatGPTAuthMode,
   isChatGPTCodexReasoningModel,
 } from './model/chatgptModels.js'
+import {
+  getConnectionThinkingEffort,
+  mapThinkingEffortToEffortValue,
+} from 'src/services/connections/thinkingEffort.js'
 
 export type { EffortLevel }
 
@@ -211,21 +215,43 @@ export function resolveAppliedEffort(
 }
 
 /**
+ * Effort pinned by the connection profile active in the MAIN slot, mapped
+ * onto an EffortValue ('off' → undefined; thinking suppression is handled
+ * separately). Display-path counterpart of the merge query.ts performs
+ * before calling the API (appState.effortValue ?? connection effort): the
+ * status bar, /effort and SDK get_settings merge through this so what they
+ * show matches what the main-agent request actually carries.
+ *
+ * Deliberately NOT folded into resolveAppliedEffort(): that function also
+ * runs on the API path for subagent queries (claude.ts), whose slot-aware
+ * effort is resolved upstream in query.ts — an unconditional main-slot
+ * fallback there would leak the main profile's effort into subagents.
+ */
+export function getConnectionEffortValue(): EffortValue | undefined {
+  return mapThinkingEffortToEffortValue(getConnectionThinkingEffort('main'))
+}
+
+/**
  * Resolve the effort level to show the user. Wraps resolveAppliedEffort
  * with the 'high' fallback (what the API uses when no effort param is sent).
+ * Merges the active connection profile's pinned effort under
+ * appState.effortValue, mirroring the query.ts main-agent merge.
  * Single source of truth for the status bar and /effort output (CC-1088).
  */
 export function getDisplayedEffortLevel(
   model: string,
   appStateEffort: EffortValue | undefined,
 ): EffortLevel {
-  const resolved = resolveAppliedEffort(model, appStateEffort) ?? 'high'
+  const resolved =
+    resolveAppliedEffort(model, appStateEffort ?? getConnectionEffortValue()) ??
+    'high'
   return convertEffortValueToLevel(resolved)
 }
 
 /**
  * Build the ` with {level} effort` suffix shown in Logo/Spinner.
- * Returns empty string if the user hasn't explicitly set an effort value.
+ * Returns empty string if neither the user (/effort, --effort) nor the
+ * active connection profile pins an effort value.
  * Delegates to resolveAppliedEffort() so the displayed level matches what
  * the API actually receives (including max→high clamp for non-Opus models).
  */
@@ -233,8 +259,9 @@ export function getEffortSuffix(
   model: string,
   effortValue: EffortValue | undefined,
 ): string {
-  if (effortValue === undefined) return ''
-  const resolved = resolveAppliedEffort(model, effortValue)
+  const merged = effortValue ?? getConnectionEffortValue()
+  if (merged === undefined) return ''
+  const resolved = resolveAppliedEffort(model, merged)
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
 }

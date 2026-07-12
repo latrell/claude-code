@@ -275,6 +275,7 @@ import {
   modelSupportsEffort,
   modelSupportsMaxEffort,
   EFFORT_LEVELS,
+  getConnectionEffortValue,
   resolveAppliedEffort,
 } from 'src/utils/effort.js'
 import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
@@ -3974,8 +3975,13 @@ function runHeadlessStreaming(
           const model = getMainLoopModel()
           // modelSupportsEffort gate matches claude.ts — applied.effort must
           // mirror what actually goes to the API, not just what's configured.
+          // Merge the connection profile's pinned effort under appState the
+          // same way query.ts does for the main-agent request.
           const effort = modelSupportsEffort(model)
-            ? resolveAppliedEffort(model, currentAppState.effortValue)
+            ? resolveAppliedEffort(
+                model,
+                currentAppState.effortValue ?? getConnectionEffortValue(),
+              )
             : undefined
           sendControlResponseSuccess(msg, {
             ...getSettingsWithSources(),

@@ -10,6 +10,7 @@ import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import {
   type EffortValue,
+  getConnectionEffortValue,
   getDisplayedEffortLevel,
   getEffortEnvOverride,
   getEffortValueDescription,
@@ -75,12 +76,25 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
 
 export function showCurrentEffort(appStateEffort: EffortValue | undefined, model: string): EffortCommandResult {
   const envOverride = getEffortEnvOverride();
-  const effectiveValue = envOverride === null ? undefined : (envOverride ?? appStateEffort);
+  // Same merge as the API path (query.ts): env > /effort (appState) >
+  // connection profile. env 'auto'/'unset' (null) suppresses all of them.
+  const connectionEffort = getConnectionEffortValue();
+  const effectiveValue = envOverride === null ? undefined : (envOverride ?? appStateEffort ?? connectionEffort);
   if (effectiveValue === undefined) {
     const level = getDisplayedEffortLevel(model, appStateEffort);
     return { message: tf('Effort level: auto (currently {level})', { level }) };
   }
   const description = t(getEffortValueDescription(effectiveValue));
+  // Neither env nor /effort set → the value came from the active connection
+  // profile. Name the source so it isn't mistaken for a /effort choice.
+  if (envOverride === undefined && appStateEffort === undefined) {
+    return {
+      message: tf('Current effort level: {effectiveValue} (from connection profile: {description})', {
+        effectiveValue,
+        description,
+      }),
+    };
+  }
   return {
     message: tf('Current effort level: {effectiveValue} ({description})', { effectiveValue, description }),
   };

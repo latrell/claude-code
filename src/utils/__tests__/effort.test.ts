@@ -1,6 +1,14 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import type { Connection } from 'src/services/connections/types.js'
+import { logMock } from '../../../tests/mocks/log'
 
-// Mock heavy dependencies to avoid import chain issues
+// Mock heavy dependencies to avoid import chain issues.
+// log.ts must be mocked before any import that transitively loads it
+// (effort.ts → connections/thinkingEffort.ts → store.ts → log.ts).
+mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/thinking.js', () => ({
   isUltrathinkEnabled: () => false,
 }))
@@ -27,8 +35,16 @@ const {
   convertEffortValueToLevel,
   getEffortLevelDescription,
   resolvePickerEffortPersistence,
+  getConnectionEffortValue,
+  getDisplayedEffortLevel,
+  getEffortSuffix,
   EFFORT_LEVELS,
 } = await import('src/utils/effort.js')
+const { setSessionAssignment } = await import(
+  'src/services/connections/sessionAssignments.js'
+)
+const { _invalidateConnectionsCache, setDefaultAssignment, upsertConnection } =
+  await import('src/services/connections/store.js')
 
 // ─── EFFORT_LEVELS constant ────────────────────────────────────────────
 
@@ -346,5 +362,149 @@ describe('modelSupportsXhighEffort', () => {
   test('returns true for unknown models', async () => {
     const { modelSupportsXhighEffort } = await import('src/utils/effort.js')
     expect(modelSupportsXhighEffort('some-random-model')).toBe(true)
+  })
+})
+
+// ─── connection profile effort merge (display path) ────────────────────
+//
+// Uses the real connections store against a throwaway CLAUDE_CONFIG_DIR —
+// mocking any connections module here would leak process-globally into the
+// connections test suite (bun mock.module is last-write-wins per process).
+
+describe('connection profile effort merge (display path)', () => {
+  const MODEL = 'claude-fable-5'
+  let tmpDir: string
+  let previousConfigDir: string | undefined
+  let previousEffortEnv: string | undefined
+  let previousUserType: string | undefined
+
+  function restoreEnv(
+    key: 'CLAUDE_CONFIG_DIR' | 'CLAUDE_CODE_EFFORT_LEVEL' | 'USER_TYPE',
+    value: string | undefined,
+  ): void {
+    if (value === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ccb-effort-display-test-'))
+    previousConfigDir = process.env['CLAUDE_CONFIG_DIR']
+    previousEffortEnv = process.env['CLAUDE_CODE_EFFORT_LEVEL']
+    previousUserType = process.env['USER_TYPE']
+    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    delete process.env['CLAUDE_CODE_EFFORT_LEVEL']
+    delete process.env['USER_TYPE']
+    _invalidateConnectionsCache()
+    setSessionAssignment('main', undefined)
+  })
+
+  afterEach(() => {
+    restoreEnv('CLAUDE_CONFIG_DIR', previousConfigDir)
+    restoreEnv('CLAUDE_CODE_EFFORT_LEVEL', previousEffortEnv)
+    restoreEnv('USER_TYPE', previousUserType)
+    _invalidateConnectionsCache()
+    setSessionAssignment('main', undefined)
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  function conn(overrides: Partial<Connection> = {}): Connection {
+    return {
+      id: 'remote-a',
+      label: 'Remote A',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-a',
+      model: 'model-a',
+      ...overrides,
+    }
+  }
+
+  describe('getConnectionEffortValue', () => {
+    test('returns undefined when no connection is assigned', () => {
+      expect(getConnectionEffortValue()).toBeUndefined()
+    })
+
+    test('returns the session-assigned connection pinned effort', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getConnectionEffortValue()).toBe('max')
+    })
+
+    test('falls back to the global default assignment', () => {
+      upsertConnection(conn({ thinkingEffort: 'medium' }))
+      setDefaultAssignment('main', { connectionId: 'remote-a' })
+      expect(getConnectionEffortValue()).toBe('medium')
+    })
+
+    test("maps 'off' to undefined (thinking suppression, not an effort)", () => {
+      upsertConnection(conn({ thinkingEffort: 'off' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getConnectionEffortValue()).toBeUndefined()
+    })
+  })
+
+  describe('getDisplayedEffortLevel', () => {
+    test("falls back to 'high' when nothing pins an effort", () => {
+      expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('high')
+    })
+
+    test('shows the connection pinned effort when appState is unset', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('max')
+    })
+
+    test('appState effort wins over the connection profile', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getDisplayedEffortLevel(MODEL, 'low')).toBe('low')
+    })
+
+    test('env CLAUDE_CODE_EFFORT_LEVEL wins over the connection profile', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      process.env['CLAUDE_CODE_EFFORT_LEVEL'] = 'medium'
+      expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('medium')
+    })
+
+    test('env auto suppresses the connection profile too', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      process.env['CLAUDE_CODE_EFFORT_LEVEL'] = 'auto'
+      expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('high')
+    })
+
+    test("connection 'off' leaves the model-default display untouched", () => {
+      upsertConnection(conn({ thinkingEffort: 'off' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('high')
+    })
+  })
+
+  describe('getEffortSuffix', () => {
+    test('empty when neither user nor connection pins an effort', () => {
+      expect(getEffortSuffix(MODEL, undefined)).toBe('')
+    })
+
+    test('shows the connection pinned effort', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getEffortSuffix(MODEL, undefined)).toBe(' with max effort')
+    })
+
+    test('explicit effort value wins over the connection profile', () => {
+      upsertConnection(conn({ thinkingEffort: 'max' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getEffortSuffix(MODEL, 'low')).toBe(' with low effort')
+    })
+
+    test("connection 'off' produces no suffix", () => {
+      upsertConnection(conn({ thinkingEffort: 'off' }))
+      setSessionAssignment('main', { connectionId: 'remote-a' })
+      expect(getEffortSuffix(MODEL, undefined)).toBe('')
+    })
   })
 })

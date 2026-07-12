@@ -4491,6 +4491,8 @@ const zh: Record<string, string> = {
   'Effort level: auto (currently {level})': '努力级别：auto（当前为 {level}）',
   'Current effort level: {effectiveValue} ({description})':
     '当前努力级别：{effectiveValue}（{description}）',
+  'Current effort level: {effectiveValue} (from connection profile: {description})':
+    '当前努力级别：{effectiveValue}（来自连接档案：{description}）',
   'Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL={envRaw} still controls this session':
     '已从设置中清除努力级别，但 CLAUDE_CODE_EFFORT_LEVEL={envRaw} 仍控制本会话',
   'Invalid argument: {args}. Valid options are: low, medium, high, max, auto':
