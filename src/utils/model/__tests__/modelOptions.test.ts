@@ -1,6 +1,19 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
-import { getModelOptions } from '../modelOptions.js'
+// Pin the display language to English: getModelOptions() renders its
+// descriptions through i18n t()/tf(), which reads settings.language —
+// without this mock the suite fails on machines whose real settings.json
+// sets 简体中文. Spread the real module so this process-global mock does
+// not strip the other settings exports for test files loaded later in the
+// same process (see CLAUDE.md cross-file mock pollution rules).
+import * as realSettings from '../../settings/settings.js'
+
+mock.module('src/utils/settings/settings.js', () => ({
+  ...realSettings,
+  getInitialSettings: () => ({}),
+}))
+
+const { getModelOptions } = await import('../modelOptions.js')
 
 /**
  * Verifies that ChatGPT Codex model options display human-readable
