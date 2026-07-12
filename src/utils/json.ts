@@ -58,6 +58,80 @@ export const safeParseJSON = Object.assign(
 )
 
 /**
+ * Find the first JSON fragment in model-produced text that parses as a plain
+ * object. Tolerates the common failure shapes of models that ignore strict
+ * JSON output instructions (markdown fences, surrounding narration).
+ *
+ * Strategy (first successful parse wins):
+ * 1. fenced code block (```json ... ``` or ``` ... ```)
+ * 2. the first brace-balanced {...} fragment in the bare text
+ *
+ * Uses a brace-stack scan instead of `indexOf('{')..lastIndexOf('}')`:
+ * correctly handles nested objects, `{}` inside string literals, and escape
+ * characters. Does no syntax repair (trailing commas, single quotes) — on
+ * parse failure it skips to the next candidate. Only returns a plain object;
+ * arrays/primitives are treated as failures and yield null.
+ */
+export function findFirstJsonObject(text: string): unknown | null {
+  // 1. fenced code blocks - priority (models naturally tend to add them;
+  // strip the fence and parse the whole block)
+  for (const m of text.matchAll(
+    /```[\t ]*[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```/g,
+  )) {
+    const parsed = tryParseObject(m[1] ?? '')
+    if (parsed !== null) return parsed
+  }
+  // 2. bare text: scan each '{', find a balanced pair and try parse
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue
+    const end = findBalancedObjectEnd(text, i)
+    if (end < 0) continue
+    const parsed = tryParseObject(text.slice(i, end + 1))
+    if (parsed !== null) return parsed
+  }
+  return null
+}
+
+/**
+ * Find the matching `}` index starting from start (which must be `{`);
+ * returns -1 when unbalanced. Skips braces inside string literals and escape
+ * characters. Does not skip comments (the JSON standard does not allow them;
+ * models do not produce them, and stripping risks corrupting string values).
+ */
+function findBalancedObjectEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (inString) {
+      if (c === '\\')
+        i++ // skip the escape char and the next character
+      else if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') inString = true
+    else if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/** try parse the candidate; only returns a plain object, others (array/number/null) return null. */
+function tryParseObject(candidate: string): unknown | null {
+  const trimmed = candidate.trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+  try {
+    const v = JSON.parse(trimmed)
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Safely parse JSON with comments (jsonc).
  * This is useful for VS Code configuration files like keybindings.json
  * which support comments and other jsonc features.

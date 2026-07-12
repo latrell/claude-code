@@ -22,6 +22,21 @@ export function getResolvedLanguage(): ResolvedLanguage {
   return 'en'
 }
 
+/**
+ * Raw settings.language value ('简体中文', 'Japanese', any custom string),
+ * or undefined when unset (English default) or before settings are
+ * available. Use this instead of getResolvedLanguage() when the verbatim
+ * language name matters — e.g., injecting it into a model prompt.
+ */
+export function getPreferredLanguage(): string | undefined {
+  try {
+    const language = getInitialSettings().language?.trim()
+    return language || undefined
+  } catch (_e) {
+    return undefined
+  }
+}
+
 const DISPLAY_NAMES: Record<string, string> = {
   en: 'English',
   zh: '中文',

@@ -4,8 +4,13 @@ import { logMock } from '../../../tests/mocks/log'
 // Mock log.ts to cut the heavy dependency chain (log.ts → bootstrap/state.ts → analytics)
 mock.module('src/utils/log.ts', logMock)
 
-const { safeParseJSON, safeParseJSONC, parseJSONL, addItemToJSONCArray } =
-  await import('../json')
+const {
+  safeParseJSON,
+  safeParseJSONC,
+  parseJSONL,
+  addItemToJSONCArray,
+  findFirstJsonObject,
+} = await import('../json')
 
 // ─── safeParseJSON ──────────────────────────────────────────────────────
 
@@ -145,5 +150,54 @@ describe('addItemToJSONCArray', () => {
     const result = addItemToJSONCArray('{"a":1}', 'item')
     const parsed = JSON.parse(result)
     expect(parsed).toEqual(['item'])
+  })
+})
+
+// ─── findFirstJsonObject ────────────────────────────────────────────────
+
+describe('findFirstJsonObject', () => {
+  test('parses a bare JSON object', () => {
+    expect(findFirstJsonObject('{"title":"Fix bug"}')).toEqual({
+      title: 'Fix bug',
+    })
+  })
+
+  test('extracts from a ```json fenced block', () => {
+    expect(
+      findFirstJsonObject(
+        'Here you go:\n```json\n{"title":"修复标题"}\n```\nDone.',
+      ),
+    ).toEqual({ title: '修复标题' })
+  })
+
+  test('extracts from an unlabeled fenced block', () => {
+    expect(findFirstJsonObject('```\n{"a":1}\n```')).toEqual({ a: 1 })
+  })
+
+  test('extracts the first balanced object from surrounding narration', () => {
+    expect(
+      findFirstJsonObject('Sure! The result is {"title":"Add tests"} — enjoy.'),
+    ).toEqual({ title: 'Add tests' })
+  })
+
+  test('handles braces inside string values', () => {
+    expect(findFirstJsonObject('{"title":"Use {placeholder} syntax"}')).toEqual(
+      { title: 'Use {placeholder} syntax' },
+    )
+  })
+
+  test('skips unparseable candidates and finds a later valid object', () => {
+    expect(findFirstJsonObject('{bad json} then {"ok":true}')).toEqual({
+      ok: true,
+    })
+  })
+
+  test('returns null for arrays and primitives', () => {
+    expect(findFirstJsonObject('[1,2,3]')).toBeNull()
+    expect(findFirstJsonObject('"just a string"')).toBeNull()
+  })
+
+  test('returns null when no JSON is present', () => {
+    expect(findFirstJsonObject('no json here at all')).toBeNull()
   })
 })

@@ -246,7 +246,7 @@ import {
   createCommandInputMessage,
   formatCommandInputTags,
 } from '../utils/messages.js';
-import { generateSessionTitle } from '../utils/sessionTitle.js';
+import { fallbackSessionTitle, generateSessionTitle } from '../utils/sessionTitle.js';
 import {
   BASH_INPUT_TAG,
   COMMAND_MESSAGE_TAG,
@@ -3405,15 +3405,19 @@ export function REPL({
           !text.startsWith(`<${BASH_INPUT_TAG}>`)
         ) {
           haikuTitleAttemptedRef.current = true;
-          void generateSessionTitle(text, new AbortController().signal).then(
-            title => {
-              if (title) setHaikuTitle(title);
-              else haikuTitleAttemptedRef.current = false;
-            },
-            () => {
-              haikuTitleAttemptedRef.current = false;
-            },
-          );
+          // On failure: show a local truncated-first-line fallback so the tab
+          // still gets a topical title (fast-slot providers fail often — no
+          // json_schema support, 503s), and re-open the gate so the next user
+          // message retries the AI title. Functional update guards the race
+          // where a late failure handler would overwrite a retry's AI title.
+          const applyFallbackTitle = () => {
+            setHaikuTitle(prev => prev ?? fallbackSessionTitle(text) ?? undefined);
+            haikuTitleAttemptedRef.current = false;
+          };
+          void generateSessionTitle(text, new AbortController().signal).then(title => {
+            if (title) setHaikuTitle(title);
+            else applyFallbackTitle();
+          }, applyFallbackTitle);
         }
       }
 

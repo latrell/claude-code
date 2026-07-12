@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto'
 import { createAgentId } from '../../utils/uuid.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { runWithCwdOverride } from '../../utils/cwd.js'
+import { findFirstJsonObject } from '../../utils/json.js'
 import {
   createAgentWorktree,
   hasWorktreeChanges,
@@ -88,64 +89,6 @@ export function extractStructuredOutput(
     if (found !== null) return found
   }
   return null
-}
-
-/** Find the first JSON fragment in text that can be parsed as a plain object. */
-function findFirstJsonObject(text: string): unknown | null {
-  // 1. fenced code blocks - priority (agents naturally tend to add them; strip the fence and parse the whole block)
-  for (const m of text.matchAll(
-    /```[\t ]*[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```/g,
-  )) {
-    const parsed = tryParseObject(m[1] ?? '')
-    if (parsed !== null) return parsed
-  }
-  // 2. bare text: scan each '{', find a balanced pair and try parse
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] !== '{') continue
-    const end = findBalancedObjectEnd(text, i)
-    if (end < 0) continue
-    const parsed = tryParseObject(text.slice(i, end + 1))
-    if (parsed !== null) return parsed
-  }
-  return null
-}
-
-/**
- * Find the matching `}` index starting from start (which must be `{`); returns -1 when unbalanced.
- * Skips braces inside string literals and escape characters. Does not skip comments (the JSON standard does not allow comments,
- * agents do not produce them; doing so is a risk - see the function doc).
- */
-function findBalancedObjectEnd(text: string, start: number): number {
-  let depth = 0
-  let inString = false
-  for (let i = start; i < text.length; i++) {
-    const c = text[i]
-    if (inString) {
-      if (c === '\\')
-        i++ // skip the escape char and the next character
-      else if (c === '"') inString = false
-      continue
-    }
-    if (c === '"') inString = true
-    else if (c === '{') depth++
-    else if (c === '}') {
-      depth--
-      if (depth === 0) return i
-    }
-  }
-  return -1
-}
-
-/** try parse the candidate; only returns a plain object, others (array/number/null) return null. */
-function tryParseObject(candidate: string): unknown | null {
-  const trimmed = candidate.trim()
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
-  try {
-    const v = JSON.parse(trimmed)
-    return typeof v === 'object' && v !== null && !Array.isArray(v) ? v : null
-  } catch {
-    return null
-  }
 }
 
 type WorkflowWorktreeInfo = Awaited<ReturnType<typeof createAgentWorktree>>

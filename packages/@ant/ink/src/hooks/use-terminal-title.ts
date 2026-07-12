@@ -11,8 +11,13 @@ import { TerminalWriteContext } from './useTerminalNotification.js'
  * Pass `null` to opt out — the hook becomes a no-op and leaves the
  * terminal title untouched.
  *
- * On Windows, uses `process.title` (classic conhost doesn't support OSC).
- * Elsewhere, writes OSC 0 (set title+icon) via Ink's stdout.
+ * Writes OSC 0 (set title+icon) via Ink's stdout on every platform — Ink
+ * already drives the whole UI with VT sequences, so any terminal rendering
+ * us accepts OSC. Emitting it on win32 too matters for hosts that only
+ * parse the output stream and never see console API calls: VS Code's tab
+ * title (`${sequence}`), SSH remotes, tmux passthrough. On Windows,
+ * additionally sets `process.title` (SetConsoleTitleW under both Node and
+ * Bun) so legacy conhost windows without VT parsing keep working.
  */
 export function useTerminalTitle(title: string | null): void {
   const writeRaw = useContext(TerminalWriteContext)
@@ -24,8 +29,7 @@ export function useTerminalTitle(title: string | null): void {
 
     if (process.platform === 'win32') {
       process.title = clean
-    } else {
-      writeRaw(osc(OSC.SET_TITLE_AND_ICON, clean))
     }
+    writeRaw(osc(OSC.SET_TITLE_AND_ICON, clean))
   }, [title, writeRaw])
 }

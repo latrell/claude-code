@@ -356,6 +356,27 @@ export async function generateSuggestion(
   return { suggestion: null as string | null, generationRequestId }
 }
 
+const CJK_CHAR_RE =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/g
+
+/**
+ * Word count for the length filters. CJK scripts don't use spaces, so plain
+ * whitespace splitting undercounts them ("运行测试" would be 1 "word") and
+ * short Chinese suggestions get killed by the too_few_words filter while
+ * long ones sail past too_many_words. Count CJK chars at 2-per-word and
+ * whitespace-delimited segments with word characters as 1 each.
+ */
+export function countSuggestionWords(suggestion: string): number {
+  const trimmed = suggestion.trim()
+  if (!trimmed) return 0
+  const cjkChars = (trimmed.match(CJK_CHAR_RE) ?? []).length
+  const nonCjkWords = trimmed
+    .replace(CJK_CHAR_RE, ' ')
+    .split(/\s+/)
+    .filter(segment => /\w/.test(segment)).length
+  return nonCjkWords + Math.ceil(cjkChars / 2)
+}
+
 export function shouldFilterSuggestion(
   suggestion: string | null,
   promptId: PromptVariant,
@@ -367,7 +388,7 @@ export function shouldFilterSuggestion(
   }
 
   const lower = suggestion.toLowerCase()
-  const wordCount = suggestion.trim().split(/\s+/).length
+  const wordCount = countSuggestionWords(suggestion)
 
   const filters: Array<[string, () => boolean]> = [
     ['done', () => lower === 'done'],
@@ -426,6 +447,18 @@ export function shouldFilterSuggestion(
           'quit',
           // Negation
           'no',
+          // Chinese equivalents (1-2 CJK chars fold to a single "word")
+          '是',
+          '好',
+          '好的',
+          '可以',
+          '继续',
+          '提交',
+          '推送',
+          '部署',
+          '停止',
+          '退出',
+          '不',
         ])
         return !ALLOWED_SINGLE_WORDS.has(lower)
       },
