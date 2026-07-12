@@ -1,5 +1,20 @@
-import { describe, expect, test } from 'bun:test'
-import { parseCronExpression, computeNextCronRun, cronToHuman } from '../cron'
+import { describe, expect, mock, test } from 'bun:test'
+// Pin the display language to English: cronToHuman() renders through
+// i18n t()/tf(), which reads settings.language — without this mock the
+// suite fails on machines whose real settings.json sets 简体中文.
+// Spread the real module so this process-global mock does not strip the
+// other settings exports for test files loaded later in the same process
+// (see CLAUDE.md cross-file mock pollution rules).
+import * as realSettings from '../settings/settings.js'
+
+mock.module('src/utils/settings/settings.js', () => ({
+  ...realSettings,
+  getInitialSettings: () => ({}),
+}))
+
+const { parseCronExpression, computeNextCronRun, cronToHuman } = await import(
+  '../cron'
+)
 
 describe('parseCronExpression', () => {
   describe('valid expressions', () => {

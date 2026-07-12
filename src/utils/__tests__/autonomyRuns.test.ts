@@ -1,5 +1,18 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { join, resolve as resolvePath } from 'node:path'
+// Pin the display language to English: formatAutonomyRuns* render through
+// i18n t()/tf(), which reads settings.language — without this mock the
+// suite fails on machines whose real settings.json sets 简体中文.
+// Spread the real module so this process-global mock does not strip the
+// other settings exports for test files loaded later in the same process
+// (see CLAUDE.md cross-file mock pollution rules).
+import * as realSettings from '../settings/settings.js'
+
+mock.module('src/utils/settings/settings.js', () => ({
+  ...realSettings,
+  getInitialSettings: () => ({}),
+}))
+
 import {
   resetStateForTests,
   setCwdState,
