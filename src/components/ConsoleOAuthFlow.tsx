@@ -22,7 +22,6 @@ import { openBrowser } from '../utils/browser.js';
 import { logError } from '../utils/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
-import { SUBAGENT_CREDENTIAL_SCOPE } from '../utils/model/subagentProvider.js';
 import type { ProviderLoginConfig } from '../utils/settings/types.js';
 import { writeCCBProviderAuthEnv, type CCBProvider } from '../utils/ccbProviderAuth.js';
 import { setSessionProviderEnvOverlay } from '../services/connections/sessionEnvOverlay.js';
@@ -31,7 +30,6 @@ import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
 import { t, tf } from '../i18n/t.js';
 
-type LoginScope = 'global' | typeof SUBAGENT_CREDENTIAL_SCOPE;
 type ProviderLoginConfigInput = Omit<ProviderLoginConfig, 'env'> & {
   env?: Record<string, string | undefined>;
 };
@@ -41,7 +39,6 @@ type Props = {
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
   forceLoginMethod?: 'claudeai' | 'console';
-  scope?: LoginScope;
 };
 
 type OAuthStatus =
@@ -100,7 +97,6 @@ export function ConsoleOAuthFlow({
   startingMessage,
   mode = 'login',
   forceLoginMethod: forceLoginMethodProp,
-  scope = 'global',
 }: Props): React.ReactNode {
   const settings = getSettings_DEPRECATED() || {};
   const forceLoginMethod = forceLoginMethodProp ?? settings.forceLoginMethod;
@@ -137,88 +133,63 @@ export function ConsoleOAuthFlow({
   const [showPastePrompt, setShowPastePrompt] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
 
-  const saveProviderConfig = useCallback(
-    (config: ProviderLoginConfigInput) => {
-      const sanitizedEnv = config.env
-        ? Object.fromEntries(
-            Object.entries(config.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-          )
-        : undefined;
-      const env = sanitizedEnv && Object.keys(sanitizedEnv).length > 0 ? sanitizedEnv : undefined;
+  const saveProviderConfig = useCallback((config: ProviderLoginConfigInput) => {
+    const sanitizedEnv = config.env
+      ? Object.fromEntries(
+          Object.entries(config.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        )
+      : undefined;
+    const env = sanitizedEnv && Object.keys(sanitizedEnv).length > 0 ? sanitizedEnv : undefined;
 
-      // Redirect third-party provider env to isolated CCB auth file rather
-      // than writing into settings.env (which is shared with official Claude Code).
-      const isThirdParty =
-        config.modelType === 'openai' || config.modelType === 'gemini' || config.modelType === 'grok';
+    // Redirect third-party provider env to isolated CCB auth file rather
+    // than writing into settings.env (which is shared with official Claude Code).
+    const isThirdParty = config.modelType === 'openai' || config.modelType === 'gemini' || config.modelType === 'grok';
 
-      // Mirror global-scope logins into the CCB connection registry so
-      // /connect and the connection pickers can switch back to these credentials later.
-      // Best-effort: registration must never fail a login.
-      const registerInConnectionRegistry = () => {
-        if (scope !== 'global' || !config.env) return;
-        const modelType = config.modelType;
-        if (modelType !== 'anthropic' && modelType !== 'openai' && modelType !== 'gemini' && modelType !== 'grok') {
-          return;
-        }
-        void import('../services/connections/autoRegister.js')
-          .then(mod => mod.registerConnectionFromProviderLogin(modelType, config.env))
-          .catch(() => {});
-      };
-
-      if (isThirdParty && scope !== SUBAGENT_CREDENTIAL_SCOPE) {
-        writeCCBProviderAuthEnv(config.modelType as CCBProvider, config.env ?? {});
-        registerInConnectionRegistry();
-        // Still persist modelType in settings.json so getAPIProvider() picks
-        // the right provider on next start — just don't leak env into settings.
-        return updateSettingsForSource('userSettings', {
-          modelType: config.modelType,
-        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+    // Mirror successful logins into the CCB connection registry so
+    // /connect and the connection pickers can switch back to these credentials later.
+    // Best-effort: registration must never fail a login.
+    const registerInConnectionRegistry = () => {
+      if (!config.env) return;
+      const modelType = config.modelType;
+      if (modelType !== 'anthropic' && modelType !== 'openai' && modelType !== 'gemini' && modelType !== 'grok') {
+        return;
       }
+      void import('../services/connections/autoRegister.js')
+        .then(mod => mod.registerConnectionFromProviderLogin(modelType, config.env))
+        .catch(() => {});
+    };
 
-      if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
-        return updateSettingsForSource('userSettings', {
-          subagentProvider: {
-            modelType: config.modelType,
-            ...(env && { env }),
-            credentialScope: config.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
-          },
-        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
-      }
-      const result = updateSettingsForSource('userSettings', {
+    if (isThirdParty) {
+      writeCCBProviderAuthEnv(config.modelType as CCBProvider, config.env ?? {});
+      registerInConnectionRegistry();
+      // Still persist modelType in settings.json so getAPIProvider() picks
+      // the right provider on next start — just don't leak env into settings.
+      return updateSettingsForSource('userSettings', {
         modelType: config.modelType,
-        ...(env ? { env: config.env } : {}),
       } as unknown as Parameters<typeof updateSettingsForSource>[1]);
-      if (!result.error) registerInConnectionRegistry();
-      return result;
-    },
-    [scope],
-  );
+    }
 
-  const clearSubagentProviderConfig = useCallback(
-    () =>
-      updateSettingsForSource('userSettings', {
-        subagentProvider: undefined,
-      } as unknown as Parameters<typeof updateSettingsForSource>[1]),
-    [],
-  );
+    const result = updateSettingsForSource('userSettings', {
+      modelType: config.modelType,
+      ...(env ? { env: config.env } : {}),
+    } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+    if (!result.error) registerInConnectionRegistry();
+    return result;
+  }, []);
 
-  const applyGlobalEnv = useCallback(
-    (env: Record<string, string | undefined>) => {
-      if (scope !== 'global') return;
-      // A fresh /login supersedes any session-scoped --provider / /connect
-      // activation — drop its env overlay so managedEnv doesn't re-assert the
-      // old connection's credentials over the ones we're deploying now.
-      setSessionProviderEnvOverlay(null);
-      for (const [k, v] of Object.entries(env)) {
-        if (v === undefined) {
-          delete process.env[k];
-        } else {
-          process.env[k] = v;
-        }
+  const applyGlobalEnv = useCallback((env: Record<string, string | undefined>) => {
+    // A fresh /login supersedes any session-scoped --provider / /connect
+    // activation — drop its env overlay so managedEnv doesn't re-assert the
+    // old connection's credentials over the ones we're deploying now.
+    setSessionProviderEnvOverlay(null);
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = v;
       }
-    },
-    [scope],
-  );
+    }
+  }, []);
 
   const textInputColumns = useTerminalSize().columns - PASTE_HERE_MSG.length - 1;
 
@@ -367,12 +338,6 @@ export function ConsoleOAuthFlow({
         // Don't save to keychain - the token is displayed for manual use with CLAUDE_CODE_OAUTH_TOKEN
         setOAuthStatus({ state: 'success', token: result.accessToken });
       } else {
-        if (scope === SUBAGENT_CREDENTIAL_SCOPE) {
-          clearSubagentProviderConfig();
-          setOAuthStatus({ state: 'success' });
-          return;
-        }
-
         await installOAuthTokens(result);
 
         const orgResult = await validateForceLoginOrg();
@@ -406,17 +371,7 @@ export function ConsoleOAuthFlow({
         ssl_error: sslHint !== null,
       });
     }
-  }, [
-    oauthService,
-    setShowPastePrompt,
-    loginWithClaudeAi,
-    mode,
-    orgUUID,
-    scope,
-    saveProviderConfig,
-    clearSubagentProviderConfig,
-    terminal,
-  ]);
+  }, [oauthService, setShowPastePrompt, loginWithClaudeAi, mode, orgUUID, saveProviderConfig, terminal]);
 
   const pendingOAuthStartRef = useRef(false);
 
@@ -501,7 +456,6 @@ export function ConsoleOAuthFlow({
           setOAuthStatus={setOAuthStatus}
           setLoginWithClaudeAi={setLoginWithClaudeAi}
           onDone={onDone}
-          scope={scope}
           saveProviderConfig={saveProviderConfig}
           applyGlobalEnv={applyGlobalEnv}
         />
@@ -525,7 +479,6 @@ type OAuthStatusMessageProps = {
   handleSubmitCode: (value: string, url: string) => void;
   setOAuthStatus: (status: OAuthStatus) => void;
   setLoginWithClaudeAi: (value: boolean) => void;
-  scope: LoginScope;
   saveProviderConfig: (config: ProviderLoginConfigInput) => { error: Error | null };
   applyGlobalEnv: (env: Record<string, string | undefined>) => void;
 };
@@ -545,7 +498,6 @@ function OAuthStatusMessage({
   setOAuthStatus,
   setLoginWithClaudeAi,
   onDone,
-  scope,
   saveProviderConfig,
   applyGlobalEnv,
 }: OAuthStatusMessageProps): React.ReactNode {
@@ -1041,9 +993,7 @@ function OAuthStatusMessage({
           // with the new env vars. Also clear scoped ChatGPT auth so a prior
           // ChatGPT Subscription login can't leak into the OpenAI Compatible path.
           clearOpenAIClientCache();
-          void removeChatGPTAuth(scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined).catch(
-            () => {},
-          );
+          void removeChatGPTAuth().catch(() => {});
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
@@ -1055,7 +1005,6 @@ function OAuthStatusMessage({
         onDone,
         saveProviderConfig,
         applyGlobalEnv,
-        scope,
       ]);
 
       const handleOpenAIEnter = useCallback(() => {
@@ -1175,11 +1124,7 @@ function OAuthStatusMessage({
               deviceCode,
             });
             void openBrowser(deviceCode.verificationUrl);
-            await completeChatGPTDeviceLogin(
-              deviceCode,
-              controller.signal,
-              scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined,
-            );
+            await completeChatGPTDeviceLogin(deviceCode, controller.signal);
             if (cancelled) return;
             const env: Record<string, string> = {
               OPENAI_AUTH_MODE: 'chatgpt',
@@ -1187,7 +1132,6 @@ function OAuthStatusMessage({
             const { error } = saveProviderConfig({
               modelType: 'openai',
               env,
-              credentialScope: scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined,
             });
             if (error) {
               throw new Error('Failed to save settings. Please try again.');
@@ -1217,7 +1161,7 @@ function OAuthStatusMessage({
           cancelled = true;
           controller.abort();
         };
-      }, [setOAuthStatus, onDone, saveProviderConfig, applyGlobalEnv, scope]);
+      }, [setOAuthStatus, onDone, saveProviderConfig, applyGlobalEnv]);
 
       return (
         <Box flexDirection="column" gap={1}>
@@ -1628,24 +1572,12 @@ function OAuthStatusMessage({
           // Drop any cached OpenAI client and scoped ChatGPT auth so the new
           // provider/credentials take effect on the next request.
           clearOpenAIClientCache();
-          void removeChatGPTAuth(scope === SUBAGENT_CREDENTIAL_SCOPE ? SUBAGENT_CREDENTIAL_SCOPE : undefined).catch(
-            () => {},
-          );
+          void removeChatGPTAuth().catch(() => {});
           logEvent('tengu_china_login_success', {});
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
-      }, [
-        chinaKeyValue,
-        provider,
-        accessMode,
-        modelId,
-        onDone,
-        setOAuthStatus,
-        saveProviderConfig,
-        applyGlobalEnv,
-        scope,
-      ]);
+      }, [chinaKeyValue, provider, accessMode, modelId, onDone, setOAuthStatus, saveProviderConfig, applyGlobalEnv]);
 
       useKeybinding(
         'confirm:no',

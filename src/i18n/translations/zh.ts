@@ -145,16 +145,12 @@ const zh: Record<string, string> = {
   'Toggle between Vim and Normal editing modes':
     '在 Vim 和普通编辑模式之间切换',
   'Toggle brief-only mode': '切换简洁模式',
-  'Clear the Agent sub-session provider/account override':
-    '清除 Agent 子会话提供商/账户覆盖',
   'Inject bridge failure states for manual recovery testing':
     '注入桥接故障状态以进行手动恢复测试',
   'Review a pull request': '审查拉取请求',
   'View hook configurations for tool events': '查看工具事件的钩子配置',
   'Manage scheduled remote agents (cron-style triggers)':
     '管理定时远程智能体（cron 样式触发器）',
-  'Configure the provider/account used by Agent sub-sessions':
-    '配置 Agent 子会话使用的提供商/账户',
   'Generate a report analyzing your Claude Code sessions':
     '生成分析您 Claude Code 会话的报告',
   'Auto-fix CI failures on a pull request': '自动修复拉取请求的 CI 失败',
@@ -2340,12 +2336,6 @@ const zh: Record<string, string> = {
   'Minimal replies, save tokens': '极简回复，节省词元',
   'Deep thinking, comprehensive analysis': '深度思考，全面分析',
 
-  // ── Subagent login/logout ─────────────────────────────────────────
-  'Subagent login cleared. Agent sub-sessions will inherit the main login.':
-    '子智能体登录已清除。智能体子会话将继承主登录。',
-  'Subagent login interrupted': '子智能体登录已中断',
-  'Subagent login successful': '子智能体登录成功',
-
   // ── Remote setup ──────────────────────────────────────────────────
   'Not signed in to Claude. Run /login first.':
     '未登录 Claude。请先运行 /login。',
@@ -3949,7 +3939,6 @@ const zh: Record<string, string> = {
   'Open homepage': '打开主页',
   'Back to plugin list': '返回插件列表',
   'Plugin options': '插件选项',
-  'Subagent Login': '子 Agent 登录',
   Installed: '已安装',
   'Disable plugin': '禁用插件',
   'Enable plugin': '启用插件',
@@ -5073,8 +5062,6 @@ const zh: Record<string, string> = {
   'Load with: /skills (bundled skills are not auto-loaded; place in {path})':
     '加载方式：/skills（打包技能不会自动加载；请放置在 {path}）',
   'Show session API usage and activity stats': '显示会话 API 用量和活动统计',
-  'Configure a provider/account for Agent sub-sessions. The main session login will not be changed.':
-    '为 Agent 子会话配置提供者/账户。主会话的登录不会更改。',
   '{editor} keybindings must be installed on your local machine, not the remote server.':
     '{editor} 按键绑定必须安装在本地机器上，而不是远程服务器上。',
   '- Enabled "Use Option as Meta key"': '- 已启用 "Use Option as Meta key"',

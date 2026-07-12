@@ -1,8 +1,8 @@
 /**
- * Auto-registration hooks: existing login flows (/login, /subagent-login's
- * global sibling) call these after persisting credentials so every
- * successful login also appears in the connection registry without the
- * user having to re-enter anything in /connect.
+ * Auto-registration hooks: existing login flows (/login) call these after
+ * persisting credentials so every successful login also appears in the
+ * connection registry without the user having to re-enter anything in
+ * /connect.
  *
  * All entry points are best-effort and swallow errors — the registry is a
  * convenience layer and must never break a login.
