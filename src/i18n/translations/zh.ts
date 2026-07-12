@@ -7092,6 +7092,10 @@ const zh: Record<string, string> = {
     'd 断开连接 · space 显示二维码 · Enter/Esc 关闭',
   'By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.':
     '继续即表示您对在绕过权限模式下运行时执行的所有操作承担全部责任。',
+  'In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.':
+    '在绕过权限模式下，Claude Code 在执行潜在危险命令前不会请求您的批准。',
+  'This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.':
+    '此模式仅应在互联网访问受限、且损坏后可轻松恢复的沙箱容器/虚拟机中使用。',
   'How would you like to handle this?': '您希望如何处理？',
   The: '该',
   'command suggests installing a plugin.': '命令建议安装一个插件。',
