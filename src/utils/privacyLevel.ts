@@ -12,8 +12,13 @@
  *
  * The resolved level is the most restrictive signal from:
  *   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC  →  essential-traffic
- *   DISABLE_TELEMETRY                         →  no-telemetry
+ *   DISABLE_TELEMETRY (缺省视为 1)             →  no-telemetry
+ *
+ * 本项目 DISABLE_TELEMETRY 缺省视为 1（默认禁用遥测）；
+ * 显式设置 DISABLE_TELEMETRY=0 可重新启用遥测上报。
  */
+
+import { isEnvDefinedFalsy } from './envUtils.js'
 
 type PrivacyLevel = 'default' | 'no-telemetry' | 'essential-traffic'
 
@@ -21,7 +26,7 @@ export function getPrivacyLevel(): PrivacyLevel {
   if (process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) {
     return 'essential-traffic'
   }
-  if (process.env.DISABLE_TELEMETRY) {
+  if (!isEnvDefinedFalsy(process.env.DISABLE_TELEMETRY)) {
     return 'no-telemetry'
   }
   return 'default'

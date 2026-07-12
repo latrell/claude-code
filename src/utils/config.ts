@@ -17,7 +17,11 @@ import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvDefinedFalsy,
+  isEnvTruthy,
+} from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -1729,6 +1733,7 @@ export type AutoUpdaterDisabledReason =
   | { type: 'development' }
   | { type: 'env'; envVar: string }
   | { type: 'config' }
+  | { type: 'default' }
 
 export function formatAutoUpdaterDisabledReason(
   reason: AutoUpdaterDisabledReason,
@@ -1740,6 +1745,8 @@ export function formatAutoUpdaterDisabledReason(
       return `${reason.envVar} set`
     case 'config':
       return 'config'
+    case 'default':
+      return 'default, set DISABLE_AUTOUPDATER=0 to enable'
   }
 }
 
@@ -1747,12 +1754,16 @@ export function getAutoUpdaterDisabledReason(): AutoUpdaterDisabledReason | null
   if (process.env.NODE_ENV === 'development') {
     return { type: 'development' }
   }
-  // 本项目默认关闭自动更新；通过 ENABLE_AUTOUPDATER=1 显式开启
-  if (!isEnvTruthy(process.env.ENABLE_AUTOUPDATER)) {
-    return { type: 'config' }
-  }
   if (isEnvTruthy(process.env.DISABLE_AUTOUPDATER)) {
     return { type: 'env', envVar: 'DISABLE_AUTOUPDATER' }
+  }
+  // 本项目 DISABLE_AUTOUPDATER 缺省视为 1（默认禁用自动更新）；
+  // 显式 DISABLE_AUTOUPDATER=0 或 ENABLE_AUTOUPDATER=1 可重新开启
+  if (
+    !isEnvDefinedFalsy(process.env.DISABLE_AUTOUPDATER) &&
+    !isEnvTruthy(process.env.ENABLE_AUTOUPDATER)
+  ) {
+    return { type: 'default' }
   }
   const essentialTrafficEnvVar = getEssentialTrafficOnlyReason()
   if (essentialTrafficEnvVar) {
