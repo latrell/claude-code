@@ -17,7 +17,7 @@ type ConnectionPickItem = {
 };
 
 type Props = {
-  /** Agent slot the picker switches ('main' for /provider, 'subagent' for /subagent-provider, 'fast' for /fast-provider). */
+  /** Agent slot the picker switches ('main' for /provider, 'subagent' for /subagent-provider, 'fast' for /fast-provider, 'sonnet' for /sonnet-provider). */
   slot: AgentSlot;
   onDone: (message?: string) => void;
   /** Applied on main-slot switches so AppState.mainLoopModel follows the connection. */
@@ -51,9 +51,9 @@ function connectionDetails(connection: Connection): string {
 
 /**
  * Connection selector for /provider (slot 'main'), /subagent-provider
- * (slot 'subagent') and /fast-provider (slot 'fast'). Enter activates for
- * this session, Shift+Tab persists the connection as the slot's global
- * default, Esc cancels.
+ * (slot 'subagent'), /fast-provider (slot 'fast') and /sonnet-provider
+ * (slot 'sonnet'). Enter activates for this session, Shift+Tab persists the
+ * connection as the slot's global default, Esc cancels.
  */
 export function ConnectionPicker({ slot, onDone, onMainModelChange, onAuthChanged }: Props): React.ReactNode {
   const [query, setQuery] = useState('');
@@ -121,7 +121,9 @@ export function ConnectionPicker({ slot, onDone, onMainModelChange, onAuthChange
             ? t('Select connection — main agent')
             : slot === 'fast'
               ? t('Select connection — fast (HAIKU) calls')
-              : t('Select connection — subagents')
+              : slot === 'sonnet'
+                ? t('Select connection — sonnet (SONNET tier) calls')
+                : t('Select connection — subagents')
         }
         placeholder={t('Search connections…')}
         items={filteredItems}

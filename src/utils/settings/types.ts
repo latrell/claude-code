@@ -75,6 +75,13 @@ const ProviderModelConfigSchema = lazySchema(() =>
         .describe(
           'Default small/fast (HAIKU) model for this provider, used by internal side queries',
         ),
+      sonnetModel: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Default SONNET-tier model for this provider, used by internal calls like memory retrieval',
+        ),
     })
     .passthrough(),
 )
@@ -427,6 +434,11 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Provider/account override used only by small/fast (HAIKU) internal calls (session titles, notification summaries, side queries). When unset, fast calls inherit the global login provider.',
+        ),
+      sonnetProvider: ProviderLoginConfigSchema()
+        .optional()
+        .describe(
+          'Provider/account override used only by internal SONNET-tier calls (memory retrieval, poor-mode classifier). When unset, these calls inherit the global login provider.',
         ),
       providerModels: z
         .object({

@@ -4,6 +4,7 @@ import {
   activateConnectionForSession,
   activateConnectionGlobally,
   clearFastDefault,
+  clearSonnetDefault,
   clearSubagentDefault,
   getSessionAssignment,
 } from '../../services/connections/activate.js';
@@ -62,6 +63,8 @@ const ACTIVATION_MENU_ACTIONS: Record<string, { slot: AgentSlot; scope: Activati
   'activate:subagent:global': { slot: 'subagent', scope: 'global' },
   'activate:fast:session': { slot: 'fast', scope: 'session' },
   'activate:fast:global': { slot: 'fast', scope: 'global' },
+  'activate:sonnet:session': { slot: 'sonnet', scope: 'session' },
+  'activate:sonnet:global': { slot: 'sonnet', scope: 'global' },
 };
 
 type PendingActivation = { slot: AgentSlot; scope: ActivationScope };
@@ -133,6 +136,9 @@ function connectionBadges(connection: Connection): string[] {
   if (getDefaultAssignment('fast')?.connectionId === connection.id) {
     badges.push(t('fast default'));
   }
+  if (getDefaultAssignment('sonnet')?.connectionId === connection.id) {
+    badges.push(t('sonnet default'));
+  }
   if (getSessionAssignment('main')?.connectionId === connection.id) {
     badges.push(t('in use (main)'));
   }
@@ -141,6 +147,9 @@ function connectionBadges(connection: Connection): string[] {
   }
   if (getSessionAssignment('fast')?.connectionId === connection.id) {
     badges.push(t('in use (fast)'));
+  }
+  if (getSessionAssignment('sonnet')?.connectionId === connection.id) {
+    badges.push(t('in use (sonnet)'));
   }
   return badges;
 }
@@ -302,15 +311,25 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   label: connection.label,
                   model: modelSuffix,
                 })
-            : scope === 'global'
-              ? tf('{label}{model} is now the subagent default', {
-                  label: connection.label,
-                  model: modelSuffix,
-                })
-              : tf('Subagents use {label}{model} for this session', {
-                  label: connection.label,
-                  model: modelSuffix,
-                });
+            : slot === 'sonnet'
+              ? scope === 'global'
+                ? tf('{label}{model} is now the sonnet (SONNET tier) default', {
+                    label: connection.label,
+                    model: modelSuffix,
+                  })
+                : tf('Sonnet (SONNET tier) calls use {label}{model} for this session', {
+                    label: connection.label,
+                    model: modelSuffix,
+                  })
+              : scope === 'global'
+                ? tf('{label}{model} is now the subagent default', {
+                    label: connection.label,
+                    model: modelSuffix,
+                  })
+                : tf('Subagents use {label}{model} for this session', {
+                    label: connection.label,
+                    model: modelSuffix,
+                  });
       onDone(message);
     },
     [onDone, onMainModelChange, onAuthChanged],
@@ -327,7 +346,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       const fresh = findConnection(connectionId);
       if (!fresh) return;
       let touched = false;
-      for (const slot of ['main', 'subagent', 'fast'] as const) {
+      for (const slot of ['main', 'subagent', 'fast', 'sonnet'] as const) {
         const isDefault = getDefaultAssignment(slot)?.connectionId === fresh.id;
         const isSession = getSessionAssignment(slot)?.connectionId === fresh.id;
         if (!isDefault && !isSession) continue;
@@ -375,6 +394,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       case 'list': {
         const hasSubagentDefault = getDefaultAssignment('subagent') !== undefined;
         const hasFastDefault = getDefaultAssignment('fast') !== undefined;
+        const hasSonnetDefault = getDefaultAssignment('sonnet') !== undefined;
         const options: Array<{
           label: string;
           value: string;
@@ -399,6 +419,14 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 {
                   label: t('Clear fast default (inherit main)'),
                   value: 'clear-fast',
+                },
+              ]
+            : []),
+          ...(hasSonnetDefault
+            ? [
+                {
+                  label: t('Clear sonnet default (inherit main)'),
+                  value: 'clear-sonnet',
                 },
               ]
             : []),
@@ -428,6 +456,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   refresh();
                 } else if (value === 'clear-fast') {
                   clearFastDefault();
+                  refresh();
+                } else if (value === 'clear-sonnet') {
+                  clearSonnetDefault();
                   refresh();
                 } else if (value === 'close') {
                   onDone();
@@ -473,6 +504,14 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 {
                   label: t('Set as global default (fast/HAIKU calls)'),
                   value: 'activate:fast:global',
+                },
+                {
+                  label: t('Use for this session (sonnet-tier calls)'),
+                  value: 'activate:sonnet:session',
+                },
+                {
+                  label: t('Set as global default (sonnet-tier calls)'),
+                  value: 'activate:sonnet:global',
                 },
                 {
                   label: t('Change pinned model…'),

@@ -108,6 +108,7 @@ import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
 import { setSubagentProviderCliOverride } from './utils/model/subagentProvider.js';
 import { setFastProviderCliOverride } from './utils/model/fastProvider.js';
+import { setSonnetProviderCliOverride } from './utils/model/sonnetProvider.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const connectionsCliModule = feature('PROVIDER_CONNECTIONS')
   ? (require('./services/connections/cliResolve.js') as typeof import('./services/connections/cliResolve.js'))
@@ -1534,6 +1535,12 @@ async function run(): Promise<CommanderCommand> {
         'Connection for small/fast (HAIKU) internal calls for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
       ),
     )
+    .option(
+      '--sonnet-provider <name>',
+      t(
+        'Connection for internal SONNET-tier calls for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.',
+      ),
+    )
     .option('--disable-slash-commands', t('Disable all skills'), () => true)
     .option('--chrome', t('Enable Claude in Chrome integration'))
     .option('--no-chrome', t('Disable Claude in Chrome integration'))
@@ -1653,17 +1660,18 @@ async function run(): Promise<CommanderCommand> {
         includePartialMessages,
       } = options;
 
-      // Apply CLI --provider / --subagent-provider / --fast-provider
-      // (process-scoped, not persisted).
+      // Apply CLI --provider / --subagent-provider / --fast-provider /
+      // --sonnet-provider (process-scoped, not persisted).
       // Values are /connect registry names (id, label, or presetId).
-      // --subagent-provider/--fast-provider unset force the slot to inherit
-      // the main connection.
+      // --subagent-provider/--fast-provider/--sonnet-provider unset force the
+      // slot to inherit the main connection.
       // Commander stores multi-word flags camelCased: --subagent-provider lands on
       // options.subagentProvider ONLY. Reading the kebab-case key returns
       // undefined and once made this flag a silent no-op.
       const cliProvider = (options as { provider?: string }).provider;
       const cliSubagentProvider = (options as { subagentProvider?: string }).subagentProvider;
       const cliFastProvider = (options as { fastProvider?: string }).fastProvider;
+      const cliSonnetProvider = (options as { sonnetProvider?: string }).sonnetProvider;
       const cliModelForActivation =
         typeof options.model === 'string' && options.model !== 'default' ? options.model : undefined;
       // Model returned by --provider connection activation; applied later when
@@ -1674,11 +1682,16 @@ async function run(): Promise<CommanderCommand> {
       if (
         cliProvider ||
         (cliSubagentProvider && cliSubagentProvider !== 'unset') ||
-        (cliFastProvider && cliFastProvider !== 'unset')
+        (cliFastProvider && cliFastProvider !== 'unset') ||
+        (cliSonnetProvider && cliSonnetProvider !== 'unset')
       ) {
         if (!connectionsCliModule || !connectionsActivateModule) {
           process.stderr.write(
-            chalk.red(t('Error: --provider/--subagent-provider/--fast-provider require PROVIDER_CONNECTIONS.\n')),
+            chalk.red(
+              t(
+                'Error: --provider/--subagent-provider/--fast-provider/--sonnet-provider require PROVIDER_CONNECTIONS.\n',
+              ),
+            ),
           );
           process.exit(1);
         }
@@ -1774,6 +1787,35 @@ async function run(): Promise<CommanderCommand> {
             process.exit(1);
           }
         }
+
+        if (cliSonnetProvider && cliSonnetProvider !== 'unset') {
+          const resolved = connectionsCliModule.resolveConnectionRef(cliSonnetProvider);
+          if (!resolved.ok) {
+            const message =
+              resolved.reason === 'not_found'
+                ? `${resolved.error}\n${connectionsCliModule.formatConnectionsList()}`
+                : resolved.error;
+            process.stderr.write(chalk.red(`${message}\n`));
+            process.exit(1);
+          }
+          const model = connectionsCliModule.modelForCliActivation(resolved.connection);
+          const result = await connectionsActivateModule.activateConnectionForSession(
+            resolved.connection,
+            'sonnet',
+            model,
+          );
+          if (!result.success) {
+            process.stderr.write(
+              chalk.red(
+                tf('Failed to activate sonnet connection "{name}": {error}\n', {
+                  name: cliSonnetProvider,
+                  error: result.error ?? t('unknown error'),
+                }),
+              ),
+            );
+            process.exit(1);
+          }
+        }
       }
 
       if (cliSubagentProvider === 'unset') {
@@ -1782,6 +1824,10 @@ async function run(): Promise<CommanderCommand> {
 
       if (cliFastProvider === 'unset') {
         setFastProviderCliOverride('unset');
+      }
+
+      if (cliSonnetProvider === 'unset') {
+        setSonnetProviderCliOverride('unset');
       }
 
       if (options.prefill) {

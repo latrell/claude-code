@@ -25,6 +25,10 @@ import {
   getFastProviderRuntimeConfig,
 } from './model/fastProvider.js'
 import {
+  getSonnetModelAndRuntime,
+  getSonnetProviderRuntimeConfig,
+} from './model/sonnetProvider.js'
+import {
   getSubagentProviderRuntimeConfig,
   type ProviderRuntimeConfig,
 } from './model/subagentProvider.js'
@@ -363,6 +367,21 @@ export function formatFastDisplayLine(
   )
 }
 
+export function formatSonnetDisplayLine(
+  runtimeConfig: ProviderRuntimeConfig | undefined,
+  parentModel: string,
+  billingType?: string,
+  displayModel?: string,
+): string | undefined {
+  return formatProviderSlotDisplayLine(
+    t('Sonnet agent:'),
+    runtimeConfig,
+    parentModel,
+    billingType,
+    displayModel,
+  )
+}
+
 /**
  * Calculates optimal left panel width based on content
  */
@@ -372,6 +391,7 @@ export function calculateOptimalLeftWidth(
   modelLine: string,
   subagentLine?: string,
   fastLine?: string,
+  sonnetLine?: string,
 ): number {
   const widths = [
     stringWidth(welcomeMessage),
@@ -384,6 +404,9 @@ export function calculateOptimalLeftWidth(
   }
   if (fastLine) {
     widths.push(stringWidth(fastLine))
+  }
+  if (sonnetLine) {
+    widths.push(stringWidth(sonnetLine))
   }
   const contentWidth = Math.max(...widths)
   return Math.min(contentWidth + 4, MAX_LEFT_WIDTH) // +4 for padding
@@ -547,6 +570,7 @@ export function getLogoDisplayData(parentModel: string): {
   agentName: string | undefined
   subagentLine?: string
   fastLine?: string
+  sonnetLine?: string
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION_DISPLAY
   const serverUrl = getDirectConnectServerUrl()
@@ -582,6 +606,20 @@ export function getLogoDisplayData(parentModel: string): {
     fastBillingType,
     fastModel,
   )
+  const sonnetRuntimeConfig = getSonnetProviderRuntimeConfig()
+  const sonnetModel = sonnetRuntimeConfig
+    ? getSonnetModelAndRuntime().model
+    : undefined
+  const sonnetBillingType = getSubagentBillingDisplayName(
+    sonnetRuntimeConfig,
+    billingType,
+  )
+  const sonnetLine = formatSonnetDisplayLine(
+    sonnetRuntimeConfig,
+    parentModel,
+    sonnetBillingType,
+    sonnetModel,
+  )
 
   return {
     version,
@@ -590,6 +628,7 @@ export function getLogoDisplayData(parentModel: string): {
     agentName,
     subagentLine,
     fastLine,
+    sonnetLine,
   }
 }
 

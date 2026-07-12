@@ -142,6 +142,20 @@ describe('upsertConnection / findConnection / removeConnection', () => {
     expect(getDefaultAssignment('subagent')?.connectionId).toBe('other')
   })
 
+  test('removeConnection clears dangling fast and sonnet defaults', () => {
+    // Regression: the dangling-defaults cleanup used to only cover
+    // main/subagent — deleting a connection left stale fast/sonnet defaults
+    // pointing at the removed id.
+    upsertConnection(sampleConnection())
+    setDefaultAssignment('fast', { connectionId: 'deepseek-personal' })
+    setDefaultAssignment('sonnet', { connectionId: 'deepseek-personal' })
+
+    removeConnection('deepseek-personal')
+
+    expect(getDefaultAssignment('fast')).toBeUndefined()
+    expect(getDefaultAssignment('sonnet')).toBeUndefined()
+  })
+
   test('renameConnection only changes the label', () => {
     upsertConnection(sampleConnection())
     renameConnection('deepseek-personal', 'Work Account')
@@ -177,6 +191,31 @@ describe('setDefaultAssignment / getDefaultAssignment', () => {
 
     // Clearing the last assignment drops the defaults object entirely
     setDefaultAssignment('subagent', undefined)
+    _invalidateConnectionsCache()
+    const raw = JSON.parse(readFileSync(getConnectionsFilePath(), 'utf8'))
+    expect(raw.defaults).toBeUndefined()
+  })
+
+  test('fast and sonnet slots persist independently and round-trip', () => {
+    upsertConnection(sampleConnection())
+    setDefaultAssignment('fast', { connectionId: 'deepseek-personal' })
+    setDefaultAssignment('sonnet', {
+      connectionId: 'deepseek-personal',
+      model: 'deepseek-reasoner',
+    })
+
+    // sonnet must NOT fall through into the fast slot (explicit-branch guard)
+    expect(getDefaultAssignment('fast')?.model).toBeUndefined()
+    expect(getDefaultAssignment('sonnet')?.model).toBe('deepseek-reasoner')
+
+    _invalidateConnectionsCache()
+    expect(getDefaultAssignment('sonnet')?.model).toBe('deepseek-reasoner')
+
+    setDefaultAssignment('fast', undefined)
+    expect(getDefaultAssignment('fast')).toBeUndefined()
+    expect(getDefaultAssignment('sonnet')).toBeDefined()
+
+    setDefaultAssignment('sonnet', undefined)
     _invalidateConnectionsCache()
     const raw = JSON.parse(readFileSync(getConnectionsFilePath(), 'utf8'))
     expect(raw.defaults).toBeUndefined()

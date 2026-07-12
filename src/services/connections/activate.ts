@@ -13,12 +13,16 @@
  *   fast slot     → setFastProviderConfigOverride(), consumed by
  *                   getFastProviderRuntimeConfig() for small/fast (HAIKU)
  *                   internal calls (queryHaiku / sideQuery).
+ *   sonnet slot   → setSonnetProviderConfigOverride(), consumed by
+ *                   getSonnetProviderRuntimeConfig() for internal SONNET-tier
+ *                   calls (memory retrieval, poor-mode classifier).
  *
  * Global scope (persists, then applies the session activation too):
  *   main slot     → ccb-provider-auth.json / settings.env credentials,
  *                   settings.modelType, providerModels.<key>.model
  *   subagent slot → settings.subagentProvider, providerModels.<key>.subagentModel
  *   fast slot     → settings.fastProvider, providerModels.<key>.fastModel
+ *   sonnet slot   → settings.sonnetProvider, providerModels.<key>.sonnetModel
  *   all           → defaults recorded in ccb-connections.json (UI display)
  */
 
@@ -45,6 +49,10 @@ import {
   FAST_CREDENTIAL_SCOPE,
   setFastProviderConfigOverride,
 } from '../../utils/model/fastProvider.js'
+import {
+  SONNET_CREDENTIAL_SCOPE,
+  setSonnetProviderConfigOverride,
+} from '../../utils/model/sonnetProvider.js'
 import {
   SUBAGENT_CREDENTIAL_SCOPE,
   setSubagentProviderConfigOverride,
@@ -435,7 +443,7 @@ export async function activateConnectionForSession(
   slot: AgentSlot,
   model?: string | null,
 ): Promise<ActivationResult> {
-  if (slot === 'subagent' || slot === 'fast') {
+  if (slot === 'subagent' || slot === 'fast' || slot === 'sonnet') {
     return activateScopedSlotForSession(connection, slot, model)
   }
   const resolvedModel = resolveActivationModel(connection, model)
@@ -476,10 +484,12 @@ export async function activateConnectionForSession(
 }
 
 /** Scoped slots that deploy via a ProviderLoginConfig override. */
-type ScopedSlot = 'subagent' | 'fast'
+type ScopedSlot = 'subagent' | 'fast' | 'sonnet'
 
 function scopedCredentialScope(slot: ScopedSlot): string {
-  return slot === 'subagent' ? SUBAGENT_CREDENTIAL_SCOPE : FAST_CREDENTIAL_SCOPE
+  if (slot === 'subagent') return SUBAGENT_CREDENTIAL_SCOPE
+  if (slot === 'fast') return FAST_CREDENTIAL_SCOPE
+  return SONNET_CREDENTIAL_SCOPE
 }
 
 function setScopedConfigOverride(
@@ -488,8 +498,10 @@ function setScopedConfigOverride(
 ): void {
   if (slot === 'subagent') {
     setSubagentProviderConfigOverride(config)
-  } else {
+  } else if (slot === 'fast') {
     setFastProviderConfigOverride(config)
+  } else {
+    setSonnetProviderConfigOverride(config)
   }
 }
 
@@ -677,20 +689,27 @@ export async function activateConnectionGlobally(
       } as unknown as SettingsJson)
       if (error) return { success: false, error: error.message }
     } else {
-      // Scoped slots (subagent/fast): persist through the existing
+      // Scoped slots (subagent/fast/sonnet): persist through the existing
       // ProviderLoginConfig pipeline (settings.subagentProvider /
-      // settings.fastProvider).
+      // settings.fastProvider / settings.sonnetProvider).
       const scopedConfig = scopedSlotConfig(connection, slot, resolvedModel)
-      const { error } = writeUserSettings({
-        ...(slot === 'subagent'
+      const scopedSettings: Partial<SettingsJson> =
+        slot === 'subagent'
           ? { subagentProvider: scopedConfig }
-          : { fastProvider: scopedConfig }),
+          : slot === 'fast'
+            ? { fastProvider: scopedConfig }
+            : { sonnetProvider: scopedConfig }
+      const scopedModelField =
+        slot === 'subagent'
+          ? { subagentModel: resolvedModel ?? undefined }
+          : slot === 'fast'
+            ? { fastModel: resolvedModel ?? undefined }
+            : { sonnetModel: resolvedModel ?? undefined }
+      const { error } = writeUserSettings({
+        ...scopedSettings,
         ...(providerKey && {
           providerModels: {
-            [providerKey]:
-              slot === 'subagent'
-                ? { subagentModel: resolvedModel ?? undefined }
-                : { fastModel: resolvedModel ?? undefined },
+            [providerKey]: scopedModelField,
           },
         }),
       } as unknown as SettingsJson)
@@ -731,5 +750,18 @@ export function clearFastDefault(): { error: Error | null } {
   setSessionAssignment('fast', undefined)
   return writeUserSettings({
     fastProvider: undefined,
+  } as unknown as SettingsJson)
+}
+
+/**
+ * Clear the global sonnet default (internal SONNET-tier calls inherit the
+ * main provider).
+ */
+export function clearSonnetDefault(): { error: Error | null } {
+  setSonnetProviderConfigOverride(undefined)
+  setDefaultAssignment('sonnet', undefined)
+  setSessionAssignment('sonnet', undefined)
+  return writeUserSettings({
+    sonnetProvider: undefined,
   } as unknown as SettingsJson)
 }

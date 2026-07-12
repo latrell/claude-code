@@ -95,7 +95,7 @@ export async function getAnthropicClient({
   fetchOverride?: ClientOptions['fetch']
   source?: string
   /**
-   * Scoped provider env (fast/subagent slot). Credential takeover only
+   * Scoped provider env (fast/subagent/sonnet slot). Credential takeover only
    * happens when the override carries ANTHROPIC_* credential keys (an
    * anthropic-api connection): then the override fully determines
    * credentials — the Bedrock/Vertex/Foundry env switches, the subscriber
@@ -103,7 +103,8 @@ export async function getAnthropicClient({
    * env fallbacks are pinned so main-session secrets never leak into scoped
    * requests. An override without credential keys (e.g. an anthropic-oauth
    * profile whose env only carries CLAUDE_CODE_FAST_MODEL /
-   * CLAUDE_CODE_SUBAGENT_MODEL) shares the main session's credentials.
+   * CLAUDE_CODE_SUBAGENT_MODEL / CLAUDE_CODE_SONNET_MODEL) shares the main
+   * session's credentials.
    */
   envOverride?: Record<string, string | undefined>
 }): Promise<Anthropic> {

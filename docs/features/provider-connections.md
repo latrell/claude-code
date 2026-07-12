@@ -1,6 +1,6 @@
 # Provider 连接管理（/connect + /provider + /model）
 
-为 CCB 提供统一的"连接（命名档案）"管理：多提供者、多账号、多档案并存，主/子 agent 与小快模型（HAIKU）调用可在会话级或全局一键切换完整档案。
+为 CCB 提供统一的"连接（命名档案）"管理：多提供者、多账号、多档案并存，主/子 agent、小快模型（HAIKU）调用与内部 SONNET 档调用可在会话级或全局一键切换完整档案。
 
 Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
@@ -9,7 +9,7 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 **连接（Connection）= 命名档案**：提供者类型 + 端点 + 一份账号凭据 + **固定模型（`model`）** + **思考强度（`thinkingEffort`：off/low/medium/high/max）** + **上下文窗口（`contextWindow`，tokens 单值）**。
 
 - 同一提供者可以保存多个连接（多账号），**同一份凭据也可以建多个连接**（多档案）：例如用同一个 DeepSeek key 建 `deepseek1`（deepseek-v4-pro、1M 上下文、max 思考）和 `deepseek2`（deepseek-v4-flash、low 思考），之后 `/provider deepseek1`、`/subagent-provider deepseek2`、`/fast-provider deepseek2` 一键切换完整档案。
-- **三个 agent 槽位（AgentSlot）**：`main`（主 agent）、`subagent`（AgentTool 子 agent）、`fast`（小快模型/HAIKU 内部调用：会话标题、通知总结、工具用途摘要、bash 前缀分析、auto mode、会话搜索、away summary 等）。fast 槽位未配置时，HAIKU 调用跟随主 agent 连接——在第三方连接下这意味着实际打到连接的固定主模型（贵且慢），在 Anthropic 兼容中转下则直发 `claude-haiku-4-5`（中转无该通道时 503），配置 fast 槽位即可把这些调用路由到独立的小模型档案。
+- **四个 agent 槽位（AgentSlot）**：`main`（主 agent）、`subagent`（AgentTool 子 agent）、`fast`（小快模型/HAIKU 内部调用：会话标题、通知总结、工具用途摘要、bash 前缀分析、auto mode、会话搜索、away summary 等）、`sonnet`（内部 SONNET 档调用：memdir 记忆检索、穷鬼模式 auto-mode 分类器降级）。fast/sonnet 槽位未配置时，对应档位调用跟随主 agent 连接——在第三方连接下这意味着实际打到连接的固定主模型（贵且慢），在 Anthropic 兼容中转下则直发 `claude-haiku-4-5` / 默认 Sonnet 模型（中转无该通道时 503），配置对应槽位即可把这些调用路由到独立档案。
 - `Connection.model` 是连接实际使用模型的**唯一真相源**；`models[]` 目录仅供选择 UI 展示。`tierModels` 与 per-model 的 `modelContextWindows` 已 deprecated（仅作旧文件解析与窗口回退来源，不再新增写入）。
 - 连接注册表存于 `~/.claude/ccb-connections.json`（chmod 600）。旧格式文件在加载时懒迁移（从 tierModels/目录推导 pinned model）。
 
@@ -27,9 +27,9 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
 ## 命令
 
-### CLI：`--provider` / `--subagent-provider` / `--fast-provider` / `connect`
+### CLI：`--provider` / `--subagent-provider` / `--fast-provider` / `--sonnet-provider` / `connect`
 
-启动时可用连接名称（`/connect` 配置的 id、label 或 presetId）指定主/子 agent 与小快模型调用使用的连接，进程级生效、不写盘：
+启动时可用连接名称（`/connect` 配置的 id、label 或 presetId）指定主/子 agent、小快模型与内部 SONNET 档调用使用的连接，进程级生效、不写盘：
 
 ```bash
 # 主 agent 用 deepseek1 档案，子 agent 用 deepseek2 档案
@@ -38,27 +38,30 @@ ccb --provider deepseek1 --subagent-provider deepseek2
 # 小快模型（HAIKU）调用走 deepseek2 的 flash 档案
 ccb --provider zhuanbit --fast-provider deepseek2
 
-# 子 agent / 小快调用完全继承主连接
-ccb --provider deepseek1 --subagent-provider unset --fast-provider unset
+# 内部 SONNET 档调用（记忆检索等）走 deepseek1 档案
+ccb --provider zhuanbit --sonnet-provider deepseek1
+
+# 子 agent / 小快 / SONNET 档调用完全继承主连接
+ccb --provider deepseek1 --subagent-provider unset --fast-provider unset --sonnet-provider unset
 
 # 打印已配置连接列表后退出
 ccb connect
 ```
 
-解析顺序：精确 id → 不区分大小写 id → 不区分大小写 label → 不区分大小写 presetId。重名时报错并提示用 id 消歧。`--subagent-provider unset` / `--fast-provider unset` 表示对应槽位完全继承主连接（同时屏蔽 `settings.subagentProvider`/`settings.fastProvider`、`SUBAGENT_*`/`FAST_*` 环境变量和 `providerModels.<key>.subagentModel`/`.fastModel` 的全局默认）。
+解析顺序：精确 id → 不区分大小写 id → 不区分大小写 label → 不区分大小写 presetId。重名时报错并提示用 id 消歧。`--subagent-provider unset` / `--fast-provider unset` / `--sonnet-provider unset` 表示对应槽位完全继承主连接（同时屏蔽 `settings.subagentProvider`/`settings.fastProvider`/`settings.sonnetProvider`、`SUBAGENT_*`/`FAST_*`/`SONNET_*` 环境变量和 `providerModels.<key>.subagentModel`/`.fastModel`/`.sonnetModel` 的全局默认）。
 
 会话激活的 env 增量会记录为 session overlay（`sessionEnvOverlay.ts`），在每次 `applyConfigEnvironmentVariables()`（信任对话框、print 模式、settings 变更、`/provider`）之后重放，保证全局默认（如 `ccb-provider-auth.json` 里的 `OPENAI_AUTH_MODE=chatgpt`、`settings.env` 的 `ANTHROPIC_BASE_URL`）不会覆盖会话内激活的连接。`/login` 和 `/logout` 会清除 overlay。
 
 ### `/connect` — 连接管理面板
 
-- 列表展示所有连接，行内附带档案摘要（`模型 · effort 强度 · ctx 窗口`），标记全局默认（主/子 agent/fast）与本会话使用中的连接。
+- 列表展示所有连接，行内附带档案摘要（`模型 · effort 强度 · ctx 窗口`），标记全局默认（主/子 agent/fast/sonnet）与本会话使用中的连接。
 - **添加连接向导**：选择类型/预设 → 填凭据（或 OAuth 登录）→ **档案三步**：
   1. **模型**：列出该连接可用模型（静态目录 + 远程实时拉取），支持手动输入任意模型 id（自定义端点目录可能为空）；OAuth 类连接（Claude / ChatGPT）可选"Default"走 provider 默认。
   2. **思考强度**：off/low/medium/high/max + "默认（不设置）"。Cursor 连接跳过此步（effort 编码在模型 id 里）。
   3. **上下文窗口**：可跳过的输入（支持 `200000` / `128K` / `1M`）；远程目录已上报该模型窗口时自动预填，回车即确认。OAuth 类连接（窗口由 provider 决定）跳过此步。
   三步均可 Esc 返回上一步。
 - **连接操作菜单**：
-  - 本会话使用 / 设为全局默认（主 agent、子 agent 与 fast/HAIKU 调用各自独立）——**直接按档案激活，不再强制选模型**。仅当 key 型第三方连接（openai-compat / gemini / grok）还没有固定模型时，先引导补选（选中即落盘到 `Connection.model` 后激活）。
+  - 本会话使用 / 设为全局默认（主 agent、子 agent、fast/HAIKU 调用与 SONNET 档调用各自独立）——**直接按档案激活，不再强制选模型**。仅当 key 型第三方连接（openai-compat / gemini / grok）还没有固定模型时，先引导补选（选中即落盘到 `Connection.model` 后激活）。
   - **更换固定模型…** —— 模型选择器（静态目录 + 远程拉取 + 自定义输入），选中 `updateConnectionModel` 落盘；若该连接正在会话/全局的主或子 agent 槽位使用，自动重新部署刷新。
   - **思考强度…** —— 五档 + 默认，写回连接并按需重新部署。
   - **上下文窗口…** —— 直接编辑连接级 `contextWindow` 单值（留空清除）。
@@ -66,12 +69,13 @@ ccb connect
   - 编辑（名称/凭据）、删除。
 - 首次打开自动从旧存储导入（幂等）：`ccb-provider-auth.json` 各 provider 槽位（openai / gemini / grok / cursor）、`settings.env` 的 Anthropic 自定义端点、当前 OAuth 账号、ChatGPT 默认凭据。
 
-### `/provider` / `/subagent-provider` / `/fast-provider` — 连接切换器
+### `/provider` / `/subagent-provider` / `/fast-provider` / `/sonnet-provider` — 连接切换器
 
 - 模糊搜索连接列表，行内显示档案摘要；`Enter` = 本会话切换，`Shift+Tab` = 设为全局默认，标记 `●` 当前会话 / `★` 全局默认。
-- 也支持直接传参：`/provider deepseek1`、`/subagent-provider deepseek2 global`、`/fast-provider deepseek2`、`/fast-provider unset`。
+- 也支持直接传参：`/provider deepseek1`、`/subagent-provider deepseek2 global`、`/fast-provider deepseek2`、`/sonnet-provider deepseek1 global`、`/fast-provider unset`。
 - 切换即部署完整档案：凭据 + 固定模型 + 思考强度 + 上下文窗口一起生效。
 - **`/fast-provider`（alias `/fastapi`）**：把所有小快模型（HAIKU）内部调用（`queryHaiku` 家族：会话标题、MeoW 通知总结、工具用途摘要、bash 前缀分析、日期解析、skill 意图归一化；`sideQuery` 家族：auto mode 穷鬼档、会话搜索、away summary、穷鬼模式权限解释器；及 hook 小模型调用）路由到指定连接。持久化为 `settings.fastProvider` + `providerModels.<key>.fastModel`。绑定主凭据的调用不受影响（claude.ai 限额探测、API key 校验、countTokens 估算、服务端 web_search、hook agent 主循环）。anthropic-oauth 连接作为 fast 槽位时共享主会话 OAuth 凭据（与 subagent 同限制）；anthropic-api 连接则携带独立 Base URL/Token（`getAnthropicClient` env 覆盖）。
+- **`/sonnet-provider`（alias `/sonnetapi`）**：把内部 SONNET 档调用路由到指定连接。拦截点：**memdir 记忆检索**（`findRelevantMemories` 的 sideQuery，每次用户提交 prompt 触发的 auto-memory recall）与**穷鬼模式 auto-mode 分类器降级**（poor mode 下分类器降到 Sonnet 档，仅 fast 槽位未配置时触发——fast 已配置时整个分类器走 fast 连接，优先级：explicit > fast > poor 时 sonnet > 主模型）。持久化为 `settings.sonnetProvider` + `providerModels.<key>.sonnetModel`；环境变量 `CLAUDE_CODE_SONNET_PROVIDER` + `SONNET_*` 前缀（如 `SONNET_OPENAI_API_KEY`）。**有意不接入**：`/model sonnet` 主循环与 sonnetplan（用户显式选择，走主连接）、subagent 定义的 `model: 'sonnet'`（statusline-setup / magic-docs，走 subagent 槽位）、countTokens 估算兜底（绑定主凭据）。未配置时行为与从前逐字节一致（主 provider 默认 Sonnet 模型、无 runtime 覆盖）。
 
 ### `/model` — 当前连接的模型选择
 
@@ -106,6 +110,8 @@ ccb connect
   - `anthropic-oauth` → secure storage 活跃槽位切换 + 清除 `settings.env` 中的自定义端点残留
   - `chatgpt-oauth` → 连接的 scope 凭据文件拷贝到默认文件 + `OPENAI_AUTH_MODE=chatgpt`
   - 子 agent 槽位 → `settings.subagentProvider`（含 model + thinkingEffort）+ `providerModels.<key>.subagentModel`（复用现有 `getSubagentProviderRuntimeConfig()` 管线）
+  - fast 槽位 → `settings.fastProvider` + `providerModels.<key>.fastModel`（`getFastProviderRuntimeConfig()` 管线）
+  - sonnet 槽位 → `settings.sonnetProvider` + `providerModels.<key>.sonnetModel`（`getSonnetProviderRuntimeConfig()` 管线）
 
 ### 注意事项
 
@@ -130,8 +136,8 @@ src/services/connections/
   migrate.ts             # 旧存储幂等导入
   sessionAssignments.ts  # 会话槽位记录（轻量模块，供底层查找使用）
   activate.ts            # 会话级/全局激活引擎（model 缺省 = connection.model）
-  slotSwitch.ts          # /provider、/subagent-provider、/fast-provider 共享的切换辅助
-  cliResolve.ts          # CLI --provider/--subagent-provider/--fast-provider/`connect` 解析与列表格式化
+  slotSwitch.ts          # /provider、/subagent-provider、/fast-provider、/sonnet-provider 共享的切换辅助
+  cliResolve.ts          # CLI --provider/--subagent-provider/--fast-provider/--sonnet-provider/`connect` 解析与列表格式化
   modelCatalog.ts        # 每连接模型目录（静态 + /v1/models、Gemini ListModels 动态拉取）
   contextWindows.ts      # 上下文窗口：解析/格式化/查找
   thinkingEffort.ts      # 连接思考强度的运行时解析
@@ -140,9 +146,10 @@ src/services/connections/
 src/utils/model/
   subagentProvider.ts    # subagent 槽位运行时配置（ProviderRuntimeConfig）
   fastProvider.ts        # fast 槽位运行时配置 + getFastModelAndRuntime()
+  sonnetProvider.ts      # sonnet 槽位运行时配置 + getSonnetModelAndRuntime()
 src/components/connections/
   ConnectionsPanel.tsx / AddConnectionWizard.tsx / ConnectionForm.tsx
   ConnectionPicker.tsx / ModelsPicker.tsx
   ChatGPTDeviceLogin.tsx / CursorDeviceLogin.tsx
-src/commands/connect/  src/commands/provider/  src/commands/fast-provider/
+src/commands/connect/  src/commands/provider/  src/commands/fast-provider/  src/commands/sonnet-provider/
 ```

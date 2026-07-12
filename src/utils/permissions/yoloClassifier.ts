@@ -29,6 +29,7 @@ import { lazySchema } from '../lazySchema.js'
 import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
+import { getSonnetModelAndRuntime } from '../model/sonnetProvider.js'
 import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
@@ -1124,15 +1125,27 @@ export async function classifyYoloAction(
 
   const fast = getFastModelAndRuntime()
   const explicitModel = getExplicitClassifierModel()
+  // Poor mode downgrades the classifier to the SONNET tier — when the fast
+  // slot is not configured, route it through the sonnet slot
+  // (/sonnet-provider) so the downgraded call follows the sonnet connection.
+  const sonnet =
+    !fast.runtime && !explicitModel && isPoorModeActive()
+      ? getSonnetModelAndRuntime()
+      : undefined
+  const slotRuntime = fast.runtime ?? sonnet?.runtime
   const providerRuntimeConfig = explicitModel
-    ? runtimeWithoutPinnedModelEnv(fast.runtime)
-    : fast.runtime
+    ? runtimeWithoutPinnedModelEnv(slotRuntime)
+    : slotRuntime
   // Live auto-mode transcript classification is an internal sideQuery call, so
   // route it through the fast slot when configured. Explicit auto-mode model
   // overrides remain highest priority; otherwise a pinned fast runtime model
-  // becomes the classifier model. This is unrelated to the legacy Bash prompt
-  // classifier.
-  const model = explicitModel ?? fast.runtime?.model ?? getClassifierModel()
+  // becomes the classifier model, then poor mode's sonnet-slot model. This is
+  // unrelated to the legacy Bash prompt classifier.
+  const model =
+    explicitModel ??
+    fast.runtime?.model ??
+    sonnet?.model ??
+    getClassifierModel()
 
   // Dispatch to 2-stage XML classifier if enabled via GrowthBook
   if (isTwoStageClassifierEnabled()) {
@@ -1379,6 +1392,7 @@ function runtimeWithoutPinnedModelEnv(
   delete env.GROK_MODEL
   delete env.CURSOR_MODEL
   delete env.CLAUDE_CODE_FAST_MODEL
+  delete env.CLAUDE_CODE_SONNET_MODEL
   return { ...runtime, model: undefined, env }
 }
 

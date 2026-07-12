@@ -40,6 +40,7 @@ export function CondensedLogo(): ReactNode {
     agentName: agentNameFromSettings,
     subagentLine,
     fastLine,
+    sonnetLine,
   } = getLogoDisplayData(model);
 
   // Prefer AppState.agent (set from --agent CLI flag) over settings
@@ -108,6 +109,7 @@ export function CondensedLogo(): ReactNode {
           )}
           {subagentLine && <Text dimColor>{subagentLine}</Text>}
           {fastLine && <Text dimColor>{fastLine}</Text>}
+          {sonnetLine && <Text dimColor>{sonnetLine}</Text>}
           <Text dimColor>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text>
           {showGuestPassesUpsell && <GuestPassesUpsell />}
           {!showGuestPassesUpsell && showOverageCreditUpsell && <OverageCreditUpsell maxWidth={textWidth} twoLine />}

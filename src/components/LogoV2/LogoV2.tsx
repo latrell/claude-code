@@ -152,6 +152,7 @@ export function LogoV2(): React.ReactNode {
     agentName: agentNameFromSettings,
     subagentLine,
     fastLine,
+    sonnetLine,
   } = getLogoDisplayData(model);
   // Prefer AppState.agent (set from --agent CLI flag) over settings
   const agentName = agent ?? agentNameFromSettings;
@@ -274,6 +275,7 @@ export function LogoV2(): React.ReactNode {
             <Text dimColor>{billingType}</Text>
             {subagentLine && <Text dimColor>{subagentLine}</Text>}
             {fastLine && <Text dimColor>{fastLine}</Text>}
+            {sonnetLine && <Text dimColor>{sonnetLine}</Text>}
             <Text dimColor>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text>
           </Box>
         </OffscreenFreeze>
@@ -304,7 +306,14 @@ export function LogoV2(): React.ReactNode {
     : LEFT_PANEL_MAX_WIDTH;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   const cwdLine = agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd;
-  const optimalLeftWidth = calculateOptimalLeftWidth(welcomeMessage, cwdLine, modelLine, subagentLine, fastLine);
+  const optimalLeftWidth = calculateOptimalLeftWidth(
+    welcomeMessage,
+    cwdLine,
+    modelLine,
+    subagentLine,
+    fastLine,
+    sonnetLine,
+  );
 
   // Calculate layout dimensions
   const { leftWidth, rightWidth } = calculateLayoutDimensions(columns, layoutMode, optimalLeftWidth);
@@ -343,6 +352,7 @@ export function LogoV2(): React.ReactNode {
                 <Text dimColor>{modelLine}</Text>
                 {subagentLine && <Text dimColor>{subagentLine}</Text>}
                 {fastLine && <Text dimColor>{fastLine}</Text>}
+                {sonnetLine && <Text dimColor>{sonnetLine}</Text>}
                 <Text dimColor>{cwdLine}</Text>
               </Box>
             </Box>

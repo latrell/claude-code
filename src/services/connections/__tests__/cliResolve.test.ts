@@ -221,4 +221,12 @@ describe('main.tsx CLI flag wiring contract', () => {
     expect(mainSource).not.toContain("['subagent-provider']")
     expect(mainSource).toContain('.subagentProvider')
   })
+
+  test('main.tsx reads the camelCase sonnetProvider option key', async () => {
+    const mainSource = await Bun.file(
+      new URL('../../../main.tsx', import.meta.url),
+    ).text()
+    expect(mainSource).not.toContain("['sonnet-provider']")
+    expect(mainSource).toContain('.sonnetProvider')
+  })
 })

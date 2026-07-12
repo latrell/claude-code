@@ -77,6 +77,16 @@ function slotSwitchMessage(
           target,
         })
   }
+  if (slot === 'sonnet') {
+    return scope === 'global'
+      ? tf(
+          'Switched sonnet (SONNET tier) calls to {target} and set it as the global default',
+          { target },
+        )
+      : tf('Switched sonnet (SONNET tier) calls to {target} for this session', {
+          target,
+        })
+  }
   return scope === 'global'
     ? tf('Switched subagents to {target} and set it as the global default', {
         target,

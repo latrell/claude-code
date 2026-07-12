@@ -53,6 +53,12 @@ const zh: Record<string, string> = {
     '已切换快（HAIKU）调用到 {target} 并设为全局默认',
   'Fast provider cleared. Small/fast (HAIKU) calls will now inherit the main provider.':
     '已清除快（HAIKU）提供者。快（HAIKU）调用现在将继承主提供者。',
+  'Switched sonnet (SONNET tier) calls to {target} for this session':
+    '已切换 sonnet（SONNET 档）调用到 {target}（本会话）',
+  'Switched sonnet (SONNET tier) calls to {target} and set it as the global default':
+    '已切换 sonnet（SONNET 档）调用到 {target} 并设为全局默认',
+  'Sonnet provider cleared. Internal SONNET-tier calls will now inherit the main provider.':
+    '已清除 sonnet 提供者。内部 SONNET 档调用现在将继承主提供者。',
 
   // ── /lang command ──────────────────────────────────────────────
   // (Removed — language setting is now unified in /config's Language option)
@@ -599,6 +605,7 @@ const zh: Record<string, string> = {
   'Inherit from parent': '继承自父智能体',
   'Subagent:': '子智能体：',
   'Fast agent:': '快速智能体：',
+  'Sonnet agent:': 'Sonnet 智能体：',
 
   // ── Interrupted by user ─────────────────────────────────────────
   'Interrupted ': '已中断 ',
@@ -1872,6 +1879,10 @@ const zh: Record<string, string> = {
     '将主 agent 切换到已保存的连接（来自 /connect）',
   'Switch subagents to a saved connection (from /connect), or unset to inherit the main agent':
     '将子 agent 切换到已保存的连接（来自 /connect），或 unset 继承主 agent',
+  'Switch small/fast (HAIKU) calls to a saved connection (from /connect), or unset to inherit the main agent':
+    '将快（HAIKU）调用切换到已保存的连接（来自 /connect），或 unset 继承主 agent',
+  'Switch internal SONNET-tier calls to a saved connection (from /connect), or unset to inherit the main agent':
+    '将内部 SONNET 档调用切换到已保存的连接（来自 /connect），或 unset 继承主 agent',
   'Manage scheduled remote agent triggers (cloud cron). Requires Claude Pro/Max/Team subscription.':
     '管理定时远程智能体触发器（云端 cron）。需要 Claude Pro/Max/Team 订阅。',
   'Show Claude Code status including version, model, account, API connectivity, and tool statuses':
@@ -2301,6 +2312,10 @@ const zh: Record<string, string> = {
     '激活连接 "{name}" 失败：{error}\n',
   'Failed to activate subagent connection "{name}": {error}\n':
     '激活子 agent 连接 "{name}" 失败：{error}\n',
+  'Failed to activate fast connection "{name}": {error}\n':
+    '激活快（HAIKU）连接 "{name}" 失败：{error}\n',
+  'Failed to activate sonnet connection "{name}": {error}\n':
+    '激活 sonnet 连接 "{name}" 失败：{error}\n',
   'Error: --provider/--subagent-provider require PROVIDER_CONNECTIONS.\n':
     '错误：--provider/--subagent-provider 需要启用 PROVIDER_CONNECTIONS。\n',
   'unknown error': '未知错误',
@@ -2535,6 +2550,10 @@ const zh: Record<string, string> = {
     '此进程的主 agent 连接（/connect 的连接 id/名称/预设）。进程级生效，不持久化。',
   'Subagent connection for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.':
     '此进程的子 agent 连接（/connect 的连接 id/名称/预设，或 unset 继承主连接）。进程级生效，不持久化。',
+  'Connection for small/fast (HAIKU) internal calls for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.':
+    '此进程的快（HAIKU）内部调用连接（/connect 的连接 id/名称/预设，或 unset 继承主连接）。进程级生效，不持久化。',
+  'Connection for internal SONNET-tier calls for this process (connection id/label/preset from /connect, or unset to inherit main). Process-scoped, not persisted.':
+    '此进程的内部 SONNET 档调用连接（/connect 的连接 id/名称/预设，或 unset 继承主连接）。进程级生效，不持久化。',
   'Print configured provider connections (from /connect) and exit':
     '打印已配置的提供者连接（来自 /connect）并退出',
 
@@ -2549,6 +2568,7 @@ const zh: Record<string, string> = {
   '+ Add connection…': '+ 添加连接…',
   'Clear subagent default (inherit main)': '清除子 agent 默认（继承主 agent）',
   'Clear fast default (inherit main)': '清除快（HAIKU）默认（继承主 agent）',
+  'Clear sonnet default (inherit main)': '清除 sonnet 默认（继承主 agent）',
   'Claude account': 'Claude 账号',
   'Anthropic compatible': 'Anthropic 兼容',
   'ChatGPT account': 'ChatGPT 账号',
@@ -2559,12 +2579,16 @@ const zh: Record<string, string> = {
   'in use (subagent)': '本会话使用中（子）',
   'in use (fast)': '本会话使用中（快）',
   'fast default': '快（HAIKU）默认',
+  'in use (sonnet)': '本会话使用中（sonnet）',
+  'sonnet default': 'sonnet（SONNET 档）默认',
   'Use for this session (main agent)': '本会话使用（主 agent）',
   'Set as global default (main agent)': '设为全局默认（主 agent）',
   'Use for this session (subagents)': '本会话使用（子 agent）',
   'Set as global default (subagents)': '设为全局默认（子 agent）',
   'Use for this session (fast/HAIKU calls)': '本会话使用（快 / HAIKU 调用）',
   'Set as global default (fast/HAIKU calls)': '设为全局默认（快 / HAIKU 调用）',
+  'Use for this session (sonnet-tier calls)': '本会话使用（SONNET 档调用）',
+  'Set as global default (sonnet-tier calls)': '设为全局默认（SONNET 档调用）',
   Delete: '删除',
   'Edit connection': '编辑连接',
   'Rename connection': '重命名连接',
@@ -2625,6 +2649,10 @@ const zh: Record<string, string> = {
     '{label}{model} 已设为快（HAIKU）默认',
   'Fast (HAIKU) calls use {label}{model} for this session':
     '本会话快（HAIKU）调用使用 {label}{model}',
+  '{label}{model} is now the sonnet (SONNET tier) default':
+    '{label}{model} 已设为 sonnet（SONNET 档）默认',
+  'Sonnet (SONNET tier) calls use {label}{model} for this session':
+    '本会话 sonnet（SONNET 档）调用使用 {label}{model}',
   'Add connection': '添加连接',
   'Pick a provider preset or connection type': '选择提供者预设或连接类型',
   'OpenAI Compatible (custom endpoint)': 'OpenAI 兼容（自定义端点）',
@@ -2689,6 +2717,8 @@ const zh: Record<string, string> = {
   'Select connection — main agent': '选择连接 — 主 agent',
   'Select connection — subagents': '选择连接 — 子 agent',
   'Select connection — fast (HAIKU) calls': '选择连接 — 快（HAIKU）调用',
+  'Select connection — sonnet (SONNET tier) calls':
+    '选择连接 — sonnet（SONNET 档）调用',
   'Search connections…': '搜索连接…',
   'No connections match — add connections via /connect':
     '没有匹配的连接 — 请先通过 /connect 添加连接',
@@ -7299,8 +7329,8 @@ const zh: Record<string, string> = {
   'Task not ready': '任务未就绪',
   'Fetching…': '正在获取…',
   'Execution error': '执行错误',
-  'Error: --provider/--subagent-provider/--fast-provider require PROVIDER_CONNECTIONS.\n':
-    '错误：--provider/--subagent-provider/--fast-provider 需要 PROVIDER_CONNECTIONS 特性。\n',
+  'Error: --provider/--subagent-provider/--fast-provider/--sonnet-provider require PROVIDER_CONNECTIONS.\n':
+    '错误：--provider/--subagent-provider/--fast-provider/--sonnet-provider 需要 PROVIDER_CONNECTIONS 特性。\n',
   '\nNo servers were imported.': '\n没有导入任何服务器。',
   'Plan being refined via Ultraplan — please wait for the result.':
     '正在通过 Ultraplan 优化方案 —— 请等待结果。',
@@ -7334,6 +7364,8 @@ const zh: Record<string, string> = {
   'Context: "{context}"': '上下文："{context}"',
   'Current fast provider: {provider}{source}':
     '当前快速提供者：{provider}{source}',
+  'Current sonnet provider: {provider}{source}':
+    '当前 sonnet 提供者：{provider}{source}',
   'Log file: ': '日志文件：',
   'You have {count} {noun}': '你有 {count} 个{noun}',
   '[{role} / {name}] {content}': '[{role} / {name}] {content}',

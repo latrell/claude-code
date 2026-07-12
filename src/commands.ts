@@ -224,6 +224,9 @@ import subagentProvider, {
 import fastProvider, {
   fastProviderNonInteractive,
 } from './commands/fast-provider/index.js'
+import sonnetProviderCmd, {
+  sonnetProviderNonInteractive,
+} from './commands/sonnet-provider/index.js'
 import { t } from './i18n/t.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
@@ -330,6 +333,8 @@ const COMMANDS = memoize((): Command[] => [
   subagentProviderNonInteractive,
   fastProvider,
   fastProviderNonInteractive,
+  sonnetProviderCmd,
+  sonnetProviderNonInteractive,
   ...(feature('PROVIDER_CONNECTIONS') ? [connectCmd] : []),
   artifacts,
   agents,

@@ -267,7 +267,16 @@ export function removeConnection(id: string): void {
     defaults = { ...defaults }
     if (defaults.main?.connectionId === id) defaults.main = undefined
     if (defaults.subagent?.connectionId === id) defaults.subagent = undefined
-    if (!defaults.main && !defaults.subagent) defaults = undefined
+    if (defaults.fast?.connectionId === id) defaults.fast = undefined
+    if (defaults.sonnet?.connectionId === id) defaults.sonnet = undefined
+    if (
+      !defaults.main &&
+      !defaults.subagent &&
+      !defaults.fast &&
+      !defaults.sonnet
+    ) {
+      defaults = undefined
+    }
   }
   writeConnectionsFile({ ...file, connections, defaults })
 }
@@ -318,7 +327,8 @@ export function getDefaultAssignment(
   const defaults = loadConnectionsFile().defaults
   if (slot === 'main') return defaults?.main
   if (slot === 'subagent') return defaults?.subagent
-  return defaults?.fast
+  if (slot === 'fast') return defaults?.fast
+  return defaults?.sonnet
 }
 
 export function setDefaultAssignment(
@@ -331,16 +341,19 @@ export function setDefaultAssignment(
     defaults.main = assignment
   } else if (slot === 'subagent') {
     defaults.subagent = assignment
-  } else {
+  } else if (slot === 'fast') {
     defaults.fast = assignment
+  } else {
+    defaults.sonnet = assignment
   }
   const cleaned =
-    !defaults.main && !defaults.subagent && !defaults.fast
+    !defaults.main && !defaults.subagent && !defaults.fast && !defaults.sonnet
       ? undefined
       : {
           ...(defaults.main && { main: defaults.main }),
           ...(defaults.subagent && { subagent: defaults.subagent }),
           ...(defaults.fast && { fast: defaults.fast }),
+          ...(defaults.sonnet && { sonnet: defaults.sonnet }),
         }
   writeConnectionsFile({ ...file, defaults: cleaned })
 }

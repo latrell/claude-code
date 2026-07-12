@@ -154,6 +154,7 @@ export const ConnectionDefaultsSchema = z.object({
   main: SlotAssignmentSchema.optional(),
   subagent: SlotAssignmentSchema.optional(),
   fast: SlotAssignmentSchema.optional(),
+  sonnet: SlotAssignmentSchema.optional(),
 })
 export type ConnectionDefaults = z.infer<typeof ConnectionDefaultsSchema>
 
@@ -165,7 +166,7 @@ export const ConnectionsFileSchema = z.object({
 })
 export type ConnectionsFile = z.infer<typeof ConnectionsFileSchema>
 
-export type AgentSlot = 'main' | 'subagent' | 'fast'
+export type AgentSlot = 'main' | 'subagent' | 'fast' | 'sonnet'
 
 export const CONNECTIONS_FILE_VERSION = 1
 

@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { getDefaultSonnetModel } from '../utils/model/model.js'
+import { getSonnetModelAndRuntime } from '../utils/model/sonnetProvider.js'
 import { sideQuery } from '../utils/sideQuery.js'
 import type { LangfuseSpan } from '../services/langfuse/index.js'
 import { jsonParse } from '../utils/slowOperations.js'
@@ -99,8 +99,13 @@ async function selectRelevantMemories(
       : ''
 
   try {
+    // Route the memory selector through the sonnet slot (/sonnet-provider)
+    // when configured; unconfigured = main provider's default Sonnet model
+    // with no runtime override (current behaviour).
+    const sonnet = getSonnetModelAndRuntime()
     const result = await sideQuery({
-      model: getDefaultSonnetModel(),
+      model: sonnet.model,
+      ...(sonnet.runtime && { providerRuntimeConfig: sonnet.runtime }),
       system: SELECT_MEMORIES_SYSTEM_PROMPT,
       skipSystemPromptPrefix: true,
       messages: [

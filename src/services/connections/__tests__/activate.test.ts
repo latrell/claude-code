@@ -68,6 +68,7 @@ const {
   activateConnectionForSession,
   activateConnectionGlobally,
   clearFastDefault,
+  clearSonnetDefault,
   envForConnection,
 } = await import('../activate.js')
 
@@ -112,6 +113,8 @@ const { getSubagentProviderConfig, setSubagentProviderConfigOverride } =
 const { getFastProviderConfig, setFastProviderConfigOverride } = await import(
   '../../../utils/model/fastProvider.js'
 )
+const { getSonnetProviderConfig, setSonnetProviderConfigOverride } =
+  await import('../../../utils/model/sonnetProvider.js')
 const {
   applySessionProviderEnvOverlay,
   getSessionProviderEnvOverlay,
@@ -134,6 +137,7 @@ afterAll(() => {
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
+  setSonnetProviderConfigOverride(undefined)
 })
 
 const ENV_KEYS = [
@@ -197,6 +201,7 @@ beforeEach(() => {
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
+  setSonnetProviderConfigOverride(undefined)
   setSessionProviderEnvOverlay(null)
 })
 
@@ -219,6 +224,7 @@ afterEach(() => {
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
+  setSonnetProviderConfigOverride(undefined)
   setSessionProviderEnvOverlay(null)
   rmSync(tmpDir, { recursive: true, force: true })
 })
@@ -1097,5 +1103,137 @@ describe('clearFastDefault', () => {
     expect(getFastProviderConfig({}, {})).toBeUndefined()
     expect(getDefaultAssignment('fast')).toBeUndefined()
     expect(readUserSettings()['fastProvider']).toBeUndefined()
+  })
+})
+
+describe('activateConnectionForSession (sonnet slot)', () => {
+  test('openai-compat: sets full sonnet provider override', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(
+      conn,
+      'sonnet',
+      'deepseek-v4-pro',
+    )
+    expect(result.success).toBe(true)
+
+    const config = getSonnetProviderConfig({}, {})
+    expect(config?.modelType).toBe('openai')
+    expect(config?.model).toBe('deepseek-v4-pro')
+    expect(config?.env?.OPENAI_API_KEY).toBe('sk-a')
+    expect(config?.env?.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
+  })
+
+  test('anthropic-api: sonnet config carries scoped ANTHROPIC_* credentials', async () => {
+    const conn: Connection = {
+      id: 'gateway-sonnet',
+      label: 'Gateway Sonnet',
+      kind: 'anthropic-api',
+      baseUrl: 'https://gw.example.com',
+      apiKey: 'tok-sonnet',
+      model: 'glm-5.1',
+    }
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'sonnet')
+    expect(result.success).toBe(true)
+
+    const config = getSonnetProviderConfig({}, {})
+    expect(config?.modelType).toBe('anthropic')
+    expect(config?.model).toBe('glm-5.1')
+    expect(config?.env?.ANTHROPIC_BASE_URL).toBe('https://gw.example.com')
+    expect(config?.env?.ANTHROPIC_AUTH_TOKEN).toBe('tok-sonnet')
+  })
+
+  test('does not touch process.env, main provider or the other scoped slots', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionForSession(conn, 'sonnet', 'deepseek-v4-pro')
+    expect(process.env.OPENAI_API_KEY).toBeUndefined()
+    expect(getAPIProvider({}, {})).toBe('firstParty')
+    expect(getSubagentProviderConfig({}, {})).toBeUndefined()
+    expect(getFastProviderConfig({}, {})).toBeUndefined()
+    expect(getSessionProviderEnvOverlay()).toBeNull()
+  })
+
+  test('model omitted: sonnet config pins the connection model', async () => {
+    const conn = openaiConn({ model: 'deepseek-v4-pro' })
+    upsertConnection(conn)
+    const result = await activateConnectionForSession(conn, 'sonnet')
+    expect(result.success).toBe(true)
+    expect(getSonnetProviderConfig({}, {})?.model).toBe('deepseek-v4-pro')
+  })
+
+  test('chatgpt-oauth sonnet activation fails when no credential exists', async () => {
+    const result = await activateConnectionForSession(chatgptConn(), 'sonnet')
+    expect(result.success).toBe(false)
+    expect(getSonnetProviderConfig({}, {})).toBeUndefined()
+  })
+})
+
+describe('activateConnectionGlobally (sonnet slot)', () => {
+  test('persists sonnetProvider, sonnetModel and the sonnet default', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+
+    const result = await activateConnectionGlobally(
+      conn,
+      'sonnet',
+      'deepseek-v4-pro',
+    )
+    expect(result.success).toBe(true)
+
+    const settings = readUserSettings() as {
+      sonnetProvider?: { modelType: string; env?: Record<string, string> }
+      providerModels?: Record<string, { sonnetModel?: string }>
+    }
+    expect(settings.sonnetProvider?.modelType).toBe('openai')
+    expect(settings.sonnetProvider?.env?.OPENAI_API_KEY).toBe('sk-a')
+    expect(settings.providerModels?.['openai']?.sonnetModel).toBe(
+      'deepseek-v4-pro',
+    )
+
+    expect(getDefaultAssignment('sonnet')).toEqual({
+      connectionId: 'deepseek-a',
+      model: 'deepseek-v4-pro',
+    })
+
+    // Session applied too, without touching process.env
+    expect(getSonnetProviderConfig({}, {})?.model).toBe('deepseek-v4-pro')
+    expect(process.env.OPENAI_API_KEY).toBeUndefined()
+  })
+
+  test('does not clobber the subagent or fast defaults', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'subagent', 'deepseek-chat')
+    await activateConnectionGlobally(conn, 'fast', 'deepseek-v4-flash')
+    await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
+
+    expect(getDefaultAssignment('subagent')?.model).toBe('deepseek-chat')
+    expect(getDefaultAssignment('fast')?.model).toBe('deepseek-v4-flash')
+    expect(getDefaultAssignment('sonnet')?.model).toBe('deepseek-v4-pro')
+    const settings = readUserSettings() as {
+      subagentProvider?: { model?: string }
+      fastProvider?: { model?: string }
+      sonnetProvider?: { model?: string }
+    }
+    expect(settings.subagentProvider?.model).toBe('deepseek-chat')
+    expect(settings.fastProvider?.model).toBe('deepseek-v4-flash')
+    expect(settings.sonnetProvider?.model).toBe('deepseek-v4-pro')
+  })
+})
+
+describe('clearSonnetDefault', () => {
+  test('clears the override, assignments and settings.sonnetProvider', async () => {
+    const conn = openaiConn()
+    upsertConnection(conn)
+    await activateConnectionGlobally(conn, 'sonnet', 'deepseek-v4-pro')
+    expect(getSonnetProviderConfig({}, {})).toBeDefined()
+
+    const { error } = clearSonnetDefault()
+    expect(error).toBeNull()
+    expect(getSonnetProviderConfig({}, {})).toBeUndefined()
+    expect(getDefaultAssignment('sonnet')).toBeUndefined()
+    expect(readUserSettings()['sonnetProvider']).toBeUndefined()
   })
 })
