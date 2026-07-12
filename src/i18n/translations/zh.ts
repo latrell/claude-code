@@ -7292,6 +7292,45 @@ const zh: Record<string, string> = {
   'Task is still running…': '任务仍在运行…',
   'Task not ready': '任务未就绪',
   'Fetching…': '正在获取…',
+  'Execution error': '执行错误',
+  'Error: --provider/--subagent-provider/--fast-provider require PROVIDER_CONNECTIONS.\n':
+    '错误：--provider/--subagent-provider/--fast-provider 需要 PROVIDER_CONNECTIONS 特性。\n',
+  '\nNo servers were imported.': '\n没有导入任何服务器。',
+  'Plan being refined via Ultraplan — please wait for the result.':
+    '正在通过 Ultraplan 优化方案 —— 请等待结果。',
+  'Claude Code - starts an interactive session by default, use -p/--print for non-interactive output':
+    'Claude Code - 默认启动交互式会话，使用 -p/--print 进行非交互式输出',
+  'Effort level for the current session (low, medium, high, max)':
+    '当前会话的投入级别（低、中、高、最大）',
+  '<source> <outputFile>': '<来源> <输出文件>',
+  '/buddy': '/buddy',
+  ' · ./path/to/marketplace': ' · ./路径/到/市场目录',
+  ' · git@github.com:owner/repo.git (SSH)':
+    ' · git@github.com:拥有者/仓库.git（SSH）',
+  ' · https://example.com/marketplace.json': ' · https://示例.com/市场.json',
+  ' · owner/repo (GitHub)': ' · 拥有者/仓库（GitHub）',
+  '  /plugin validate .\n\n': '  /plugin validate .\n\n',
+  '  /plugin validate .claude-plugin/plugin.json\n':
+    '  /plugin validate .claude-plugin/plugin.json\n',
+  '  /plugin validate /path/to/plugin-directory\n':
+    '  /plugin validate /路径/到/插件目录\n',
+  '  claude plugin validate <path>': '  claude plugin validate <路径>',
+  '   • Windows: Windows Terminal': '   • Windows：Windows 终端',
+  '   • macOS: Apple Terminal': '   • macOS：Apple 终端',
+  '  API:': '  API：',
+  'runs 10': '运行 10 次',
+  'flows 10': '流程 10 个',
+  安全指南: '安全指南',
+  '是，我信任此文件夹': '是，我信任此文件夹',
+  ' - ': ' - ',
+  '  PID:     {pid}': '  PID：     {pid}',
+  '  CWD:     {cwd}': '  CWD：     {cwd}',
+  'Context: "{context}"': '上下文："{context}"',
+  'Current fast provider: {provider}{source}':
+    '当前快速提供者：{provider}{source}',
+  'Log file: ': '日志文件：',
+  'You have {count} {noun}': '你有 {count} 个{noun}',
+  '[{role} / {name}] {content}': '[{role} / {name}] {content}',
 }
 
 export default zh
