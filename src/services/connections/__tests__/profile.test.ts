@@ -165,12 +165,13 @@ describe('connectionProfileSummary', () => {
     expect(
       connectionProfileSummary(
         conn({
+          presetId: 'deepseek',
           model: 'deepseek-v4-pro',
           thinkingEffort: 'max',
           contextWindow: 1_000_000,
         }),
       ),
-    ).toBe('deepseek-v4-pro · effort max · ctx 1M')
+    ).toBe('DeepSeek V4 Pro · effort max · ctx 1M')
   })
 
   test('without a pinned model falls back to the provider default label', () => {
@@ -180,6 +181,12 @@ describe('connectionProfileSummary', () => {
   test('omits unset effort and ctx', () => {
     expect(connectionProfileSummary(conn({ model: 'deepseek-chat' }))).toBe(
       'deepseek-chat',
+    )
+  })
+
+  test('falls back to the raw id for a model without a catalog alias', () => {
+    expect(connectionProfileSummary(conn({ model: 'custom-model' }))).toBe(
+      'custom-model',
     )
   })
 })

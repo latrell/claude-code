@@ -73,6 +73,14 @@ describe('connectionSummary', () => {
     )
   })
 
+  test('shows the preset model alias instead of the raw API id', () => {
+    expect(
+      connectionSummary(
+        conn({ presetId: 'deepseek', model: 'deepseek-v4-pro' }),
+      ),
+    ).toBe('DeepSeek (DeepSeek V4 Pro)')
+  })
+
   test('includes thinking effort when pinned', () => {
     expect(
       connectionSummary(

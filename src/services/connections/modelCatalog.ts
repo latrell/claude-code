@@ -215,6 +215,22 @@ export function getStaticModelsForConnection(
 }
 
 /**
+ * Resolve the user-facing label for a model id in this connection's catalog.
+ * Preset and provider catalogs often expose a friendlier alias than the raw
+ * API id. Custom or remotely discovered ids safely fall back to themselves.
+ */
+export function connectionModelDisplayName(
+  connection: Connection,
+  modelId: string,
+): string {
+  return (
+    getStaticModelsForConnection(connection).find(
+      model => model.value === modelId,
+    )?.label ?? modelId
+  )
+}
+
+/**
  * Models offered by the picker UIs for a connection: the static catalog with
  * the live remote list merged on top. For key-based third-party kinds
  * without a tier mapping the "Default" entry is dropped — an explicit model

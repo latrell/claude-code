@@ -11,6 +11,7 @@
 
 import { t } from '../../i18n/t.js'
 import { formatContextWindow } from './contextWindows.js'
+import { connectionModelDisplayName } from './modelCatalog.js'
 import type { Connection, ConnectionKind, ThinkingEffort } from './types.js'
 
 /**
@@ -103,7 +104,11 @@ export function duplicateConnection(
  * /provider picker so a profile reads the same everywhere.
  */
 export function connectionProfileSummary(connection: Connection): string {
-  const parts: string[] = [connection.model ?? t('provider default')]
+  const parts: string[] = [
+    connection.model
+      ? connectionModelDisplayName(connection, connection.model)
+      : t('provider default'),
+  ]
   if (connection.thinkingEffort) {
     parts.push(`effort ${connection.thinkingEffort}`)
   }

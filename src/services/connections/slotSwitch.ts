@@ -16,6 +16,7 @@ import {
 } from './activate.js'
 import { formatConnectionsList, resolveConnectionRef } from './cliResolve.js'
 import { importLegacyConnections } from './migrate.js'
+import { connectionModelDisplayName } from './modelCatalog.js'
 import type { AgentSlot, Connection } from './types.js'
 
 export type SlotSwitchScope = 'session' | 'global'
@@ -47,7 +48,11 @@ export function parseConnectionSwitchArgs(args: string): {
 
 /** "Label (model, effort high)" summary used in switch confirmations. */
 export function connectionSummary(connection: Connection): string {
-  const parts: string[] = [connection.model ?? t('provider default')]
+  const parts: string[] = [
+    connection.model
+      ? connectionModelDisplayName(connection, connection.model)
+      : t('provider default'),
+  ]
   if (connection.thinkingEffort) {
     parts.push(`effort ${connection.thinkingEffort}`)
   }

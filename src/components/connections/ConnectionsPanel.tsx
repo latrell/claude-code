@@ -17,6 +17,7 @@ import {
 import { importLegacyConnections } from '../../services/connections/migrate.js';
 import {
   fetchAndRecordRemoteModels,
+  connectionModelDisplayName,
   pickerModelsForConnection,
   supportsRemoteModelList,
   type RemoteModel,
@@ -283,12 +284,13 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       const effectiveModel = model ?? fresh.model;
       let modelSuffix = '';
       if (effectiveModel) {
+        const displayModel = connectionModelDisplayName(fresh, effectiveModel);
         const ctx =
           fresh.contextWindow ??
           (supportsRemoteModelList(fresh.kind)
             ? getModelContextWindowForConnection(fresh, effectiveModel)?.tokens
             : undefined);
-        modelSuffix = ctx ? ` (${effectiveModel} · ctx ${formatContextWindow(ctx)})` : ` (${effectiveModel})`;
+        modelSuffix = ctx ? ` (${displayModel} · ctx ${formatContextWindow(ctx)})` : ` (${displayModel})`;
       }
       const message =
         slot === 'main'
@@ -517,7 +519,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 {
                   label: t('Change pinned model…'),
                   value: 'model',
-                  description: connection.model,
+                  description: connection.model ? connectionModelDisplayName(connection, connection.model) : undefined,
                 },
                 ...(connection.kind !== 'cursor'
                   ? [
