@@ -94,7 +94,7 @@ import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
-  renderModelName,
+  modelDisplayString,
 } from './utils/model/model.js'
 import {
   doesMostRecentAssistantMessageExceed200k,
@@ -1232,7 +1232,7 @@ async function* queryLoop(
             // Yield system message about fallback — use 'warning' level so
             // users see the notification without needing verbose mode
             yield createSystemMessage(
-              `Switched to ${renderModelName(innerError.fallbackModel)} due to high demand for ${renderModelName(innerError.originalModel)}`,
+              `Switched to ${modelDisplayString(innerError.fallbackModel)} due to high demand for ${modelDisplayString(innerError.originalModel)}`,
               'warning',
             )
 

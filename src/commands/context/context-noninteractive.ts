@@ -9,6 +9,7 @@ import {
   type ContextData,
 } from '../../utils/analyzeContext.js'
 import { formatTokens } from '../../utils/format.js'
+import { modelDisplayString } from '../../utils/model/model.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { getSourceDisplayName } from '../../utils/settings/constants.js'
 import { plural } from '../../utils/stringUtils.js'
@@ -104,7 +105,7 @@ function formatContextAsMarkdownTable(data: ContextData): string {
   } = data
 
   let output = `## Context Usage\n\n`
-  output += `**Model:** ${model}  \n`
+  output += `**Model:** ${modelDisplayString(model)}  \n`
   output += `**Tokens:** ${formatTokens(totalTokens)} / ${formatTokens(rawMaxTokens)} (${percentage}%)\n`
 
   // Context-collapse status. Always show when the runtime gate is on —

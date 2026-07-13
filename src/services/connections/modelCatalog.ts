@@ -16,6 +16,7 @@ import { getChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
 import { t } from '../../i18n/t.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { getKnownModelDisplayName } from '../../utils/model/display.js'
 import {
   CHATGPT_CODEX_MODEL_OPTIONS,
   getChatGPTCodexContextWindow,
@@ -242,7 +243,9 @@ export function connectionModelDisplayName(
   return (
     getStaticModelsForConnection(connection).find(
       model => model.value === modelId,
-    )?.label ?? modelId
+    )?.label ??
+    getKnownModelDisplayName(modelId) ??
+    modelId
   )
 }
 

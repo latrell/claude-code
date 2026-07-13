@@ -11,6 +11,7 @@ import {
 } from '@claude-code-best/builtin-tools/tools/AgentTool/agentDisplay.js';
 import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { count } from '../../utils/array.js';
+import { modelDisplayString } from '../../utils/model/model.js';
 import { Dialog, Divider } from '@anthropic/ink';
 import { t } from '../../i18n/t.js';
 import { getAgentSourceDisplayName } from './utils.js';
@@ -74,7 +75,7 @@ export function AgentsList({ source, agents, onBack, onSelect, onCreateNew, chan
         {resolvedModel && (
           <Text dimColor={true} color={textColor}>
             {' · '}
-            {resolvedModel}
+            {modelDisplayString(resolvedModel)}
           </Text>
         )}
         {agent.memory && (

@@ -14,6 +14,7 @@ import { AGENT_COLOR_TO_THEME_COLOR } from '@claude-code-best/builtin-tools/tool
 import { logForDebugging } from '../../utils/debug.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
 import { truncateToWidth } from '../../utils/format.js';
+import { modelDisplayString } from '../../utils/model/model.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import {
   getModeColor,
@@ -354,7 +355,7 @@ function TeammateListItem({ teammate, isSelected }: TeammateListItemProps): Reac
       {teammate.isHidden && <Text dimColor>[hidden] </Text>}
       {isIdle && <Text dimColor>[idle] </Text>}
       {modeSymbol && <Text color={modeColor}>{modeSymbol} </Text>}@{teammate.name}
-      {teammate.model && <Text dimColor> ({teammate.model})</Text>}
+      {teammate.model && <Text dimColor> ({modelDisplayString(teammate.model)})</Text>}
     </Text>
   );
 }
@@ -399,7 +400,7 @@ function TeammateDetailView({ teammate, teamName, onCancel }: TeammateDetailView
 
   // Build subtitle with metadata
   const subtitleParts: string[] = [];
-  if (teammate.model) subtitleParts.push(teammate.model);
+  if (teammate.model) subtitleParts.push(modelDisplayString(teammate.model));
   if (workingPath) {
     subtitleParts.push(teammate.worktreePath ? `worktree: ${workingPath}` : workingPath);
   }

@@ -71,6 +71,13 @@ export function formatCentsCompact(cents: number): string {
   return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
 
+/** Preserve the complete model alias unless the terminal is genuinely narrow. */
+export function statusLineModelName(modelName: string, narrow: boolean): string {
+  if (!narrow) return modelName;
+  const modelParts = modelName.split(' ');
+  return modelParts.length >= 2 ? `${modelParts[0]} ${modelParts[1]}` : modelName;
+}
+
 function Separator() {
   return <Text dimColor>{' \u2502 '}</Text>;
 }
@@ -135,11 +142,8 @@ function BuiltinStatusLineInner({
   // Suppress unused-variable lint for tick (it exists only to trigger re-renders)
   void tick;
 
-  // Model display: use first two words (e.g. "Opus 4.6") instead of just first word
-  const modelParts = modelName.split(' ');
-  const shortModel = modelParts.length >= 2 ? `${modelParts[0]} ${modelParts[1]}` : modelName;
-
   const narrow = columns < 60;
+  const displayModel = statusLineModelName(modelName, narrow);
 
   const fiveHourPct = hasFiveHour ? Math.round(rateLimits.five_hour!.utilization * 100) : 0;
   const sevenDayPct = hasSevenDay ? Math.round(rateLimits.seven_day!.utilization * 100) : 0;
@@ -150,7 +154,7 @@ function BuiltinStatusLineInner({
   return (
     <Box>
       {/* Model name */}
-      <Text>{shortModel}</Text>
+      <Text>{displayModel}</Text>
 
       {/* Context usage with token counts */}
       <Separator />

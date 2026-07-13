@@ -4,7 +4,7 @@ import { Box, Text } from '@anthropic/ink';
 import { tf } from '../../i18n/t.js';
 import { T } from '../../i18n/TText.js';
 import type { AdvisorBlock } from '../../utils/advisor.js';
-import { renderModelName } from '../../utils/model/model.js';
+import { modelDisplayString } from '../../utils/model/model.js';
 import { jsonStringify } from '../../utils/slowOperations.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
@@ -39,7 +39,7 @@ export function AdvisorMessage({
           isError={erroredToolUseIDs.has(block.id)}
         />
         <T bold>Advising</T>
-        {advisorModel ? <Text dimColor> using {renderModelName(advisorModel)}</Text> : null}
+        {advisorModel ? <Text dimColor> using {modelDisplayString(advisorModel)}</Text> : null}
         {input ? <Text dimColor> · {input}</Text> : null}
       </Box>
     );

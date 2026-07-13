@@ -19,7 +19,7 @@ import {
 } from '../../services/api/errors.js';
 import { isEmptyMessageText, NO_RESPONSE_REQUESTED } from '../../utils/messages.js';
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js';
-import { getDefaultSonnetModel, renderModelName } from '../../utils/model/model.js';
+import { getDefaultSonnetModel, modelDisplayString } from '../../utils/model/model.js';
 import { isMacOsKeychainLocked } from '../../utils/secureStorage/macOsKeychainStorage.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { InterruptedByUser } from '../InterruptedByUser.js';
@@ -147,7 +147,7 @@ export function AssistantTextMessage({
             <T color="error">We are experiencing high demand for Opus 4.</T>
             <Text>
               {tf('To continue immediately, use /model to switch to {model} and continue coding.', {
-                model: renderModelName(getDefaultSonnetModel()),
+                model: modelDisplayString(getDefaultSonnetModel()),
               })}
             </Text>
           </Box>

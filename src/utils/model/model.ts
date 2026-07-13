@@ -42,6 +42,7 @@ import {
   isChatGPTAuthMode,
 } from './chatgptModels.js'
 import { t, tf } from '../../i18n/t.js'
+import { getKnownModelDisplayName } from './display.js'
 
 export type ModelShortName = string
 export type ModelName = string
@@ -559,7 +560,10 @@ export function renderDefaultModelSetting(
   if (setting === 'opusplan') {
     return 'Opus 4.8 in plan mode, else Fable 5'
   }
-  return renderModelName(parseUserSpecifiedModel(setting))
+  const resolvedModel = parseUserSpecifiedModel(setting)
+  return (
+    getKnownModelDisplayName(resolvedModel) ?? renderModelName(resolvedModel)
+  )
 }
 
 export function getOpusPricingSuffix(fastMode: boolean): string {
@@ -597,7 +601,7 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
   if (isModelAlias(setting)) {
     return capitalize(setting)
   }
-  return renderModelName(setting)
+  return getKnownModelDisplayName(setting) ?? renderModelName(setting)
 }
 
 // @[MODEL LAUNCH]: Add display name cases for the new model (base + [1m] variant if applicable).
@@ -849,7 +853,8 @@ export function modelDisplayString(model: ModelSetting): string {
     return `${t('Default')} (${getDefaultMainLoopModel()})`
   }
   const resolvedModel = parseUserSpecifiedModel(model)
-  return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`
+  const displayModel = getKnownModelDisplayName(resolvedModel) ?? resolvedModel
+  return model === resolvedModel ? displayModel : `${model} (${displayModel})`
 }
 
 // @[MODEL LAUNCH]: Add a marketing name mapping for the new model below.

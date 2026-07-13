@@ -23,6 +23,7 @@ import {
 } from '../../services/connections/store.js';
 import type { AgentSlot, Connection } from '../../services/connections/types.js';
 import { t, tf } from '../../i18n/t.js';
+import { connectionDisplayName } from '../../services/connections/profile.js';
 import { Spinner } from '../Spinner.js';
 import { kindDisplayName } from './ConnectionsPanel.js';
 
@@ -76,7 +77,7 @@ function buildItems(connections: Connection[], remoteModels: Record<string, Remo
         connection,
         model,
         searchText:
-          `${connection.label} ${kindDisplayName(connection.kind)} ${model.label} ${model.value ?? ''}`.toLowerCase(),
+          `${connectionDisplayName(connection)} ${connection.label} ${kindDisplayName(connection.kind)} ${model.label} ${model.value ?? ''}`.toLowerCase(),
       });
     }
   }
@@ -185,10 +186,10 @@ export function ModelsPicker({
           ? ` · ctx ${formatContextWindow(ctx.tokens)}`
           : ` · ${t('ctx unknown, 200K assumed — set via /connect')}`;
       }
-      const target = `${connection.label} / ${item.model.label}${ctxSuffix}`;
+      const target = `${connectionDisplayName(connection)} / ${item.model.label}${ctxSuffix}`;
       const message = pinned
         ? tf('Connection {label} model set to {target}', {
-            label: connection.label,
+            label: connectionDisplayName(connection),
             target: `${item.model.label}${ctxSuffix}`,
           })
         : slot === 'main'
@@ -231,7 +232,7 @@ export function ModelsPicker({
         getKey={item => item.key}
         renderItem={(item, isFocused) => (
           <Text color={isFocused ? undefined : undefined}>
-            <Text bold={isFocused}>{item.connection.label}</Text>
+            <Text bold={isFocused}>{connectionDisplayName(item.connection)}</Text>
             <Text dimColor> / </Text>
             <Text bold={isFocused}>{item.model.label}</Text>
             <Text color="success">{itemMarkers(item, slot)}</Text>

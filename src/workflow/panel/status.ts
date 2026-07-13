@@ -1,4 +1,5 @@
 import type { AgentProgress, RunProgress } from '../progress/store.js'
+import { modelDisplayString } from '../../utils/model/model.js'
 
 /** run status -> dot character (used by top tab). */
 export const STATUS_DOT: Record<RunProgress['status'], string> = {
@@ -66,7 +67,7 @@ export function formatTokenCount(n: number | undefined): string {
  */
 export function agentMetaText(a: AgentProgress): string {
   const parts: string[] = []
-  if (a.model) parts.push(a.model)
+  if (a.model) parts.push(modelDisplayString(a.model))
   parts.push(`${formatTokenCount(a.tokenCount)} tok`)
   parts.push(`${a.toolCount ?? 0} tool`)
   return parts.join(' · ')

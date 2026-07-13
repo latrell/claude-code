@@ -14,6 +14,7 @@ import type { ProgressMessage } from 'src/types/message.js';
 import { buildSubagentLookups, EMPTY_LOOKUPS } from 'src/utils/messages.js';
 import { t, tf } from 'src/i18n/t.js';
 import { plural } from 'src/utils/stringUtils.js';
+import { modelDisplayString } from 'src/utils/model/model.js';
 import type { inputSchema, Output, Progress } from './SkillTool.js';
 
 type Input = z.infer<ReturnType<typeof inputSchema>>;
@@ -43,7 +44,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
 
   // Show model if non-default (only for inline skills)
   if ('model' in output && output.model) {
-    parts.push(output.model);
+    parts.push(modelDisplayString(output.model));
   }
 
   return (

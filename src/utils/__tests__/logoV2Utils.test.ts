@@ -186,7 +186,7 @@ describe('formatSubagentDisplayLine', () => {
       'DeepSeek API',
     )
     expect(result).toContain('DeepSeek')
-    expect(result).toContain('Deepseek-v4-pro')
+    expect(result).toContain('DeepSeek V4 Pro')
     expect(result).toContain('DeepSeek API')
   })
 
@@ -236,7 +236,7 @@ describe('formatSubagentDisplayLine', () => {
       'DeepSeek API',
     )
     expect(result).toContain('DeepSeek')
-    expect(result).toContain('Deepseek-v4-pro')
+    expect(result).toContain('DeepSeek V4 Pro')
     expect(result).toContain('DeepSeek API')
   })
 
@@ -292,7 +292,7 @@ describe('formatFastDisplayLine', () => {
       },
     }
     expect(formatFastDisplayLine(config, PARENT_MODEL, 'DeepSeek API')).toBe(
-      'Fast agent: DeepSeek · Deepseek-v4-flash · DeepSeek API',
+      'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
     )
   })
 })
@@ -324,10 +324,10 @@ describe('getLogoDisplayData', () => {
       const result = getLogoDisplayData(PARENT_MODEL)
 
       expect(result.subagentLine).toBe(
-        'Subagent: DeepSeek · Deepseek-v4-pro · DeepSeek API',
+        'Subagent: DeepSeek · DeepSeek V4 Pro · DeepSeek API',
       )
       expect(result.fastLine).toBe(
-        'Fast agent: DeepSeek · Deepseek-v4-flash · DeepSeek API',
+        'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
       )
     } finally {
       if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION

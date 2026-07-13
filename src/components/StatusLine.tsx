@@ -39,7 +39,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js';
 import { getLastAssistantMessage } from '../utils/messages.js';
-import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
+import { getRuntimeMainLoopModel, type ModelName, modelDisplayString } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
 import { getAPIProvider } from '../utils/model/providers.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
@@ -300,7 +300,7 @@ function buildStatusLineCommandInput(
     ...(sessionName && { session_name: sessionName }),
     model: {
       id: runtimeModel,
-      display_name: renderModelName(runtimeModel),
+      display_name: modelDisplayString(runtimeModel),
     },
     workspace: {
       current_dir: getCwd(),
@@ -629,7 +629,7 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
       {showBuiltin && (
         <Box gap={2}>
           <BuiltinStatusLine
-            modelName={renderModelName(builtinRuntimeModel)}
+            modelName={modelDisplayString(builtinRuntimeModel)}
             contextUsedPct={builtinContextPct}
             usedTokens={builtinUsedTokens}
             contextWindowSize={builtinContextWindowSize}

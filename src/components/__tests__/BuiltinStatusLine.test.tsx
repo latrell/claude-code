@@ -15,7 +15,22 @@ mock.module('src/utils/settings/settings.js', () => ({
 }));
 
 // Static import — resolves in en mode (mockLanguage === undefined)
-import { formatCentsCompact, formatCountdown, formatProviderBucketLabel } from '../BuiltinStatusLine.js';
+import {
+  formatCentsCompact,
+  formatCountdown,
+  formatProviderBucketLabel,
+  statusLineModelName,
+} from '../BuiltinStatusLine.js';
+
+describe('statusLineModelName', () => {
+  test('keeps the complete model alias on normal-width terminals', () => {
+    expect(statusLineModelName('GPT 5.6 Sol', false)).toBe('GPT 5.6 Sol');
+  });
+
+  test('uses the compact family name only on narrow terminals', () => {
+    expect(statusLineModelName('GPT 5.6 Sol', true)).toBe('GPT 5.6');
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Pure helper: maps ProviderUsageBucket[] to a simplified display shape for

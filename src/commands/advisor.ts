@@ -7,6 +7,7 @@ import {
 } from '../utils/advisor.js'
 import {
   getDefaultMainLoopModelSetting,
+  modelDisplayString,
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -36,8 +37,8 @@ const call: LocalCommandCall = async (args, context) => {
         value: tf(
           'Advisor: {model} (inactive)\nThe current model ({base}) does not support advisors.',
           {
-            model: current,
-            base: baseModel,
+            model: modelDisplayString(current),
+            base: modelDisplayString(baseModel),
           },
         ),
       }
@@ -46,7 +47,7 @@ const call: LocalCommandCall = async (args, context) => {
       type: 'text',
       value: tf(
         'Advisor: {model}\nUse "/advisor unset" to disable or "/advisor <model>" to change.',
-        { model: current },
+        { model: modelDisplayString(current) },
       ),
     }
   }
@@ -61,7 +62,9 @@ const call: LocalCommandCall = async (args, context) => {
     return {
       type: 'text',
       value: prev
-        ? tf('Advisor disabled (was {model}).', { model: prev })
+        ? tf('Advisor disabled (was {model}).', {
+            model: modelDisplayString(prev),
+          })
         : t('Advisor already unset.'),
     }
   }
@@ -102,14 +105,19 @@ const call: LocalCommandCall = async (args, context) => {
       type: 'text',
       value: tf(
         'Advisor set to {model}.\nNote: Your current model ({base}) does not support advisors. Switch to a supported model to use the advisor.',
-        { model: normalizedModel, base: baseModel },
+        {
+          model: modelDisplayString(normalizedModel),
+          base: modelDisplayString(baseModel),
+        },
       ),
     }
   }
 
   return {
     type: 'text',
-    value: tf('Advisor set to {model}.', { model: normalizedModel }),
+    value: tf('Advisor set to {model}.', {
+      model: modelDisplayString(normalizedModel),
+    }),
   }
 }
 

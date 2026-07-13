@@ -17,7 +17,7 @@ import {
 } from '../bootstrap/state.js';
 import { formatCost } from '../cost-tracker.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
-import { getCanonicalName } from '../utils/model/model.js';
+import { getCanonicalName, modelDisplayString } from '../utils/model/model.js';
 import type { ModelUsage } from '../entrypoints/sdk/coreTypes.generated.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { t, tf } from '../i18n/t.js';
@@ -149,7 +149,7 @@ export function StatsPanel({ onClose }: Props): React.ReactNode {
           <Text bold>{t('Model Usage')}</Text>
           {[...aggregatedModels.entries()].map(([model, usage]) => (
             <Box key={model} flexDirection="column">
-              <Text>{model}</Text>
+              <Text>{modelDisplayString(model)}</Text>
               <StatRow
                 label={t('    Tokens:')}
                 value={tf('{input} in / {output} out', {

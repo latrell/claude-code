@@ -40,6 +40,7 @@ import { ModelPicker } from '../ModelPicker.js';
 import {
   getDefaultMainLoopModelSetting,
   isOpus1mMergeEnabled,
+  modelDisplayString,
   renderDefaultModelSetting,
   renderModelSetting,
 } from '../../utils/model/model.js';
@@ -950,7 +951,7 @@ export function Config({
     {
       id: 'model',
       label: t('Model'),
-      value: mainLoopModel === null ? t('Default (recommended)') : mainLoopModel,
+      value: mainLoopModel === null ? t('Default (recommended)') : modelDisplayString(mainLoopModel),
       type: 'managedEnum' as const,
       onChange: onChangeMainModelConfig,
     },

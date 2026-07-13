@@ -5,6 +5,7 @@ import type { ContextData } from '../utils/analyzeContext.js';
 import { generateContextSuggestions } from '../utils/contextSuggestions.js';
 import { getDisplayPath } from '../utils/file.js';
 import { formatTokens } from '../utils/format.js';
+import { modelDisplayString } from '../utils/model/model.js';
 import { getSourceDisplayName, type SettingSource } from '../utils/settings/constants.js';
 import { plural } from '../utils/stringUtils.js';
 import { ContextSuggestions } from './ContextSuggestions.js';
@@ -173,7 +174,8 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
         {/* Legend to the right */}
         <Box flexDirection="column" gap={0} flexShrink={0}>
           <Text dimColor>
-            {model} · {formatTokens(totalTokens)}/{formatTokens(rawMaxTokens)} tokens ({percentage}%)
+            {modelDisplayString(model)} · {formatTokens(totalTokens)}/{formatTokens(rawMaxTokens)} tokens ({percentage}
+            %)
           </Text>
           <CollapseStatus />
           {cacheHitRate !== undefined && cacheThreshold !== undefined && (

@@ -24,7 +24,7 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
 import { generateHeatmap } from '../utils/heatmap.js';
-import { renderModelName } from '../utils/model/model.js';
+import { modelDisplayString } from '../utils/model/model.js';
 import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
 import {
   aggregateClaudeCodeStatsForRange,
@@ -344,7 +344,7 @@ function OverviewTab({
             <Text wrap="truncate">
               {t('Favorite model')}:{' '}
               <Text color="claude" bold>
-                {renderModelName(favoriteModel[0])}
+                {modelDisplayString(favoriteModel[0])}
               </Text>
             </Text>
           )}
@@ -684,7 +684,7 @@ function ModelEntry({ model, usage, totalTokens }: ModelEntryProps): React.React
   return (
     <Box flexDirection="column">
       <Text>
-        {figures.bullet} <Text bold>{renderModelName(model)}</Text> <Text color="subtle">({percentage}%)</Text>
+        {figures.bullet} <Text bold>{modelDisplayString(model)}</Text> <Text color="subtle">({percentage}%)</Text>
       </Text>
       <Text color="subtle">
         {'  '}
@@ -760,7 +760,7 @@ function generateTokenChart(
       // Use theme colors that match the chart
       const bulletColors = [theme.suggestion, theme.success, theme.warning];
       legend.push({
-        model: renderModelName(model),
+        model: modelDisplayString(model),
         coloredBullet: applyColor(figures.bullet, bulletColors[i % bulletColors.length] as Color),
       });
     }
@@ -916,7 +916,7 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   // Row 1: Favorite model | Total tokens
   if (favoriteModel) {
     lines.push(
-      row(t('Favorite model'), renderModelName(favoriteModel[0]), t('Total tokens'), formatNumber(totalTokens)),
+      row(t('Favorite model'), modelDisplayString(favoriteModel[0]), t('Total tokens'), formatNumber(totalTokens)),
     );
   }
   lines.push('');
@@ -1020,7 +1020,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
 
   // Summary
   lines.push(
-    `${figures.star} ${t('Favorite model')}: ${chalk.magenta.bold(renderModelName(favoriteModel?.[0] || ''))} \u00b7 ${figures.circle} ${t('Total tokens')}: ${chalk.magenta(formatNumber(totalTokens))} tokens`,
+    `${figures.star} ${t('Favorite model')}: ${chalk.magenta.bold(modelDisplayString(favoriteModel?.[0] || ''))} \u00b7 ${figures.circle} ${t('Total tokens')}: ${chalk.magenta(formatNumber(totalTokens))} tokens`,
   );
   lines.push('');
 
@@ -1029,7 +1029,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   for (const [model, usage] of topModels) {
     const modelTokens = usage.inputTokens + usage.outputTokens;
     const percentage = ((modelTokens / totalTokens) * 100).toFixed(1);
-    lines.push(`${figures.bullet} ${chalk.bold(renderModelName(model))} ${chalk.gray(`(${percentage}%)`)}`);
+    lines.push(`${figures.bullet} ${chalk.bold(modelDisplayString(model))} ${chalk.gray(`(${percentage}%)`)}`);
     lines.push(
       chalk.dim(
         `  ${tf('In: {input} \u00b7 Out: {output}', {

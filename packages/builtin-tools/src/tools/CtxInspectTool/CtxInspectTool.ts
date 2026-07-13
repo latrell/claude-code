@@ -4,6 +4,7 @@ import type { ToolResultBlockParam } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { tokenCountWithEstimation } from 'src/utils/tokens.js'
+import { modelDisplayString } from 'src/utils/model/model.js'
 import {
   getStats,
   isContextCollapseEnabled,
@@ -108,7 +109,7 @@ Use this to understand your context budget before deciding whether to snip old m
       focused
         ? tf('Focus: {focused}', { focused })
         : t('Overall context summary'),
-      tf('Model context: {model}', { model }),
+      tf('Model context: {model}', { model: modelDisplayString(model) }),
       tf('Prompt caching: {status}', {
         status: promptCachingEnabled ? t('enabled') : t('disabled'),
       }),

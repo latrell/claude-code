@@ -24,7 +24,7 @@ import { getDisplayPath } from 'src/utils/file.js';
 import { formatDuration, formatNumber } from 'src/utils/format.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from 'src/utils/messages.js';
 import type { ModelAlias } from 'src/utils/model/aliases.js';
-import { getMainLoopModel, parseUserSpecifiedModel, renderModelName } from 'src/utils/model/model.js';
+import { getMainLoopModel, modelDisplayString, parseUserSpecifiedModel } from 'src/utils/model/model.js';
 import type { Theme, ThemeName } from 'src/utils/theme.js';
 import type { outputSchema, Progress, RemoteLaunchedOutput } from './AgentTool.js';
 import { inputSchema } from './AgentTool.js';
@@ -446,7 +446,7 @@ export function renderToolUseTag(
     if (agentModel !== mainModel) {
       tags.push(
         <Box key="model" flexWrap="nowrap" marginLeft={1}>
-          <Text dimColor>{renderModelName(agentModel)}</Text>
+          <Text dimColor>{modelDisplayString(agentModel)}</Text>
         </Box>,
       );
     }

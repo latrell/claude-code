@@ -1,5 +1,6 @@
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
+import { getKnownModelDisplayName } from './display.js'
 import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
 import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
@@ -225,7 +226,7 @@ export function getAgentModelDisplay(model: string | undefined): string {
   // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime
   if (!model) return 'Inherit from parent (default)'
   if (model === 'inherit') return 'Inherit from parent'
-  return capitalize(model)
+  return getKnownModelDisplayName(model) ?? capitalize(model)
 }
 
 /**
