@@ -25,6 +25,7 @@ import {
 import { removeOAuthAccountSlot } from '../../services/connections/oauthAccounts.js';
 import {
   connectionProfileSummary,
+  connectionDisplayName,
   connectionRequiresPinnedModel,
   duplicateConnection,
   withContextWindow,
@@ -296,40 +297,40 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         slot === 'main'
           ? scope === 'global'
             ? tf('{label}{model} is now the global default', {
-                label: connection.label,
+                label: connectionDisplayName(connection),
                 model: modelSuffix,
               })
             : tf('Using {label}{model} for this session', {
-                label: connection.label,
+                label: connectionDisplayName(connection),
                 model: modelSuffix,
               })
           : slot === 'fast'
             ? scope === 'global'
               ? tf('{label}{model} is now the fast (HAIKU) default', {
-                  label: connection.label,
+                  label: connectionDisplayName(connection),
                   model: modelSuffix,
                 })
               : tf('Fast (HAIKU) calls use {label}{model} for this session', {
-                  label: connection.label,
+                  label: connectionDisplayName(connection),
                   model: modelSuffix,
                 })
             : slot === 'sonnet'
               ? scope === 'global'
                 ? tf('{label}{model} is now the sonnet (SONNET tier) default', {
-                    label: connection.label,
+                    label: connectionDisplayName(connection),
                     model: modelSuffix,
                   })
                 : tf('Sonnet (SONNET tier) calls use {label}{model} for this session', {
-                    label: connection.label,
+                    label: connectionDisplayName(connection),
                     model: modelSuffix,
                   })
               : scope === 'global'
                 ? tf('{label}{model} is now the subagent default', {
-                    label: connection.label,
+                    label: connectionDisplayName(connection),
                     model: modelSuffix,
                   })
                 : tf('Subagents use {label}{model} for this session', {
-                    label: connection.label,
+                    label: connectionDisplayName(connection),
                     model: modelSuffix,
                   });
       onDone(message);
@@ -404,7 +405,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           description?: string;
         }> = [
           ...connections.map(connection => ({
-            label: connection.label,
+            label: connectionDisplayName(connection),
             value: `connection:${connection.id}`,
             description: connectionDetail(connection),
           })),
@@ -480,7 +481,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         }
         return (
           <Box flexDirection="column" gap={1}>
-            <Text bold>{connection.label}</Text>
+            <Text bold>{connectionDisplayName(connection)}</Text>
             <Text dimColor>{connectionDetail(connection)}</Text>
             <Select
               options={[
@@ -650,7 +651,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 ? view.next.slot === 'main'
                   ? t('Pick a model (main agent)')
                   : t('Pick a model (subagents)')
-                : tf('Change pinned model — {label}', { label: connection.label })}
+                : tf('Change pinned model — {label}', { label: connectionDisplayName(connection) })}
             </Text>
             <Text dimColor>
               {view.next
@@ -704,7 +705,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         };
         return (
           <ConnectionForm
-            title={tf('Context window — {label}', { label: connection.label })}
+            title={tf('Context window — {label}', { label: connectionDisplayName(connection) })}
             subtitle={
               current !== undefined
                 ? tf('Current: {value} tokens', { value: String(current) })
@@ -765,7 +766,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         };
         return (
           <Box flexDirection="column" gap={1}>
-            <Text bold>{tf('Thinking effort — {label}', { label: connection.label })}</Text>
+            <Text bold>{tf('Thinking effort — {label}', { label: connectionDisplayName(connection) })}</Text>
             <Text dimColor>{t('Applied while this connection is active (Default = provider behavior)')}</Text>
             <Select
               options={[
@@ -803,7 +804,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         }
         return (
           <ConnectionForm
-            title={tf('Duplicate connection — {label}', { label: connection.label })}
+            title={tf('Duplicate connection — {label}', { label: connectionDisplayName(connection) })}
             subtitle={t(
               'Copies credentials and profile (model, thinking effort, context window) into a new connection',
             )}
@@ -960,7 +961,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           <Box flexDirection="column" gap={1}>
             <Text>
               {tf('Delete connection "{label}"? Stored credentials for it will be removed.', {
-                label: connection.label,
+                label: connectionDisplayName(connection),
               })}
             </Text>
             <Select

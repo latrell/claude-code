@@ -144,7 +144,7 @@ describe('/sonnet-provider command', () => {
     upsertConnection(deepseekConn({ thinkingEffort: 'high' }))
     const result = await call('deepseek', {} as never)
     const value = (result as { value: string }).value
-    expect(value).toContain('DeepSeek (deepseek-v4-pro, effort high)')
+    expect(value).toContain('DeepSeek (DeepSeek V4 Pro, effort high)')
     expect(value).toContain('for this session')
     expect(value).toContain('sonnet (SONNET tier)')
 

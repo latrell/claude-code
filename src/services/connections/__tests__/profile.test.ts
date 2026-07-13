@@ -15,6 +15,7 @@ mock.module('src/utils/settings/settings.js', () => ({
 
 const {
   connectionProfileSummary,
+  connectionDisplayName,
   connectionRequiresPinnedModel,
   duplicateConnection,
   withContextWindow,
@@ -188,5 +189,26 @@ describe('connectionProfileSummary', () => {
     expect(connectionProfileSummary(conn({ model: 'custom-model' }))).toBe(
       'custom-model',
     )
+  })
+})
+
+describe('connectionDisplayName', () => {
+  test('uses the model alias for a legacy model-id-derived label', () => {
+    expect(
+      connectionDisplayName(
+        conn({
+          label: 'DeepSeek-V4-Pro',
+          model: 'deepseek-v4-pro',
+        }),
+      ),
+    ).toBe('DeepSeek V4 Pro')
+  })
+
+  test('preserves a user-authored connection label', () => {
+    expect(
+      connectionDisplayName(
+        conn({ label: 'Work account', model: 'deepseek-v4-pro' }),
+      ),
+    ).toBe('Work account')
   })
 })

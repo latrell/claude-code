@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import { getSessionAssignment } from '../../services/connections/activate.js';
 import { importLegacyConnections } from '../../services/connections/migrate.js';
-import { connectionProfileSummary } from '../../services/connections/profile.js';
+import { connectionDisplayName, connectionProfileSummary } from '../../services/connections/profile.js';
 import { switchSlotToConnection } from '../../services/connections/slotSwitch.js';
 import { getDefaultAssignment, listConnections } from '../../services/connections/store.js';
 import type { AgentSlot, Connection } from '../../services/connections/types.js';
@@ -30,7 +30,7 @@ function buildItems(connections: Connection[]): ConnectionPickItem[] {
   return connections.map(connection => ({
     connection,
     searchText:
-      `${connection.label} ${connection.id} ${kindDisplayName(connection.kind)} ${connection.model ?? ''}`.toLowerCase(),
+      `${connectionDisplayName(connection)} ${connection.label} ${connection.id} ${kindDisplayName(connection.kind)} ${connection.model ?? ''}`.toLowerCase(),
   }));
 }
 
@@ -130,7 +130,7 @@ export function ConnectionPicker({ slot, onDone, onMainModelChange, onAuthChange
         getKey={item => item.connection.id}
         renderItem={(item, isFocused) => (
           <Text>
-            <Text bold={isFocused}>{item.connection.label}</Text>
+            <Text bold={isFocused}>{connectionDisplayName(item.connection)}</Text>
             <Text color="success">{itemMarkers(item.connection, slot)}</Text>
             <Text dimColor> · {connectionDetails(item.connection)}</Text>
           </Text>

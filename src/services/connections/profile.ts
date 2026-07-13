@@ -117,3 +117,20 @@ export function connectionProfileSummary(connection: Connection): string {
   }
   return parts.join(' · ')
 }
+
+function comparableLabel(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+/**
+ * Preserve user-authored connection names, but replace legacy names derived
+ * directly from a model id (for example DeepSeek-V4-Pro) with the catalog's
+ * Claude-style display label (DeepSeek V4 Pro).
+ */
+export function connectionDisplayName(connection: Connection): string {
+  if (!connection.model) return connection.label
+  if (comparableLabel(connection.label) !== comparableLabel(connection.model)) {
+    return connection.label
+  }
+  return connectionModelDisplayName(connection, connection.model)
+}

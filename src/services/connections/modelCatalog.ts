@@ -70,6 +70,24 @@ function defaultEntry(): CatalogModel {
   }
 }
 
+function presetForConnection(connection: Connection) {
+  const byId = connection.presetId
+    ? CHINA_LLM_PROVIDERS.find(preset => preset.id === connection.presetId)
+    : undefined
+  if (byId || !connection.baseUrl) return byId
+
+  const baseUrl = connection.baseUrl.replace(/\/+$/, '').toLowerCase()
+  return CHINA_LLM_PROVIDERS.find(preset => {
+    const urls = [preset.baseURL, preset.codingPlan?.baseURL].filter(
+      (url): url is string => url !== undefined,
+    )
+    return urls.some(url => {
+      const normalized = url.replace(/\/+$/, '').toLowerCase()
+      return baseUrl === normalized || baseUrl.startsWith(`${normalized}/`)
+    })
+  })
+}
+
 function dedupePush(
   list: CatalogModel[],
   seen: Set<string>,
@@ -155,9 +173,7 @@ export function getStaticModelsForConnection(
     case 'gemini':
     case 'grok': {
       // Preset catalog (pricing/context metadata) when created from a preset
-      const preset = connection.presetId
-        ? CHINA_LLM_PROVIDERS.find(p => p.id === connection.presetId)
-        : undefined
+      const preset = presetForConnection(connection)
       for (const model of preset?.models ?? []) {
         if (model.deprecated) continue
         // A recorded window (auto-detected or manual) supersedes the

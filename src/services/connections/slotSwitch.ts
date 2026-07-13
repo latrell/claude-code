@@ -17,6 +17,7 @@ import {
 import { formatConnectionsList, resolveConnectionRef } from './cliResolve.js'
 import { importLegacyConnections } from './migrate.js'
 import { connectionModelDisplayName } from './modelCatalog.js'
+import { connectionDisplayName } from './profile.js'
 import type { AgentSlot, Connection } from './types.js'
 
 export type SlotSwitchScope = 'session' | 'global'
@@ -56,7 +57,7 @@ export function connectionSummary(connection: Connection): string {
   if (connection.thinkingEffort) {
     parts.push(`effort ${connection.thinkingEffort}`)
   }
-  return `${connection.label} (${parts.join(', ')})`
+  return `${connectionDisplayName(connection)} (${parts.join(', ')})`
 }
 
 function slotSwitchMessage(

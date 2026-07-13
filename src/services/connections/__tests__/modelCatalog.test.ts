@@ -6,8 +6,11 @@ import { logMock } from '../../../../tests/mocks/log'
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
 
-const { fetchRemoteModelsForConnection, getStaticModelsForConnection } =
-  await import('../modelCatalog.js')
+const {
+  connectionModelDisplayName,
+  fetchRemoteModelsForConnection,
+  getStaticModelsForConnection,
+} = await import('../modelCatalog.js')
 import type { Connection } from '../types.js'
 
 const CHATGPT_CODEX_MODELS = [
@@ -114,6 +117,19 @@ describe('getStaticModelsForConnection', () => {
     expect(pro).toBeDefined()
     expect(pro?.label).toBe('DeepSeek V4 Pro')
     expect(pro?.description).toContain('1M')
+  })
+
+  test('known provider base URLs resolve aliases without a preset id', () => {
+    const conn: Connection = {
+      id: 'legacy-ds',
+      label: 'DeepSeek-V4-Pro',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com/v1/',
+      model: 'deepseek-v4-pro',
+    }
+    expect(connectionModelDisplayName(conn, conn.model!)).toBe(
+      'DeepSeek V4 Pro',
+    )
   })
 
   test('merges explicit model list and tier values without duplicates', () => {

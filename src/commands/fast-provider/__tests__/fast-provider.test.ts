@@ -143,7 +143,7 @@ describe('/fast-provider command', () => {
     upsertConnection(deepseekConn({ thinkingEffort: 'off' }))
     const result = await call('deepseek', {} as never)
     const value = (result as { value: string }).value
-    expect(value).toContain('DeepSeek (deepseek-v4-flash, effort off)')
+    expect(value).toContain('DeepSeek (DeepSeek V4 Flash, effort off)')
     expect(value).toContain('for this session')
     expect(value).toContain('fast (HAIKU)')
 
