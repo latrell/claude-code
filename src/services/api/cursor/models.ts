@@ -87,7 +87,7 @@ export const CURSOR_MODELS: CursorModelInfo[] = [
   },
   {
     id: 'gpt-5.5-medium',
-    label: 'GPT-5.5',
+    label: 'GPT 5.5',
     contextWindow: 272_000,
     maxContextWindow: 1_000_000,
   },
@@ -99,7 +99,7 @@ export const CURSOR_MODELS: CursorModelInfo[] = [
   },
   {
     id: 'gpt-5.4-medium',
-    label: 'GPT-5.4',
+    label: 'GPT 5.4',
     contextWindow: 272_000,
     maxContextWindow: 1_000_000,
   },

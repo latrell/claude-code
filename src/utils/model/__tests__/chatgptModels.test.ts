@@ -55,6 +55,12 @@ const PLAN_WINDOWS = [
 ] as const
 
 describe('CHATGPT_CODEX_MODEL_OPTIONS', () => {
+  test('uses Claude-style display aliases without hyphens', () => {
+    for (const option of CHATGPT_CODEX_MODEL_OPTIONS) {
+      expect(option.label).not.toContain('-')
+    }
+  })
+
   test('uses the current default and fast models', () => {
     expect(CHATGPT_CODEX_DEFAULT_MODEL).toBe('gpt-5.6-sol')
     expect(CHATGPT_CODEX_FAST_MODEL).toBe('gpt-5.6-luna')
@@ -263,21 +269,21 @@ describe('getChatGPTCodexModelDisplayName', () => {
   })
 
   test('resolves the gpt-5.6 alias to the Sol display name', () => {
-    expect(getChatGPTCodexModelDisplayName('gpt-5.6')).toBe('GPT-5.6-Sol')
+    expect(getChatGPTCodexModelDisplayName('gpt-5.6')).toBe('GPT 5.6 Sol')
   })
 
   test('marks the supported 1M variant in the display name', () => {
     expect(getChatGPTCodexModelDisplayName('gpt-5.4[1m]')).toBe(
-      'GPT-5.4 (1M context)',
+      'GPT 5.4 (1M context)',
     )
   })
 
   test('does not advertise 1M for models without a 1M product cap', () => {
     expect(getChatGPTCodexModelDisplayName('gpt-5.6-sol[1m]')).toBe(
-      'GPT-5.6-Sol',
+      'GPT 5.6 Sol',
     )
     expect(getChatGPTCodexModelDisplayName('gpt-5.3-codex-spark[1m]')).toBe(
-      'GPT-5.3-Codex-Spark',
+      'GPT 5.3 Codex Spark',
     )
   })
 

@@ -14,6 +14,12 @@ import {
 } from '../models.js'
 
 describe('CURSOR_MODELS', () => {
+  test('uses Claude-style display aliases without hyphens', () => {
+    for (const model of CURSOR_MODELS) {
+      expect(model.label).not.toContain('-')
+    }
+  })
+
   test('leads with the Auto tier and covers current model families', () => {
     // Cursor's Auto tier is serverModelName `default`; the `auto` alias is
     // rejected by the chat endpoint with "AI Model Not Found".

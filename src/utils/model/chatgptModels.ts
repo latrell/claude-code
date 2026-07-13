@@ -79,7 +79,7 @@ const CHATGPT_CODEX_EFFORTS_TO_MAX = [
 export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   {
     value: 'gpt-5.6-sol',
-    label: 'GPT-5.6-Sol',
+    label: 'GPT 5.6 Sol',
     description: 'Latest frontier agentic coding model',
     defaultEffortLevel: 'medium',
     supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
@@ -88,7 +88,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.6-terra',
-    label: 'GPT-5.6-Terra',
+    label: 'GPT 5.6 Terra',
     description: 'Balanced agentic coding model for everyday work',
     defaultEffortLevel: 'medium',
     supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
@@ -97,7 +97,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.6-luna',
-    label: 'GPT-5.6-Luna',
+    label: 'GPT 5.6 Luna',
     description: 'Fast and affordable agentic coding model',
     defaultEffortLevel: 'medium',
     supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_MAX,
@@ -106,7 +106,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.5',
-    label: 'GPT-5.5',
+    label: 'GPT 5.5',
     description:
       'Frontier model for complex coding, research, and real-world work',
     defaultEffortLevel: 'medium',
@@ -116,7 +116,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.4',
-    label: 'GPT-5.4',
+    label: 'GPT 5.4',
     description: 'Strong model for everyday coding',
     defaultEffortLevel: 'medium',
     supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
@@ -125,7 +125,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.4-mini',
-    label: 'GPT-5.4-Mini',
+    label: 'GPT 5.4 Mini',
     description:
       'Small, fast, and cost-efficient model for simpler coding tasks',
     defaultEffortLevel: 'medium',
@@ -135,7 +135,7 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   },
   {
     value: 'gpt-5.3-codex-spark',
-    label: 'GPT-5.3-Codex-Spark',
+    label: 'GPT 5.3 Codex Spark',
     description:
       'Ultra-fast text-only coding model (ChatGPT Pro research preview)',
     defaultEffortLevel: 'high',

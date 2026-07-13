@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test'
 import { setChatGPTSubscriptionPlan } from '../../../bootstrap/state.js'
+import { CHINA_LLM_PROVIDERS } from '../../../utils/chinaLlmProviders.js'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
 
@@ -24,6 +25,14 @@ const CHATGPT_CODEX_MODELS = [
 ] as const
 
 describe('getStaticModelsForConnection', () => {
+  test('provider presets use Claude-style model aliases without hyphens', () => {
+    for (const provider of CHINA_LLM_PROVIDERS) {
+      for (const model of provider.models) {
+        expect(model.label).not.toContain('-')
+      }
+    }
+  })
+
   test('anthropic kinds expose default + alias entries', () => {
     const conn: Connection = {
       id: 'acc',

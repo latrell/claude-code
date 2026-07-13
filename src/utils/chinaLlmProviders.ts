@@ -112,7 +112,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     models: [
       {
         id: 'glm-5.1',
-        label: 'GLM-5.1',
+        label: 'GLM 5.1',
         inputPricePerMTok: 10.1,
         outputPricePerMTok: 31.7,
         contextWindow: '203K',
@@ -120,7 +120,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
       },
       {
         id: 'glm-4.7',
-        label: 'GLM-4.7',
+        label: 'GLM 4.7',
         inputPricePerMTok: 4.3,
         outputPricePerMTok: 15.8,
         contextWindow: '205K',
@@ -128,7 +128,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
       },
       {
         id: 'glm-4.7-flash',
-        label: 'GLM-4.7 Flash',
+        label: 'GLM 4.7 Flash',
         inputPricePerMTok: 0,
         outputPricePerMTok: 0,
         contextWindow: '203K',
