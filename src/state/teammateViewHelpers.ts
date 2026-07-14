@@ -1,41 +1,14 @@
 import { logEvent } from '../services/analytics/index.js'
-import { isTerminalTaskStatus } from '../Task.js'
-import type { LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js'
-
-// Inlined from framework.ts — importing creates a cycle through
-// BackgroundTasksDialog. Keep in sync with PANEL_GRACE_MS there.
-const PANEL_GRACE_MS = 30_000
+import {
+  isLocalAgentState as isLocalAgent,
+  releaseAgentView as release,
+} from './agentStopAction.js'
+export {
+  stopOrDismissAgent,
+  type StopRunningAgent,
+} from './agentStopAction.js'
 
 import type { AppState } from './AppState.js'
-
-// Inline type check instead of importing isLocalAgentTask — breaks the
-// teammateViewHelpers → LocalAgentTask runtime edge that creates a cycle
-// through BackgroundTasksDialog.
-function isLocalAgent(task: unknown): task is LocalAgentTaskState {
-  return (
-    typeof task === 'object' &&
-    task !== null &&
-    'type' in task &&
-    task.type === 'local_agent'
-  )
-}
-
-/**
- * Return the task released back to stub form: retain dropped, messages
- * cleared, evictAfter set if terminal. Shared by exitTeammateView and
- * the switch-away path in enterTeammateView.
- */
-function release(task: LocalAgentTaskState): LocalAgentTaskState {
-  return {
-    ...task,
-    retain: false,
-    messages: undefined,
-    diskLoaded: false,
-    evictAfter: isTerminalTaskStatus(task.status)
-      ? Date.now() + PANEL_GRACE_MS
-      : undefined,
-  }
-}
 
 /**
  * Transitions the UI to view a teammate's transcript.
@@ -104,38 +77,6 @@ export function exitTeammateView(
     return {
       ...cleared,
       tasks: { ...prev.tasks, [id]: release(task) },
-    }
-  })
-}
-
-/**
- * Context-sensitive x: running → abort, terminal → dismiss.
- * Dismiss sets evictAfter=0 so the filter hides immediately.
- * If viewing the dismissed agent, also exits to leader.
- */
-export function stopOrDismissAgent(
-  taskId: string,
-  setAppState: (updater: (prev: AppState) => AppState) => void,
-): void {
-  setAppState(prev => {
-    const task = prev.tasks[taskId]
-    if (!isLocalAgent(task)) return prev
-    if (task.status === 'running') {
-      task.abortController?.abort()
-      return prev
-    }
-    if (task.evictAfter === 0) return prev
-    const viewingThis = prev.viewingAgentTaskId === taskId
-    return {
-      ...prev,
-      tasks: {
-        ...prev.tasks,
-        [taskId]: { ...release(task), evictAfter: 0 },
-      },
-      ...(viewingThis && {
-        viewingAgentTaskId: undefined,
-        viewSelectionMode: 'none',
-      }),
     }
   })
 }

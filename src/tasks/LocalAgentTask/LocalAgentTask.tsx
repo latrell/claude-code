@@ -432,7 +432,10 @@ export function enqueueAgentNotification({
   worktreePath?: string;
   worktreeBranch?: string;
 }): void {
-  if (suppressedAgentNotifications.has(taskId)) return;
+  // Aggregate Stop only replaces per-agent killed notifications. A task can
+  // naturally complete/fail after the aggregate snapshot but before its kill
+  // reaches it; never swallow that real terminal outcome.
+  if (status === 'killed' && suppressedAgentNotifications.has(taskId)) return;
 
   // Atomically check and set notified flag to prevent duplicate notifications.
   // If the task was already marked as notified (e.g., by TaskStopTool), skip
@@ -496,28 +499,41 @@ export const LocalAgentTask: Task = {
   type: 'local_agent',
 
   async kill(taskId, setAppState) {
-    await killAsyncAgent(taskId, setAppState);
+    const outcome = await killAsyncAgent(taskId, setAppState);
+    if (outcome !== 'killed') {
+      throw new StopConfirmationError(
+        `Agent task ${taskId} reached a terminal state before Stop could confirm termination`,
+      );
+    }
   },
 };
 
 /**
  * Kill an agent task. No-op if already killed/completed.
  */
-export async function killAsyncAgent(taskId: string, setAppState: SetAppState): Promise<void> {
+export type KillAsyncAgentOutcome = 'killed' | 'already_terminal';
+
+export async function killAsyncAgent(taskId: string, setAppState: SetAppState): Promise<KillAsyncAgentOutcome> {
   let abortController: AbortController | undefined;
   let unregisterCleanup: (() => void) | undefined;
+  let wasRunning = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') {
       return task;
     }
+    wasRunning = true;
     abortController = task.abortController;
     unregisterCleanup = task.unregisterCleanup;
     return task;
   });
 
+  if (!wasRunning) {
+    return 'already_terminal';
+  }
+
   if (!abortController) {
     finalizeKilledAgentTask(taskId, setAppState);
-    return;
+    return 'killed';
   }
 
   const execution = getLocalAgentExecution(taskId, abortController);
@@ -554,11 +570,23 @@ export async function killAsyncAgent(taskId: string, setAppState: SetAppState): 
     }
     return prev;
   });
-  if (terminalStatus === 'running' || terminalStatus === 'failed') {
+  if (terminalStatus === 'killed') {
+    return 'killed';
+  }
+  if (terminalStatus === 'failed' && execution?.stopRequested) {
     throw new StopConfirmationError(
       `Agent task ${taskId} termination could not be confirmed (status: ${terminalStatus})`,
     );
   }
+  if (terminalStatus === 'completed' || terminalStatus === 'failed' || terminalStatus === undefined) {
+    return 'already_terminal';
+  }
+  if (terminalStatus === 'running') {
+    throw new StopConfirmationError(
+      `Agent task ${taskId} termination could not be confirmed (status: ${terminalStatus})`,
+    );
+  }
+  return 'already_terminal';
 }
 
 /**
@@ -568,9 +596,10 @@ export async function killAsyncAgent(taskId: string, setAppState: SetAppState): 
 export async function killAllRunningAgentTasks(
   tasks: Record<string, TaskState>,
   setAppState: SetAppState,
-  killTask: (taskId: string, setAppState: SetAppState) => Promise<void> = killAsyncAgent,
+  killTask: (taskId: string, setAppState: SetAppState) => Promise<KillAsyncAgentOutcome> = killAsyncAgent,
 ): Promise<{
   succeeded: string[];
+  alreadyTerminal: string[];
   failures: Array<{ taskId: string; error: unknown }>;
 }> {
   const runningTaskIds = Object.entries(tasks).flatMap(([taskId, task]) =>
@@ -578,14 +607,17 @@ export async function killAllRunningAgentTasks(
   );
   const results = await Promise.allSettled(runningTaskIds.map(taskId => killTask(taskId, setAppState)));
   const succeeded: string[] = [];
+  const alreadyTerminal: string[] = [];
   const failures: Array<{ taskId: string; error: unknown }> = [];
   for (let index = 0; index < results.length; index++) {
     const taskId = runningTaskIds[index]!;
     const result = results[index]!;
-    if (result.status === 'fulfilled') succeeded.push(taskId);
-    else failures.push({ taskId, error: result.reason });
+    if (result.status === 'fulfilled') {
+      if (result.value === 'killed') succeeded.push(taskId);
+      else alreadyTerminal.push(taskId);
+    } else failures.push({ taskId, error: result.reason });
   }
-  return { succeeded, failures };
+  return { succeeded, alreadyTerminal, failures };
 }
 
 /**
@@ -677,16 +709,38 @@ export function updateAgentSummary(taskId: string, summary: string, setAppState:
 }
 
 /**
- * Complete an agent task with result.
+ * Publish the agent's model result without claiming that the full lifecycle is
+ * complete. Classifier, worktree cleanup, and notification work may still be
+ * running after the model stream finishes, so the abort controller must remain
+ * available to TaskStop during that window.
+ */
+export function publishAgentResult(result: AgentToolResult, setAppState: SetAppState): void {
+  const taskId = result.agentId;
+  updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
+    if (task.status !== 'running' || task.abortController?.signal.aborted) {
+      return task;
+    }
+
+    return {
+      ...task,
+      result,
+    };
+  });
+}
+
+/**
+ * Complete an agent task after every owned lifecycle step has settled.
  */
 export function completeAgentTask(result: AgentToolResult, setAppState: SetAppState): void {
   const taskId = result.agentId;
+  let didComplete = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
-    if (task.status !== 'running') {
+    if (task.status !== 'running' || task.abortController?.signal.aborted) {
       return task;
     }
 
     task.unregisterCleanup?.();
+    didComplete = true;
 
     return {
       ...task,
@@ -699,7 +753,9 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
       selectedAgent: undefined,
     };
   });
-  void evictTaskOutput(taskId);
+  if (didComplete) {
+    void evictTaskOutput(taskId);
+  }
   // Note: Notification is sent by AgentTool via enqueueAgentNotification
 }
 
@@ -707,12 +763,14 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
  * Fail an agent task with error.
  */
 export function failAgentTask(taskId: string, error: string, setAppState: SetAppState): void {
+  let didFail = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') {
       return task;
     }
 
     task.unregisterCleanup?.();
+    didFail = true;
 
     return {
       ...task,
@@ -725,7 +783,9 @@ export function failAgentTask(taskId: string, error: string, setAppState: SetApp
       selectedAgent: undefined,
     };
   });
-  void evictTaskOutput(taskId);
+  if (didFail) {
+    void evictTaskOutput(taskId);
+  }
   // Note: Notification is sent by AgentTool via enqueueAgentNotification
 }
 
@@ -960,7 +1020,7 @@ export function unregisterAgentForeground(taskId: string, setAppState: SetAppSta
   setAppState(prev => {
     const task = prev.tasks[taskId];
     // Only remove if it's a foreground task (not backgrounded)
-    if (!isLocalAgentTask(task) || task.isBackgrounded) {
+    if (!isLocalAgentTask(task) || task.isBackgrounded || task.status !== 'running') {
       return prev;
     }
 

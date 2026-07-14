@@ -37,6 +37,10 @@ import {
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
 import { canCancelRequest } from '../utils/cancelRequest.js'
 import { errorMessage } from '../utils/errors.js'
+import {
+  reconcileAgentStopResults,
+  shouldEmitAggregateStoppedSdk,
+} from './agentStopResults.js'
 
 /** Time window in ms during which a second press kills all background agents. */
 const KILL_AGENTS_CONFIRM_WINDOW_MS = 3000
@@ -175,7 +179,8 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
   // Shared kill path: stop all agents, then publish stopped notifications
   // only after every runner has actually settled.
-  // Returns true if anything was killed.
+  // Returns true if a stop attempt was started. The confirmed stopped set is
+  // computed asynchronously from both kill outcomes and fresh task state.
   const killAllAgentsAndNotify = useCallback((): boolean => {
     const tasks = store.getState().tasks
     const running = Object.entries(tasks).filter(
@@ -186,15 +191,28 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
       suppressAgentNotification(taskId),
     )
     void killAllRunningAgentTasks(tasks, setAppState)
-      .then(({ succeeded, failures }) => {
-        const succeededIds = new Set(succeeded)
+      .then(result => {
+        const currentTasks = store.getState().tasks
+        const { stoppedIds, failures } = reconcileAgentStopResults(
+          result.succeeded,
+          result.alreadyTerminal,
+          result.failures,
+          currentTasks,
+        )
+        const succeededIds = new Set(stoppedIds)
         const stopped = running.filter(([taskId]) => succeededIds.has(taskId))
         for (const [taskId, task] of stopped) {
           markAgentsNotified(taskId, setAppState)
-          emitTaskTerminatedSdk(task.id, 'stopped', {
-            toolUseId: task.toolUseId,
-            summary: task.description,
-          })
+          const stoppedTask = currentTasks[taskId]
+          // Foreground agents publish their own terminal SDK event from the
+          // outer lifecycle finally. Background killed notifications are
+          // suppressed during aggregate Stop, so only those need a replacement.
+          if (shouldEmitAggregateStoppedSdk(stoppedTask)) {
+            emitTaskTerminatedSdk(task.id, 'stopped', {
+              toolUseId: task.toolUseId,
+              summary: task.description,
+            })
+          }
         }
         if (stopped.length > 0) {
           const descriptions = stopped.map(([, task]) => task.description)

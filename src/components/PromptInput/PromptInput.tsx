@@ -51,7 +51,11 @@ import { enterTeammateView, exitTeammateView, stopOrDismissAgent } from '../../s
 import type { ToolPermissionContext } from '../../Tool.js';
 import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
-import { isPanelAgentTask, type LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
+import {
+  isPanelAgentTask,
+  LocalAgentTask,
+  type LocalAgentTaskState,
+} from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { isBackgroundTask } from '../../tasks/types.js';
 import {
   AGENT_COLOR_TO_THEME_COLOR,
@@ -1998,7 +2002,16 @@ function PromptInput({
             setCursorOffset(cursorOffset + 1);
             return;
           }
-          stopOrDismissAgent(task.id, setAppState);
+          void stopOrDismissAgent(task.id, setAppState, LocalAgentTask.kill).catch(error => {
+            addNotification({
+              key: 'agent-stop-failed',
+              text: tf('Could not confirm task stopped: {error}', {
+                error: errorMessage(error),
+              }),
+              priority: 'immediate',
+              timeoutMs: 5000,
+            });
+          });
           if (task.status !== 'running') {
             setCoordinatorTaskIndex(i => Math.max(minCoordinatorIndex, i - 1));
           }

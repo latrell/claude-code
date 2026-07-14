@@ -30,6 +30,7 @@ import type { ThemeName } from 'src/utils/theme.js';
 import { AgentPromptDisplay, AgentResponseDisplay } from '../AgentTool/UI.js';
 import BashToolResultMessage from '../BashTool/BashToolResultMessage.js';
 import { TASK_OUTPUT_TOOL_NAME } from './constants.js';
+import { isTaskOutputReady, markTaskOutputRetrieved } from './readiness.js';
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -184,7 +185,7 @@ async function waitForTaskCompletion(
       return null;
     }
 
-    if (task.status !== 'running' && task.status !== 'pending') {
+    if (isTaskOutputReady(task)) {
       return task;
     }
 
@@ -290,12 +291,10 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
 
     if (!block) {
       // Non-blocking: return current state
-      if (task.status !== 'running' && task.status !== 'pending') {
-        // Mark as notified
-        updateTaskState(task_id, toolUseContext.setAppState, t => ({
-          ...t,
-          notified: true,
-        }));
+      if (isTaskOutputReady(task)) {
+        // A result-ready agent is still finalizing and may yet be stopped or
+        // fail. Do not consume its eventual lifecycle notification early.
+        updateTaskState(task_id, toolUseContext.setAppState, markTaskOutputRetrieved);
         return {
           data: {
             retrieval_status: 'success' as const,
@@ -340,7 +339,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
       };
     }
 
-    if (completedTask.status === 'running' || completedTask.status === 'pending') {
+    if (!isTaskOutputReady(completedTask)) {
       return {
         data: {
           retrieval_status: 'timeout' as const,
@@ -349,11 +348,9 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
       };
     }
 
-    // Mark as notified
-    updateTaskState(task_id, toolUseContext.setAppState, t => ({
-      ...t,
-      notified: true,
-    }));
+    // Preserve the final lifecycle notification while a result-ready agent is
+    // still running classifier/cleanup work.
+    updateTaskState(task_id, toolUseContext.setAppState, markTaskOutputRetrieved);
 
     return {
       data: {

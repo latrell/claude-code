@@ -31,6 +31,7 @@ import {
   getProgressUpdate,
   getTokenCountFromTracker,
   isLocalAgentTask,
+  publishAgentResult as publishAsyncAgentResult,
   type ProgressTracker,
   updateAgentProgress as updateAsyncAgentProgress,
   updateProgressFromMessage,
@@ -376,6 +377,31 @@ export function getLastToolUseName(message: MessageType): string | undefined {
   return block?.type === 'tool_use' ? block.name : undefined
 }
 
+export function getForegroundAgentTerminalStatus({
+  wasAborted,
+  signalAborted,
+  lifecycleError,
+  runError,
+}: {
+  wasAborted: boolean
+  signalAborted: boolean
+  lifecycleError?: Error
+  runError?: Error
+}): 'completed' | 'failed' | 'stopped' {
+  // An aborted signal is only proof that Stop was requested. A cleanup
+  // confirmation failure must win so SDK clients do not report false success.
+  if (
+    lifecycleError instanceof StopConfirmationError ||
+    runError instanceof StopConfirmationError
+  ) {
+    return 'failed'
+  }
+  if (wasAborted || signalAborted || lifecycleError instanceof AbortError) {
+    return 'stopped'
+  }
+  return lifecycleError || runError ? 'failed' : 'completed'
+}
+
 export function emitTaskProgress(
   tracker: ProgressTracker,
   taskId: string,
@@ -541,7 +567,7 @@ export async function runAsyncAgentLifecycle({
   rootSetAppState: SetAppState
   agentIdForCleanup: string
   enableSummarization: boolean
-  getWorktreeResult: () => Promise<{
+  getWorktreeResult: (abortSignal?: AbortSignal) => Promise<{
     worktreePath?: string
     worktreeBranch?: string
   }>
@@ -609,8 +635,6 @@ export async function runAsyncAgentLifecycle({
       throw new AbortError()
     }
 
-    await stopSummarization?.()
-
     // If the agent's final assistant message is an API error (e.g.
     // "API Error: terminated"), the stream was interrupted and the
     // model never produced a valid response. Fail the task instead of
@@ -622,8 +646,15 @@ export async function runAsyncAgentLifecycle({
           (lastMsg.message?.content as ContentItem[]) ?? [],
           '\n',
         ) || 'API error'
+      await stopSummarization?.()
+      if (abortController.signal.aborted) {
+        throw new AbortError()
+      }
+      const worktreeResult = await getWorktreeResult(abortController.signal)
+      if (abortController.signal.aborted) {
+        throw new AbortError()
+      }
       failAsyncAgent(taskId, errText, rootSetAppState)
-      const worktreeResult = await getWorktreeResult()
       enqueueAgentNotification({
         taskId,
         description,
@@ -638,11 +669,11 @@ export async function runAsyncAgentLifecycle({
 
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
 
-    // Mark task completed FIRST so TaskOutput(block=true) unblocks
-    // immediately. classifyHandoffIfNeeded (API call) and getWorktreeResult
-    // (git exec) are notification embellishments that can hang — they must
-    // not gate the status transition (gh-20236).
-    completeAsyncAgent(agentResult, rootSetAppState)
+    // Make the model result available to TaskOutput without publishing a
+    // terminal state. Classifier, summary shutdown, and worktree cleanup still
+    // belong to this execution and must remain cancellable through TaskStop.
+    publishAsyncAgentResult(agentResult, rootSetAppState)
+    await stopSummarization?.()
 
     let finalMessage = extractTextContent(agentResult.content, '\n')
 
@@ -661,7 +692,17 @@ export async function runAsyncAgentLifecycle({
       }
     }
 
-    const worktreeResult = await getWorktreeResult()
+    if (abortController.signal.aborted) {
+      throw new AbortError()
+    }
+    const worktreeResult = await getWorktreeResult(abortController.signal)
+    if (abortController.signal.aborted) {
+      throw new AbortError()
+    }
+
+    // Only now is the full owned lifecycle complete. This clears the abort
+    // controller, so it must be the final state transition before notification.
+    completeAsyncAgent(agentResult, rootSetAppState)
 
     enqueueAgentNotification({
       taskId,
@@ -700,7 +741,7 @@ export async function runAsyncAgentLifecycle({
         reason:
           'user_kill_async' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      const worktreeResult = await getWorktreeResult()
+      const worktreeResult = await getWorktreeResult(abortController.signal)
       const partialResult = extractPartialResult(agentMessages)
       enqueueAgentNotification({
         taskId,
@@ -714,8 +755,24 @@ export async function runAsyncAgentLifecycle({
       return
     }
     const msg = errorMessage(error)
+    const worktreeResult = await getWorktreeResult(abortController.signal)
+    if (
+      !(error instanceof StopConfirmationError) &&
+      abortController.signal.aborted
+    ) {
+      const partialResult = extractPartialResult(agentMessages)
+      enqueueAgentNotification({
+        taskId,
+        description,
+        status: 'killed',
+        setAppState: rootSetAppState,
+        toolUseId: toolUseContext.toolUseId,
+        finalMessage: partialResult,
+        ...worktreeResult,
+      })
+      return
+    }
     failAsyncAgent(taskId, msg, rootSetAppState)
-    const worktreeResult = await getWorktreeResult()
     enqueueAgentNotification({
       taskId,
       description,

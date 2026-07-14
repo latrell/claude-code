@@ -1,5 +1,7 @@
 import { mock, describe, expect, test } from 'bun:test'
 import { debugMock } from '../../../../../../tests/mocks/debug'
+import { AbortError } from 'src/utils/errors.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 
 // ─── Mocks for agentToolUtils.ts dependencies ───
 // Only mock modules that are truly unavailable or cause side effects.
@@ -8,6 +10,8 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 
 const noop = () => {}
 let summaryStopImpl: () => Promise<void> = async () => {}
+let publishedAgentResults = 0
+let completedAgentResults = 0
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
@@ -80,7 +84,9 @@ mock.module('src/utils/messages.ts', () => ({
 }))
 
 mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
-  completeAgentTask: noop,
+  completeAgentTask: () => {
+    completedAgentResults++
+  },
   createActivityDescriptionResolver: () => ({}),
   createProgressTracker: () => ({}),
   enqueueAgentNotification: noop,
@@ -89,6 +95,9 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
   getTokenCountFromTracker: () => 0,
   isLocalAgentTask: () => false,
   killAsyncAgent: noop,
+  publishAgentResult: () => {
+    publishedAgentResults++
+  },
   updateAgentProgress: noop,
   updateProgressFromMessage: noop,
 }))
@@ -155,8 +164,12 @@ mock.module('src/tools/AgentTool/AgentTool.tsx', () => ({
   default: {},
 }))
 
-const { countToolUses, getLastToolUseName, runAsyncAgentLifecycle } =
-  await import('../agentToolUtils')
+const {
+  countToolUses,
+  getForegroundAgentTerminalStatus,
+  getLastToolUseName,
+  runAsyncAgentLifecycle,
+} = await import('../agentToolUtils')
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void
@@ -249,8 +262,32 @@ describe('getLastToolUseName', () => {
   })
 })
 
+describe('getForegroundAgentTerminalStatus', () => {
+  test('reports unconfirmed cleanup as failed even after an abort request', () => {
+    expect(
+      getForegroundAgentTerminalStatus({
+        wasAborted: false,
+        signalAborted: true,
+        runError: new StopConfirmationError('cleanup still running'),
+      }),
+    ).toBe('failed')
+  })
+
+  test('reports a confirmed abort as stopped', () => {
+    expect(
+      getForegroundAgentTerminalStatus({
+        wasAborted: true,
+        signalAborted: true,
+        lifecycleError: new AbortError(),
+      }),
+    ).toBe('stopped')
+  })
+})
+
 describe('runAsyncAgentLifecycle', () => {
   test('waits for summary settlement before completing the agent lifecycle', async () => {
+    publishedAgentResults = 0
+    completedAgentResults = 0
     const stopStarted = deferred()
     const stopSettlement = deferred()
     summaryStopImpl = () => {
@@ -292,11 +329,62 @@ describe('runAsyncAgentLifecycle', () => {
     })
     await Promise.resolve()
     expect(lifecycleSettled).toBe(false)
+    expect(publishedAgentResults).toBe(1)
+    expect(completedAgentResults).toBe(0)
 
     stopSettlement.resolve()
     await lifecycle
     expect(lifecycleSettled).toBe(true)
+    expect(completedAgentResults).toBe(1)
 
     summaryStopImpl = async () => {}
+  })
+
+  test('keeps a result-ready agent cancellable through worktree finalization', async () => {
+    publishedAgentResults = 0
+    completedAgentResults = 0
+    summaryStopImpl = async () => {}
+    const worktree = deferred()
+    const abortController = new AbortController()
+
+    const lifecycle = runAsyncAgentLifecycle({
+      taskId: 'agent-finalizing',
+      abortController,
+      makeStream: async function* () {
+        yield makeAssistantMessage([{ type: 'text', text: 'done' }])
+      },
+      metadata: {
+        prompt: 'test',
+        resolvedAgentModel: 'test-model',
+        isBuiltInAgent: false,
+        startTime: Date.now(),
+        agentType: 'test',
+        isAsync: true,
+      },
+      description: 'test agent',
+      toolUseContext: {
+        options: { tools: [] },
+        toolUseId: 'tool-use-1',
+        getAppState: () => ({ toolPermissionContext: {} }),
+      } as any,
+      rootSetAppState: noop as any,
+      agentIdForCleanup: 'agent-finalizing',
+      enableSummarization: false,
+      getWorktreeResult: async () => {
+        await worktree.promise
+        return {}
+      },
+    })
+
+    while (publishedAgentResults === 0) {
+      await Promise.resolve()
+    }
+    expect(completedAgentResults).toBe(0)
+
+    abortController.abort()
+    worktree.resolve()
+    await lifecycle
+
+    expect(completedAgentResults).toBe(0)
   })
 })

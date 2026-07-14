@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 // ─── Mocks ───
 
@@ -52,13 +53,16 @@ const {
   updateProgressFromMessage,
   getProgressUpdate,
   completeAgentTask,
+  publishAgentResult,
   failAgentTask,
+  LocalAgentTask,
   killAsyncAgent,
   killAllRunningAgentTasks,
   backgroundAgentTask,
   enqueueAgentNotification,
   suppressAgentNotification,
   registerAgentForeground,
+  unregisterAgentForeground,
   registerAsyncAgent,
   trackLocalAgentExecution,
   updateAgentProgress,
@@ -230,6 +234,28 @@ describe('getProgressUpdate', () => {
 })
 
 describe('completeAgentTask', () => {
+  test('publishes a result while keeping the lifecycle running and stoppable', () => {
+    const abortController = new AbortController()
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({ abortController }),
+      },
+    })
+    const result = {
+      agentId: 'test-agent-001',
+      content: [{ type: 'text', text: 'done' }],
+      totalToolUseCount: 0,
+      totalDurationMs: 100,
+    } as any
+
+    publishAgentResult(result, setAppState as any)
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.status).toBe('running')
+    expect(task.result).toBe(result)
+    expect(task.abortController).toBe(abortController)
+  })
+
   test('transitions running task to completed', () => {
     const { setAppState, getState } = createSetAppState({
       tasks: { 'test-agent-001': makeRunningTask() },
@@ -374,6 +400,90 @@ describe('failAgentTask', () => {
 })
 
 describe('killAsyncAgent', () => {
+  test('keeps a result-ready task stoppable and rejects a late completion transition', async () => {
+    const runner = createDeferred()
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'result-ready-agent',
+      description: 'Result ready agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const tracked = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => runner.promise,
+      setAppState: setAppState as any,
+    })
+    const result = {
+      agentId: task.agentId,
+      content: [{ type: 'text', text: 'model result' }],
+      totalToolUseCount: 0,
+      totalDurationMs: 100,
+    } as any
+    publishAgentResult(result, setAppState as any)
+
+    let stopSettled = false
+    const stop = killAsyncAgent(task.agentId, setAppState as any).then(
+      outcome => {
+        stopSettled = true
+        return outcome
+      },
+    )
+    await Promise.resolve()
+
+    expect(stopSettled).toBe(false)
+    expect(getState().tasks[task.agentId].status).toBe('running')
+    expect(getState().tasks[task.agentId].result).toBe(result)
+
+    const evictionsBeforeLateCompletion = diskEvictionSpy.mock.calls.length
+    completeAgentTask(result, setAppState as any)
+    expect(getState().tasks[task.agentId].status).toBe('running')
+    expect(diskEvictionSpy.mock.calls.length).toBe(
+      evictionsBeforeLateCompletion,
+    )
+
+    runner.resolve()
+    await tracked
+    expect(await stop).toBe('killed')
+    expect(getState().tasks[task.agentId].status).toBe('killed')
+    expect(getState().tasks[task.agentId].result).toBe(result)
+  })
+
+  test('rejects Stop when owned cleanup records an unconfirmed failure', async () => {
+    const runner = createDeferred()
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'unconfirmed-stop-agent',
+      description: 'Unconfirmed stop agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const tracked = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => runner.promise,
+      setAppState: setAppState as any,
+    })
+
+    const stopError = killAsyncAgent(task.agentId, setAppState as any).then(
+      () => undefined,
+      error => error,
+    )
+    failAgentTask(
+      task.agentId,
+      'owned cleanup did not confirm termination',
+      setAppState as any,
+    )
+    runner.resolve()
+    await tracked
+
+    expect(await stopError).toBeInstanceOf(StopConfirmationError)
+    expect(getState().tasks[task.agentId].status).toBe('failed')
+  })
+
   test('transitions running task to killed', async () => {
     const ac = new AbortController()
     const cleanup = mock(() => {})
@@ -424,6 +534,16 @@ describe('killAsyncAgent', () => {
 
     const task = getState().tasks['test-agent-001']
     expect(task.status).toBe('completed')
+  })
+
+  test('Task kill contract rejects instead of reporting an already-terminal task stopped', async () => {
+    const { setAppState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ status: 'completed' }) },
+    })
+
+    await expect(
+      LocalAgentTask.kill('test-agent-001', setAppState as any),
+    ).rejects.toBeInstanceOf(StopConfirmationError)
   })
 
   test('waits for an initial background run to settle before reporting killed', async () => {
@@ -593,6 +713,7 @@ describe('killAllRunningAgentTasks', () => {
       async taskId => {
         if (taskId === 'agent-failed') throw failedStop
         await successfulStop.promise
+        return 'killed' as const
       },
     ).then(result => {
       settled = true
@@ -605,11 +726,31 @@ describe('killAllRunningAgentTasks', () => {
     successfulStop.resolve()
     const result = await resultPromise
     expect(result.succeeded).toEqual(['agent-ok'])
+    expect(result.alreadyTerminal).toEqual([])
     expect(result.failures).toHaveLength(1)
     expect(result.failures[0]).toEqual({
       taskId: 'agent-failed',
       error: failedStop,
     })
+  })
+
+  test('does not report a snapshot task that completed before kill as stopped', async () => {
+    const tasks = {
+      'agent-finished': makeRunningTask({
+        id: 'agent-finished',
+        agentId: 'agent-finished',
+      }),
+    }
+
+    const result = await killAllRunningAgentTasks(
+      tasks,
+      (() => {}) as any,
+      async () => 'already_terminal',
+    )
+
+    expect(result.succeeded).toEqual([])
+    expect(result.alreadyTerminal).toEqual(['agent-finished'])
+    expect(result.failures).toEqual([])
   })
 })
 
@@ -690,6 +831,36 @@ describe('foreground agent cancellation', () => {
 
     expect(getState().tasks[registration.taskId].status).toBe('killed')
     expect(stopResolved).toBe(true)
+  })
+
+  test('unregister keeps a stopping foreground task until its runner settles', async () => {
+    const parentAbortController = new AbortController()
+    const { setAppState, getState } = createSetAppState()
+    const registration = registerAgentForeground({
+      agentId: 'foreground-unregister-race',
+      description: 'Foreground unregister race',
+      prompt: 'do something',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+      parentAbortController,
+    })
+    const execution = createDeferred()
+    const trackedExecution = trackLocalAgentExecution({
+      taskId: registration.taskId,
+      abortController: registration.abortController,
+      startExecution: () => execution.promise,
+      setAppState: setAppState as any,
+    })
+
+    const stop = killAsyncAgent(registration.taskId, setAppState as any)
+    unregisterAgentForeground(registration.taskId, setAppState as any)
+
+    expect(getState().tasks[registration.taskId]?.status).toBe('running')
+
+    execution.resolve()
+    await trackedExecution
+    expect(await stop).toBe('killed')
+    expect(getState().tasks[registration.taskId]?.status).toBe('killed')
   })
 
   test('backgrounding aborts the foreground run and installs an unlinked controller', async () => {
@@ -811,6 +982,24 @@ describe('enqueueAgentNotification', () => {
       setAppState: setAppState as any,
     })
     expect(enqueuedNotifications).toHaveLength(1)
+  })
+
+  test('does not suppress a natural completion that races an aggregate stop', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ notified: false }) },
+    })
+    const release = suppressAgentNotification('test-agent-001')
+
+    enqueueAgentNotification({
+      taskId: 'test-agent-001',
+      description: 'test',
+      status: 'completed',
+      setAppState: setAppState as any,
+    })
+
+    expect(enqueuedNotifications).toHaveLength(1)
+    expect(getState().tasks['test-agent-001'].notified).toBe(true)
+    release()
   })
 
   test('enqueues completed notification with correct XML format', () => {

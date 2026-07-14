@@ -963,6 +963,7 @@ export async function removeAgentWorktree(
   worktreeBranch?: string,
   gitRoot?: string,
   hookBased?: boolean,
+  abortSignal?: AbortSignal,
 ): Promise<boolean> {
   if (hookBased) {
     const hookRan = await executeWorktreeRemoveHook(worktreePath)
@@ -989,7 +990,7 @@ export async function removeAgentWorktree(
     await execFileNoThrowWithCwd(
       gitExe(),
       ['worktree', 'remove', '--force', worktreePath],
-      { cwd: gitRoot },
+      { cwd: gitRoot, abortSignal },
     )
 
   if (removeCode !== 0) {
@@ -1008,6 +1009,7 @@ export async function removeAgentWorktree(
   const { code: deleteBranchCode, stderr: deleteBranchError } =
     await execFileNoThrowWithCwd(gitExe(), ['branch', '-D', worktreeBranch], {
       cwd: gitRoot,
+      abortSignal,
     })
 
   if (deleteBranchCode !== 0) {
@@ -1146,10 +1148,12 @@ export async function cleanupStaleAgentWorktrees(
 export async function hasWorktreeChanges(
   worktreePath: string,
   headCommit: string,
+  abortSignal?: AbortSignal,
 ): Promise<boolean> {
   const { code: statusCode, stdout: statusOutput } =
     await execFileNoThrowWithCwd(gitExe(), ['status', '--porcelain'], {
       cwd: worktreePath,
+      abortSignal,
     })
   if (statusCode !== 0) {
     return true
@@ -1162,7 +1166,7 @@ export async function hasWorktreeChanges(
     await execFileNoThrowWithCwd(
       gitExe(),
       ['rev-list', '--count', `${headCommit}..HEAD`],
-      { cwd: worktreePath },
+      { cwd: worktreePath, abortSignal },
     )
   if (revListCode !== 0) {
     return true
