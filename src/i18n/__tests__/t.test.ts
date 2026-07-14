@@ -13,6 +13,14 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 const { t, tf } = await import('../t.js')
+const { localizedDetachedAuxiliaryStopMessage, localizedStopErrorMessage } =
+  await import('../stop.js')
+const { StopConfirmationError } = await import(
+  '../../utils/stopConfirmation.js'
+)
+const { DetachedAuxiliaryStopConfirmationError } = await import(
+  '../../utils/detachedAuxiliaryWork.js'
+)
 const { createCacheWarningMessage } = await import(
   '../../utils/cacheWarning.js'
 )
@@ -196,6 +204,63 @@ describe('t', () => {
     ).toBe('监控已启动（任务 task-1）。输出：/tmp/out')
     expect(tf('Review complete: {count} annotation(s)', { count: 2 })).toBe(
       '审查完成：2 条注释',
+    )
+  })
+
+  test('translates cancellation confirmation warnings without leaking internal operation names', () => {
+    mockLanguage = '简体中文'
+
+    expect(
+      t(
+        'Stop was requested, but one or more background requests may still be running. Press Esc again to retry.',
+      ),
+    ).toBe(
+      '已请求停止，但仍有一个或多个后台请求可能在运行。请再次按 Esc 重试。',
+    )
+    expect(
+      t(
+        'Stop was requested, but one or more background requests could not be confirmed as stopped and may still be running. Check the debug log for details.',
+      ),
+    ).toBe(
+      '已请求停止，但无法确认一个或多个后台请求已经停止，它们可能仍在运行。请查看调试日志了解详情。',
+    )
+    expect(t('Remote request could not be confirmed as stopped.')).toBe(
+      '已请求停止，但无法确认远程请求已停止。',
+    )
+
+    const detail = localizedStopErrorMessage(
+      new StopConfirmationError(
+        'Detached auxiliary work termination could not be confirmed',
+      ),
+    )
+    expect(detail).toBe('无法确认请求已终止；它可能仍在运行。')
+    expect(detail).not.toContain('Detached auxiliary work')
+    expect(
+      tf('Could not confirm task stopped: {error}', { error: detail }),
+    ).toBe('无法确认任务已停止：无法确认请求已终止；它可能仍在运行。')
+
+    const retryable = new DetachedAuxiliaryStopConfirmationError([
+      {
+        operation: 'title request',
+        error: new StopConfirmationError('provider still active'),
+        settlementPending: true,
+        canRetrySettlement: true,
+      },
+    ])
+    expect(localizedDetachedAuxiliaryStopMessage(retryable)).toBe(
+      '已请求停止，但仍有一个或多个后台请求可能在运行。请再次按 Esc 重试。',
+    )
+
+    const terminal = new DetachedAuxiliaryStopConfirmationError([
+      {
+        operation: 'turn callback',
+        error: new StopConfirmationError('old proof was uncertain'),
+        settlementPending: false,
+        canRetrySettlement: false,
+      },
+    ])
+    expect(localizedDetachedAuxiliaryStopMessage(terminal)).toBe(
+      '已请求停止，但无法确认一个或多个后台请求已经停止，它们可能仍在运行。请查看调试日志了解详情。',
     )
   })
 

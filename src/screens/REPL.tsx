@@ -33,6 +33,7 @@ import {
   useTabStatus,
 } from '@anthropic/ink';
 import { t, tf } from '../i18n/t.js';
+import { localizedDetachedAuxiliaryStopMessage } from '../i18n/stop.js';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';
 import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
 import * as React from 'react';
@@ -1476,9 +1477,7 @@ export function REPL({
       if (!(error instanceof StopConfirmationError)) return;
       addNotification({
         key: 'auxiliary-stop-unconfirmed',
-        text: tf('Could not confirm all background requests stopped: {error}', {
-          error: errorMessage(error),
-        }),
+        text: localizedDetachedAuxiliaryStopMessage(error),
         priority: 'immediate',
         timeoutMs: 5000,
       });

@@ -12,6 +12,7 @@
 import { randomUUID } from 'crypto'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
+import { t } from '../i18n/t.js'
 import {
   createSyntheticAssistantMessage,
   createToolStub,
@@ -243,7 +244,7 @@ export function useSSHSession({
     const manager = managerRef.current
     if (!manager) {
       process.stderr.write(
-        '\nRemote request could not be confirmed as stopped.\n',
+        `\n${t('Remote request could not be confirmed as stopped.')}\n`,
       )
       return
     }
@@ -253,7 +254,7 @@ export function useSSHSession({
         setIsLoading(false)
       } else {
         process.stderr.write(
-          '\nRemote request could not be confirmed as stopped.\n',
+          `\n${t('Remote request could not be confirmed as stopped.')}\n`,
         )
       }
     })

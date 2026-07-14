@@ -120,7 +120,8 @@ import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '
 // AutoModeOptInDialog removed — auto mode is available to all users
 import { BridgeDialog } from '../BridgeDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
-import { tf } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
+import { localizedStopErrorMessage } from '../../i18n/stop.js';
 import { T } from '../../i18n/TText.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';
@@ -896,8 +897,12 @@ function PromptInput({
         key: 'auxiliary-stop-unconfirmed',
         text:
           error instanceof StopConfirmationError
-            ? 'Stop was sent, but a background model request did not confirm termination.'
-            : `Could not stop a background model request: ${errorMessage(error)}`,
+            ? t(
+                'Stop was requested, but a background model request could not be confirmed as stopped. It may still be running. Check the debug log for details.',
+              )
+            : tf('Could not stop a background model request: {error}', {
+                error: errorMessage(error),
+              }),
         color: 'warning',
         priority: 'immediate',
       });
@@ -2039,7 +2044,7 @@ function PromptInput({
             addNotification({
               key: 'agent-stop-failed',
               text: tf('Could not confirm task stopped: {error}', {
-                error: errorMessage(error),
+                error: localizedStopErrorMessage(error),
               }),
               priority: 'immediate',
               timeoutMs: 5000,

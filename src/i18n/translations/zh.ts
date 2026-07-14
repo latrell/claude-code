@@ -1982,6 +1982,40 @@ const zh: Record<string, string> = {
   '{n} background agents were stopped by the user: {descriptions}':
     '{n} 个后台智能体已被用户停止：{descriptions}',
 
+  // ── Stop/cancellation confirmation warnings ─────────────────
+  'Stop was requested, but one or more background requests may still be running. Press Esc again to retry.':
+    '已请求停止，但仍有一个或多个后台请求可能在运行。请再次按 Esc 重试。',
+  'Stop was requested, but one or more background requests could not be confirmed as stopped and may still be running. Check the debug log for details.':
+    '已请求停止，但无法确认一个或多个后台请求已经停止，它们可能仍在运行。请查看调试日志了解详情。',
+  'Stop was requested, but a background model request could not be confirmed as stopped. It may still be running. Check the debug log for details.':
+    '已请求停止，但无法确认后台模型请求已经停止；它可能仍在运行。请查看调试日志了解详情。',
+  'Termination could not be confirmed; the request may still be running.':
+    '无法确认请求已终止；它可能仍在运行。',
+  'Could not stop a background model request: {error}':
+    '无法停止后台模型请求：{error}',
+  'Could not confirm all background requests stopped: {error}':
+    '无法确认所有后台请求均已停止：{error}',
+  'Could not confirm all agents stopped: {error}':
+    '无法确认所有智能体均已停止：{error}',
+  'Agent Stop was not confirmed for: {error}':
+    '以下智能体的停止操作未得到确认：{error}',
+  'Could not confirm task stopped: {error}': '无法确认任务已停止：{error}',
+  'Could not confirm teammate stopped: {error}': '无法确认队友已停止：{error}',
+  'Could not confirm teammate stopped; it remains tracked and can be retried.':
+    '无法确认队友已停止；该队友仍受跟踪，可以重试。',
+  'Could not confirm foreground task termination before clearing conversation: {tasks}':
+    '清除对话前无法确认以下前台任务已终止：{tasks}',
+  'Remote request could not be confirmed as stopped.':
+    '已请求停止，但无法确认远程请求已停止。',
+  'Remote Control Server could not be confirmed as stopped.':
+    '无法确认远程控制服务已停止。',
+  'Could not confirm that {repo}#{prNumber} stopped remotely. Monitoring remains active so you can retry.':
+    '无法确认已在远程停止 {repo}#{prNumber}。监控仍在运行，您可以重试。',
+  'Could not confirm that {repo}#{prNumber} stopped remotely. Monitoring remains active so you can retry /autofix-pr stop.':
+    '无法确认已在远程停止 {repo}#{prNumber}。监控仍在运行，您可以使用 /autofix-pr stop 重试。',
+  'Task registration was canceled, but remote session {sessionId} did not acknowledge Stop.':
+    '任务注册已取消，但远程会话 {sessionId} 未确认 Stop。',
+
   // ── Pill label ultraplan ─────────────────────────────────────
   'ultraplan ready': 'ultraplan 就绪',
   'ultraplan needs your input': 'ultraplan 需要您的输入',

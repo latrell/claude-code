@@ -26,12 +26,12 @@ import type { CommandResultDisplay } from '../../commands.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import { useNotifications } from '../../context/notifications.js';
 import { t, tf } from '../../i18n/t.js';
+import { localizedStopErrorMessage } from '../../i18n/stop.js';
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { count } from '../../utils/array.js';
-import { errorMessage } from '../../utils/errors.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { AsyncAgentDetailDialog } from './AsyncAgentDetailDialog.js';
 import { BackgroundTask as BackgroundTaskComponent } from './BackgroundTask.js';
@@ -152,7 +152,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
       addNotification({
         key: 'background-task-stop-failed',
         text: tf('Could not confirm task stopped: {error}', {
-          error: errorMessage(error),
+          error: localizedStopErrorMessage(error),
         }),
         priority: 'immediate',
         timeoutMs: 5000,

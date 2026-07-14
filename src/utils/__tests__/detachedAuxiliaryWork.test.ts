@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   cancelAndWaitForDetachedAuxiliaryWork,
+  DetachedAuxiliaryStopConfirmationError,
   hasActiveDetachedAuxiliaryWork,
   registerDetachedAuxiliaryWork,
   resetDetachedAuxiliaryWorkForTests,
@@ -175,13 +176,31 @@ describe('detachedAuxiliaryWork', () => {
     await Promise.resolve()
 
     expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
-    await expect(
-      cancelAndWaitForDetachedAuxiliaryWork('first Esc'),
-    ).rejects.toBe(failure)
+    const firstStop = cancelAndWaitForDetachedAuxiliaryWork('first Esc').catch(
+      error => error,
+    )
+    expect(await firstStop).toEqual(
+      expect.objectContaining({
+        operationFailures: [
+          {
+            operation: 'unconfirmed work',
+            error: failure,
+            settlementPending: false,
+            canRetrySettlement: false,
+          },
+        ],
+        operations: ['unconfirmed work'],
+        retryableOperations: [],
+        nonRetryableOperations: ['unconfirmed work'],
+        canRetry: false,
+        hasPendingSettlement: false,
+        failures: [failure],
+      }),
+    )
     expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
     await expect(
       cancelAndWaitForDetachedAuxiliaryWork('second Esc'),
-    ).rejects.toBe(failure)
+    ).rejects.toBeInstanceOf(DetachedAuxiliaryStopConfirmationError)
     expect(cancelCount).toBe(2)
     expect(observed).toEqual([failure])
   })
@@ -198,13 +217,93 @@ describe('detachedAuxiliaryWork', () => {
       abortGraceMs: 5,
     })
 
-    await expect(
-      cancelAndWaitForDetachedAuxiliaryWork('first Esc'),
-    ).rejects.toBeInstanceOf(StopConfirmationError)
+    const firstError = await cancelAndWaitForDetachedAuxiliaryWork(
+      'first Esc',
+    ).catch(error => error)
+    expect(firstError).toBeInstanceOf(DetachedAuxiliaryStopConfirmationError)
+    expect(firstError.operationFailures).toEqual([
+      expect.objectContaining({
+        operation: 'abort-ignoring work',
+        settlementPending: true,
+        canRetrySettlement: true,
+      }),
+    ])
+    expect(firstError.canRetry).toBe(true)
+    expect(firstError.hasPendingSettlement).toBe(true)
+    expect(firstError.message).toContain('abort-ignoring work')
     expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
     await expect(
       cancelAndWaitForDetachedAuxiliaryWork('second Esc'),
     ).rejects.toBeInstanceOf(StopConfirmationError)
     expect(cancelCount).toBe(2)
+  })
+
+  test('replaces rejected Stop evidence with an explicit fresh retry proof', async () => {
+    const staleFailure = new StopConfirmationError('first proof was uncertain')
+    const freshProof = deferred()
+    const retryReasons: unknown[] = []
+    registerDetachedAuxiliaryWork({
+      operation: 'refreshable work',
+      settlement: Promise.reject(staleFailure),
+      cancel: () => {},
+      retrySettlement: reason => {
+        retryReasons.push(reason)
+        return freshProof.promise
+      },
+      onError: () => {},
+      abortGraceMs: 100,
+    })
+    await Promise.resolve()
+
+    const stopping = cancelAndWaitForDetachedAuxiliaryWork('second Esc')
+    expect(retryReasons).toEqual(['second Esc'])
+    freshProof.resolve()
+
+    await expect(stopping).resolves.toBeUndefined()
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
+  })
+
+  test('preserves every failed operation when aggregating Stop evidence', async () => {
+    for (const operation of ['title request', 'turn callback']) {
+      registerDetachedAuxiliaryWork({
+        operation,
+        settlement: new Promise<void>(() => {}),
+        cancel: () => {},
+        onError: () => {},
+        abortGraceMs: 5,
+      })
+    }
+
+    const error = await cancelAndWaitForDetachedAuxiliaryWork('Esc').catch(
+      failure => failure,
+    )
+
+    expect(error).toBeInstanceOf(DetachedAuxiliaryStopConfirmationError)
+    expect(error.operations).toEqual(['title request', 'turn callback'])
+    expect(error.operationFailures).toHaveLength(2)
+    expect(
+      error.operationFailures.map(
+        ({ operation }: { operation: string }) => operation,
+      ),
+    ).toEqual(['title request', 'turn callback'])
+    expect(
+      error.operationFailures.every(
+        ({
+          canRetrySettlement,
+          settlementPending,
+        }: {
+          canRetrySettlement: boolean
+          settlementPending: boolean
+        }) => canRetrySettlement && settlementPending,
+      ),
+    ).toBe(true)
+    expect(error.canRetry).toBe(true)
+    expect(error.retryableOperations).toEqual([
+      'title request',
+      'turn callback',
+    ])
+    expect(error.nonRetryableOperations).toEqual([])
+    expect(error.message).toContain('title request, turn callback')
+    expect(error.failures).toHaveLength(2)
   })
 })

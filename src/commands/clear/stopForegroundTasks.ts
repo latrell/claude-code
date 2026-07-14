@@ -1,4 +1,5 @@
 import type { AppState } from '../../state/AppState.js'
+import { tf } from '../../i18n/t.js'
 
 type AppTask = AppState['tasks'][string]
 
@@ -37,7 +38,10 @@ export async function stopForegroundTasksBeforeClear({
   }
   if (unresolved.length > 0) {
     throw new Error(
-      `Could not confirm foreground task termination before clearing conversation: ${unresolved.join(', ')}`,
+      tf(
+        'Could not confirm foreground task termination before clearing conversation: {tasks}',
+        { tasks: unresolved.join(', ') },
+      ),
     )
   }
 

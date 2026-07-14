@@ -20,7 +20,8 @@ import {
 } from '../tasks/InProcessTeammateTask/types.js'
 import { isBackgroundTask } from '../tasks/types.js'
 import { useNotifications } from '../context/notifications.js'
-import { errorMessage } from '../utils/errors.js'
+import { tf } from '../i18n/t.js'
+import { localizedStopErrorMessage } from '../i18n/stop.js'
 
 // Step teammate selection by delta, wrapping across leader(-1)..teammates(0..n-1)..hide(n).
 // First step from a collapsed tree expands it and parks on leader.
@@ -250,7 +251,9 @@ export function useBackgroundTaskNavigation(options?: {
           error => {
             addNotification({
               key: 'teammate-stop-failed',
-              text: `Could not confirm teammate stopped: ${errorMessage(error)}`,
+              text: tf('Could not confirm teammate stopped: {error}', {
+                error: localizedStopErrorMessage(error),
+              }),
               priority: 'immediate',
               timeoutMs: 5000,
             })

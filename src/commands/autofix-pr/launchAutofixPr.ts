@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { feature } from 'bun:bundle'
-import { t } from '../../i18n/t.js'
+import { t, tf } from '../../i18n/t.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -134,7 +134,10 @@ export const callAutofixPr: LocalJSXCommandCall = async (
         }
         if (!stopped) {
           onDone(
-            `Could not confirm that ${m.repo}#${m.prNumber} stopped remotely. Monitoring remains active so you can retry.`,
+            tf(
+              'Could not confirm that {repo}#{prNumber} stopped remotely. Monitoring remains active so you can retry.',
+              { repo: m.repo, prNumber: m.prNumber },
+            ),
             { display: 'system' },
           )
           return null
@@ -397,7 +400,10 @@ If no fix was needed, omit <commits-pushed> and <files-changed> and explain in <
       const reportUnconfirmedStop = (): void => {
         retainMonitor = true
         onDone(
-          `Could not confirm that ${repo}#${prNumber} stopped remotely. Monitoring remains active so you can retry /autofix-pr stop.`,
+          tf(
+            'Could not confirm that {repo}#{prNumber} stopped remotely. Monitoring remains active so you can retry /autofix-pr stop.',
+            { repo, prNumber },
+          ),
           { display: 'system' },
         )
       }
@@ -482,7 +488,10 @@ If no fix was needed, omit <commits-pushed> and <files-changed> and explain in <
           const stopped = await stopRemoteSession(session.id)
           if (!stopped) {
             onDone(
-              `Task registration was canceled, but remote session ${session.id} did not acknowledge Stop.`,
+              tf(
+                'Task registration was canceled, but remote session {sessionId} did not acknowledge Stop.',
+                { sessionId: session.id },
+              ),
               { display: 'system' },
             )
           }

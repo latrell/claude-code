@@ -14,7 +14,6 @@ import { getEmptyToolPermissionContext } from '../../Tool.js';
 import { AGENT_COLOR_TO_THEME_COLOR } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
-import { errorMessage } from '../../utils/errors.js';
 import { truncateToWidth } from '../../utils/format.js';
 import { modelDisplayString } from '../../utils/model/model.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
@@ -41,6 +40,8 @@ import {
 import { Dialog } from '@anthropic/ink';
 import ThemedText from '../design-system/ThemedText.js';
 import { T } from '../../i18n/TText.js';
+import { t, tf } from '../../i18n/t.js';
+import { localizedStopErrorMessage } from '../../i18n/stop.js';
 import { runConfirmedTermination } from './confirmedTermination.js';
 
 type Props = {
@@ -67,8 +68,10 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
     addNotification({
       key: 'teammate-stop-failed',
       text: error
-        ? `Could not confirm teammate stopped: ${errorMessage(error)}`
-        : 'Could not confirm teammate stopped; it remains tracked and can be retried.',
+        ? tf('Could not confirm teammate stopped: {error}', {
+            error: localizedStopErrorMessage(error),
+          })
+        : t('Could not confirm teammate stopped; it remains tracked and can be retried.'),
       priority: 'immediate',
       timeoutMs: 5000,
     });

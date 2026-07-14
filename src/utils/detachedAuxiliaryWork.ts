@@ -13,6 +13,12 @@ export type DetachedAuxiliaryWork = {
   settlement: Promise<void>
   /** Dispatch cancellation to the owner of `settlement`. */
   cancel: (reason: unknown) => void | Promise<void>
+  /**
+   * Retry cancellation after `settlement` itself ended with unconfirmed Stop
+   * evidence. Unlike `cancel`, the returned promise must be a fresh, exact
+   * termination proof rather than acknowledgement that abort was dispatched.
+   */
+  retrySettlement?: (reason: unknown) => Promise<void>
   /** Observe operational failures without confusing them with live work. */
   onError: (error: unknown) => void
   abortGraceMs?: number
@@ -37,10 +43,129 @@ const activeEntries = new Map<number, DetachedAuxiliaryEntry>()
 const changed = createSignal()
 let nextId = 0
 
+export type DetachedAuxiliaryStopFailure = Readonly<{
+  operation: string
+  error: unknown
+  settlementPending: boolean
+  canRetrySettlement: boolean
+}>
+
+/**
+ * Structured Stop evidence for detached work. Keep the operation/error pairs
+ * separate from the diagnostic message so UI callers never need to parse an
+ * English Error.message to explain which background owners remain uncertain.
+ */
+export class DetachedAuxiliaryStopConfirmationError extends StopConfirmationError {
+  readonly operationFailures: readonly DetachedAuxiliaryStopFailure[]
+  readonly operations: readonly string[]
+  readonly retryableOperations: readonly string[]
+  readonly nonRetryableOperations: readonly string[]
+  /** Whether another Stop can still confirm every failed operation. */
+  readonly canRetry: boolean
+  readonly hasPendingSettlement: boolean
+
+  constructor(operationFailures: readonly DetachedAuxiliaryStopFailure[]) {
+    const copiedFailures = operationFailures.map(
+      ({ operation, error, settlementPending, canRetrySettlement }) => ({
+        operation,
+        error,
+        settlementPending,
+        canRetrySettlement,
+      }),
+    )
+    const operations = [
+      ...new Set(copiedFailures.map(({ operation }) => operation)),
+    ]
+    super(
+      `Detached auxiliary work termination could not be confirmed${
+        operations.length > 0 ? `: ${operations.join(', ')}` : ''
+      }`,
+      copiedFailures.map(({ error }) => error),
+    )
+    this.name = 'DetachedAuxiliaryStopConfirmationError'
+    this.operationFailures = copiedFailures
+    this.operations = operations
+    this.retryableOperations = [
+      ...new Set(
+        copiedFailures
+          .filter(({ canRetrySettlement }) => canRetrySettlement)
+          .map(({ operation }) => operation),
+      ),
+    ]
+    this.nonRetryableOperations = [
+      ...new Set(
+        copiedFailures
+          .filter(({ canRetrySettlement }) => !canRetrySettlement)
+          .map(({ operation }) => operation),
+      ),
+    ]
+    this.canRetry = copiedFailures.every(
+      ({ canRetrySettlement }) => canRetrySettlement,
+    )
+    this.hasPendingSettlement = copiedFailures.some(
+      ({ settlementPending }) => settlementPending,
+    )
+  }
+}
+
+export function isDetachedAuxiliaryStopConfirmationError(
+  error: unknown,
+): error is DetachedAuxiliaryStopConfirmationError {
+  return error instanceof DetachedAuxiliaryStopConfirmationError
+}
+
 function removeEntry(entry: DetachedAuxiliaryEntry): void {
   if (activeEntries.get(entry.id) !== entry) return
   activeEntries.delete(entry.id)
   changed.emit()
+}
+
+function trackSettlement(
+  entry: DetachedAuxiliaryEntry,
+  settlement: Promise<void>,
+): void {
+  entry.settlement = settlement
+  entry.settled = false
+  entry.failure = undefined
+
+  void settlement.then(
+    () => {
+      if (entry.settlement !== settlement) return
+      entry.settled = true
+      removeEntry(entry)
+    },
+    error => {
+      if (entry.settlement !== settlement) return
+      // Ordinary rejection proves the request ended and only needs reporting.
+      // Explicit unconfirmed Stop evidence remains Esc-routable.
+      entry.settled = true
+      observeFailure(entry, error)
+      if (error instanceof StopConfirmationError) changed.emit()
+      else removeEntry(entry)
+    },
+  )
+}
+
+function retryUnconfirmedSettlement(
+  entry: DetachedAuxiliaryEntry,
+  reason: unknown,
+): boolean {
+  if (
+    !entry.settled ||
+    !(entry.failure instanceof StopConfirmationError) ||
+    !entry.retrySettlement
+  ) {
+    return false
+  }
+
+  let settlement: Promise<void>
+  try {
+    settlement = Promise.resolve(entry.retrySettlement(reason))
+  } catch (error) {
+    settlement = Promise.reject(error)
+  }
+  trackSettlement(entry, settlement)
+  return true
 }
 
 function startCancellation(
@@ -66,24 +191,25 @@ function observeFailure(entry: DetachedAuxiliaryEntry, error: unknown): void {
 }
 
 function throwTerminationFailures(
-  operation: string,
+  entries: readonly DetachedAuxiliaryEntry[],
   results: readonly PromiseSettledResult<void>[],
 ): void {
-  const failures = [
-    ...new Set(
-      results.flatMap(result =>
-        result.status === 'rejected' ? [result.reason] : [],
-      ),
-    ),
-  ]
-  if (failures.length === 0) return
-  if (failures.length === 1 && failures[0] instanceof StopConfirmationError) {
-    throw failures[0]
-  }
-  throw new StopConfirmationError(
-    `${operation} termination could not be confirmed`,
-    failures,
+  const operationFailures = results.flatMap((result, index) =>
+    result.status === 'rejected'
+      ? [
+          {
+            operation: entries[index]!.operation,
+            error: result.reason,
+            settlementPending: !entries[index]!.settled,
+            canRetrySettlement:
+              !entries[index]!.settled ||
+              entries[index]!.retrySettlement !== undefined,
+          },
+        ]
+      : [],
   )
+  if (operationFailures.length === 0) return
+  throw new DetachedAuxiliaryStopConfirmationError(operationFailures)
 }
 
 /**
@@ -104,21 +230,7 @@ export function registerDetachedAuxiliaryWork(
   }
   activeEntries.set(entry.id, entry)
   changed.emit()
-
-  void entry.settlement.then(
-    () => {
-      entry.settled = true
-      removeEntry(entry)
-    },
-    error => {
-      // Ordinary rejection proves the request ended and only needs reporting.
-      // Explicit unconfirmed Stop evidence remains Esc-routable.
-      entry.settled = true
-      observeFailure(entry, error)
-      if (error instanceof StopConfirmationError) changed.emit()
-      else removeEntry(entry)
-    },
-  )
+  trackSettlement(entry, entry.settlement)
 }
 
 /**
@@ -162,6 +274,7 @@ export async function cancelAndWaitForDetachedAuxiliaryWork(
   // Dispatch every cancellation before awaiting any one record. Dispatcher
   // failure is observable, but only the exact settlement proves liveness.
   for (const entry of entries) {
+    if (retryUnconfirmedSettlement(entry, reason)) continue
     void startCancellation(entry, reason).catch(error => {
       observeFailure(entry, error)
     })
@@ -199,7 +312,7 @@ export async function cancelAndWaitForDetachedAuxiliaryWork(
   })
 
   const results = await Promise.allSettled(confirmations)
-  throwTerminationFailures('Detached auxiliary work', results)
+  throwTerminationFailures(entries, results)
 }
 
 /** Test-only reset for module-level ownership state. */

@@ -18,6 +18,7 @@ import type { SpinnerMode } from '../components/Spinner/types.js'
 import { useNotifications } from '../context/notifications.js'
 import { useIsOverlayActive } from '../context/overlayContext.js'
 import { t, tf } from '../i18n/t.js'
+import { localizedStopErrorMessage } from '../i18n/stop.js'
 import { useCommandQueue } from '../hooks/useCommandQueue.js'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
@@ -36,7 +37,6 @@ import {
 } from '../utils/messageQueueManager.js'
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
 import { canCancelRequest } from '../utils/cancelRequest.js'
-import { errorMessage } from '../utils/errors.js'
 import {
   reconcileAgentStopResults,
   shouldEmitAggregateStoppedSdk,
@@ -253,7 +253,10 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
         if (failures.length > 0) {
           const failureText = failures
-            .map(({ taskId, error }) => `${taskId}: ${errorMessage(error)}`)
+            .map(
+              ({ taskId, error }) =>
+                `${taskId}: ${localizedStopErrorMessage(error)}`,
+            )
             .join('; ')
           addNotification({
             key: 'kill-agents-failed',
@@ -264,7 +267,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
             timeoutMs: 5000,
           })
           enqueuePendingNotification({
-            value: `Agent Stop was not confirmed for: ${failureText}`,
+            value: tf('Agent Stop was not confirmed for: {error}', {
+              error: failureText,
+            }),
             mode: 'task-notification',
           })
         }
@@ -274,7 +279,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
         addNotification({
           key: 'kill-agents-failed',
           text: tf('Could not confirm all agents stopped: {error}', {
-            error: errorMessage(error),
+            error: localizedStopErrorMessage(error),
           }),
           priority: 'immediate',
           timeoutMs: 5000,
