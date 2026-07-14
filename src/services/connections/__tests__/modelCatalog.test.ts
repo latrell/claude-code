@@ -21,6 +21,7 @@ const CHATGPT_CODEX_MODELS = [
   ['gpt-5.5', '272K'],
   ['gpt-5.4', '272K'],
   ['gpt-5.4-mini', '272K'],
+  ['gpt-5.3-codex', '272K'],
   ['gpt-5.3-codex-spark', '128K'],
 ] as const
 
@@ -31,6 +32,73 @@ describe('getStaticModelsForConnection', () => {
         expect(model.label).not.toContain('-')
       }
     }
+  })
+
+  test('provider presets expose the current recommended model generations', () => {
+    const modelsFor = (presetId: string) =>
+      getStaticModelsForConnection({
+        id: presetId,
+        label: presetId,
+        kind: 'openai-compat',
+        presetId,
+      }).map(model => model.value)
+
+    expect(modelsFor('zhipu')).toEqual([
+      null,
+      'glm-5.2',
+      'glm-5.1',
+      'glm-4.7',
+      'glm-4.7-flash',
+    ])
+    expect(modelsFor('qwen')).toEqual([
+      null,
+      'qwen3.7-max',
+      'qwen3.7-plus',
+      'qwen3.6-flash',
+    ])
+    expect(modelsFor('mimo')).toEqual([null, 'mimo-v2.5-pro', 'mimo-v2.5'])
+  })
+
+  test('provider preset model metadata matches current context and base pricing', () => {
+    const provider = (id: string) => {
+      const preset = CHINA_LLM_PROVIDERS.find(candidate => candidate.id === id)
+      expect(preset).toBeDefined()
+      return preset!
+    }
+
+    expect(
+      provider('zhipu').models.map(
+        ({ id, contextWindow, inputPricePerMTok, outputPricePerMTok }) => [
+          id,
+          contextWindow,
+          inputPricePerMTok,
+          outputPricePerMTok,
+        ],
+      ),
+    ).toEqual([
+      ['glm-5.2', '1M', 8, 28],
+      ['glm-5.1', '200K', 6, 24],
+      ['glm-4.7', '200K', 2, 8],
+      ['glm-4.7-flash', '200K', 0, 0],
+    ])
+    expect(
+      provider('qwen').models.map(
+        ({ id, contextWindow, inputPricePerMTok, outputPricePerMTok }) => [
+          id,
+          contextWindow,
+          inputPricePerMTok,
+          outputPricePerMTok,
+        ],
+      ),
+    ).toEqual([
+      ['qwen3.7-max', '1M', 12, 36],
+      ['qwen3.7-plus', '1M', 2, 8],
+      ['qwen3.6-flash', '1M', 1.2, 7.2],
+    ])
+    expect(
+      provider('mimo').models.find(model => model.id === 'mimo-v2-flash')
+        ?.deprecated,
+    ).toContain('2026-06-30')
   })
 
   test('anthropic kinds expose default + alias entries', () => {
@@ -122,10 +190,23 @@ describe('getStaticModelsForConnection', () => {
       presetId: 'deepseek',
     }
     const models = getStaticModelsForConnection(conn)
+    expect(models.map(model => model.value)).toEqual([
+      null,
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+    ])
     const pro = models.find(m => m.value === 'deepseek-v4-pro')
+    const flash = models.find(m => m.value === 'deepseek-v4-flash')
     expect(pro).toBeDefined()
     expect(pro?.label).toBe('DeepSeek V4 Pro')
     expect(pro?.description).toContain('1M')
+    expect(pro?.description).toContain('¥3/6 per MTok')
+    expect(flash?.description).toContain('1M')
+    expect(flash?.description).toContain('¥1/2 per MTok')
+    expect(models.some(model => model.value === 'deepseek-chat')).toBe(false)
+    expect(models.some(model => model.value === 'deepseek-reasoner')).toBe(
+      false,
+    )
   })
 
   test('known provider base URLs resolve aliases without a preset id', () => {

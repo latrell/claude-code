@@ -24,8 +24,8 @@ import {
 import { getGlobalConfig } from '../../utils/config.js';
 import { t, tf } from '../../i18n/t.js';
 import { ConsoleOAuthFlow } from '../ConsoleOAuthFlow.js';
-import { Select } from '../CustomSelect/select.js';
 import { ChatGPTDeviceLogin } from './ChatGPTDeviceLogin.js';
+import { ConnectionSelect } from './ConnectionSelect.js';
 import { CursorDeviceLogin } from './CursorDeviceLogin.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
 import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
@@ -47,7 +47,7 @@ type WizardStep =
    * Profile steps run between credential entry and finishCreate: pin a model,
    * pick a thinking effort (skipped for Cursor — effort is encoded in the
    * model id) and set a context window (skipped for OAuth kinds with
-   * provider-known windows). `back` is the pre-profile step Esc returns to.
+   * provider-known windows). `back` is the pre-profile step ←/Esc returns to.
    */
   | { step: 'profile-model'; draft: Connection; back: WizardStep }
   | { step: 'profile-effort'; draft: Connection; back: WizardStep }
@@ -234,15 +234,15 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           value: 'chatgpt-oauth',
           description: t('Sign in with a ChatGPT account via device code'),
         },
-        { label: t('Back'), value: 'back' },
       ];
       return (
         <Box key="step-kind" flexDirection="column" gap={1}>
           <Text bold>{t('Add connection')}</Text>
           <Text dimColor>{t('Pick a provider preset or connection type')}</Text>
-          <Select
+          <ConnectionSelect
             options={options}
             visibleOptionCount={10}
+            onBack={onCancel}
             onCancel={onCancel}
             onChange={choice => {
               setSubmitError(null);
@@ -269,8 +269,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
                 setStep({ step: 'claude-oauth' });
               } else if (choice === 'chatgpt-oauth') {
                 setStep({ step: 'chatgpt-oauth', scope: generateConnectionId('chatgpt') });
-              } else if (choice === 'back') {
-                onCancel();
               }
             }}
           />
@@ -283,7 +281,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       return (
         <Box key="step-preset-mode" flexDirection="column" gap={1}>
           <Text bold>{tf('{provider} access mode', { provider: preset.label })}</Text>
-          <Select
+          <ConnectionSelect
             options={[
               {
                 label: t('API (pay per token)'),
@@ -295,14 +293,10 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
                 value: 'coding-plan',
                 description: preset.codingPlan?.tiers.map(tier => `${tier.label} ${tier.price}`).join(' · '),
               },
-              { label: t('Back'), value: 'back' },
             ]}
+            onBack={() => setStep({ step: 'kind' })}
             onCancel={() => setStep({ step: 'kind' })}
             onChange={value => {
-              if (value === 'back') {
-                setStep({ step: 'kind' });
-                return;
-              }
               setStep({
                 step: 'form',
                 kind: 'openai-compat',
@@ -439,7 +433,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
         <Box key="step-cursor-mode" flexDirection="column" gap={1}>
           <Text bold>{t('Connect Cursor')}</Text>
           <Text dimColor>{t('How do you want to sign in?')}</Text>
-          <Select
+          <ConnectionSelect
             options={[
               {
                 label: t('Sign in with browser (OAuth)'),
@@ -451,16 +445,14 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
                 value: 'manual',
                 description: t('Enter a session token + machine id, or reuse the Cursor IDE'),
               },
-              { label: t('Back'), value: 'back' },
             ]}
+            onBack={() => setStep({ step: 'kind' })}
             onCancel={() => setStep({ step: 'kind' })}
             onChange={value => {
               if (value === 'oauth') {
                 setStep({ step: 'cursor-oauth', scope: generateConnectionId('cursor') });
               } else if (value === 'manual') {
                 setStep({ step: 'form', kind: 'cursor' });
-              } else {
-                setStep({ step: 'kind' });
               }
             }}
           />
@@ -526,21 +518,17 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           placeholder: t('type a model id, Enter to confirm'),
           onChange: setCustomModelInput,
         },
-        { label: t('Back'), value: '__back__' as PickValue },
       ];
       return (
         <Box key="step-profile-model" flexDirection="column" gap={1}>
           <Text bold>{tf('Model — {label}', { label: draft.label })}</Text>
           <Text dimColor>{t('Pick the model this connection is pinned to (change later via /connect or /model)')}</Text>
-          <Select
+          <ConnectionSelect
             options={options}
             visibleOptionCount={10}
+            onBack={() => setStep(back)}
             onCancel={() => setStep(back)}
             onChange={value => {
-              if (value === '__back__') {
-                setStep(back);
-                return;
-              }
               if (value === '__custom__') {
                 const trimmed = customModelInput.trim();
                 if (!trimmed) return;
@@ -629,16 +617,11 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       return (
         <Box key="step-error" flexDirection="column" gap={1}>
           <Text color="error">{step.message}</Text>
-          <Select
-            options={[
-              { label: t('Back'), value: 'back' },
-              { label: t('Cancel'), value: 'cancel' },
-            ]}
+          <ConnectionSelect
+            options={[{ label: t('Cancel'), value: 'cancel' }]}
+            onBack={() => setStep({ step: 'kind' })}
             onCancel={onCancel}
-            onChange={value => {
-              if (value === 'back') setStep({ step: 'kind' });
-              else onCancel();
-            }}
+            onChange={onCancel}
           />
         </Box>
       );

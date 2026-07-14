@@ -74,7 +74,7 @@ test('agentMetaText: model · Nk tok · N tool', () => {
     tokenCount: 22900,
     toolCount: 1,
   }
-  expect(agentMetaText(a)).toBe('glm-5.2 · 22.9k tok · 1 tool')
+  expect(agentMetaText(a)).toBe('GLM 5.2 · 22.9k tok · 1 tool')
 })
 
 test('agentMetaText: omits prefix when no model', () => {

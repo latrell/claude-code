@@ -43,7 +43,7 @@ function resolveDefaultOpusModelForTests(): string {
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL)
     return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
   if (process.env.CLAUDE_CODE_USE_BEDROCK === '1')
-    return 'us.anthropic.claude-opus-4-8-v1'
+    return 'us.anthropic.claude-opus-4-8'
   if (process.env.CLAUDE_CODE_USE_VERTEX === '1') return 'claude-opus-4-8'
   if (process.env.CLAUDE_CODE_USE_FOUNDRY === '1') return 'claude-opus-4-8'
   return 'claude-opus-4-8'

@@ -31,6 +31,41 @@ type DeprecationEntry = {
  * To add a new deprecated model, add an entry to this object.
  */
 const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
+  'claude-opus-4-1-20250805': {
+    modelName: 'Claude Opus 4.1',
+    retirementDates: {
+      firstParty: 'August 5, 2026',
+      foundry: 'August 5, 2026',
+    },
+  },
+  'claude-opus-4-20250514': {
+    modelName: 'Claude Opus 4',
+    retirementDates: {
+      firstParty: 'June 15, 2026',
+      foundry: 'June 15, 2026',
+    },
+  },
+  'claude-sonnet-4-20250514': {
+    modelName: 'Claude Sonnet 4',
+    retirementDates: {
+      firstParty: 'June 15, 2026',
+      foundry: 'June 15, 2026',
+    },
+  },
+  'claude-3-5-sonnet': {
+    modelName: 'Claude 3.5 Sonnet',
+    retirementDates: {
+      firstParty: 'October 28, 2025',
+      foundry: 'October 28, 2025',
+    },
+  },
+  'claude-3-haiku': {
+    modelName: 'Claude 3 Haiku',
+    retirementDates: {
+      firstParty: 'April 20, 2026',
+      foundry: 'April 20, 2026',
+    },
+  },
   'claude-3-opus': {
     modelName: 'Claude 3 Opus',
     retirementDates: {

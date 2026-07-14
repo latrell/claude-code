@@ -4,13 +4,16 @@ import { t, tf } from '../../i18n/t.js';
 import {
   applyConnectionThinkingEffortSelection,
   getConnectionThinkingEffortSelection,
+  isDeepSeekV4Connection,
+  normalizeDeepSeekV4ReasoningEffort,
   resolveOpenAICompatibleReasoningEffort,
   type ThinkingEffortSelection,
 } from '../../services/connections/effortTransport.js';
 import type { Connection, ThinkingEffort } from '../../services/connections/types.js';
 import type { EffortValue } from '../../utils/effort.js';
 import { getEffortEnvOverride } from '../../utils/effort.js';
-import { Select, type OptionWithDescription } from '../CustomSelect/select.js';
+import type { OptionWithDescription } from '../CustomSelect/select.js';
+import { ConnectionSelect } from './ConnectionSelect.js';
 
 type Props = {
   connection: Connection;
@@ -47,13 +50,27 @@ function selectionEffort(selection: ThinkingEffortSelection): ThinkingEffort | u
 
 function effortDescription(connection: Connection, selection: ThinkingEffortSelection): string {
   const effort = selectionEffort(selection);
-  if (effort === undefined) return t('Actual request: provider/model default');
+  const isDeepSeek = isDeepSeekV4Connection(connection);
+  if (effort === undefined) {
+    return isDeepSeek
+      ? t('DeepSeek default: normal requests use High; complex agent requests may use Max')
+      : t('Actual request: provider/model default');
+  }
   if (effort === 'off') return t('Actual request: thinking disabled');
 
   if (connection.kind === 'openai-compat') {
-    const actual = selection === 'max-compatible' ? 'high' : effort;
+    const actual = isDeepSeek
+      ? selection === 'max-compatible'
+        ? 'high'
+        : normalizeDeepSeekV4ReasoningEffort(effort)
+      : selection === 'max-compatible'
+        ? 'high'
+        : effort;
     const base = tf('Actual request: reasoning_effort={value}', { value: actual });
     return selection === 'max-passthrough' ? `${base} · ${t('endpoint must support this exact value')}` : base;
+  }
+  if (isDeepSeek) {
+    return tf('Actual DeepSeek effort: {value}', { value: normalizeDeepSeekV4ReasoningEffort(effort) });
   }
   if (connection.kind === 'grok') {
     return tf('Actual request: reasoning_effort={value}', {
@@ -71,11 +88,16 @@ function effortDescription(connection: Connection, selection: ThinkingEffortSele
 }
 
 export function buildThinkingEffortOptions(connection: Connection): OptionWithDescription<string>[] {
-  const values: ThinkingEffortSelection[] = [
-    'default',
-    ...STANDARD_EFFORTS,
-    ...(connection.kind === 'openai-compat' ? (['max-compatible', 'max-passthrough'] as const) : (['max'] as const)),
-  ];
+  const isDeepSeek = isDeepSeekV4Connection(connection);
+  const values: ThinkingEffortSelection[] = isDeepSeek
+    ? ['default', 'off', 'high', connection.kind === 'openai-compat' ? 'max-passthrough' : 'max']
+    : [
+        'default',
+        ...STANDARD_EFFORTS,
+        ...(connection.kind === 'openai-compat'
+          ? (['max-compatible', 'max-passthrough'] as const)
+          : (['max'] as const)),
+      ];
   const current = getConnectionThinkingEffortSelection(connection);
 
   return values.map(value => {
@@ -85,11 +107,22 @@ export function buildThinkingEffortOptions(connection: Connection): OptionWithDe
         : value === 'max-compatible'
           ? t('Max — compatible')
           : value === 'max-passthrough'
-            ? t('Max — exact')
+            ? isDeepSeek
+              ? t('Max')
+              : t('Max — exact')
             : value === 'max'
               ? t('Max')
               : effortLabel(value);
-    const description = effortDescription(connection, value);
+    let description = effortDescription(connection, value);
+    if (value === current && isDeepSeek) {
+      const saved = connection.thinkingEffort;
+      const legacyCompatibleMax =
+        connection.kind === 'openai-compat' && saved === 'max' && connection.thinkingEffortTransport !== 'passthrough';
+      if (saved === 'low' || saved === 'medium' || legacyCompatibleMax) {
+        const savedLabel = legacyCompatibleMax ? 'max (compatible)' : saved;
+        description = `${description} · ${tf('saved {value} is treated as High', { value: savedLabel })}`;
+      }
+    }
     return {
       label,
       value,
@@ -106,8 +139,16 @@ export function ThinkingEffortOverrideNotice({
   appStateEffort: EffortValue | undefined;
 }): React.ReactNode {
   const actualValue = (value: EffortValue): string => {
-    if (connection.kind !== 'openai-compat') return `effort=${value}`;
-    const actual = resolveOpenAICompatibleReasoningEffort(value, connection.thinkingEffortTransport, {});
+    if (connection.kind !== 'openai-compat') {
+      if (!isDeepSeekV4Connection(connection) || typeof value === 'number') return `effort=${value}`;
+      return `effort=${normalizeDeepSeekV4ReasoningEffort(value)}`;
+    }
+    const actual = resolveOpenAICompatibleReasoningEffort(
+      value,
+      connection.thinkingEffortTransport,
+      {},
+      isDeepSeekV4Connection(connection) ? (connection.model ?? 'deepseek-chat') : connection.model,
+    );
     return actual === undefined ? t('effort field omitted') : `reasoning_effort=${actual}`;
   };
   const envOverride = getEffortEnvOverride();
@@ -145,25 +186,21 @@ export function ThinkingEffortOverrideNotice({
 
 export function ThinkingEffortPicker({ connection, appStateEffort, onChange, onCancel }: Props): React.ReactNode {
   const current = getConnectionThinkingEffortSelection(connection);
-  const options = [
-    ...buildThinkingEffortOptions(connection),
-    { label: t('Back'), value: '__back__', description: undefined },
-  ];
   return (
     <>
+      {isDeepSeekV4Connection(connection) ? (
+        <Text dimColor>{t('DeepSeek has two native effort levels: High and Max')}</Text>
+      ) : null}
       <ThinkingEffortOverrideNotice connection={connection} appStateEffort={appStateEffort} />
-      <Select
-        options={options}
+      <ConnectionSelect
+        options={buildThinkingEffortOptions(connection)}
         visibleOptionCount={8}
         defaultFocusValue={current}
+        onBack={onCancel}
         onCancel={onCancel}
-        onChange={value => {
-          if (value === '__back__') {
-            onCancel();
-            return;
-          }
-          onChange(applyConnectionThinkingEffortSelection(connection, value as ThinkingEffortSelection));
-        }}
+        onChange={value =>
+          onChange(applyConnectionThinkingEffortSelection(connection, value as ThinkingEffortSelection))
+        }
       />
     </>
   );

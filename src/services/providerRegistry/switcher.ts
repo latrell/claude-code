@@ -95,7 +95,7 @@ export function switchProvider(
  *   export CLAUDE_CODE_USE_OPENAI=1
  *   export OPENAI_BASE_URL=https://api.cerebras.ai/v1
  *   export OPENAI_API_KEY=$CEREBRAS_API_KEY
- *   export OPENAI_MODEL=llama-3.3-70b
+ *   export OPENAI_MODEL=gpt-oss-120b
  *
  * The API key line uses a variable reference so the actual key is never echoed.
  */

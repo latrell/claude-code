@@ -116,6 +116,12 @@ export const CURSOR_MODELS: CursorModelInfo[] = [
     maxContextWindow: 1_000_000,
   },
   {
+    id: 'grok-4.5',
+    label: 'Grok 4.5',
+    contextWindow: 500_000,
+    maxContextWindow: 500_000,
+  },
+  {
     id: 'grok-4.3',
     label: 'Grok 4.3',
     contextWindow: 200_000,

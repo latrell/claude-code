@@ -506,6 +506,24 @@ describe('sideQuery OpenAI-compatible thinking control', () => {
 
     expect(capturedBody?.reasoning_effort).toBe('max')
   })
+
+  test('DeepSeek passthrough medium sends its actual native High level', async () => {
+    await classifierQuery('deepseek-v4-flash', undefined, {
+      thinkingEffort: 'medium',
+      thinkingEffortTransport: 'passthrough',
+    })
+
+    expect(capturedBody?.reasoning_effort).toBe('high')
+  })
+
+  test('generic passthrough medium remains unchanged', async () => {
+    await classifierQuery('qwen3.7-plus', undefined, {
+      thinkingEffort: 'medium',
+      thinkingEffortTransport: 'passthrough',
+    })
+
+    expect(capturedBody?.reasoning_effort).toBe('medium')
+  })
 })
 
 describe('sideQuery Cursor routing', () => {

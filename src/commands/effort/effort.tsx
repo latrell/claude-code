@@ -84,19 +84,33 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
     const level = getDisplayedEffortLevel(model, appStateEffort);
     return { message: tf('Effort level: auto (currently {level})', { level }) };
   }
-  const description = t(getEffortValueDescription(effectiveValue));
+  const actualLevel = getDisplayedEffortLevel(model, appStateEffort);
+  const isMapped = typeof effectiveValue === 'string' && actualLevel !== effectiveValue;
+  const description = t(getEffortValueDescription(isMapped ? actualLevel : effectiveValue));
   // Neither env nor /effort set → the value came from the active connection
   // profile. Name the source so it isn't mistaken for a /effort choice.
   if (envOverride === undefined && appStateEffort === undefined) {
     return {
-      message: tf('Current effort level: {effectiveValue} (from connection profile: {description})', {
-        effectiveValue,
-        description,
-      }),
+      message: isMapped
+        ? tf('Current effort level: {effectiveValue} → actual {actualLevel} (from connection profile: {description})', {
+            effectiveValue,
+            actualLevel,
+            description,
+          })
+        : tf('Current effort level: {effectiveValue} (from connection profile: {description})', {
+            effectiveValue,
+            description,
+          }),
     };
   }
   return {
-    message: tf('Current effort level: {effectiveValue} ({description})', { effectiveValue, description }),
+    message: isMapped
+      ? tf('Current effort level: {effectiveValue} → actual {actualLevel} ({description})', {
+          effectiveValue,
+          actualLevel,
+          description,
+        })
+      : tf('Current effort level: {effectiveValue} ({description})', { effectiveValue, description }),
   };
 }
 

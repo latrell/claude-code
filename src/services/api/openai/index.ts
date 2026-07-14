@@ -308,6 +308,7 @@ export async function* queryModelOpenAI(
         options.thinkingEffortTransport ??
           options.providerRuntimeConfig?.thinkingEffortTransport,
         providerEnv,
+        openaiModel,
       )
 
     // 9. Log tool filtering details

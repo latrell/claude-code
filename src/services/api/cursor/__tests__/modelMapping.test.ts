@@ -22,8 +22,16 @@ describe('resolveCursorModel', () => {
     )
   })
 
-  test('maps the fable family to the sonnet slot', () => {
-    expect(resolveCursorModel('claude-fable-5', {})).toBe('claude-4.5-sonnet')
+  test('normalizes the current Fable alias to its Cursor server model', () => {
+    expect(resolveCursorModel('claude-fable-5', {})).toBe(
+      'claude-fable-5-thinking-high',
+    )
+  })
+
+  test('maps the sonnet family to the current Cursor Sonnet model', () => {
+    expect(resolveCursorModel('sonnet', {})).toBe(
+      'claude-sonnet-5-thinking-high',
+    )
   })
 
   test('honours CURSOR_DEFAULT_SONNET_MODEL override', () => {

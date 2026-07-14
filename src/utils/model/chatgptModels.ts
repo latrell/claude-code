@@ -134,6 +134,15 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     maxContextWindow: 272_000,
   },
   {
+    value: 'gpt-5.3-codex',
+    label: 'GPT 5.3 Codex',
+    description: 'Codex-optimized agentic coding model',
+    defaultEffortLevel: 'medium',
+    supportedEffortLevels: CHATGPT_CODEX_EFFORTS_TO_XHIGH,
+    contextWindow: 272_000,
+    maxContextWindow: 272_000,
+  },
+  {
     value: 'gpt-5.3-codex-spark',
     label: 'GPT 5.3 Codex Spark',
     description:

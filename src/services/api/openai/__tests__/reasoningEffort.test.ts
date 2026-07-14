@@ -14,6 +14,7 @@ describe('resolveChatGPTResponsesReasoningEffort', () => {
     'gpt-5.5',
     'gpt-5.4',
     'gpt-5.4-mini',
+    'gpt-5.3-codex',
     'gpt-5.3-codex-spark',
     'unknown-model',
   ])('maps max to xhigh for %s', model => {
@@ -41,6 +42,7 @@ describe('resolveChatGPTResponsesReasoningEffort', () => {
     ['gpt-5.5', 'medium'],
     ['gpt-5.4', 'medium'],
     ['gpt-5.4-mini', 'medium'],
+    ['gpt-5.3-codex', 'medium'],
     ['gpt-5.3-codex-spark', 'high'],
     ['unknown-model', 'medium'],
   ] as const)('uses the Codex default for %s', (model, expected) => {

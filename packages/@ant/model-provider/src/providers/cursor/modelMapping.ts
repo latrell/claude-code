@@ -15,7 +15,7 @@
 const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-20250514': 'claude-4-sonnet',
   'claude-sonnet-4-5-20250929': 'claude-4.5-sonnet',
-  'claude-sonnet-4-6': 'claude-4.5-sonnet',
+  'claude-sonnet-4-6': 'claude-sonnet-5-thinking-high',
   'claude-opus-4-20250514': 'claude-4.5-opus-high',
   'claude-opus-4-1-20250805': 'claude-4.5-opus-high',
   'claude-opus-4-5-20251101': 'claude-4.5-opus-high',
@@ -28,7 +28,7 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
 
 const DEFAULT_FAMILY_MAP: Record<string, string> = {
   opus: 'claude-opus-4-8-thinking-high',
-  sonnet: 'claude-4.5-sonnet',
+  sonnet: 'claude-sonnet-5-thinking-high',
   haiku: 'claude-4.5-haiku',
 }
 
@@ -83,6 +83,7 @@ const CURSOR_EFFORT_SUFFIX_RE =
  */
 function isCursorNativeClaudeId(model: string): boolean {
   if (!model.startsWith('claude-')) return false
+  if (CURSOR_ID_ALIASES[model]) return true
   if (/^claude-\d+\.\d+-/.test(model)) return true
   if (/^claude-4-(sonnet|opus|haiku)(-thinking)?$/.test(model)) return true
   return CURSOR_EFFORT_SUFFIX_RE.test(model)

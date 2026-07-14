@@ -42,6 +42,15 @@ describe('loadProviders', () => {
       'qwen',
       'deepseek',
     ])
+    expect(providers.find(p => p.id === 'cerebras')?.defaultModel).toBe(
+      'gpt-oss-120b',
+    )
+    expect(providers.find(p => p.id === 'qwen')?.defaultModel).toBe(
+      'qwen3.7-plus',
+    )
+    expect(providers.find(p => p.id === 'deepseek')?.defaultModel).toBe(
+      'deepseek-v4-flash',
+    )
   })
 
   test('returns defaults when providers.json is empty', async () => {

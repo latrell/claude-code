@@ -23,6 +23,7 @@ const MODEL_WINDOWS = [
   ['gpt-5.5', 272_000, 272_000],
   ['gpt-5.4', 272_000, 1_000_000],
   ['gpt-5.4-mini', 272_000, 272_000],
+  ['gpt-5.3-codex', 272_000, 272_000],
   ['gpt-5.3-codex-spark', 128_000, 128_000],
 ] as const
 
@@ -33,15 +34,11 @@ const MODEL_EFFORTS = [
   ['gpt-5.5', 'medium', ['low', 'medium', 'high', 'xhigh']],
   ['gpt-5.4', 'medium', ['low', 'medium', 'high', 'xhigh']],
   ['gpt-5.4-mini', 'medium', ['low', 'medium', 'high', 'xhigh']],
+  ['gpt-5.3-codex', 'medium', ['low', 'medium', 'high', 'xhigh']],
   ['gpt-5.3-codex-spark', 'high', ['low', 'medium', 'high', 'xhigh']],
 ] as const
 
-const LEGACY_MODELS = [
-  'gpt-5.5-pro',
-  'gpt-5.4-nano',
-  'gpt-5.3-codex',
-  'gpt-5.2',
-] as const
+const LEGACY_MODELS = ['gpt-5.5-pro', 'gpt-5.4-nano', 'gpt-5.2'] as const
 
 const PLAN_WINDOWS = [
   ['free', 27_000],
@@ -66,7 +63,7 @@ describe('CHATGPT_CODEX_MODEL_OPTIONS', () => {
     expect(CHATGPT_CODEX_FAST_MODEL).toBe('gpt-5.6-luna')
   })
 
-  test('contains the current seven-model roster and context metadata', () => {
+  test('contains the current eight-model roster and context metadata', () => {
     expect(
       CHATGPT_CODEX_MODEL_OPTIONS.map(
         ({ value, contextWindow, maxContextWindow }) => [

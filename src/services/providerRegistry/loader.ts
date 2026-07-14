@@ -19,7 +19,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     kind: 'openai-compat',
     baseUrl: 'https://api.cerebras.ai/v1',
     apiKeyEnv: 'CEREBRAS_API_KEY',
-    defaultModel: 'llama-3.3-70b',
+    defaultModel: 'gpt-oss-120b',
     compatRule: 'cerebras',
   },
   {
@@ -35,7 +35,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     kind: 'openai-compat',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     apiKeyEnv: 'DASHSCOPE_API_KEY',
-    defaultModel: 'qwen-max',
+    defaultModel: 'qwen3.7-plus',
     compatRule: 'strict-openai',
   },
   {
@@ -43,7 +43,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     kind: 'openai-compat',
     baseUrl: 'https://api.deepseek.com/v1',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     compatRule: 'deepseek',
   },
 ]

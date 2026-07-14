@@ -18,8 +18,14 @@ import {
 } from './model/chatgptModels.js'
 import {
   getConnectionThinkingEffort,
+  getConnectionThinkingEffortTransport,
   mapThinkingEffortToEffortValue,
 } from 'src/services/connections/thinkingEffort.js'
+import {
+  isDeepSeekV4ReasoningModel,
+  normalizeDeepSeekV4ReasoningEffort,
+  resolveOpenAICompatibleReasoningEffort,
+} from 'src/services/connections/effortTransport.js'
 
 export type { EffortLevel }
 
@@ -62,7 +68,7 @@ export function modelSupportsEffort(model: string): boolean {
     m.includes('opus-4-6') ||
     m.includes('sonnet-5') ||
     m.includes('sonnet-4-6') ||
-    m.includes('deepseek-v4-pro')
+    isDeepSeekV4ReasoningModel(model)
   ) {
     return true
   }
@@ -126,6 +132,7 @@ export function getSupportedEffortLevelsForModel(
   model: string,
 ): readonly EffortLevel[] {
   if (!modelSupportsEffort(model)) return []
+  if (isDeepSeekV4ReasoningModel(model)) return ['high', 'max']
   if (
     getAPIProvider() === 'openai' &&
     isChatGPTAuthMode() &&
@@ -240,6 +247,9 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
+  if (typeof resolved === 'string' && isDeepSeekV4ReasoningModel(model)) {
+    return normalizeDeepSeekV4ReasoningEffort(resolved)
+  }
   // Keep /effort max usable across the ChatGPT Codex roster. Newer models
   // accept max natively; models whose catalog tops out at xhigh are clamped
   // to their highest supported wire value.
@@ -272,6 +282,32 @@ export function getConnectionEffortValue(): EffortValue | undefined {
 }
 
 /**
+ * Apply the OpenAI-compatible transport policy to display paths after the
+ * model-level effort has been resolved. This keeps Logo/Spinner and /effort
+ * status aligned with the wire value for legacy DeepSeek max-compatible
+ * profiles and temporary /effort overrides.
+ */
+function resolveDisplayedTransportEffort(
+  model: string,
+  effort: EffortValue | undefined,
+): EffortValue | undefined {
+  if (
+    effort === undefined ||
+    !isDeepSeekV4ReasoningModel(model) ||
+    getAPIProvider() !== 'openai' ||
+    isChatGPTAuthMode()
+  ) {
+    return effort
+  }
+  return resolveOpenAICompatibleReasoningEffort(
+    effort,
+    getConnectionThinkingEffortTransport('main'),
+    {},
+    model,
+  )
+}
+
+/**
  * Resolve the effort level to show the user. Wraps resolveAppliedEffort
  * with the 'high' fallback (what the API uses when no effort param is sent).
  * Merges the active connection profile's pinned effort under
@@ -283,8 +319,10 @@ export function getDisplayedEffortLevel(
   appStateEffort: EffortValue | undefined,
 ): EffortLevel {
   const resolved =
-    resolveAppliedEffort(model, appStateEffort ?? getConnectionEffortValue()) ??
-    'high'
+    resolveDisplayedTransportEffort(
+      model,
+      resolveAppliedEffort(model, appStateEffort ?? getConnectionEffortValue()),
+    ) ?? 'high'
   return convertEffortValueToLevel(resolved)
 }
 
@@ -301,7 +339,10 @@ export function getEffortSuffix(
 ): string {
   const merged = effortValue ?? getConnectionEffortValue()
   if (merged === undefined) return ''
-  const resolved = resolveAppliedEffort(model, merged)
+  const resolved = resolveDisplayedTransportEffort(
+    model,
+    resolveAppliedEffort(model, merged),
+  )
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
 }
@@ -424,6 +465,11 @@ export function getDefaultEffortForModel(
   ) {
     return getChatGPTCodexDefaultEffortLevel(model) ?? 'medium'
   }
+
+  // DeepSeek chooses High for ordinary requests and can automatically raise
+  // complex agent requests to Max when the field is omitted. Preserve that
+  // provider default instead of forcing the global ultrathink default below.
+  if (isDeepSeekV4ReasoningModel(model)) return undefined
 
   // Default effort on Opus 4.6+ to high for Pro.
   // Max/Team also get high when the tengu_grey_step2 config is enabled.

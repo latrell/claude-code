@@ -45,6 +45,7 @@ const {
   getEffortSuffix,
   getDefaultEffortForModel,
   getSupportedEffortLevelsForModel,
+  modelSupportsEffort,
   modelSupportsMaxEffort,
   modelSupportsXhighEffort,
   resolveAppliedEffort,
@@ -61,6 +62,45 @@ const { _invalidateConnectionsCache, setDefaultAssignment, upsertConnection } =
 describe('EFFORT_LEVELS', () => {
   test('contains the five canonical levels', () => {
     expect(EFFORT_LEVELS).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+})
+
+describe('DeepSeek V4 effort calibration', () => {
+  let savedEffortEnv: string | undefined
+
+  beforeEach(() => {
+    savedEffortEnv = process.env.CLAUDE_CODE_EFFORT_LEVEL
+    delete process.env.CLAUDE_CODE_EFFORT_LEVEL
+  })
+
+  afterEach(() => {
+    if (savedEffortEnv === undefined) {
+      delete process.env.CLAUDE_CODE_EFFORT_LEVEL
+    } else {
+      process.env.CLAUDE_CODE_EFFORT_LEVEL = savedEffortEnv
+    }
+  })
+
+  test.each([
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+  ])('%s supports exactly High and Max', model => {
+    expect(modelSupportsEffort(model)).toBe(true)
+    expect(getSupportedEffortLevelsForModel(model)).toEqual(['high', 'max'])
+  })
+
+  test.each([
+    ['low', 'high'],
+    ['medium', 'high'],
+    ['high', 'high'],
+    ['xhigh', 'max'],
+    ['max', 'max'],
+  ] as const)('normalizes %s to actual %s', (input, expected) => {
+    expect(resolveAppliedEffort('deepseek-v4-flash', input)).toBe(expected)
+  })
+
+  test('leaves the DeepSeek effort field unset for provider auto-selection', () => {
+    expect(getDefaultEffortForModel('deepseek-v4-pro')).toBeUndefined()
   })
 })
 
@@ -94,6 +134,7 @@ describe('ChatGPT Codex model effort calibration', () => {
   test('uses the Codex catalog default for each ChatGPT model', () => {
     expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('medium')
     expect(getDefaultEffortForModel('gpt-5.4')).toBe('medium')
+    expect(getDefaultEffortForModel('gpt-5.3-codex')).toBe('medium')
     expect(getDefaultEffortForModel('gpt-5.3-codex-spark')).toBe('high')
   })
 
@@ -106,6 +147,7 @@ describe('ChatGPT Codex model effort calibration', () => {
       'gpt-5.5',
       'gpt-5.4',
       'gpt-5.4-mini',
+      'gpt-5.3-codex',
       'gpt-5.3-codex-spark',
     ]) {
       expect(modelSupportsMaxEffort(model)).toBe(false)
@@ -565,6 +607,71 @@ describe('connection profile effort merge (display path)', () => {
       setSessionAssignment('main', { connectionId: 'remote-a' })
       expect(getDisplayedEffortLevel(MODEL, undefined)).toBe('high')
     })
+
+    test('shows DeepSeek actual effort after compatible transport mapping', () => {
+      const previousUseOpenAI = process.env.CLAUDE_CODE_USE_OPENAI
+      const previousAuthMode = process.env.OPENAI_AUTH_MODE
+      process.env.CLAUDE_CODE_USE_OPENAI = '1'
+      delete process.env.OPENAI_AUTH_MODE
+      try {
+        upsertConnection(
+          conn({
+            model: 'deepseek-v4-pro',
+            thinkingEffort: 'max',
+            thinkingEffortTransport: 'compatible',
+          }),
+        )
+        setSessionAssignment('main', { connectionId: 'remote-a' })
+        expect(getDisplayedEffortLevel('deepseek-v4-pro', undefined)).toBe(
+          'high',
+        )
+        expect(getDisplayedEffortLevel('deepseek-v4-pro', 'medium')).toBe(
+          'high',
+        )
+      } finally {
+        if (previousUseOpenAI === undefined) {
+          delete process.env.CLAUDE_CODE_USE_OPENAI
+        } else {
+          process.env.CLAUDE_CODE_USE_OPENAI = previousUseOpenAI
+        }
+        if (previousAuthMode === undefined) {
+          delete process.env.OPENAI_AUTH_MODE
+        } else {
+          process.env.OPENAI_AUTH_MODE = previousAuthMode
+        }
+      }
+    })
+
+    test('shows DeepSeek exact Max when passthrough is configured', () => {
+      const previousUseOpenAI = process.env.CLAUDE_CODE_USE_OPENAI
+      const previousAuthMode = process.env.OPENAI_AUTH_MODE
+      process.env.CLAUDE_CODE_USE_OPENAI = '1'
+      delete process.env.OPENAI_AUTH_MODE
+      try {
+        upsertConnection(
+          conn({
+            model: 'deepseek-v4-pro',
+            thinkingEffort: 'max',
+            thinkingEffortTransport: 'passthrough',
+          }),
+        )
+        setSessionAssignment('main', { connectionId: 'remote-a' })
+        expect(getDisplayedEffortLevel('deepseek-v4-pro', undefined)).toBe(
+          'max',
+        )
+      } finally {
+        if (previousUseOpenAI === undefined) {
+          delete process.env.CLAUDE_CODE_USE_OPENAI
+        } else {
+          process.env.CLAUDE_CODE_USE_OPENAI = previousUseOpenAI
+        }
+        if (previousAuthMode === undefined) {
+          delete process.env.OPENAI_AUTH_MODE
+        } else {
+          process.env.OPENAI_AUTH_MODE = previousAuthMode
+        }
+      }
+    })
   })
 
   describe('getEffortSuffix', () => {
@@ -588,6 +695,37 @@ describe('connection profile effort merge (display path)', () => {
       upsertConnection(conn({ thinkingEffort: 'off' }))
       setSessionAssignment('main', { connectionId: 'remote-a' })
       expect(getEffortSuffix(MODEL, undefined)).toBe('')
+    })
+
+    test('uses the DeepSeek wire level in the suffix', () => {
+      const previousUseOpenAI = process.env.CLAUDE_CODE_USE_OPENAI
+      const previousAuthMode = process.env.OPENAI_AUTH_MODE
+      process.env.CLAUDE_CODE_USE_OPENAI = '1'
+      delete process.env.OPENAI_AUTH_MODE
+      try {
+        upsertConnection(
+          conn({
+            model: 'deepseek-v4-flash',
+            thinkingEffort: 'max',
+            thinkingEffortTransport: 'compatible',
+          }),
+        )
+        setSessionAssignment('main', { connectionId: 'remote-a' })
+        expect(getEffortSuffix('deepseek-v4-flash', undefined)).toBe(
+          ' with high effort',
+        )
+      } finally {
+        if (previousUseOpenAI === undefined) {
+          delete process.env.CLAUDE_CODE_USE_OPENAI
+        } else {
+          process.env.CLAUDE_CODE_USE_OPENAI = previousUseOpenAI
+        }
+        if (previousAuthMode === undefined) {
+          delete process.env.OPENAI_AUTH_MODE
+        } else {
+          process.env.OPENAI_AUTH_MODE = previousAuthMode
+        }
+      }
     })
   })
 })

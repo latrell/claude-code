@@ -108,6 +108,7 @@ describe('getContextWindowForModel with ChatGPT plan', () => {
       ['pro', 'gpt-5.6-sol', 372_000],
       ['plus', 'gpt-5.6-sol', 256_000],
       ['pro', 'gpt-5.5', 272_000],
+      ['pro', 'gpt-5.3-codex', 272_000],
       ['pro', 'gpt-5.3-codex-spark', 128_000],
     ] as const
     for (const [plan, model, contextWindow] of cases) {
@@ -125,6 +126,7 @@ describe('getContextWindowForModel with ChatGPT plan', () => {
       ['gpt-5.6-luna[1m]', 372_000],
       ['gpt-5.5[1m]', 272_000],
       ['gpt-5.4-mini[1m]', 272_000],
+      ['gpt-5.3-codex[1m]', 272_000],
       ['gpt-5.3-codex-spark[1m]', 128_000],
     ] as const
     for (const [model, contextWindow] of unsupported1mVariants) {
@@ -145,6 +147,7 @@ describe('getContextWindowForModel with ChatGPT plan', () => {
     const cases = [
       ['pro', 'gpt-5.6-sol', 372_000],
       ['plus', 'gpt-5.6-sol', 256_000],
+      ['pro', 'gpt-5.3-codex', 272_000],
       ['pro', 'gpt-5.3-codex-spark', 128_000],
     ] as const
     for (const [plan, model, contextWindow] of cases) {

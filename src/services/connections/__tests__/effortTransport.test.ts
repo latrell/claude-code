@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   applyConnectionThinkingEffortSelection,
   getConnectionThinkingEffortSelection,
+  isDeepSeekV4Connection,
+  isDeepSeekV4ReasoningModel,
   resolveOpenAICompatibleReasoningEffort,
 } from '../effortTransport.js'
 import { ConnectionSchema, type Connection } from '../types.js'
@@ -11,7 +13,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     id: 'relay',
     label: 'Relay',
     kind: 'openai-compat',
-    model: 'deepseek-v4-flash',
+    model: 'model-a',
     ...overrides,
   }
 }
@@ -72,6 +74,107 @@ describe('resolveOpenAICompatibleReasoningEffort', () => {
       resolveOpenAICompatibleReasoningEffort(undefined, 'compatible', {}),
     ).toBeUndefined()
   })
+
+  test.each([
+    ['low', 'high'],
+    ['medium', 'high'],
+    ['high', 'high'],
+    ['xhigh', 'max'],
+    ['max', 'max'],
+  ] as const)('DeepSeek passthrough canonicalizes %s to native %s', (input, expected) => {
+    expect(
+      resolveOpenAICompatibleReasoningEffort(
+        input,
+        'passthrough',
+        {},
+        'deepseek-v4-flash',
+      ),
+    ).toBe(expected)
+  })
+
+  test.each([
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+  ] as const)('DeepSeek compatible keeps %s relay-safe at high', input => {
+    expect(
+      resolveOpenAICompatibleReasoningEffort(
+        input,
+        'compatible',
+        {},
+        'deepseek-v4-pro',
+      ),
+    ).toBe('high')
+  })
+
+  test('DeepSeek env override is normalized against the resolved model', () => {
+    expect(
+      resolveOpenAICompatibleReasoningEffort(
+        'high',
+        'passthrough',
+        { CLAUDE_CODE_EFFORT_LEVEL: 'medium' },
+        'deepseek-v4-pro',
+      ),
+    ).toBe('high')
+    expect(
+      resolveOpenAICompatibleReasoningEffort(
+        'high',
+        'passthrough',
+        { CLAUDE_CODE_EFFORT_LEVEL: 'xhigh' },
+        'deepseek-v4-pro',
+      ),
+    ).toBe('max')
+  })
+})
+
+describe('DeepSeek V4 effort detection', () => {
+  test.each([
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'OpenRouter/DeepSeek/deepseek-v4-flash',
+    'DEEPSEEK-V4-PRO:latest',
+    'deepseek-chat',
+    'deepseek-reasoner',
+  ])('recognizes %s', model => {
+    expect(isDeepSeekV4ReasoningModel(model)).toBe(true)
+  })
+
+  test.each([
+    'deepseek-r1',
+    'deepseek-v3.2',
+    'my-deepseek-v4-proxy',
+    'qwen3.7-plus',
+  ])('does not overclaim V4 effort support for %s', model => {
+    expect(isDeepSeekV4ReasoningModel(model)).toBe(false)
+  })
+
+  test('uses preset or official host only when no explicit model is pinned', () => {
+    expect(
+      isDeepSeekV4Connection(
+        connection({ model: undefined, presetId: 'deepseek' }),
+      ),
+    ).toBe(true)
+    expect(
+      isDeepSeekV4Connection(
+        connection({
+          model: undefined,
+          baseUrl: 'https://api.deepseek.com/v1',
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isDeepSeekV4Connection(
+        connection({ model: 'qwen3.7-plus', presetId: 'deepseek' }),
+      ),
+    ).toBe(false)
+    expect(
+      isDeepSeekV4Connection(
+        connection({ label: 'DeepSeek relay', model: 'model-a' }),
+      ),
+    ).toBe(false)
+  })
 })
 
 describe('connection effort selection', () => {
@@ -104,6 +207,28 @@ describe('connection effort selection', () => {
     expect(cleared.thinkingEffort).toBeUndefined()
     expect(cleared.thinkingEffortTransport).toBeUndefined()
     expect(source.thinkingEffortTransport).toBe('passthrough')
+  })
+
+  test('DeepSeek legacy values focus their actual level and exact Max remains distinct', () => {
+    expect(
+      getConnectionThinkingEffortSelection(
+        connection({ model: 'deepseek-v4-flash', thinkingEffort: 'medium' }),
+      ),
+    ).toBe('high')
+    expect(
+      getConnectionThinkingEffortSelection(
+        connection({ model: 'deepseek-v4-pro', thinkingEffort: 'max' }),
+      ),
+    ).toBe('high')
+    expect(
+      getConnectionThinkingEffortSelection(
+        connection({
+          model: 'deepseek-v4-pro',
+          thinkingEffort: 'max',
+          thinkingEffortTransport: 'passthrough',
+        }),
+      ),
+    ).toBe('max-passthrough')
   })
 })
 

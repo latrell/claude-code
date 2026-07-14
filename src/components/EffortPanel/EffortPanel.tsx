@@ -17,6 +17,7 @@ import { useSetAppState } from '../../state/AppState.js';
 import { useRippleFrame } from './useRippleFrame.js';
 import { t } from '../../i18n/t.js';
 import { T } from '../../i18n/TText.js';
+import { isDeepSeekV4ReasoningModel } from '../../services/connections/effortTransport.js';
 import {
   TRANSPARENT,
   type Overlay,
@@ -189,6 +190,9 @@ export function EffortPanel({ appStateEffort, onDone }: Props): React.ReactNode 
       <T bold color="suggestion">
         Effort
       </T>
+      {isDeepSeekV4ReasoningModel(model) ? (
+        <Text dimColor>{t('DeepSeek actual levels: High / Max · Low/Medium → High · XHigh → Max')}</Text>
+      ) : null}
       {envActive && (
         <T
           color="warning"

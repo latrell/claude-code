@@ -2630,6 +2630,8 @@ const zh: Record<string, string> = {
   'Max — compatible': '最大 — 兼容模式',
   'Max — exact': '最大 — 原样传输',
   'Actual request: provider/model default': '实际请求：提供者/模型默认值',
+  'DeepSeek default: normal requests use High; complex agent requests may use Max':
+    'DeepSeek 默认：普通请求使用 High，复杂 Agent 请求可能自动使用 Max',
   'Actual request: thinking disabled': '实际请求：禁用思考',
   'Actual request: reasoning_effort={value}':
     '实际请求：reasoning_effort={value}',
@@ -2637,7 +2639,13 @@ const zh: Record<string, string> = {
   'Actual request: highest value supported by the selected ChatGPT model':
     '实际请求：所选 ChatGPT 模型支持的最高值',
   'Requested provider effort: {value}': '向提供者请求的思考强度：{value}',
+  'Actual DeepSeek effort: {value}': 'DeepSeek 实际思考强度：{value}',
   'endpoint must support this exact value': '端点必须支持该原始值',
+  'saved {value} is treated as High': '当前保存的 {value} 实际按 High 处理',
+  'DeepSeek has two native effort levels: High and Max':
+    'DeepSeek 只有两个原生思考档位：High 和 Max',
+  'DeepSeek actual levels: High / Max · Low/Medium → High · XHigh → Max':
+    'DeepSeek 实际档位：High / Max · Low/Medium → High · XHigh → Max',
   'CLAUDE_CODE_EFFORT_LEVEL={value} currently overrides this profile and omits the effort field':
     'CLAUDE_CODE_EFFORT_LEVEL={value} 当前覆盖此档案，并省略思考强度字段',
   'Current override: CLAUDE_CODE_EFFORT_LEVEL={value} → {actual}; connection profile value is not active':
@@ -4571,8 +4579,12 @@ const zh: Record<string, string> = {
   'Effort level: auto (currently {level})': '努力级别：auto（当前为 {level}）',
   'Current effort level: {effectiveValue} ({description})':
     '当前努力级别：{effectiveValue}（{description}）',
+  'Current effort level: {effectiveValue} → actual {actualLevel} ({description})':
+    '当前努力级别：{effectiveValue} → 实际 {actualLevel}（{description}）',
   'Current effort level: {effectiveValue} (from connection profile: {description})':
     '当前努力级别：{effectiveValue}（来自连接档案：{description}）',
+  'Current effort level: {effectiveValue} → actual {actualLevel} (from connection profile: {description})':
+    '当前努力级别：{effectiveValue} → 实际 {actualLevel}（来自连接档案：{description}）',
   'Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL={envRaw} still controls this session':
     '已从设置中清除努力级别，但 CLAUDE_CODE_EFFORT_LEVEL={envRaw} 仍控制本会话',
   'Invalid argument: {args}. Valid options are: low, medium, high, xhigh, max, auto':

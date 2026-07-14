@@ -126,7 +126,7 @@ export const CLAUDE_OPUS_4_6_CONFIG = {
 
 export const CLAUDE_OPUS_4_7_CONFIG = {
   firstParty: 'claude-opus-4-7',
-  bedrock: 'us.anthropic.claude-opus-4-7-v1',
+  bedrock: 'us.anthropic.claude-opus-4-7',
   vertex: 'claude-opus-4-7',
   foundry: 'claude-opus-4-7',
   openai: 'claude-opus-4-7',
@@ -146,7 +146,7 @@ export const CLAUDE_SONNET_4_6_CONFIG = {
 
 export const CLAUDE_FABLE_5_CONFIG = {
   firstParty: 'claude-fable-5',
-  bedrock: 'us.anthropic.claude-fable-5-v1',
+  bedrock: 'us.anthropic.claude-fable-5',
   vertex: 'claude-fable-5',
   foundry: 'claude-fable-5',
   openai: 'claude-fable-5',
@@ -156,7 +156,7 @@ export const CLAUDE_FABLE_5_CONFIG = {
 
 export const CLAUDE_OPUS_4_8_CONFIG = {
   firstParty: 'claude-opus-4-8',
-  bedrock: 'us.anthropic.claude-opus-4-8-v1',
+  bedrock: 'us.anthropic.claude-opus-4-8',
   vertex: 'claude-opus-4-8',
   foundry: 'claude-opus-4-8',
   openai: 'claude-opus-4-8',
@@ -166,7 +166,7 @@ export const CLAUDE_OPUS_4_8_CONFIG = {
 
 export const CLAUDE_SONNET_5_CONFIG = {
   firstParty: 'claude-sonnet-5',
-  bedrock: 'us.anthropic.claude-sonnet-5-v1',
+  bedrock: 'us.anthropic.claude-sonnet-5',
   vertex: 'claude-sonnet-5',
   foundry: 'claude-sonnet-5',
   openai: 'claude-sonnet-5',

@@ -15,6 +15,51 @@ export type OpenAICompatibleReasoningEffort =
   | 'xhigh'
   | 'max'
 
+const DEEPSEEK_V4_EFFORT_MODEL =
+  /(?:^|[/:])deepseek-(?:v4-(?:flash|pro)|chat|reasoner)(?:$|[/:@])/i
+
+/**
+ * Models covered by DeepSeek's V4 thinking-mode contract. The legacy
+ * deepseek-chat / deepseek-reasoner aliases are included while existing
+ * profiles migrate to the canonical V4 ids.
+ *
+ * Keep this deliberately narrower than `model.includes('deepseek')`: older
+ * R1/V3 and self-hosted variants do not necessarily implement V4's
+ * reasoning_effort=high/max contract.
+ */
+export function isDeepSeekV4ReasoningModel(model: string | undefined): boolean {
+  return model !== undefined && DEEPSEEK_V4_EFFORT_MODEL.test(model)
+}
+
+/** Convert compatibility aliases to DeepSeek V4's actual native level. */
+export function normalizeDeepSeekV4ReasoningEffort(
+  effort: OpenAICompatibleReasoningEffort,
+): 'high' | 'max' {
+  return effort === 'xhigh' || effort === 'max' ? 'max' : 'high'
+}
+
+function isOfficialDeepSeekBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.deepseek.com'
+  } catch {
+    return false
+  }
+}
+
+/** Model-aware DeepSeek detection for connection configuration UIs. */
+export function isDeepSeekV4Connection(connection: Connection): boolean {
+  // An explicit model is the strongest signal. Do not let a stale preset id
+  // mislabel a profile that the user has repointed to another model family.
+  if (connection.model !== undefined) {
+    return isDeepSeekV4ReasoningModel(connection.model)
+  }
+  return (
+    connection.presetId?.toLowerCase() === 'deepseek' ||
+    isOfficialDeepSeekBaseUrl(connection.baseUrl)
+  )
+}
+
 function normalizeReasoningEffort(
   value: unknown,
 ): OpenAICompatibleReasoningEffort | undefined {
@@ -54,12 +99,15 @@ export function asThinkingEffortTransport(
  * An explicit env value has the same precedence as the rest of the API path;
  * auto/unset omits the field. Missing transport means compatible, preserving
  * the historical xhigh/max -> high mapping. Passthrough is an explicit opt-in
- * for relays and third-party models that document extended values.
+ * for relays and third-party models that document extended values. DeepSeek
+ * V4 values are canonicalized to its two native levels: low/medium -> high and
+ * xhigh/max -> max when exact passthrough is enabled.
  */
 export function resolveOpenAICompatibleReasoningEffort(
   effortValue: EffortValue | undefined,
   transport: ThinkingEffortTransport | undefined,
   env: Record<string, string | undefined> = process.env,
+  model?: string,
 ): OpenAICompatibleReasoningEffort | undefined {
   const envOverride = env.CLAUDE_CODE_EFFORT_LEVEL?.trim().toLowerCase()
   if (envOverride === 'auto' || envOverride === 'unset') return undefined
@@ -70,8 +118,12 @@ export function resolveOpenAICompatibleReasoningEffort(
   if (resolved === undefined) return undefined
 
   if ((transport ?? DEFAULT_THINKING_EFFORT_TRANSPORT) === 'passthrough') {
+    if (isDeepSeekV4ReasoningModel(model)) {
+      return normalizeDeepSeekV4ReasoningEffort(resolved)
+    }
     return resolved
   }
+  if (isDeepSeekV4ReasoningModel(model)) return 'high'
   return resolved === 'low' || resolved === 'medium' || resolved === 'high'
     ? resolved
     : 'high'
@@ -89,6 +141,25 @@ export function getConnectionThinkingEffortSelection(
   connection: Connection,
 ): ThinkingEffortSelection {
   if (connection.thinkingEffort === undefined) return 'default'
+  if (isDeepSeekV4Connection(connection)) {
+    if (connection.thinkingEffort === 'off') return 'off'
+    if (
+      connection.kind === 'openai-compat' &&
+      connection.thinkingEffort === 'max' &&
+      connection.thinkingEffortTransport === 'passthrough'
+    ) {
+      return 'max-passthrough'
+    }
+    if (
+      connection.kind !== 'openai-compat' &&
+      connection.thinkingEffort === 'max'
+    ) {
+      return 'max'
+    }
+    // Legacy low/medium and relay-safe max profiles all produce DeepSeek's
+    // actual High level. Keep the current focus on a real option.
+    return 'high'
+  }
   if (connection.kind !== 'openai-compat') return connection.thinkingEffort
   if (connection.thinkingEffort !== 'max') return connection.thinkingEffort
   return connection.thinkingEffortTransport === 'passthrough'
@@ -136,5 +207,8 @@ export function getConnectionReasoningEffortPreview(
     connection.thinkingEffort,
     connection.thinkingEffortTransport,
     {},
+    isDeepSeekV4Connection(connection)
+      ? (connection.model ?? 'deepseek-chat')
+      : connection.model,
   )
 }

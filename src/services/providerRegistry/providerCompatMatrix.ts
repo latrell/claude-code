@@ -54,8 +54,9 @@ export const COMPAT_PROFILES: Record<CompatRule, CompatProfile> = {
     toolCallFormat: 'openai-v2',
   },
   deepseek: {
-    // DeepSeek-reasoner supports reasoning_content and the thinking field.
-    // For normal deepseek-chat, thinking field is ignored rather than rejected.
+    // DeepSeek V4 Flash/Pro support both thinking and non-thinking modes. The
+    // thinking field selects the mode; reasoning_content must survive tool
+    // round-trips while thinking is enabled.
     supportsStreamUsageOption: true,
     supportsThinkingField: true,
     reasoningContentEcho: 'always-preserve',

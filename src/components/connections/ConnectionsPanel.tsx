@@ -50,6 +50,7 @@ import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
 import { AddConnectionWizard } from './AddConnectionWizard.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
+import { ConnectionSelect } from './ConnectionSelect.js';
 import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
 
 export type ActivationScope = 'session' | 'global';
@@ -464,7 +465,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           <Box flexDirection="column" gap={1}>
             <Text bold>{connectionDisplayName(connection)}</Text>
             <Text dimColor>{connectionDetail(connection)}</Text>
-            <Select
+            <ConnectionSelect
               options={[
                 {
                   label: t('Use for this session (main agent)'),
@@ -526,9 +527,9 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 { label: t('Duplicate connection…'), value: 'duplicate' },
                 { label: t('Edit'), value: 'edit' },
                 { label: t('Delete'), value: 'delete' },
-                { label: t('Back'), value: 'back' },
               ]}
               visibleOptionCount={11}
+              onBack={() => setView({ mode: 'list' })}
               onCancel={() => setView({ mode: 'list' })}
               onChange={value => {
                 const activation = ACTIVATION_MENU_ACTIONS[value];
@@ -559,8 +560,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   setView({ mode: 'edit', connectionId: connection.id });
                 } else if (value === 'delete') {
                   setView({ mode: 'confirm-delete', connectionId: connection.id });
-                } else {
-                  setView({ mode: 'list' });
                 }
               }}
             />
@@ -623,7 +622,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
             placeholder: t('type a model id, Enter to confirm'),
             onChange: setCustomModelInput,
           },
-          { label: t('Back'), value: '__back__' as PickValue },
         ];
         return (
           <Box flexDirection="column" gap={1}>
@@ -641,15 +639,12 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                   : t('This session only')
                 : t('The selected model is pinned to this connection profile')}
             </Text>
-            <Select
+            <ConnectionSelect
               options={options}
               visibleOptionCount={10}
+              onBack={() => setView({ mode: 'menu', connectionId: connection.id })}
               onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
               onChange={value => {
-                if (value === '__back__') {
-                  setView({ mode: 'menu', connectionId: connection.id });
-                  return;
-                }
                 if (value === '__custom__') {
                   const trimmed = customModelInput.trim();
                   if (trimmed) pickModel(trimmed);
@@ -959,11 +954,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         return (
           <Box flexDirection="column" gap={1}>
             <Text color="error">{view.message}</Text>
-            <Select
-              options={[{ label: t('Back'), value: 'back' }]}
-              onCancel={() => setView(view.back)}
-              onChange={() => setView(view.back)}
-            />
+            <ConnectionSelect options={[]} onBack={() => setView(view.back)} onCancel={() => setView(view.back)} />
           </Box>
         );
 
@@ -992,7 +983,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         : view.mode;
 
   return (
-    <Dialog title={t('Connections')} onCancel={() => onDone()}>
+    <Dialog title={t('Connections')} onCancel={() => onDone()} hideInputGuide>
       <Box key={viewKey} flexDirection="column">
         {inner}
       </Box>

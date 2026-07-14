@@ -162,6 +162,13 @@ export type SelectProps<T> = {
   readonly onDownFromLastItem?: () => void;
 
   /**
+   * Callback when user presses the left arrow while a text input option is
+   * not focused. This is useful for hierarchical menus where left navigates
+   * to the parent view without interfering with text cursor movement.
+   */
+  readonly onLeftArrow?: () => void;
+
+  /**
    * Callback when input mode should be toggled for an option.
    * Called when Tab is pressed (to enter or exit input mode).
    */
@@ -212,6 +219,7 @@ export function Select<T>({
   inlineDescriptions = false,
   onUpFromFirstItem,
   onDownFromLastItem,
+  onLeftArrow,
   onInputModeToggle,
   onOpenEditor,
   onImagePaste,
@@ -279,6 +287,7 @@ export function Select<T>({
     isMultiSelect: false, // Select is always single-choice
     onUpFromFirstItem,
     onDownFromLastItem,
+    onLeftArrow,
     onInputModeToggle,
     inputValues,
     imagesSelected,

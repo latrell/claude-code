@@ -31,6 +31,7 @@ describe('CURSOR_MODELS', () => {
     expect(ids).toContain('claude-sonnet-5-thinking-high')
     expect(ids).toContain('gpt-5.5-medium')
     expect(ids).toContain('gemini-3.1-pro-preview')
+    expect(ids).toContain('grok-4.5')
     expect(ids).not.toContain('gpt-5')
     expect(ids).not.toContain('o3')
   })
@@ -126,11 +127,11 @@ describe('getCursorContextWindowForModel', () => {
   })
 
   test('resolves Anthropic family aliases via resolveCursorModel', () => {
-    // sonnet → claude-4.5-sonnet: 1M by default (Max Mode), 200k when off.
+    // sonnet → claude-sonnet-5-thinking-high: 1M in Max Mode, 300k otherwise.
     expect(getCursorContextWindowForModel('sonnet', {})).toBe(1_000_000)
     expect(
       getCursorContextWindowForModel('sonnet', { CURSOR_MAX_MODE: '0' }),
-    ).toBe(200_000)
+    ).toBe(300_000)
     // opus → claude-opus-4-8-thinking-high: 1M default, 300k when off.
     expect(getCursorContextWindowForModel('opus', {})).toBe(1_000_000)
     expect(

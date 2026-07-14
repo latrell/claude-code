@@ -38,7 +38,7 @@ function resolveDefaultOpusModelForTests(): string {
   // Provider-specific Opus 4.8 IDs (must match
   // src/utils/model/configs.ts CLAUDE_OPUS_4_8_CONFIG).
   if (process.env.CLAUDE_CODE_USE_BEDROCK === '1')
-    return 'us.anthropic.claude-opus-4-8-v1'
+    return 'us.anthropic.claude-opus-4-8'
   if (process.env.CLAUDE_CODE_USE_VERTEX === '1') return 'claude-opus-4-8'
   if (process.env.CLAUDE_CODE_USE_FOUNDRY === '1') return 'claude-opus-4-8'
   return 'claude-opus-4-8'

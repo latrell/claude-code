@@ -947,6 +947,7 @@ async function sideQueryViaOpenAICompatible(
         effortValue,
         provider === 'openai' ? effortTransport : 'compatible',
         scopedEnv,
+        openaiModel,
       )
   if (reasoningEffort !== undefined) {
     requestParams.reasoning_effort = reasoningEffort

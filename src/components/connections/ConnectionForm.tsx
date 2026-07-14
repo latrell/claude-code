@@ -151,6 +151,7 @@ export function ConnectionForm({
                   mask={field.mask ? '*' : undefined}
                   placeholder={field.placeholder}
                   focus={true}
+                  showCursor={true}
                 />
               ) : value ? (
                 <Text color="success">

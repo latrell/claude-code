@@ -34,7 +34,7 @@ describe('switchProvider', () => {
     const result = switchProvider('cerebras', DEFAULT_PROVIDERS)
     expect(result.env['CLAUDE_CODE_USE_OPENAI']).toBe('1')
     expect(result.env['OPENAI_BASE_URL']).toBe('https://api.cerebras.ai/v1')
-    expect(result.env['OPENAI_MODEL']).toBe('llama-3.3-70b')
+    expect(result.env['OPENAI_MODEL']).toBe('gpt-oss-120b')
     expect(result.provider.id).toBe('cerebras')
   })
 
@@ -53,7 +53,7 @@ describe('switchProvider', () => {
     expect(result.env['OPENAI_BASE_URL']).toBe(
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     )
-    expect(result.env['OPENAI_MODEL']).toBe('qwen-max')
+    expect(result.env['OPENAI_MODEL']).toBe('qwen3.7-plus')
   })
 
   test('switching to deepseek returns correct env vars', async () => {
@@ -61,7 +61,7 @@ describe('switchProvider', () => {
     const { DEFAULT_PROVIDERS } = await import('../loader.js')
     const result = switchProvider('deepseek', DEFAULT_PROVIDERS)
     expect(result.env['OPENAI_BASE_URL']).toBe('https://api.deepseek.com/v1')
-    expect(result.env['OPENAI_MODEL']).toBe('deepseek-chat')
+    expect(result.env['OPENAI_MODEL']).toBe('deepseek-v4-flash')
   })
 
   test('throws for non-existent provider id', async () => {
@@ -109,7 +109,7 @@ describe('buildShellExportBlock', () => {
     expect(block).toContain('export CLAUDE_CODE_USE_OPENAI=1')
     expect(block).toContain('export OPENAI_BASE_URL=https://api.cerebras.ai/v1')
     expect(block).toContain('export OPENAI_API_KEY=$CEREBRAS_API_KEY')
-    expect(block).toContain('export OPENAI_MODEL=llama-3.3-70b')
+    expect(block).toContain('export OPENAI_MODEL=gpt-oss-120b')
   })
 
   test('api key line uses variable reference not literal value', async () => {
