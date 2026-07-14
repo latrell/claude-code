@@ -7,7 +7,11 @@ import {
   CUSTOM_AGENT_DISALLOWED_TOOLS,
   IN_PROCESS_TEAMMATE_ALLOWED_TOOLS,
 } from 'src/constants/tools.js'
-import { startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js'
+import {
+  AgentSummaryScope,
+  type AgentSummaryStopResult,
+  startAgentSummarization,
+} from 'src/services/AgentSummary/agentSummary.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -39,10 +43,16 @@ import {
 import { asAgentId } from 'src/types/ids.js'
 import type { Message as MessageType, ContentItem } from 'src/types/message.js'
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+  waitForBoundedSettlement,
+} from 'src/utils/abortSettlement.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { isInProtectedNamespace } from 'src/utils/envUtils.js'
 import { AbortError, errorMessage } from 'src/utils/errors.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
+import { registerDetachedAuxiliaryWork } from 'src/utils/detachedAuxiliaryWork.js'
 import type { CacheSafeParams } from 'src/utils/forkedAgent.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import {
@@ -56,11 +66,187 @@ import {
   classifyYoloAction,
 } from 'src/utils/permissions/yoloClassifier.js'
 import { emitTaskProgress as emitTaskProgressEvent } from 'src/utils/task/sdkProgress.js'
+import { guardAsyncIterableCancellation } from 'src/services/api/providerCancellation.js'
 import { isInProcessTeammate } from 'src/utils/teammateContext.js'
 import { getTokenCountFromUsage } from 'src/utils/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
+
+const HANDOFF_CLASSIFIER_TIMEOUT_MS = 30_000
+const AGENT_FINALIZER_ABORT_GRACE_MS = 2_000
+const HANDOFF_CLASSIFIER_UNAVAILABLE_WARNING =
+  "Note: The safety classifier was cancelled but did not settle promptly. Please carefully verify the sub-agent's actions and output before acting on them."
+
+type AgentWorktreeResult = {
+  worktreePath?: string
+  worktreeBranch?: string
+}
+
+export async function stopAgentSummaryScope({
+  scope,
+  abortSignal,
+  taskId,
+  allowUnconfirmed = false,
+  abortGraceMs = AGENT_FINALIZER_ABORT_GRACE_MS,
+}: {
+  scope: AgentSummaryScope
+  abortSignal: AbortSignal
+  taskId: string
+  allowUnconfirmed?: boolean
+  /** @internal Deterministic lifecycle-test override. */
+  abortGraceMs?: number
+}): Promise<AgentSummaryStopResult> {
+  if (abortSignal.aborted) {
+    try {
+      await waitForAbortSettlement(
+        scope.stopAllExactly(),
+        abortSignal,
+        abortGraceMs,
+        `Agent ${taskId} summary shutdown`,
+      )
+      return 'settled'
+    } catch (error) {
+      if (error instanceof AbortSettlementTimeoutError) {
+        const message = `Agent ${taskId} summary request did not settle after abort`
+        logForDebugging(message, { level: 'warn' })
+        if (allowUnconfirmed) return 'timed_out'
+        throw new StopConfirmationError(message, [error])
+      }
+      throw error
+    }
+  }
+
+  const result = await scope.stopAll()
+  if (result === 'timed_out') {
+    const message = `Agent ${taskId} summary request did not settle ${
+      abortSignal.aborted ? 'after abort' : 'during finalization'
+    }`
+    logForDebugging(message, { level: 'warn' })
+    if (!allowUnconfirmed) {
+      throw new StopConfirmationError(message)
+    }
+  }
+  return result
+}
+
+/**
+ * Stop progress summarization without keeping a successfully completed Agent
+ * in its running state. The detached owner keeps the exact stop promise
+ * Esc-routable and reports an abort-ignoring summary request honestly.
+ */
+export function registerDetachedAgentSummaryStop({
+  scope,
+  taskId,
+  abortGraceMs,
+}: {
+  scope: AgentSummaryScope
+  taskId: string
+  /** @internal Deterministic lifecycle-test override. */
+  abortGraceMs?: number
+}): void {
+  // stopAllExactly dispatches every summary abort synchronously and preserves
+  // the real active-run promise. Do not register stopAll() here: its cached
+  // 5s `timed_out` result is not termination evidence and can never observe a
+  // later real settlement.
+  const settlement = scope.stopAllExactly()
+
+  registerDetachedAuxiliaryWork({
+    operation: `Agent ${taskId} summary shutdown`,
+    settlement,
+    cancel: () => scope.stopAllExactly(),
+    abortGraceMs,
+    onError: error => {
+      logForDebugging(
+        `Agent ${taskId} detached summary shutdown failed: ${errorMessage(error)}`,
+        { level: 'warn' },
+      )
+    },
+  })
+}
+
+/**
+ * Complete an Agent independently from worktree housekeeping. Notification is
+ * emitted only after cleanup settles, while Esc owns a dedicated controller
+ * and waits for this exact promise.
+ */
+export function registerDetachedAgentWorktreeCleanup({
+  taskId,
+  cleanup,
+  onSettled,
+}: {
+  taskId: string
+  cleanup: (abortSignal: AbortSignal) => Promise<AgentWorktreeResult>
+  onSettled: (result: AgentWorktreeResult) => void
+}): void {
+  const abortController = new AbortController()
+  const cleanupPromise = Promise.resolve().then(() =>
+    cleanup(abortController.signal),
+  )
+  const settlement = cleanupPromise.then(
+    result => {
+      onSettled(result)
+    },
+    error => {
+      // The model result is already terminal. Do not lose its notification
+      // solely because auxiliary cleanup failed, but preserve the rejection
+      // for the detached owner so Stop never reports false confirmation.
+      try {
+        onSettled({})
+      } catch (notificationError) {
+        logForDebugging(
+          `Agent ${taskId} completion notification after worktree failure failed: ${errorMessage(notificationError)}`,
+          { level: 'warn' },
+        )
+      }
+      throw error
+    },
+  )
+
+  registerDetachedAuxiliaryWork({
+    operation: `Agent ${taskId} worktree cleanup`,
+    settlement,
+    cancel: reason => abortController.abort(reason),
+    onError: error => {
+      logForDebugging(
+        `Agent ${taskId} detached worktree cleanup failed: ${errorMessage(error)}`,
+        { level: 'warn' },
+      )
+    },
+  })
+}
+
+/** @internal Exported for deterministic cancellation tests. */
+export async function waitForAgentWorktreeOperation<T>({
+  settlement,
+  finalizerSignal,
+  ownerSignal,
+  operation,
+  abortGraceMs = AGENT_FINALIZER_ABORT_GRACE_MS,
+}: {
+  settlement: Promise<T>
+  finalizerSignal: AbortSignal
+  ownerSignal?: AbortSignal
+  operation: string
+  abortGraceMs?: number
+}): Promise<T> {
+  try {
+    return await waitForAbortSettlement(
+      settlement,
+      finalizerSignal,
+      abortGraceMs,
+      operation,
+    )
+  } catch (error) {
+    if (error instanceof AbortSettlementTimeoutError && ownerSignal?.aborted) {
+      throw new StopConfirmationError(
+        `${operation} did not confirm termination after cancellation`,
+        [error],
+      )
+    }
+    throw error
+  }
+}
 export type ResolvedAgentTools = {
   hasWildcard: boolean
   validTools: string[]
@@ -366,6 +552,33 @@ export function finalizeAgentTool(
 }
 
 /**
+ * Keep TaskOutput and foreground task inspection behind the same auto-mode
+ * handoff gate as the parent result. Both background and foreground paths use
+ * this boundary so neither can leak an unclassified result.
+ */
+export async function publishAgentResultAfterHandoffSafety({
+  agentResult,
+  safetyGate,
+  abortSignal,
+  publish,
+}: {
+  agentResult: AgentToolResult
+  safetyGate: Promise<string | null>
+  abortSignal: AbortSignal
+  publish: (result: AgentToolResult) => void
+}): Promise<void> {
+  const handoffWarning = await safetyGate
+  if (handoffWarning) {
+    agentResult.content = [
+      { type: 'text' as const, text: handoffWarning },
+      ...agentResult.content,
+    ]
+  }
+  if (abortSignal.aborted) throw new AbortError()
+  publish(agentResult)
+}
+
+/**
  * Returns the name of the last tool_use block in an assistant message,
  * or undefined if the message is not an assistant message with tool_use.
  */
@@ -429,6 +642,9 @@ export async function classifyHandoffIfNeeded({
   abortSignal,
   subagentType,
   totalToolUseCount,
+  timeoutMs = HANDOFF_CLASSIFIER_TIMEOUT_MS,
+  abortGraceMs = AGENT_FINALIZER_ABORT_GRACE_MS,
+  forceEnabledForTests = false,
 }: {
   agentMessages: MessageType[]
   tools: Tools
@@ -436,28 +652,80 @@ export async function classifyHandoffIfNeeded({
   abortSignal: AbortSignal
   subagentType: string
   totalToolUseCount: number
+  /** @internal Deterministic lifecycle-test override. */
+  timeoutMs?: number
+  /** @internal Deterministic lifecycle-test override. */
+  abortGraceMs?: number
+  /** @internal Bun's feature intrinsic is compile-time in unit tests. */
+  forceEnabledForTests?: boolean
 }): Promise<string | null> {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  let classifierEnabled = forceEnabledForTests
+  if (!classifierEnabled) {
+    if (feature('TRANSCRIPT_CLASSIFIER')) classifierEnabled = true
+  }
+  if (classifierEnabled) {
     if (toolPermissionContext.mode !== 'auto') return null
 
     const agentTranscript = buildTranscriptForClassifier(agentMessages, tools)
     if (!agentTranscript) return null
 
-    const classifierResult = await classifyYoloAction(
-      agentMessages,
-      {
-        role: 'user',
-        content: [
+    const classifierAbortController = new AbortController()
+    const classifierSignal = classifierAbortController.signal
+    let classifierResult: Awaited<ReturnType<typeof classifyYoloAction>>
+    try {
+      classifierResult = await waitForBoundedSettlement(
+        classifyYoloAction(
+          agentMessages,
           {
-            type: 'text',
-            text: "Sub-agent has finished and is handing back control to the main agent. Review the sub-agent's work based on the block rules and let the main agent know if any file is dangerous (the main agent will see the reason).",
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: "Sub-agent has finished and is handing back control to the main agent. Review the sub-agent's work based on the block rules and let the main agent know if any file is dangerous (the main agent will see the reason).",
+              },
+            ],
           },
-        ],
-      },
-      tools,
-      toolPermissionContext as ToolPermissionContext,
-      abortSignal,
-    )
+          tools,
+          toolPermissionContext as ToolPermissionContext,
+          classifierSignal,
+        ),
+        {
+          signal: abortSignal,
+          timeoutMs,
+          abortGraceMs,
+          operation: 'Agent handoff classifier',
+          onAbort: reason => classifierAbortController.abort(reason),
+        },
+      )
+    } catch (error) {
+      if (error instanceof AbortSettlementTimeoutError) {
+        logForDebugging(error.message, { level: 'warn' })
+        throw new StopConfirmationError(
+          abortSignal.aborted
+            ? 'Agent handoff classifier did not confirm termination after cancellation'
+            : 'Agent handoff classifier did not confirm termination after its deadline',
+          [error],
+        )
+      }
+      if (classifierSignal.aborted && !abortSignal.aborted) {
+        // The internal deadline fired and the provider confirmed settlement by
+        // rejecting. Treat the classifier as unavailable instead of failing an
+        // otherwise successful Agent. Parent cancellation still propagates.
+        logForDebugging(
+          `Handoff classifier exceeded ${timeoutMs}ms and settled after cancellation; continuing with unavailable warning`,
+          { level: 'warn' },
+        )
+        return HANDOFF_CLASSIFIER_UNAVAILABLE_WARNING
+      }
+      throw error
+    }
+
+    if (classifierSignal.aborted && !abortSignal.aborted) {
+      logForDebugging(
+        `Handoff classifier exceeded ${timeoutMs}ms; continuing with unavailable warning`,
+        { level: 'warn' },
+      )
+    }
 
     const handoffDecision = classifierResult.unavailable
       ? 'unavailable'
@@ -555,6 +823,7 @@ export async function runAsyncAgentLifecycle({
   agentIdForCleanup,
   enableSummarization,
   getWorktreeResult,
+  classifyHandoff,
 }: {
   taskId: string
   abortController: AbortController
@@ -571,8 +840,18 @@ export async function runAsyncAgentLifecycle({
     worktreePath?: string
     worktreeBranch?: string
   }>
+  /** @internal Deterministic safety-gate test override. */
+  classifyHandoff?: () => Promise<string | null>
 }): Promise<void> {
-  let stopSummarization: (() => Promise<void>) | undefined
+  const summaryScope = new AgentSummaryScope()
+  let summariesDetached = false
+  const stopSummaries = (allowUnconfirmed = false) =>
+    stopAgentSummaryScope({
+      scope: summaryScope,
+      abortSignal: abortController.signal,
+      taskId,
+      allowUnconfirmed,
+    })
   const agentMessages: MessageType[] = []
   try {
     const tracker = createProgressTracker()
@@ -581,16 +860,21 @@ export async function runAsyncAgentLifecycle({
     )
     const onCacheSafeParams = enableSummarization
       ? (params: CacheSafeParams) => {
-          const { stop } = startAgentSummarization(
-            taskId,
-            asAgentId(taskId),
-            params,
-            rootSetAppState,
+          summaryScope.add(
+            startAgentSummarization(
+              taskId,
+              asAgentId(taskId),
+              params,
+              rootSetAppState,
+            ),
           )
-          stopSummarization = stop
         }
       : undefined
-    for await (const message of makeStream(onCacheSafeParams)) {
+    for await (const message of guardAsyncIterableCancellation(
+      makeStream(onCacheSafeParams),
+      abortController.signal,
+      { operation: `Agent ${taskId} stream` },
+    )) {
       agentMessages.push(message)
       // Append immediately when UI holds the task (retain). Bootstrap reads
       // disk in parallel and UUID-merges the prefix — disk-write-before-yield
@@ -646,7 +930,7 @@ export async function runAsyncAgentLifecycle({
           (lastMsg.message?.content as ContentItem[]) ?? [],
           '\n',
         ) || 'API error'
-      await stopSummarization?.()
+      await stopSummaries()
       if (abortController.signal.aborted) {
         throw new AbortError()
       }
@@ -669,16 +953,19 @@ export async function runAsyncAgentLifecycle({
 
     const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
 
-    // Make the model result available to TaskOutput without publishing a
-    // terminal state. Classifier, summary shutdown, and worktree cleanup still
-    // belong to this execution and must remain cancellable through TaskStop.
-    publishAsyncAgentResult(agentResult, rootSetAppState)
-    await stopSummarization?.()
+    // Summary generation is display-only. Dispatch its abort immediately, but
+    // let the detached owner prove settlement without holding this Agent open.
+    registerDetachedAgentSummaryStop({
+      scope: summaryScope,
+      taskId,
+    })
+    summariesDetached = true
 
-    let finalMessage = extractTextContent(agentResult.content, '\n')
-
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      const handoffWarning = await classifyHandoffIfNeeded({
+    let handoffSafetyGate = Promise.resolve<string | null>(null)
+    if (classifyHandoff) {
+      handoffSafetyGate = classifyHandoff()
+    } else if (feature('TRANSCRIPT_CLASSIFIER')) {
+      handoffSafetyGate = classifyHandoffIfNeeded({
         agentMessages,
         tools: toolUseContext.options.tools,
         toolPermissionContext:
@@ -687,46 +974,79 @@ export async function runAsyncAgentLifecycle({
         subagentType: metadata.agentType,
         totalToolUseCount: agentResult.totalToolUseCount,
       })
-      if (handoffWarning) {
-        finalMessage = `${handoffWarning}\n\n${finalMessage}`
-      }
     }
-
-    if (abortController.signal.aborted) {
-      throw new AbortError()
-    }
-    const worktreeResult = await getWorktreeResult(abortController.signal)
-    if (abortController.signal.aborted) {
-      throw new AbortError()
-    }
-
-    // Only now is the full owned lifecycle complete. This clears the abort
-    // controller, so it must be the final state transition before notification.
-    completeAsyncAgent(agentResult, rootSetAppState)
-
-    enqueueAgentNotification({
-      taskId,
-      description,
-      status: 'completed',
-      setAppState: rootSetAppState,
-      finalMessage,
-      usage: {
-        totalTokens: getTokenCountFromTracker(tracker),
-        toolUses: agentResult.totalToolUseCount,
-        durationMs: agentResult.totalDurationMs,
-      },
-      toolUseId: toolUseContext.toolUseId,
-      ...worktreeResult,
+    await publishAgentResultAfterHandoffSafety({
+      agentResult,
+      safetyGate: handoffSafetyGate,
+      abortSignal: abortController.signal,
+      publish: result => publishAsyncAgentResult(result, rootSetAppState),
     })
-  } catch (error) {
+    const finalMessage = extractTextContent(agentResult.content, '\n')
+
+    registerDetachedAgentWorktreeCleanup({
+      taskId,
+      cleanup: getWorktreeResult,
+      onSettled: worktreeResult => {
+        enqueueAgentNotification({
+          taskId,
+          description,
+          status: 'completed',
+          setAppState: rootSetAppState,
+          finalMessage,
+          usage: {
+            totalTokens: getTokenCountFromTracker(tracker),
+            toolUses: agentResult.totalToolUseCount,
+            durationMs: agentResult.totalDurationMs,
+          },
+          toolUseId: toolUseContext.toolUseId,
+          ...worktreeResult,
+        })
+      },
+    })
+
+    // Model execution and the safety gate are complete. Worktree housekeeping
+    // now has its own cancellable owner and notification settlement.
+    completeAsyncAgent(agentResult, rootSetAppState)
+  } catch (caughtError) {
+    let error = caughtError
     // Do not publish a terminal task state until the summary side query has
-    // aborted and fully unwound. stop() is idempotent, so the finally below is
-    // a safe backstop for errors in this handler.
-    await stopSummarization?.()
-    if (
-      !(error instanceof StopConfirmationError) &&
-      (error instanceof AbortError || abortController.signal.aborted)
-    ) {
+    // received abort and either settled or exhausted its bounded grace. A
+    // timed-out summary during explicit Stop becomes the confirmation error.
+    try {
+      await stopSummaries()
+    } catch (summaryError) {
+      error = summaryError
+    }
+    if (error instanceof StopConfirmationError) {
+      // The main runner has already unwound, so there is no execution left for
+      // a later Stop to retry. Report an honest failed terminal state instead
+      // of leaving the task permanently running. This deliberately does not
+      // claim the remote request was killed or that the agent completed.
+      const message = errorMessage(error)
+      failAsyncAgent(taskId, message, rootSetAppState)
+      enqueueAgentNotification({
+        taskId,
+        description,
+        status: 'failed',
+        error: message,
+        setAppState: rootSetAppState,
+        toolUseId: toolUseContext.toolUseId,
+      })
+      // Worktree finalization remains best-effort in the background. The
+      // concrete AgentTool implementation has its own absolute deadline, and
+      // observing the rejection prevents a late cleanup failure from becoming
+      // unhandled or putting the task back into a running state.
+      void Promise.resolve()
+        .then(() => getWorktreeResult(abortController.signal))
+        .catch(cleanupError => {
+          logForDebugging(
+            `Agent ${taskId} worktree cleanup after unconfirmed finalization failed: ${errorMessage(cleanupError)}`,
+            { level: 'warn' },
+          )
+        })
+      throw error
+    }
+    if (error instanceof AbortError || abortController.signal.aborted) {
       // The tracked execution owns the killed transition after this lifecycle
       // (including worktree cleanup) has fully settled. This catch still owns
       // the partial-result notification because it has the message buffer.
@@ -756,10 +1076,7 @@ export async function runAsyncAgentLifecycle({
     }
     const msg = errorMessage(error)
     const worktreeResult = await getWorktreeResult(abortController.signal)
-    if (
-      !(error instanceof StopConfirmationError) &&
-      abortController.signal.aborted
-    ) {
+    if (abortController.signal.aborted) {
       const partialResult = extractPartialResult(agentMessages)
       enqueueAgentNotification({
         taskId,
@@ -783,7 +1100,9 @@ export async function runAsyncAgentLifecycle({
       ...worktreeResult,
     })
   } finally {
-    await stopSummarization?.()
+    if (!summariesDetached) {
+      await stopSummaries(true)
+    }
     clearInvokedSkillsForAgent(agentIdForCleanup)
     clearDumpState(agentIdForCleanup)
   }

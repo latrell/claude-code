@@ -131,6 +131,10 @@ import {
 import { logError } from './log.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { createCombinedAbortSignal } from './combinedAbortSignal.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+} from './abortSettlement.js'
 import type { PermissionResult } from './permissions/PermissionResult.js'
 import { registerPendingAsyncHook } from './hooks/AsyncHookRegistry.js'
 import { enqueuePendingNotification } from './messageQueueManager.js'
@@ -164,6 +168,7 @@ import type { AppState } from '../state/AppState.js'
 import { jsonStringify, jsonParse } from './slowOperations.js'
 import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
+import { StopConfirmationError } from './stopConfirmation.js'
 
 const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -1083,6 +1088,10 @@ async function execCommandHook(
         { level: 'verbose' },
       )
     } catch (sandboxError) {
+      if (sandboxError instanceof StopConfirmationError) throw sandboxError
+      if (signal.aborted) {
+        throw signal.reason ?? new Error('Hook cancelled during sandbox setup')
+      }
       // If sandbox wrapping fails, log and continue without sandbox.
       // This preserves backwards compatibility — hooks that ran before
       // sandbox support was added will still work.
@@ -1420,6 +1429,7 @@ async function execCommandHook(
     return result
   } catch (error) {
     // Handle errors from stdin write or child process
+    if (error instanceof StopConfirmationError) throw error
     const code = getErrnoCode(error)
     diagExitCode = 1
 
@@ -2198,7 +2208,32 @@ async function* executeHooks({
       : undefined
     for (const [i, { hook }] of matchingHooks.entries()) {
       if (hook.type === 'callback') {
-        await hook.callback(hookInput, toolUseID, signal, i, context)
+        const callbackTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
+        const { signal: callbackSignal, cleanup } = createCombinedAbortSignal(
+          signal,
+          { timeoutMs: callbackTimeoutMs },
+        )
+        try {
+          await waitForAbortSettlement(
+            Promise.resolve().then(() =>
+              hook.callback(hookInput, toolUseID, callbackSignal, i, context),
+            ),
+            callbackSignal,
+            2_000,
+            `${hookName} internal callback hook`,
+          )
+        } catch (error) {
+          if (error instanceof StopConfirmationError) throw error
+          if (error instanceof AbortSettlementTimeoutError) {
+            throw new StopConfirmationError(
+              `${hookName} internal callback hook did not confirm termination`,
+              [error],
+            )
+          }
+          throw error
+        } finally {
+          cleanup()
+        }
       }
     }
     const totalDurationMs = Date.now() - batchStartTime
@@ -2290,6 +2325,19 @@ async function* executeHooks({
     }
   }
 
+  // The hook batch owns every per-hook generator below. Closing the outer
+  // generator (for example, because a tool/turn was cancelled) must fan out
+  // cancellation to siblings instead of leaving their model requests alive.
+  const batchAbortController = new AbortController()
+  const abortBatchFromParent = (): void => {
+    if (!batchAbortController.signal.aborted) {
+      batchAbortController.abort(signal?.reason)
+    }
+  }
+  if (signal?.aborted) abortBatchFromParent()
+  else signal?.addEventListener('abort', abortBatchFromParent, { once: true })
+  const batchSignal = batchAbortController.signal
+
   // Run all hooks in parallel with individual timeouts
   const hookPromises = matchingHooks.map(async function* (
     { hook, pluginRoot, pluginId, skillRoot },
@@ -2298,7 +2346,7 @@ async function* executeHooks({
     if (hook.type === 'callback') {
       const callbackTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
       const { signal: abortSignal, cleanup } = createCombinedAbortSignal(
-        signal,
+        batchSignal,
         { timeoutMs: callbackTimeoutMs },
       )
       yield executeHookCallback({
@@ -2337,16 +2385,19 @@ async function* executeHooks({
         toolUseID,
         hookEvent,
         timeoutMs,
-        signal,
+        signal: batchSignal,
       })
       return
     }
 
     // Command and prompt hooks need jsonInput
     const commandTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
-    const { signal: abortSignal, cleanup } = createCombinedAbortSignal(signal, {
-      timeoutMs: commandTimeoutMs,
-    })
+    const { signal: abortSignal, cleanup } = createCombinedAbortSignal(
+      batchSignal,
+      {
+        timeoutMs: commandTimeoutMs,
+      },
+    )
     const hookId = randomUUID()
     const hookStartMs = Date.now()
     const hookCommand = getHookDisplayText(hook)
@@ -2447,14 +2498,14 @@ async function* executeHooks({
       if (hook.type === 'http') {
         emitHookStarted(hookId, hookName, hookEvent)
 
-        // execHttpHook manages its own timeout internally via hook.timeout or
-        // DEFAULT_HTTP_HOOK_TIMEOUT_MS, so pass the parent signal directly
-        // to avoid double-stacking timeouts with abortSignal.
-        const httpResult = await execHttpHook(
-          hook,
-          hookEvent,
-          jsonInput,
-          signal,
+        // Guard the whole HTTP lifecycle, including sandbox proxy startup.
+        // Axios receiving abort is not sufficient proof if an adapter ignores
+        // it; the owning hook batch requires the original promise to settle.
+        const httpResult = await waitForAbortSettlement(
+          execHttpHook(hook, hookEvent, jsonInput, abortSignal),
+          abortSignal,
+          2_000,
+          `${hookName} HTTP hook`,
         )
         cleanup?.()
 
@@ -2596,19 +2647,24 @@ async function* executeHooks({
 
       emitHookStarted(hookId, hookName, hookEvent)
 
-      const result = await execCommandHook(
-        hook,
-        hookEvent,
-        hookName,
-        jsonInput,
+      const result = await waitForAbortSettlement(
+        execCommandHook(
+          hook,
+          hookEvent,
+          hookName,
+          jsonInput,
+          abortSignal,
+          hookId,
+          hookIndex,
+          pluginRoot,
+          pluginId,
+          skillRoot,
+          forceSyncExecution,
+          boundRequestPrompt,
+        ),
         abortSignal,
-        hookId,
-        hookIndex,
-        pluginRoot,
-        pluginId,
-        skillRoot,
-        forceSyncExecution,
-        boundRequestPrompt,
+        2_000,
+        `${hookName} command hook`,
       )
       cleanup?.()
       const durationMs = Date.now() - hookStartMs
@@ -2851,6 +2907,14 @@ async function* executeHooks({
       // Clean up on error
       cleanup?.()
 
+      if (error instanceof StopConfirmationError) throw error
+      if (error instanceof AbortSettlementTimeoutError) {
+        throw new StopConfirmationError(
+          `${hookName} hook did not confirm termination`,
+          [error],
+        )
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : String(error)
       emitHookResponse({
@@ -2893,190 +2957,198 @@ async function* executeHooks({
   let permissionBehavior: PermissionResult['behavior'] | undefined
 
   // Run all hooks in parallel and wait for all to complete
-  for await (const result of all(hookPromises)) {
-    outcomes[result.outcome]++
+  try {
+    for await (const result of all(hookPromises)) {
+      outcomes[result.outcome]++
 
-    // Check for preventContinuation early
-    if (result.preventContinuation) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) requested preventContinuation`,
-      )
-      yield {
-        preventContinuation: true,
-        stopReason: result.stopReason,
-      }
-    }
-
-    // Handle different result types
-    if (result.blockingError) {
-      yield {
-        blockingError: result.blockingError,
-      }
-    }
-
-    if (result.message) {
-      yield { message: result.message }
-    }
-
-    // Yield system message separately if present
-    if (result.systemMessage) {
-      yield {
-        message: createAttachmentMessage({
-          type: 'hook_system_message',
-          content: result.systemMessage,
-          hookName,
-          toolUseID,
-          hookEvent,
-        }),
-      }
-    }
-
-    // Collect additional context from hooks
-    if (result.additionalContext) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided additionalContext (${result.additionalContext.length} chars)`,
-      )
-      yield {
-        additionalContexts: [result.additionalContext],
-      }
-    }
-
-    if (result.initialUserMessage) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided initialUserMessage (${result.initialUserMessage.length} chars)`,
-      )
-      yield {
-        initialUserMessage: result.initialUserMessage,
-      }
-    }
-
-    if (result.watchPaths && result.watchPaths.length > 0) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided ${result.watchPaths.length} watchPaths`,
-      )
-      yield {
-        watchPaths: result.watchPaths,
-      }
-    }
-
-    // Yield updatedMCPToolOutput if provided (from PostToolUse hooks)
-    if (result.updatedMCPToolOutput) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) replaced MCP tool output`,
-      )
-      yield {
-        updatedMCPToolOutput: result.updatedMCPToolOutput,
-      }
-    }
-
-    // Check for permission behavior with precedence: deny > ask > allow
-    if (result.permissionBehavior) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) returned permissionDecision: ${result.permissionBehavior}${result.hookPermissionDecisionReason ? ` (reason: ${result.hookPermissionDecisionReason})` : ''}`,
-      )
-      // Apply precedence rules
-      switch (result.permissionBehavior) {
-        case 'deny':
-          // deny always takes precedence
-          permissionBehavior = 'deny'
-          break
-        case 'ask':
-          // ask takes precedence over allow but not deny
-          if (permissionBehavior !== 'deny') {
-            permissionBehavior = 'ask'
-          }
-          break
-        case 'allow':
-          // allow only if no other behavior set
-          if (!permissionBehavior) {
-            permissionBehavior = 'allow'
-          }
-          break
-        case 'passthrough':
-          // passthrough doesn't set permission behavior
-          break
-      }
-    }
-
-    // Yield permission behavior and updatedInput if provided (from allow or ask behavior)
-    if (permissionBehavior !== undefined) {
-      const updatedInput =
-        result.updatedInput &&
-        (result.permissionBehavior === 'allow' ||
-          result.permissionBehavior === 'ask')
-          ? result.updatedInput
-          : undefined
-      if (updatedInput) {
+      // Check for preventContinuation early
+      if (result.preventContinuation) {
         logForDebugging(
-          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(updatedInput).join(', ')}]`,
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) requested preventContinuation`,
         )
-      }
-      yield {
-        permissionBehavior,
-        hookPermissionDecisionReason: result.hookPermissionDecisionReason,
-        hookSource: matchingHooks.find(m => m.hook === result.hook)?.hookSource,
-        updatedInput,
-      }
-    }
-
-    // Yield updatedInput separately for passthrough case (no permission decision)
-    // This allows hooks to modify input without making a permission decision
-    // Note: Check result.permissionBehavior (this hook's behavior), not the aggregated permissionBehavior
-    if (result.updatedInput && result.permissionBehavior === undefined) {
-      logForDebugging(
-        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(result.updatedInput).join(', ')}]`,
-      )
-      yield {
-        updatedInput: result.updatedInput,
-      }
-    }
-    // Yield permission request result if provided (from PermissionRequest hooks)
-    if (result.permissionRequestResult) {
-      yield {
-        permissionRequestResult: result.permissionRequestResult,
-      }
-    }
-    // Yield retry flag if provided (from PermissionDenied hooks)
-    if (result.retry) {
-      yield {
-        retry: result.retry,
-      }
-    }
-    // Yield elicitation response if provided (from Elicitation hooks)
-    if (result.elicitationResponse) {
-      yield {
-        elicitationResponse: result.elicitationResponse,
-      }
-    }
-    // Yield elicitation result response if provided (from ElicitationResult hooks)
-    if (result.elicitationResultResponse) {
-      yield {
-        elicitationResultResponse: result.elicitationResultResponse,
-      }
-    }
-
-    // Invoke session hook callback if this is a command/prompt/function hook (not a callback hook)
-    if (appState && result.hook.type !== 'callback') {
-      const sessionId = getSessionId()
-      // Use empty string as matcher when matchQuery is undefined (e.g., for Stop hooks)
-      const matcher = matchQuery ?? ''
-      const hookEntry = getSessionHookCallback(
-        appState,
-        sessionId,
-        hookEvent,
-        matcher,
-        result.hook,
-      )
-      // Invoke onHookSuccess only on success outcome
-      if (hookEntry?.onHookSuccess && result.outcome === 'success') {
-        try {
-          hookEntry.onHookSuccess(result.hook, result as AggregatedHookResult)
-        } catch (error) {
-          logError(
-            Error('Session hook success callback failed', { cause: error }),
-          )
+        yield {
+          preventContinuation: true,
+          stopReason: result.stopReason,
         }
       }
+
+      // Handle different result types
+      if (result.blockingError) {
+        yield {
+          blockingError: result.blockingError,
+        }
+      }
+
+      if (result.message) {
+        yield { message: result.message }
+      }
+
+      // Yield system message separately if present
+      if (result.systemMessage) {
+        yield {
+          message: createAttachmentMessage({
+            type: 'hook_system_message',
+            content: result.systemMessage,
+            hookName,
+            toolUseID,
+            hookEvent,
+          }),
+        }
+      }
+
+      // Collect additional context from hooks
+      if (result.additionalContext) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided additionalContext (${result.additionalContext.length} chars)`,
+        )
+        yield {
+          additionalContexts: [result.additionalContext],
+        }
+      }
+
+      if (result.initialUserMessage) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided initialUserMessage (${result.initialUserMessage.length} chars)`,
+        )
+        yield {
+          initialUserMessage: result.initialUserMessage,
+        }
+      }
+
+      if (result.watchPaths && result.watchPaths.length > 0) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided ${result.watchPaths.length} watchPaths`,
+        )
+        yield {
+          watchPaths: result.watchPaths,
+        }
+      }
+
+      // Yield updatedMCPToolOutput if provided (from PostToolUse hooks)
+      if (result.updatedMCPToolOutput) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) replaced MCP tool output`,
+        )
+        yield {
+          updatedMCPToolOutput: result.updatedMCPToolOutput,
+        }
+      }
+
+      // Check for permission behavior with precedence: deny > ask > allow
+      if (result.permissionBehavior) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) returned permissionDecision: ${result.permissionBehavior}${result.hookPermissionDecisionReason ? ` (reason: ${result.hookPermissionDecisionReason})` : ''}`,
+        )
+        // Apply precedence rules
+        switch (result.permissionBehavior) {
+          case 'deny':
+            // deny always takes precedence
+            permissionBehavior = 'deny'
+            break
+          case 'ask':
+            // ask takes precedence over allow but not deny
+            if (permissionBehavior !== 'deny') {
+              permissionBehavior = 'ask'
+            }
+            break
+          case 'allow':
+            // allow only if no other behavior set
+            if (!permissionBehavior) {
+              permissionBehavior = 'allow'
+            }
+            break
+          case 'passthrough':
+            // passthrough doesn't set permission behavior
+            break
+        }
+      }
+
+      // Yield permission behavior and updatedInput if provided (from allow or ask behavior)
+      if (permissionBehavior !== undefined) {
+        const updatedInput =
+          result.updatedInput &&
+          (result.permissionBehavior === 'allow' ||
+            result.permissionBehavior === 'ask')
+            ? result.updatedInput
+            : undefined
+        if (updatedInput) {
+          logForDebugging(
+            `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(updatedInput).join(', ')}]`,
+          )
+        }
+        yield {
+          permissionBehavior,
+          hookPermissionDecisionReason: result.hookPermissionDecisionReason,
+          hookSource: matchingHooks.find(m => m.hook === result.hook)
+            ?.hookSource,
+          updatedInput,
+        }
+      }
+
+      // Yield updatedInput separately for passthrough case (no permission decision)
+      // This allows hooks to modify input without making a permission decision
+      // Note: Check result.permissionBehavior (this hook's behavior), not the aggregated permissionBehavior
+      if (result.updatedInput && result.permissionBehavior === undefined) {
+        logForDebugging(
+          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(result.updatedInput).join(', ')}]`,
+        )
+        yield {
+          updatedInput: result.updatedInput,
+        }
+      }
+      // Yield permission request result if provided (from PermissionRequest hooks)
+      if (result.permissionRequestResult) {
+        yield {
+          permissionRequestResult: result.permissionRequestResult,
+        }
+      }
+      // Yield retry flag if provided (from PermissionDenied hooks)
+      if (result.retry) {
+        yield {
+          retry: result.retry,
+        }
+      }
+      // Yield elicitation response if provided (from Elicitation hooks)
+      if (result.elicitationResponse) {
+        yield {
+          elicitationResponse: result.elicitationResponse,
+        }
+      }
+      // Yield elicitation result response if provided (from ElicitationResult hooks)
+      if (result.elicitationResultResponse) {
+        yield {
+          elicitationResultResponse: result.elicitationResultResponse,
+        }
+      }
+
+      // Invoke session hook callback if this is a command/prompt/function hook (not a callback hook)
+      if (appState && result.hook.type !== 'callback') {
+        const sessionId = getSessionId()
+        // Use empty string as matcher when matchQuery is undefined (e.g., for Stop hooks)
+        const matcher = matchQuery ?? ''
+        const hookEntry = getSessionHookCallback(
+          appState,
+          sessionId,
+          hookEvent,
+          matcher,
+          result.hook,
+        )
+        // Invoke onHookSuccess only on success outcome
+        if (hookEntry?.onHookSuccess && result.outcome === 'success') {
+          try {
+            hookEntry.onHookSuccess(result.hook, result as AggregatedHookResult)
+          } catch (error) {
+            logError(
+              Error('Session hook success callback failed', { cause: error }),
+            )
+          }
+        }
+      }
+    }
+  } finally {
+    signal?.removeEventListener('abort', abortBatchFromParent)
+    if (!batchAbortController.signal.aborted) {
+      batchAbortController.abort('hook-batch-complete')
     }
   }
 
@@ -3187,6 +3259,10 @@ async function executeHooksOutsideREPL({
     return []
   }
 
+  if (signal?.aborted) {
+    return []
+  }
+
   const appState = getAppState ? getAppState() : undefined
   // Use main session ID for outside-REPL hooks
   const sessionId = getSessionId()
@@ -3232,6 +3308,16 @@ async function executeHooksOutsideREPL({
     return []
   }
 
+  const batchAbortController = new AbortController()
+  const abortBatchFromParent = (): void => {
+    if (!batchAbortController.signal.aborted) {
+      batchAbortController.abort(signal?.reason)
+    }
+  }
+  if (signal?.aborted) abortBatchFromParent()
+  else signal?.addEventListener('abort', abortBatchFromParent, { once: true })
+  const batchSignal = batchAbortController.signal
+
   // Run all hooks in parallel with individual timeouts
   const hookPromises = matchingHooks.map(
     async ({ hook, pluginRoot, pluginId }, hookIndex) => {
@@ -3239,17 +3325,19 @@ async function executeHooksOutsideREPL({
       if (hook.type === 'callback') {
         const callbackTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
         const { signal: abortSignal, cleanup } = createCombinedAbortSignal(
-          signal,
+          batchSignal,
           { timeoutMs: callbackTimeoutMs },
         )
 
         try {
           const toolUseID = randomUUID()
-          const json = await hook.callback(
-            hookInput,
-            toolUseID,
+          const json = await waitForAbortSettlement(
+            Promise.resolve().then(() =>
+              hook.callback(hookInput, toolUseID, abortSignal, hookIndex),
+            ),
             abortSignal,
-            hookIndex,
+            2_000,
+            `${hookName} callback hook`,
           )
 
           cleanup?.()
@@ -3286,6 +3374,14 @@ async function executeHooksOutsideREPL({
           }
         } catch (error) {
           cleanup?.()
+
+          if (error instanceof StopConfirmationError) throw error
+          if (error instanceof AbortSettlementTimeoutError) {
+            throw new StopConfirmationError(
+              `${hookName} callback hook did not confirm termination`,
+              [error],
+            )
+          }
 
           const errorMessage =
             error instanceof Error ? error.message : String(error)
@@ -3342,12 +3438,17 @@ async function executeHooksOutsideREPL({
       // execHttpHook handles its own timeout internally via hook.timeout or
       // DEFAULT_HTTP_HOOK_TIMEOUT_MS, so we pass signal directly.
       if (hook.type === 'http') {
+        const httpTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
+        const { signal: httpAbortSignal, cleanup } = createCombinedAbortSignal(
+          batchSignal,
+          { timeoutMs: httpTimeoutMs },
+        )
         try {
-          const httpResult = await execHttpHook(
-            hook,
-            hookEvent,
-            jsonInput,
-            signal,
+          const httpResult = await waitForAbortSettlement(
+            execHttpHook(hook, hookEvent, jsonInput, httpAbortSignal),
+            httpAbortSignal,
+            2_000,
+            `${hookName} HTTP hook`,
           )
 
           if (httpResult.aborted) {
@@ -3416,6 +3517,13 @@ async function executeHooksOutsideREPL({
             blocked: !!jsonBlocked,
           }
         } catch (error) {
+          if (error instanceof StopConfirmationError) throw error
+          if (error instanceof AbortSettlementTimeoutError) {
+            throw new StopConfirmationError(
+              `${hookName} HTTP hook did not confirm termination`,
+              [error],
+            )
+          }
           const errorMessage =
             error instanceof Error ? error.message : String(error)
           logForDebugging(
@@ -3428,26 +3536,33 @@ async function executeHooksOutsideREPL({
             output: errorMessage,
             blocked: false,
           }
+        } finally {
+          cleanup()
         }
       }
 
       // Handle command hooks
       const commandTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
       const { signal: abortSignal, cleanup } = createCombinedAbortSignal(
-        signal,
+        batchSignal,
         { timeoutMs: commandTimeoutMs },
       )
       try {
-        const result = await execCommandHook(
-          hook,
-          hookEvent,
-          hookName,
-          jsonInput,
+        const result = await waitForAbortSettlement(
+          execCommandHook(
+            hook,
+            hookEvent,
+            hookName,
+            jsonInput,
+            abortSignal,
+            randomUUID(),
+            hookIndex,
+            pluginRoot,
+            pluginId,
+          ),
           abortSignal,
-          randomUUID(),
-          hookIndex,
-          pluginRoot,
-          pluginId,
+          2_000,
+          `${hookName} command hook`,
         )
 
         // Clear timeout if hook completes
@@ -3519,6 +3634,14 @@ async function executeHooksOutsideREPL({
         // Clean up on error
         cleanup?.()
 
+        if (error instanceof StopConfirmationError) throw error
+        if (error instanceof AbortSettlementTimeoutError) {
+          throw new StopConfirmationError(
+            `${hookName} command hook did not confirm termination`,
+            [error],
+          )
+        }
+
         const errorMessage =
           error instanceof Error ? error.message : String(error)
         logForDebugging(
@@ -3535,8 +3658,44 @@ async function executeHooksOutsideREPL({
     },
   )
 
-  // Wait for all hooks to complete and collect results
-  return await Promise.all(hookPromises)
+  // A rejection from one hook closes the batch, but the owner still drains
+  // every sibling before returning. Promise.all would reject immediately and
+  // abandon the remaining HTTP/process/callback requests.
+  for (const hookPromise of hookPromises) {
+    void hookPromise.catch(error => {
+      if (!batchAbortController.signal.aborted) {
+        batchAbortController.abort(error)
+      }
+    })
+  }
+
+  let settlements: PromiseSettledResult<HookOutsideReplResult>[]
+  try {
+    settlements = await Promise.allSettled(hookPromises)
+  } finally {
+    signal?.removeEventListener('abort', abortBatchFromParent)
+    if (!batchAbortController.signal.aborted) {
+      batchAbortController.abort('outside-REPL hook batch complete')
+    }
+  }
+
+  const failures = settlements.flatMap(result =>
+    result.status === 'rejected' ? [result.reason] : [],
+  )
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) {
+    throw new StopConfirmationError(
+      `${hookName} hook batch did not confirm termination`,
+      failures,
+    )
+  }
+
+  return settlements.map(result => {
+    if (result.status === 'rejected') {
+      throw result.reason
+    }
+    return result.value
+  })
 }
 
 /**
@@ -3790,6 +3949,7 @@ export async function executeStopFailureHooks(
     hookInput,
     timeoutMs,
     matchQuery: error,
+    signal: toolUseContext?.abortController.signal,
   })
 }
 
@@ -4843,6 +5003,7 @@ export async function executeStatusLineCommand(
 
     return undefined
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logForDebugging(`Status hook failed: ${error}`, { level: 'error' })
     return undefined
   }
@@ -4913,6 +5074,7 @@ export async function executeFileSuggestionCommand(
       .map(line => line.trim())
       .filter(Boolean)
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logForDebugging(`File suggestion helper failed: ${error}`, {
       level: 'error',
     })
@@ -4952,25 +5114,27 @@ async function executeFunctionHook({
       }
     }
 
-    // Execute callback with abort signal
-    const passed = await new Promise<boolean>((resolve, reject) => {
-      // Handle abort signal
-      const onAbort = () => reject(new Error('Function hook cancelled'))
-      abortSignal.addEventListener('abort', onAbort)
-
-      // Execute callback
-      Promise.resolve(hook.callback(messages, abortSignal))
-        .then(result => {
-          abortSignal.removeEventListener('abort', onAbort)
-          resolve(result)
-        })
-        .catch(error => {
-          abortSignal.removeEventListener('abort', onAbort)
-          reject(error)
-        })
-    })
+    // Do not race the callback against an immediate abort result: that loses
+    // ownership of callbacks that ignore AbortSignal. Once cancelled, require
+    // the callback itself to settle within a short confirmation window.
+    const callbackPromise = Promise.resolve().then(() =>
+      hook.callback(messages, abortSignal),
+    )
+    const passed = await waitForAbortSettlement(
+      callbackPromise,
+      abortSignal,
+      2_000,
+      `${hookName} function hook`,
+    )
 
     cleanup()
+
+    if (abortSignal.aborted) {
+      return {
+        outcome: 'cancelled',
+        hook,
+      }
+    }
 
     if (passed) {
       return {
@@ -4988,6 +5152,14 @@ async function executeFunctionHook({
     }
   } catch (error) {
     cleanup()
+
+    if (error instanceof StopConfirmationError) throw error
+    if (error instanceof AbortSettlementTimeoutError) {
+      throw new StopConfirmationError(
+        `${hookName} function hook did not confirm termination`,
+        [error],
+      )
+    }
 
     // Handle cancellation
     if (
@@ -5044,13 +5216,26 @@ async function executeHookCallback({
         updateAttributionState: toolUseContext.updateAttributionState,
       }
     : undefined
-  const json = await hook.callback(
-    hookInput,
-    toolUseID,
-    signal,
-    hookIndex,
-    context,
-  )
+  let json: HookJSONOutput
+  try {
+    json = await waitForAbortSettlement(
+      Promise.resolve().then(() =>
+        hook.callback(hookInput, toolUseID, signal, hookIndex, context),
+      ),
+      signal,
+      2_000,
+      `${hookEvent} callback hook`,
+    )
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
+    if (error instanceof AbortSettlementTimeoutError) {
+      throw new StopConfirmationError(
+        `${hookEvent} callback hook did not confirm termination`,
+        [error],
+      )
+    }
+    throw error
+  }
   if (isAsyncHookJSONOutput(json)) {
     return {
       outcome: 'success',

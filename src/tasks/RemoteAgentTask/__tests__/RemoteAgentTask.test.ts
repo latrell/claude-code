@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 mock.module('src/utils/debug.ts', debugMock)
 mock.module('src/utils/log.ts', logMock)
@@ -107,9 +108,27 @@ describe('RemoteAgentTask.kill', () => {
     stopResult = false
     const { getState, setAppState } = createState()
 
+    const error = await RemoteAgentTask.kill('rtest', setAppState as any).catch(
+      caught => caught,
+    )
+
+    expect(error).toBeInstanceOf(StopConfirmationError)
+    expect(error.message).toContain('did not acknowledge interrupt and archive')
+
+    expect(getState().tasks.rtest.status).toBe('running')
+    expect(getState().tasks.rtest.notified).toBe(false)
+    expect(terminatedTaskIds).toEqual([])
+  })
+
+  test('wraps a rejected remote stop as unconfirmed and leaves the task running', async () => {
+    stopRemoteSessionMock.mockImplementationOnce(async () => {
+      throw new Error('injected stop deadline')
+    })
+    const { getState, setAppState } = createState()
+
     await expect(
       RemoteAgentTask.kill('rtest', setAppState as any),
-    ).rejects.toThrow('did not acknowledge interrupt and archive')
+    ).rejects.toBeInstanceOf(StopConfirmationError)
 
     expect(getState().tasks.rtest.status).toBe('running')
     expect(getState().tasks.rtest.notified).toBe(false)

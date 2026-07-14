@@ -172,6 +172,44 @@ describe('createChatGPTResponsesStream', () => {
     expect(bodyCancelled).toBe(true)
   })
 
+  test('actively cancels the open SSE body when the request signal aborts', async () => {
+    const controller = new AbortController()
+    let bodyCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        streamController.enqueue(
+          new TextEncoder().encode(
+            'data: {"type":"response.created","response":{"status":"in_progress"}}\n\n',
+          ),
+        )
+      },
+      cancel() {
+        bodyCancelled = true
+      },
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: (async () =>
+        new Response(body, { status: 200 })) as unknown as typeof fetch,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    expect((await iterator.next()).done).toBe(false)
+    controller.abort('user-cancel')
+    await Promise.resolve()
+
+    // The iterator is paused at yield; cancellation therefore came directly
+    // from the abort listener, not from consumer return/finally cleanup.
+    expect(bodyCancelled).toBe(true)
+    await iterator.return?.()
+  })
+
   test('preserves HTTP status so transient responses are retryable', async () => {
     for (const status of [408, 409, 429, 500, 503]) {
       const fetchOverride = (async () =>

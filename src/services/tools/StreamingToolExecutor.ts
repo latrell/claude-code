@@ -12,6 +12,18 @@ import { createChildAbortController } from '../../utils/abortController.js'
 import { runToolUse } from './toolExecution.js'
 import { createToolBatchSpan, endToolBatchSpan } from '../langfuse/index.js'
 import type { LangfuseSpan } from '../langfuse/index.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+} from '../../utils/abortSettlement.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
+
+const TOOL_ABORT_SETTLEMENT_GRACE_MS = 2_000
+
+type StreamingToolExecutorOptions = {
+  /** @internal Allows cancellation tests to use a deterministic short grace. */
+  abortSettlementGraceMs?: number
+}
 
 type MessageUpdate = {
   message?: Message
@@ -48,13 +60,18 @@ export class StreamingToolExecutor {
   private discarded = false
   private progressAvailableResolve?: () => void
   private turnSpan: LangfuseSpan | null = null
+  private readonly abortSettlementGraceMs: number
+  private terminationPromise?: Promise<void>
 
   constructor(
     private readonly toolDefinitions: Tools,
     private readonly canUseTool: CanUseToolFn,
     toolUseContext: ToolUseContext,
+    options: StreamingToolExecutorOptions = {},
   ) {
     this.toolUseContext = toolUseContext
+    this.abortSettlementGraceMs =
+      options.abortSettlementGraceMs ?? TOOL_ABORT_SETTLEMENT_GRACE_MS
     this.siblingAbortController = createChildAbortController(
       toolUseContext.abortController,
     )
@@ -65,23 +82,94 @@ export class StreamingToolExecutor {
    * occurs and results from the failed attempt should be abandoned.
    * Queued tools won't start, and in-progress tools will receive synthetic errors.
    *
-   * Releases all internal references (tools array, abort controller, context)
-   * so that the discarded executor and its buffered results can be garbage-collected.
-   * Without this, repeated API retries in NO_FLICKER mode accumulate leaked
-   * TrackedTool objects (each holding assistantMessage, results, pendingProgress).
+   * Releases internal references only after every executing promise settles.
+   * An abort-ignoring tool remains owned and rejects discard confirmation, so a
+   * fallback attempt cannot overlap it.
    */
-  discard(): void {
+  discard(): Promise<void> {
+    return this.terminateOwnedTools(
+      'streaming_fallback',
+      'discarded streaming tool execution',
+    )
+  }
+
+  /**
+   * Stop every execution owned by this executor and retain their promises until
+   * they really settle. Merely dispatching AbortSignal is not confirmation: a
+   * tool adapter can ignore it and continue a subprocess or remote request.
+   */
+  private terminateOwnedTools(
+    reason: string,
+    operation: string,
+  ): Promise<void> {
+    if (this.terminationPromise) return this.terminationPromise
+
+    // Publish the closing state before the first await so processQueue cannot
+    // start a queued tool while teardown is taking its promise snapshot.
     this.discarded = true
-    // Abort running tool subprocesses (Bash spawns, etc.) so they don't
-    // continue producing results after the executor is replaced.
-    this.siblingAbortController.abort('streaming_fallback')
-    // Release references to allow GC of tool blocks, messages, and promises.
-    this.tools.length = 0
-    this.progressAvailableResolve = undefined
-    if (this.turnSpan) {
-      endToolBatchSpan(this.turnSpan)
-      this.turnSpan = null
+    for (const tool of this.tools) {
+      if (tool.status === 'queued') tool.status = 'completed'
     }
+
+    // Cancellation must be dispatched before waiting for settlement.
+    this.siblingAbortController.abort(reason)
+    this.progressAvailableResolve?.()
+    this.progressAvailableResolve = undefined
+
+    const executingPromises = this.tools.flatMap(tool =>
+      tool.status === 'executing' && tool.promise ? [tool.promise] : [],
+    )
+    const actualSettlement = Promise.allSettled(executingPromises).then(
+      () => undefined,
+    )
+    const settlementDeadline = new AbortController()
+    settlementDeadline.abort(reason)
+
+    const releaseReferences = (): void => {
+      for (const tool of this.tools) {
+        if (tool.status !== 'yielded') {
+          markToolUseAsComplete(this.toolUseContext, tool.id)
+        }
+      }
+      this.tools.length = 0
+      if (this.turnSpan) {
+        endToolBatchSpan(this.turnSpan)
+        this.turnSpan = null
+      }
+    }
+
+    const termination = waitForAbortSettlement(
+      actualSettlement,
+      settlementDeadline.signal,
+      this.abortSettlementGraceMs,
+      operation,
+    ).then(
+      () => {
+        releaseReferences()
+      },
+      error => {
+        if (error instanceof AbortSettlementTimeoutError) {
+          // Keep the executor's references until a late settlement so the live
+          // promises are not orphaned after reporting failed confirmation.
+          void actualSettlement.then(() => {
+            try {
+              releaseReferences()
+            } catch {
+              // The caller already received the authoritative confirmation
+              // failure. Late UI/telemetry cleanup must not create an unhandled
+              // rejection after the owned execution eventually settles.
+            }
+          })
+          throw new StopConfirmationError(
+            `${operation} did not confirm termination after cancellation`,
+            [error],
+          )
+        }
+        throw error
+      },
+    )
+    this.terminationPromise = termination
+    return termination
   }
 
   /**
@@ -484,12 +572,39 @@ export class StreamingToolExecutor {
    */
   async *getRemainingResults(): AsyncGenerator<MessageUpdate, void> {
     if (this.discarded) {
+      await this.terminationPromise
       return
     }
 
+    let resolveDrainSettlement!: () => void
+    let rejectDrainSettlement!: (error: unknown) => void
+    const drainSettlement = new Promise<void>((resolve, reject) => {
+      resolveDrainSettlement = resolve
+      rejectDrainSettlement = reject
+    })
+    const abortGuard = waitForAbortSettlement(
+      drainSettlement,
+      this.toolUseContext.abortController.signal,
+      this.abortSettlementGraceMs,
+      'streaming tool execution',
+    ).catch(error => {
+      if (error instanceof AbortSettlementTimeoutError) {
+        throw new StopConfirmationError(
+          'Tool execution did not confirm termination after cancellation',
+          [error],
+        )
+      }
+      throw error
+    })
+    // A consumer may pause between yielded progress messages. Keep the guard's
+    // rejection handled until the next iterator step races it explicitly.
+    void abortGuard.catch(() => {})
+
+    let didThrow = false
+    let primaryError: unknown
     try {
       while (this.hasUnfinishedTools()) {
-        await this.processQueue()
+        await Promise.race([this.processQueue(), abortGuard])
 
         for (const result of this.getCompletedResults()) {
           yield result
@@ -512,7 +627,11 @@ export class StreamingToolExecutor {
           })
 
           if (executingPromises.length > 0) {
-            await Promise.race([...executingPromises, progressPromise])
+            await Promise.race([
+              ...executingPromises,
+              progressPromise,
+              abortGuard,
+            ])
           }
         }
       }
@@ -520,23 +639,53 @@ export class StreamingToolExecutor {
       for (const result of this.getCompletedResults()) {
         yield result
       }
+    } catch (error) {
+      didThrow = true
+      primaryError = error
+      throw error
     } finally {
       this.progressAvailableResolve?.()
       this.progressAvailableResolve = undefined
 
-      // An early consumer return or exception must not leave tools running
-      // without an owner. Normal completion has already yielded every tool.
-      if (this.hasUnfinishedTools() && !this.discarded) {
-        this.siblingAbortController.abort('stream_consumer_cancelled')
-        for (const tool of this.tools) {
-          if (tool.status !== 'yielded') {
-            markToolUseAsComplete(this.toolUseContext, tool.id)
-          }
+      let terminationError: unknown
+      try {
+        // An early consumer return or exception must not leave tools running
+        // without an owner. Await the actual promises after dispatching abort;
+        // resolving the iterator drain alone is not execution settlement.
+        if (this.hasUnfinishedTools()) {
+          await this.terminateOwnedTools(
+            'stream_consumer_cancelled',
+            'streaming tool execution',
+          )
+        } else if (this.terminationPromise) {
+          await this.terminationPromise
         }
+        resolveDrainSettlement()
+      } catch (error) {
+        terminationError = error
+        rejectDrainSettlement(error)
       }
 
-      endToolBatchSpan(this.turnSpan)
-      this.turnSpan = null
+      if (!this.terminationPromise) {
+        endToolBatchSpan(this.turnSpan)
+        this.turnSpan = null
+      }
+
+      if (terminationError !== undefined) {
+        if (primaryError instanceof StopConfirmationError) {
+          // The primary watchdog already states exactly which Stop could not
+          // be confirmed. Do not replace it with a secondary teardown timeout.
+        } else if (didThrow) {
+          // biome-ignore lint/correctness/noUnsafeFinally: unconfirmed owned tool execution must override a less informative primary failure.
+          throw new StopConfirmationError(
+            'Tool execution failed and owned tool termination was not confirmed',
+            [primaryError, terminationError],
+          )
+        } else {
+          // biome-ignore lint/correctness/noUnsafeFinally: consumer return cannot report success while owned tools remain unconfirmed.
+          throw terminationError
+        }
+      }
     }
   }
 

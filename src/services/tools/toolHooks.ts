@@ -29,6 +29,7 @@ import {
 } from '../../utils/permissions/PermissionResult.js'
 import { checkRuleBasedPermissions } from '../../utils/permissions/permissions.js'
 import { formatError } from '../../utils/toolErrors.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { isMcpTool } from '../mcp/utils.js'
 import type { McpServerType, MessageUpdateLazy } from './toolExecution.js'
 
@@ -130,7 +131,9 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
               hookEvent: 'PostToolUse',
             }),
           }
-          return
+          // Keep consuming the hook batch so sibling model/process hooks are
+          // not abandoned merely because one hook blocked continuation.
+          continue
         }
 
         // If hooks provided additional context, add it as a message
@@ -154,6 +157,7 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
           }
         }
       } catch (error) {
+        if (error instanceof StopConfirmationError) throw error
         const postToolDurationMs = Date.now() - postToolStartTime
         logEvent('tengu_post_tool_hook_error', {
           messageID:
@@ -190,6 +194,7 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
       }
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logError(error)
   }
 }
@@ -287,6 +292,7 @@ export async function* runPostToolUseFailureHooks<Input extends AnyObject>(
           }
         }
       } catch (hookError) {
+        if (hookError instanceof StopConfirmationError) throw hookError
         const postToolDurationMs = Date.now() - postToolStartTime
         logEvent('tengu_post_tool_failure_hook_error', {
           messageID:
@@ -322,6 +328,7 @@ export async function* runPostToolUseFailureHooks<Input extends AnyObject>(
       }
     }
   } catch (outerError) {
+    if (outerError instanceof StopConfirmationError) throw outerError
     logError(outerError)
   }
 }
@@ -468,6 +475,7 @@ export async function* runPreToolUseHooks(
   | { type: 'stop' }
 > {
   const hookStartTime = Date.now()
+  let cancellationEmitted = false
   try {
     const appState = toolUseContext.getAppState()
 
@@ -483,6 +491,31 @@ export async function* runPreToolUseHooks(
       tool.getToolUseSummary?.(processedInput),
     )) {
       try {
+        if (toolUseContext.abortController.signal.aborted) {
+          if (!cancellationEmitted) {
+            cancellationEmitted = true
+            logEvent('tengu_pre_tool_hooks_cancelled', {
+              toolName: sanitizeToolNameForAnalytics(tool.name),
+              queryChainId: toolUseContext.queryTracking
+                ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              queryDepth: toolUseContext.queryTracking?.depth,
+            })
+            yield {
+              type: 'message',
+              message: {
+                message: createAttachmentMessage({
+                  type: 'hook_cancelled',
+                  hookName: `PreToolUse:${tool.name}`,
+                  toolUseID,
+                  hookEvent: 'PreToolUse',
+                }),
+              },
+            }
+            yield { type: 'stop' }
+          }
+          continue
+        }
+
         if (result.message) {
           yield {
             type: 'message',
@@ -595,28 +628,31 @@ export async function* runPreToolUseHooks(
 
         // Check if we were aborted during hook execution
         if (toolUseContext.abortController.signal.aborted) {
-          logEvent('tengu_pre_tool_hooks_cancelled', {
-            toolName: sanitizeToolNameForAnalytics(tool.name),
+          if (!cancellationEmitted) {
+            cancellationEmitted = true
+            logEvent('tengu_pre_tool_hooks_cancelled', {
+              toolName: sanitizeToolNameForAnalytics(tool.name),
 
-            queryChainId: toolUseContext.queryTracking
-              ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            queryDepth: toolUseContext.queryTracking?.depth,
-          })
-          yield {
-            type: 'message',
-            message: {
-              message: createAttachmentMessage({
-                type: 'hook_cancelled',
-                hookName: `PreToolUse:${tool.name}`,
-                toolUseID,
-                hookEvent: 'PreToolUse',
-              }),
-            },
+              queryChainId: toolUseContext.queryTracking
+                ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              queryDepth: toolUseContext.queryTracking?.depth,
+            })
+            yield {
+              type: 'message',
+              message: {
+                message: createAttachmentMessage({
+                  type: 'hook_cancelled',
+                  hookName: `PreToolUse:${tool.name}`,
+                  toolUseID,
+                  hookEvent: 'PreToolUse',
+                }),
+              },
+            }
+            yield { type: 'stop' }
           }
-          yield { type: 'stop' }
-          return
         }
       } catch (error) {
+        if (error instanceof StopConfirmationError) throw error
         logError(error)
         const durationMs = Date.now() - hookStartTime
         logEvent('tengu_pre_tool_hook_error', {
@@ -658,6 +694,7 @@ export async function* runPreToolUseHooks(
       }
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logError(error)
     yield { type: 'stop' }
     return

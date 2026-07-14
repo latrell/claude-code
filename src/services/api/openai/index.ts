@@ -40,6 +40,7 @@ import {
 } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { isAbortError } from '../../../utils/errors.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
 import {
@@ -568,6 +569,7 @@ export async function* queryModelOpenAI(
       }
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted) return
     if (isAbortError(error)) throw error
 

@@ -17,9 +17,17 @@ export function isTaskOutputReady(task: TaskState): boolean {
 
 /** Record result consumption without suppressing the later lifecycle event. */
 export function markTaskOutputRetrieved<T extends TaskState>(task: T): T {
+  const isLocalAgent = task.type === 'local_agent'
   return {
     ...task,
-    ...(task.type === 'local_agent' ? { retrieved: true } : {}),
-    ...(isTerminalTaskStatus(task.status) ? { notified: true } : {}),
+    ...(isLocalAgent ? { retrieved: true } : {}),
+    // Local-agent completion can become terminal before detached worktree
+    // cleanup has assembled and enqueued its lifecycle notification. Claiming
+    // that notification here loses it permanently and can leave a coordinator
+    // waiting forever. Agent notifications own their own atomic notified flag;
+    // TaskOutput only consumes notifications for the other task types.
+    ...(!isLocalAgent && isTerminalTaskStatus(task.status)
+      ? { notified: true }
+      : {}),
   }
 }

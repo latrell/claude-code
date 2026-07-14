@@ -11,6 +11,7 @@ import {
   APIUserAbortError,
 } from '@anthropic-ai/sdk'
 import { getModelStrings } from './modelStrings.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 
 // Cache valid models to avoid repeated API calls
 const validModelCache = new Map<string, boolean>()
@@ -81,6 +82,7 @@ export async function validateModel(
     validModelCache.set(normalizedModel, true)
     return { valid: true }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (
       signal?.aborted ||
       error instanceof APIUserAbortError ||

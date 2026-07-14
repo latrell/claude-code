@@ -29,6 +29,11 @@ import { killTask } from './killShellTasks.js';
 /** Prefix that identifies a LocalShellTask summary to the UI collapse transform. */
 export const BACKGROUND_BASH_SUMMARY_PREFIX = 'Background command ';
 
+// A foreground command retained after an unconfirmed Stop owns exactly one
+// late-settlement observer. Repeated Esc/TaskStop attempts must not enqueue
+// duplicate notifications or race multiple terminal state transitions.
+const retainedStopObservers = new WeakSet<ShellCommand>();
+
 const STALL_CHECK_INTERVAL_MS = 5_000;
 const STALL_THRESHOLD_MS = 45_000;
 const STALL_TAIL_BYTES = 1024;
@@ -324,6 +329,107 @@ export function registerForeground(
   };
 
   registerTask(taskState, setAppState);
+  return taskId;
+}
+
+function failRetainedForegroundTask(
+  taskId: string,
+  shellCommand: ShellCommand,
+  setAppState: SetAppState,
+  result?: { code: number; interrupted: boolean },
+  status: 'failed' | 'killed' = 'failed',
+): void {
+  let transitioned = false;
+  let cleanupFn: (() => void) | undefined;
+  let description = '';
+  let toolUseId: string | undefined;
+  let kind: BashTaskKind | undefined;
+  let agentId: AgentId | undefined;
+
+  updateTaskState<LocalShellTaskState>(taskId, setAppState, task => {
+    // Identity-check the handle: a resumed/replaced task may reuse the ID, and
+    // a late result from the old process must never close the replacement.
+    if (task.status !== 'running' || task.shellCommand !== shellCommand) {
+      return task;
+    }
+
+    transitioned = true;
+    cleanupFn = task.unregisterCleanup;
+    description = task.description;
+    toolUseId = task.toolUseId;
+    kind = task.kind;
+    agentId = task.agentId;
+    return {
+      ...task,
+      status,
+      ...(result ? { result } : undefined),
+      shellCommand: null,
+      unregisterCleanup: undefined,
+      endTime: Date.now(),
+    };
+  });
+
+  if (!transitioned) return;
+
+  cleanupFn?.();
+  try {
+    shellCommand.cleanup();
+  } catch (error) {
+    logError(error);
+  }
+  enqueueShellNotification(taskId, description, status, result?.code, setAppState, toolUseId, kind, agentId);
+  void evictTaskOutput(taskId);
+}
+
+/**
+ * A confirmed process-tree Stop whose output/result collection did not settle
+ * has no live cancellation target left to retry. Close an already-registered
+ * foreground task as failed instead of leaving it permanently running.
+ */
+export function failForegroundAfterConfirmedTermination(
+  taskId: string,
+  shellCommand: ShellCommand,
+  setAppState: SetAppState,
+): void {
+  failRetainedForegroundTask(taskId, shellCommand, setAppState);
+}
+
+/**
+ * Retain a genuinely live foreground process so TaskStop can retry, and close
+ * the retained task if the original result settles later. The latter is a
+ * failed cancellation lifecycle, not a successful command completion.
+ */
+export function retainForegroundAfterUnconfirmedStop(
+  input: LocalShellSpawnInput & { shellCommand: ShellCommand },
+  setAppState: SetAppState,
+  toolUseId?: string,
+  existingTaskId?: string,
+): string {
+  const taskId = existingTaskId ?? registerForeground(input, setAppState, toolUseId);
+  const { shellCommand } = input;
+
+  if (retainedStopObservers.has(shellCommand)) return taskId;
+  retainedStopObservers.add(shellCommand);
+
+  void shellCommand.result.then(
+    result => {
+      failRetainedForegroundTask(
+        taskId,
+        shellCommand,
+        setAppState,
+        {
+          code: result.code,
+          interrupted: result.interrupted,
+        },
+        shellCommand.terminationConfirmed ? 'killed' : 'failed',
+      );
+    },
+    error => {
+      logError(error);
+      failRetainedForegroundTask(taskId, shellCommand, setAppState);
+    },
+  );
+
   return taskId;
 }
 

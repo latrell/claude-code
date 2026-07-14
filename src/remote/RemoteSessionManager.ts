@@ -16,6 +16,19 @@ import {
   type SessionsWebSocketCallbacks,
 } from './SessionsWebSocket.js'
 
+const PENDING_SEND_CANCEL_WAIT_MS = 2_000
+
+type RemoteSessionManagerOptions = {
+  /** @internal Allows cancellation tests to use a short deterministic bound. */
+  pendingSendCancelWaitMs?: number
+  /** @internal Injectable event POST for lifecycle tests. */
+  sendEvent?: (
+    sessionId: string,
+    content: RemoteMessageContent,
+    opts?: { uuid?: string; signal?: AbortSignal },
+  ) => Promise<boolean>
+}
+
 /**
  * Type guard to check if a message is an SDKMessage (not a control message)
  */
@@ -98,10 +111,15 @@ export class RemoteSessionManager {
     new Map()
   private pendingCancellation: Promise<boolean> | null = null
   private pendingSends = new Set<Promise<boolean>>()
+  private pendingSendControllers = new Map<Promise<boolean>, AbortController>()
+  private disconnected = false
+  private disconnectPromise: Promise<boolean> | null = null
+  private disconnectNeedsInterrupt = false
 
   constructor(
     private readonly config: RemoteSessionConfig,
     private readonly callbacks: RemoteSessionCallbacks,
+    private readonly options: RemoteSessionManagerOptions = {},
   ) {}
 
   /**
@@ -223,24 +241,37 @@ export class RemoteSessionManager {
     content: RemoteMessageContent,
     opts?: { uuid?: string },
   ): Promise<boolean> {
+    if (this.disconnected) return false
     // Escape can make the UI look idle before the remote worker has handled
     // the interrupt. Do not let the next turn overtake that control request.
     if (this.pendingCancellation) {
       const cancelled = await this.pendingCancellation
       if (!cancelled) return false
     }
+    if (this.disconnected) return false
 
     logForDebugging(
       `[RemoteSessionManager] Sending message to session ${this.config.sessionId}`,
     )
 
-    const send = sendEventToRemoteSession(this.config.sessionId, content, opts)
+    const abortController = new AbortController()
+    const sendEvent = this.options.sendEvent ?? sendEventToRemoteSession
+    // Install ownership before invoking the adapter. disconnect() can then
+    // abort even a request whose auth preparation has not reached axios yet.
+    const send = Promise.resolve().then(() =>
+      sendEvent(this.config.sessionId, content, {
+        ...opts,
+        signal: abortController.signal,
+      }),
+    )
     this.pendingSends.add(send)
+    this.pendingSendControllers.set(send, abortController)
     let success: boolean
     try {
       success = await send
     } finally {
       this.pendingSends.delete(send)
+      this.pendingSendControllers.delete(send)
     }
 
     if (!success) {
@@ -309,11 +340,15 @@ export class RemoteSessionManager {
 
     const cancellation = this.cancelSessionOnce()
     this.pendingCancellation = cancellation
-    void cancellation.finally(() => {
+    const releaseCancellation = (): void => {
       if (this.pendingCancellation === cancellation) {
         this.pendingCancellation = null
       }
-    })
+    }
+    // Keep the original cancellation result authoritative. An ignored
+    // finally() would manufacture a second unhandled rejection if an
+    // unexpected transport error escaped cancelSessionOnce().
+    void cancellation.then(releaseCancellation, releaseCancellation)
     return cancellation
   }
 
@@ -323,27 +358,9 @@ export class RemoteSessionManager {
       logError(new Error('[RemoteSessionManager] Cannot cancel: no WebSocket'))
       return false
     }
-    const requestInterrupt = async (): Promise<boolean> => {
-      try {
-        const response = await this.websocket!.sendControlRequest({
-          subtype: 'interrupt',
-        })
-        if (response.response.subtype === 'success') return true
-        logError(
-          new Error(
-            `[RemoteSessionManager] Interrupt rejected: ${response.response.error}`,
-          ),
-        )
-        return false
-      } catch (error) {
-        logError(
-          error instanceof Error
-            ? error
-            : new Error('[RemoteSessionManager] Interrupt failed'),
-        )
-        return false
-      }
-    }
+    const websocket = this.websocket
+    const requestInterrupt = (): Promise<boolean> =>
+      this.requestInterrupt(websocket)
 
     const sendsInFlight = [...this.pendingSends]
     if (sendsInFlight.length > 0) {
@@ -352,13 +369,70 @@ export class RemoteSessionManager {
       // in-flight POST reaches the worker, allowing inference to start after
       // Stop reported success. Interrupt immediately for responsiveness, then
       // issue a causal final interrupt after every older POST has settled.
-      const earlyInterrupt = requestInterrupt()
-      await Promise.allSettled(sendsInFlight)
-      await earlyInterrupt
+      void requestInterrupt()
+      const sendSettlement = Promise.allSettled(sendsInFlight)
+      const settledBeforeDeadline =
+        await this.waitForPendingSends(sendSettlement)
+      if (!settledBeforeDeadline) {
+        logError(
+          new Error(
+            '[RemoteSessionManager] Timed out waiting for pending sends before final interrupt',
+          ),
+        )
+        // The immediate interrupt may have arrived before an older HTTP POST.
+        // If that POST eventually settles, send one more interrupt, but do not
+        // report the current Stop as successful without that final ack.
+        void sendSettlement.then(() => requestInterrupt())
+        return false
+      }
       return requestInterrupt()
     }
 
     return requestInterrupt()
+  }
+
+  private async requestInterrupt(
+    websocket: Pick<SessionsWebSocket, 'sendControlRequest'> | null,
+  ): Promise<boolean> {
+    if (!websocket) return false
+    try {
+      const response = await websocket.sendControlRequest({
+        subtype: 'interrupt',
+      })
+      if (response.response.subtype === 'success') return true
+      logError(
+        new Error(
+          `[RemoteSessionManager] Interrupt rejected: ${response.response.error}`,
+        ),
+      )
+      return false
+    } catch (error) {
+      logError(
+        error instanceof Error
+          ? error
+          : new Error('[RemoteSessionManager] Interrupt failed'),
+      )
+      return false
+    }
+  }
+
+  private async waitForPendingSends(
+    settlement: Promise<unknown>,
+  ): Promise<boolean> {
+    const timeoutMs =
+      this.options.pendingSendCancelWaitMs ?? PENDING_SEND_CANCEL_WAIT_MS
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<false>(resolve => {
+      timeout = setTimeout(resolve, timeoutMs, false)
+    })
+    try {
+      return await Promise.race([
+        settlement.then(() => true as const),
+        deadline,
+      ])
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout)
+    }
   }
 
   /**
@@ -371,11 +445,67 @@ export class RemoteSessionManager {
   /**
    * Disconnect from the remote session
    */
-  disconnect(): void {
+  disconnect(): Promise<boolean> {
+    if (this.disconnectPromise) return this.disconnectPromise
     logForDebugging('[RemoteSessionManager] Disconnecting')
-    this.websocket?.close()
-    this.websocket = null
+    this.disconnected = true
+    const websocket = this.websocket
+    const sendsInFlight = [...this.pendingSends]
+    const hasNewInteractiveSends =
+      sendsInFlight.length > 0 && !this.config.viewerOnly
+    if (hasNewInteractiveSends) this.disconnectNeedsInterrupt = true
+    for (const send of sendsInFlight) {
+      this.pendingSendControllers
+        .get(send)
+        ?.abort('remote-session-manager-disconnected')
+    }
     this.pendingPermissionRequests.clear()
+
+    const disconnect = (async (): Promise<boolean> => {
+      try {
+        // A viewer disconnect only detaches its own ingestion request. It must
+        // never interrupt an agent that another client is observing.
+        if (this.config.viewerOnly) {
+          await Promise.allSettled(sendsInFlight)
+        } else {
+          // If event ingestion raced disconnect, an abort only cancels the
+          // client wait; the server may already have accepted the event. Keep
+          // the old socket owned until every POST settles, then require a
+          // causal final interrupt before releasing this manager.
+          if (hasNewInteractiveSends) {
+            void this.requestInterrupt(websocket)
+          }
+          await Promise.allSettled(sendsInFlight)
+          if (this.disconnectNeedsInterrupt) {
+            const interrupted = await this.requestInterrupt(websocket)
+            if (!interrupted) return false
+            this.disconnectNeedsInterrupt = false
+          }
+        }
+
+        websocket?.close()
+        if (this.websocket === websocket) this.websocket = null
+        return true
+      } catch (error) {
+        logError(
+          error instanceof Error
+            ? error
+            : new Error('[RemoteSessionManager] Disconnect failed'),
+        )
+        return false
+      }
+    })()
+    this.disconnectPromise = disconnect
+    const releaseDisconnect = (): void => {
+      if (this.disconnectPromise === disconnect) {
+        this.disconnectPromise = null
+      }
+    }
+    // disconnect() is frequently called from React cleanup and intentionally
+    // not awaited there. Preserve the result for explicit observers while
+    // preventing an unexpected close implementation throw from going global.
+    void disconnect.then(releaseDisconnect, releaseDisconnect)
+    return disconnect
   }
 
   /**

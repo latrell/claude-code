@@ -5,8 +5,11 @@ import type {
   CacheSafeParams,
   ForkedAgentResult,
 } from '../../../utils/forkedAgent.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 import {
   type AgentSummaryDependencies,
+  type AgentSummaryHandle,
+  AgentSummaryScope,
   startAgentSummarization,
 } from '../agentSummary.js'
 
@@ -28,17 +31,20 @@ type ForkCall = {
 function deferred<T>(): {
   promise: Promise<T>
   resolve: (value: T) => void
+  reject: (reason: unknown) => void
 } {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>(resolvePromise => {
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise
+    reject = rejectPromise
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe('startAgentSummarization', () => {
   let scheduled: (() => void | Promise<void>) | undefined
-  let handle: { stop: () => Promise<void> } | undefined
+  let handle: AgentSummaryHandle | undefined
   let forkCalls: ForkCall[]
   let updateCalls: Array<{ taskId: string; summary: string }>
   let transcriptMessagesForTest: Message[]
@@ -51,7 +57,7 @@ describe('startAgentSummarization', () => {
 
   function startTestSummarization(
     dependencies: AgentSummaryDependencies = {},
-  ): { stop: () => Promise<void> } {
+  ): AgentSummaryHandle {
     return startAgentSummarization(
       'task-1',
       asAgentId('a0000000000000000'),
@@ -243,7 +249,7 @@ describe('startAgentSummarization', () => {
     expect(clearedHandles).toEqual([pendingHandle])
   })
 
-  test('in-flight stop aborts and waits for the summary run to settle', async () => {
+  test('in-flight stop reports settled when the summary run unwinds', async () => {
     const forkResult = deferred<ForkedAgentResult>()
     const forkStarted = deferred<void>()
     let summarySignal: AbortSignal | undefined
@@ -269,12 +275,85 @@ describe('startAgentSummarization', () => {
     expect(stopSettled).toBe(false)
 
     forkResult.resolve({ messages: [] } as unknown as ForkedAgentResult)
-    await stopPromise
+    expect(await stopPromise).toBe('settled')
     await runPromise
 
     expect(stopSettled).toBe(true)
     expect(updateCalls).toEqual([])
     expect(scheduledCount).toBe(1)
+  })
+
+  test('in-flight stop times out when the summary run ignores abort', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    const timeout = deferred<void>()
+    let summarySignal: AbortSignal | undefined
+    let timeoutMs: number | undefined
+    handle = startTestSummarization({
+      runForkedAgent: async args => {
+        summarySignal = args.overrides?.abortController?.signal
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+      waitForStopSettlement: async (run, ms) => {
+        timeoutMs = ms
+        return Promise.race([
+          run.then(
+            () => 'settled' as const,
+            () => 'settled' as const,
+          ),
+          timeout.promise.then(() => 'timed_out' as const),
+        ])
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+
+    const stopPromise = handle.stop()
+    expect(summarySignal?.aborted).toBe(true)
+    expect(timeoutMs).toBe(5_000)
+
+    timeout.resolve()
+    expect(await stopPromise).toBe('timed_out')
+    const exactStop = handle.stopExactly()
+    let exactSettled = false
+    void exactStop.then(() => {
+      exactSettled = true
+    })
+    await Promise.resolve()
+    expect(exactSettled).toBe(false)
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
+
+    // Let the intentionally abort-ignoring fake unwind so the test does not
+    // leave a pending run behind. Its late result must remain suppressed.
+    forkResult.resolve({ messages: [] } as unknown as ForkedAgentResult)
+    await runPromise
+    await exactStop
+    expect(exactSettled).toBe(true)
+  })
+
+  test('does not swallow an unconfirmed provider cancellation', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    handle = startTestSummarization({
+      runForkedAgent: async () => {
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+    parentAbortController.abort('parent stopped')
+    const stopPromise = handle.stop()
+    forkResult.reject(
+      new StopConfirmationError('provider stream remained active'),
+    )
+
+    expect(await stopPromise).toBe('timed_out')
+    await expect(runPromise).rejects.toBeInstanceOf(StopConfirmationError)
   })
 
   test('parent agent abort immediately reaches an in-flight summary request', async () => {
@@ -406,5 +485,54 @@ describe('startAgentSummarization', () => {
     expect(forkCalls).toEqual([])
     expect(updateCalls).toEqual([])
     expect(scheduledCount).toBe(1)
+  })
+})
+
+describe('AgentSummaryScope', () => {
+  test('stops every unique handle and preserves a timed out result', async () => {
+    const scope = new AgentSummaryScope()
+    let settledStops = 0
+    let timedOutStops = 0
+    const settledHandle: AgentSummaryHandle = {
+      stop: async () => {
+        settledStops += 1
+        return 'settled'
+      },
+      stopExactly: async () => {},
+    }
+    const timedOutHandle: AgentSummaryHandle = {
+      stop: async () => {
+        timedOutStops += 1
+        return 'timed_out'
+      },
+      stopExactly: async () => {},
+    }
+
+    scope.add(settledHandle)
+    scope.add(settledHandle)
+    scope.add(timedOutHandle)
+
+    const firstStop = scope.stopAll()
+    const secondStop = scope.stopAll()
+    expect(secondStop).toBe(firstStop)
+    expect(await firstStop).toBe('timed_out')
+    expect(settledStops).toBe(1)
+    expect(timedOutStops).toBe(1)
+  })
+
+  test('returns settled and immediately stops handles added after shutdown', async () => {
+    const scope = new AgentSummaryScope()
+    expect(await scope.stopAll()).toBe('settled')
+
+    let lateStops = 0
+    scope.add({
+      stop: async () => 'settled',
+      stopExactly: async () => {
+        lateStops += 1
+      },
+    })
+
+    expect(lateStops).toBe(1)
+    expect(await scope.stopAll()).toBe('settled')
   })
 })

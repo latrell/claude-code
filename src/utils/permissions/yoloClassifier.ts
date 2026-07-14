@@ -36,6 +36,7 @@ import { isKnownAdaptiveThinkingModel } from '../thinking.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
 import { sideQuery } from '../sideQuery.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import type { LangfuseSpan } from '../../services/langfuse/index.js'
 import { jsonStringify } from '../slowOperations.js'
 import { tokenCountWithEstimation } from '../tokens.js'
@@ -970,6 +971,7 @@ async function classifyYoloActionXml(
       stage2MsgId,
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted) {
       logForDebugging('Auto mode classifier (XML): aborted by user')
       logAutoModeOutcome('interrupted', model, { classifierType })
@@ -1322,6 +1324,7 @@ export async function classifyYoloAction(
     })
     return classifierResult
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted) {
       logForDebugging('Auto mode classifier: aborted by user')
       logAutoModeOutcome('interrupted', model)

@@ -29,6 +29,7 @@ import { getSmallFastModel } from '../model/model.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import {
   type ApiQueryHookConfig,
   createApiQueryHook,
@@ -289,6 +290,7 @@ Rules:
       },
     })
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted || isAbortError(error)) return false
     throw error
   } finally {

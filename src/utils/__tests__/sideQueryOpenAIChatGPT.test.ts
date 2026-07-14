@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { sideQuery } from '../sideQuery.js'
+import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { collectAnthropicStreamToBetaMessage, sideQuery } from '../sideQuery.js'
 import { decodeMessage } from '../../services/api/cursor/protobufDecoder.js'
 import { encodeField } from '../../services/api/cursor/protobufEncoder.js'
 import { FIELD, WIRE_TYPE } from '../../services/api/cursor/protobufSchema.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 
 type EnvKey =
   | 'CLAUDE_CODE_USE_OPENAI'
@@ -15,6 +17,65 @@ type EnvKey =
   | 'CLAUDE_CONFIG_DIR'
 
 type EnvSnapshot = Partial<Record<EnvKey, string>>
+
+describe('sideQuery adapted stream cancellation', () => {
+  test('preserves StopConfirmation after the eager first event', async () => {
+    const controller = new AbortController()
+    let returnCalls = 0
+    let notifySecondNext!: () => void
+    const secondNextStarted = new Promise<void>(resolve => {
+      notifySecondNext = resolve
+    })
+    let nextCalls = 0
+    const stream: AsyncIterable<BetaRawMessageStreamEvent> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            nextCalls++
+            if (nextCalls === 1) {
+              return Promise.resolve({
+                done: false as const,
+                value: {
+                  type: 'message_start',
+                  message: {
+                    id: 'msg_side_query_cancel',
+                    type: 'message',
+                    role: 'assistant',
+                    content: [],
+                    model: 'test-model',
+                    stop_reason: null,
+                    stop_sequence: null,
+                    usage: { input_tokens: 1, output_tokens: 0 },
+                  },
+                } as unknown as BetaRawMessageStreamEvent,
+              })
+            }
+            notifySecondNext()
+            return new Promise<IteratorResult<BetaRawMessageStreamEvent>>(
+              () => {},
+            )
+          },
+          return: async () => {
+            returnCalls++
+            return { done: true as const, value: undefined }
+          },
+        }
+      },
+    }
+
+    const collecting = collectAnthropicStreamToBetaMessage(
+      stream,
+      'test-model',
+      controller.signal,
+      { abortGraceMs: 5, returnTimeoutMs: 5 },
+    )
+    await secondNextStarted
+    controller.abort('user-cancel')
+
+    await expect(collecting).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(returnCalls).toBe(1)
+  })
+})
 
 describe('sideQuery ChatGPT auth', () => {
   let originalFetch: typeof globalThis.fetch
@@ -143,6 +204,7 @@ describe('sideQuery ChatGPT auth', () => {
         model: 'claude-sonnet-4-5',
         messages: [{ role: 'user', content: 'Hi' }],
         querySource: 'auto_mode',
+        maxRetries: 0,
         providerRuntimeConfig: {
           provider: 'gemini',
           env: {

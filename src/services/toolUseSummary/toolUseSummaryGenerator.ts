@@ -9,6 +9,7 @@ import { E_TOOL_USE_SUMMARY_GENERATION_FAILED } from '../../constants/errorIds.j
 import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { queryHaiku } from '../api/claude.js'
 
@@ -90,6 +91,9 @@ export async function generateToolUseSummary({
 
     return summary || null
   } catch (error) {
+    // A provider that did not confirm termination is lifecycle state, not a
+    // best-effort summary failure. The owning query must keep Stop honest.
+    if (error instanceof StopConfirmationError) throw error
     // Log but don't fail - summaries are non-critical
     const err = toError(error)
     err.cause = { errorId: E_TOOL_USE_SUMMARY_GENERATION_FAILED }

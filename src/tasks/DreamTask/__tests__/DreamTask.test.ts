@@ -9,24 +9,33 @@ mock.module('src/services/autoDream/consolidationLock.ts', () => ({
   recordConsolidation: () => Promise.resolve(),
 }))
 
-const { DreamTask, completeDreamTask, trackDreamTaskRun } = await import(
-  '../DreamTask.js'
+const { DreamTask, completeDreamTask, stopDreamTask, trackDreamTaskRun } =
+  await import('../DreamTask.js')
+const { StopConfirmationError } = await import(
+  '../../../utils/stopConfirmation.js'
 )
 
 type DreamState = {
-  status: 'running' | 'completed' | 'killed'
+  status: 'running' | 'completed' | 'failed' | 'killed'
   abortController?: AbortController
   lockLease?: { priorMtime: number; ownerToken: string }
+  error?: string
   [key: string]: unknown
 }
 type State = { tasks: Record<string, DreamState> }
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
+function deferred(): {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (error: unknown) => void
+} {
   let resolve = (): void => {}
-  const promise = new Promise<void>(done => {
+  let reject = (_error: unknown): void => {}
+  const promise = new Promise<void>((done, fail) => {
     resolve = done
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function createState() {
@@ -65,7 +74,7 @@ describe('DreamTask cancellation', () => {
     rollbackMock.mockClear()
     const run = deferred()
     const { controller, getState, setAppState } = createState()
-    trackDreamTaskRun('dream', run.promise)
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
 
     let stopped = false
     const stop = DreamTask.kill('dream', setAppState as never).then(() => {
@@ -90,7 +99,7 @@ describe('DreamTask cancellation', () => {
   test('late completion cannot overwrite a requested stop', async () => {
     const run = deferred()
     const { getState, setAppState } = createState()
-    trackDreamTaskRun('dream', run.promise)
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
     const stop = DreamTask.kill('dream', setAppState as never)
 
     completeDreamTask('dream', setAppState as never)
@@ -105,7 +114,7 @@ describe('DreamTask cancellation', () => {
     rollbackMock.mockClear()
     const run = deferred()
     const { setAppState } = createState()
-    trackDreamTaskRun('dream', run.promise)
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
 
     const first = DreamTask.kill('dream', setAppState as never)
     const second = DreamTask.kill('dream', setAppState as never)
@@ -113,6 +122,66 @@ describe('DreamTask cancellation', () => {
     run.resolve()
     await Promise.all([first, second])
 
+    expect(rollbackMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps the task non-terminal and rejects when the forked request ignores cancellation', async () => {
+    rollbackMock.mockClear()
+    const run = deferred()
+    const { controller, getState, setAppState } = createState()
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
+
+    await expect(
+      stopDreamTask('dream', setAppState as never, {
+        timeoutMs: 1_000,
+        abortGraceMs: 10,
+      }),
+    ).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(controller.signal.aborted).toBe(true)
+    expect(getState().tasks.dream!.status).toBe('running')
+    expect(rollbackMock).not.toHaveBeenCalled()
+
+    run.resolve()
+    await stopDreamTask('dream', setAppState as never, {
+      timeoutMs: 1_000,
+      abortGraceMs: 10,
+    })
+    expect(getState().tasks.dream!.status).toBe('killed')
+  })
+
+  test('does not turn an unconfirmed runner rejection into a confirmed kill', async () => {
+    rollbackMock.mockClear()
+    const run = deferred()
+    const { controller, getState, setAppState } = createState()
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
+
+    const stopping = DreamTask.kill('dream', setAppState as never)
+    run.reject(new StopConfirmationError('provider still running'))
+
+    await expect(stopping).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(controller.signal.aborted).toBe(true)
+    expect(getState().tasks.dream!.status).toBe('failed')
+    expect(getState().tasks.dream!.abortController).toBeUndefined()
+    expect(getState().tasks.dream!.error).toBe('provider still running')
+    expect(rollbackMock).not.toHaveBeenCalled()
+
+    // The rejected runner is terminal evidence, not a retry handle. A later
+    // direct Stop cannot get trapped replaying the same rejected promise.
+    await stopDreamTask('dream', setAppState as never)
+    expect(getState().tasks.dream!.status).toBe('failed')
+  })
+
+  test('treats an ordinary rejected runner as settled cancellation proof', async () => {
+    rollbackMock.mockClear()
+    const run = deferred()
+    const { getState, setAppState } = createState()
+    trackDreamTaskRun('dream', run.promise, setAppState as never)
+
+    const stopping = DreamTask.kill('dream', setAppState as never)
+    run.reject(new Error('local runner exited during abort'))
+
+    await stopping
+    expect(getState().tasks.dream!.status).toBe('killed')
     expect(rollbackMock).toHaveBeenCalledTimes(1)
   })
 })

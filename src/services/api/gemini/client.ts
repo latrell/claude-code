@@ -56,6 +56,16 @@ export async function* streamGeminiGenerateContent(params: {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const cancelReaderOnAbort = (): void => {
+    // fetch() should error the body when its signal is aborted, but custom
+    // transports/proxies are not always compliant. Cancel the already-open
+    // reader immediately as a second, transport-level cancellation path.
+    void reader.cancel().catch(() => undefined)
+  }
+
+  if (params.signal.aborted) cancelReaderOnAbort()
+  else
+    params.signal.addEventListener('abort', cancelReaderOnAbort, { once: true })
 
   try {
     while (true) {
@@ -91,6 +101,7 @@ export async function* streamGeminiGenerateContent(params: {
       }
     }
   } finally {
+    params.signal.removeEventListener('abort', cancelReaderOnAbort)
     // Closing an async generator does not necessarily abort fetch's body.
     // Cancel the reader explicitly so an Esc/consumer return closes the SSE
     // transport instead of merely stopping local iteration.

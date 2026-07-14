@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
@@ -18,7 +19,7 @@ const callToolMock = mock(
   ) => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
 )
 
-const { callIdeRpc } = await import('../client.js')
+const { callIdeRpc, callMCPTool } = await import('../client.js')
 
 function makeIdeClient(): Parameters<typeof callIdeRpc>[2] {
   return {
@@ -49,5 +50,24 @@ describe('callIdeRpc cancellation', () => {
     const ownedSignal = callToolMock.mock.calls[0]?.[2]?.signal
     expect(ownedSignal).toBeDefined()
     expect(ownedSignal?.aborted).toBe(true)
+  })
+
+  test('reports unconfirmed termination when the MCP SDK ignores abort', async () => {
+    const abortController = new AbortController()
+    const hungClient = makeIdeClient()
+    hungClient.client = {
+      callTool: () => new Promise<never>(() => {}),
+    } as unknown as typeof hungClient.client
+
+    const call = callMCPTool({
+      client: hungClient,
+      tool: 'hung_tool',
+      args: {},
+      signal: abortController.signal,
+      abortSettlementGraceMs: 10,
+    })
+    abortController.abort('user-cancel')
+
+    await expect(call).rejects.toBeInstanceOf(StopConfirmationError)
   })
 })

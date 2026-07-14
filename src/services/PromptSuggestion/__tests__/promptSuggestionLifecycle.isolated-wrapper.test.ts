@@ -26,5 +26,5 @@ test('prompt suggestion lifecycle isolated suite passes', () => {
       `PromptSuggestion isolated suite failed (status=${String(result.status)}, signal=${String(result.signal)}, spawnError=${result.error?.message ?? 'none'}):\n${output}`,
     )
   }
-  expect(output).toMatch(/3 pass/)
+  expect(output).toMatch(/5 pass/)
 }, 30_000)

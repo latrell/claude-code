@@ -90,6 +90,7 @@ import type { PermissionUpdate } from '../permissions/PermissionUpdateSchema.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
 import { sleep } from '../sleep.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
@@ -1642,7 +1643,10 @@ export async function runInProcessTeammate(
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error'
 
-    if (abortController.signal.aborted) {
+    if (
+      abortController.signal.aborted &&
+      !(error instanceof StopConfirmationError)
+    ) {
       if (currentAutonomyRunId) {
         await markAutonomyRunFailed(
           currentAutonomyRunId,
@@ -1724,6 +1728,12 @@ export async function runInProcessTeammate(
     )
 
     unregisterPerfettoAgent(identity.agentId)
+    if (error instanceof StopConfirmationError) {
+      // The runner has definitively exited with no live local handle to retry.
+      // Preserve the causal error for the settlement registry/Stop caller
+      // after publishing a failed terminal state and clearing controllers.
+      throw error
+    }
     return {
       success: false,
       error: errorMessage,
@@ -1759,8 +1769,13 @@ export function startInProcessTeammate(config: InProcessRunnerConfig): void {
   // the full config object (including toolUseContext) while the promise is
   // pending - which can be hours for a long-running teammate.
   const agentId = config.identity.agentId
+  const taskId = config.taskId
+  const getAppState = config.toolUseContext.getAppState
   const runner = runInProcessTeammate(config)
-  registerInProcessTeammateRunner(config.taskId, runner)
+  registerInProcessTeammateRunner(taskId, runner, () => {
+    const task = getAppState().tasks[taskId]
+    return task?.type === 'in_process_teammate' && task.status === 'running'
+  })
   void runner.catch(error => {
     logForDebugging(`[inProcessRunner] Unhandled error in ${agentId}: ${error}`)
   })

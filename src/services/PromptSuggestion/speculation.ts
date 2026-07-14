@@ -43,6 +43,7 @@ import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
 import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -67,6 +68,25 @@ type SpeculationRun = {
 
 let speculationGeneration = 0
 let currentSpeculationRun: SpeculationRun | null = null
+let speculationBlockedByUnconfirmedStop = false
+
+function throwSpeculationStopFailures(
+  results: readonly PromiseSettledResult<void>[],
+): void {
+  const failures = results.flatMap(result =>
+    result.status === 'rejected' &&
+    result.reason instanceof StopConfirmationError
+      ? [result.reason]
+      : [],
+  )
+  if (failures.length === 0) return
+  speculationBlockedByUnconfirmedStop = true
+  if (failures.length === 1) throw failures[0]
+  throw new StopConfirmationError(
+    `Failed to confirm termination of ${failures.length} speculation runs`,
+    failures,
+  )
+}
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit'])
 const SAFE_READ_ONLY_TOOLS = new Set([
@@ -419,6 +439,7 @@ async function generatePipelinedSuggestion(
       },
     }))
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (error instanceof Error && error.name === 'AbortError') return
     logForDebugging(
       `[Speculation] Pipelined suggestion failed: ${errorMessage(error)}`,
@@ -436,6 +457,13 @@ export function startSpeculation(
     .abortController,
 ): Promise<void> {
   if (!isSpeculationEnabled()) return Promise.resolve()
+  if (speculationBlockedByUnconfirmedStop) {
+    logForDebugging(
+      '[Speculation] disabled after an unconfirmed cancellation',
+      { level: 'error' },
+    )
+    return Promise.resolve()
+  }
 
   const generation = ++speculationGeneration
   const previousRun = currentSpeculationRun
@@ -449,13 +477,15 @@ export function startSpeculation(
   const id = randomUUID().slice(0, 8)
   const abortController = createChildAbortController(ownerAbortController)
 
+  let stopWasUnconfirmed = false
   const settled = (async (): Promise<void> => {
     // Publish currentSpeculationRun before an already-aborted owner can take
     // the fast path and settle this operation.
     await Promise.resolve()
     try {
       if (previousRun) {
-        await Promise.allSettled([previousRun.settled])
+        const results = await Promise.allSettled([previousRun.settled])
+        throwSpeculationStopFailures(results)
       }
       if (
         generation !== speculationGeneration ||
@@ -474,11 +504,17 @@ export function startSpeculation(
         cacheSafeParams,
       )
     } catch (error) {
+      if (error instanceof StopConfirmationError) {
+        stopWasUnconfirmed = true
+        speculationBlockedByUnconfirmedStop = true
+        throw error
+      }
       if (!abortController.signal.aborted) {
         logError(toError(error))
       }
     } finally {
       if (
+        !stopWasUnconfirmed &&
         currentSpeculationRun?.generation === generation &&
         currentSpeculationRun.id === id
       ) {
@@ -780,6 +816,7 @@ async function runSpeculation(
       abortController,
     )
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     abortController.abort()
 
     if (error instanceof Error && error.name === 'AbortError') {
@@ -963,7 +1000,8 @@ export async function abortSpeculationAndWait(
   const run = currentSpeculationRun
   abortSpeculation(setAppState)
   if (run) {
-    await Promise.allSettled([run.settled])
+    const results = await Promise.allSettled([run.settled])
+    throwSpeculationStopFailures(results)
   }
 }
 
@@ -980,6 +1018,23 @@ export async function handleSpeculationAccept(
 ): Promise<{ queryRequired: boolean }> {
   try {
     const { setMessages, readFileState, cwd } = deps
+
+    // Capture the currently owned run before acceptSpeculation aborts the UI
+    // snapshot. The global pointer is cleared by the run's finally block, so
+    // looking it up after updating the UI can lose the only promise that
+    // proves its HTTP/tool stream has really stopped.
+    const acceptedRun = currentSpeculationRun
+    if (
+      acceptedRun &&
+      acceptedRun.id !== speculationState.id &&
+      !acceptedRun.abortController.signal.aborted
+    ) {
+      // React may still hold the prior active-state snapshot while a newer
+      // replacement has already claimed the module-level run pointer. Stop
+      // that successor too; accepting stale UI must never let it overlap the
+      // main query that this handler may launch.
+      acceptedRun.abortController.abort('stale-speculation-accepted')
+    }
 
     // Clear prompt suggestion state. logOutcomeAtSubmission logged the accept
     // but was called with skipReset to avoid aborting speculation before we use it.
@@ -1056,6 +1111,15 @@ export async function handleSpeculationAccept(
       setMessages(prev => [...prev, feedbackMessage])
     }
 
+    // The captured messages are safe to display immediately, but a follow-up
+    // main query (or pipelined replacement) must not start until the accepted
+    // run confirms termination. Dispatching AbortSignal alone is not proof
+    // that an HTTP/SSE adapter stopped consuming remote inference.
+    if (acceptedRun) {
+      const results = await Promise.allSettled([acceptedRun.settled])
+      throwSpeculationStopFailures(results)
+    }
+
     logForDebugging(
       `[Speculation] ${result?.boundary?.type ?? 'incomplete'}, injected ${cleanMessages.length} messages`,
     )
@@ -1087,11 +1151,23 @@ export async function handleSpeculationAccept(
           ...cleanMessages,
         ],
       }
-      void startSpeculation(text, augmentedContext, setAppState, true)
+      void startSpeculation(text, augmentedContext, setAppState, true).catch(
+        error => {
+          logForDebugging(
+            `[Speculation] pipelined replacement failed: ${errorMessage(error)}`,
+            { level: 'error' },
+          )
+        },
+      )
     }
 
     return { queryRequired: !isComplete }
   } catch (error) {
+    // An unconfirmed Stop is not an ordinary speculation failure. Falling
+    // open here would immediately launch the main query beside a possibly
+    // live remote speculation request.
+    if (error instanceof StopConfirmationError) throw error
+
     // Fail open: log error and fall back to normal query flow
     /* eslint-disable no-restricted-syntax -- custom fallback message, not toError(e) */
     logError(

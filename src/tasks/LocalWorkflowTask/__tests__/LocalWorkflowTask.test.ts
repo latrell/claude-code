@@ -46,6 +46,9 @@ const {
   killWorkflowTasksForAgent,
   registerWorkflowTaskKillHandler,
 } = await import('../LocalWorkflowTask.js')
+const { StopConfirmationError } = await import(
+  '../../../utils/stopConfirmation.js'
+)
 
 // ─── Helpers ───
 
@@ -139,6 +142,32 @@ describe('workflow cancellation settlement', () => {
     release()
     expect(await killing).toBe(true)
     expect(getState().tasks[taskId].status).toBe('killed')
+    detach()
+  })
+
+  test('rejects a kill handler that ignores cancellation without publishing killed', async () => {
+    const { setAppState, getState } = createSetState()
+    const abortController = new AbortController()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'stuck workflow',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      abortController,
+    })
+    const detach = registerWorkflowTaskKillHandler(taskId, async () => {
+      abortController.abort()
+      await new Promise<void>(() => {})
+      return true
+    })
+
+    await expect(
+      killWorkflowTask(taskId, setAppState as any, {
+        timeoutMs: 1_000,
+        abortGraceMs: 10,
+      }),
+    ).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(abortController.signal.aborted).toBe(true)
+    expect(getState().tasks[taskId].status).toBe('running')
     detach()
   })
 

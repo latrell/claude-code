@@ -55,6 +55,11 @@ import {
   startStreamEagerly,
   withCompatRetry,
 } from '../services/api/compatRetry.js'
+import {
+  guardProviderStreamCancellation,
+  type ProviderStreamGuardOptions,
+  waitForProviderAbortSettlement,
+} from '../services/api/providerCancellation.js'
 import { resolveCursorCredentials } from '../services/api/cursor/auth.js'
 import {
   resolveReasoningEffort,
@@ -233,15 +238,22 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     return sideQueryViaCursor(opts)
   }
 
-  const client = await getAnthropicClient({
-    maxRetries,
-    model,
-    source: 'side_query',
-    // Scoped ANTHROPIC_* credentials (fast slot with an anthropic-api
-    // connection). Absent env (e.g. anthropic-oauth profile) shares the
-    // main session's Anthropic credentials by design.
-    envOverride: opts.providerRuntimeConfig?.env,
-  })
+  const requestSignal = signal ?? new AbortController().signal
+  const client = await waitForProviderAbortSettlement(
+    getAnthropicClient({
+      // Anthropic SDK retry backoff does not observe the request AbortSignal.
+      // Keep SDK retries disabled and use the abort-aware retry helper below.
+      maxRetries: 0,
+      model,
+      source: 'side_query',
+      // Scoped ANTHROPIC_* credentials (fast slot with an anthropic-api
+      // connection). Absent env (e.g. anthropic-oauth profile) shares the
+      // main session's Anthropic credentials by design.
+      envOverride: opts.providerRuntimeConfig?.env,
+    }),
+    requestSignal,
+    `Side query ${provider} client initialization`,
+  )
   // Known dark corner: getModelBetas reads main-session globals
   // (getAPIProvider/isClaudeAISubscriber) — a scoped anthropic-api runtime
   // under a subscriber main session still carries the oauth beta header.
@@ -336,22 +348,30 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
 
   let response: BetaMessage
   try {
-    response = await client.beta.messages.create(
+    response = await createRetriedSideQueryStream(
+      innerSignal =>
+        client.beta.messages.create(
+          {
+            model: normalizedModel,
+            max_tokens,
+            system: systemBlocks,
+            messages,
+            ...(tools && { tools }),
+            ...(tool_choice && { tool_choice }),
+            ...(output_format && { output_config: { format: output_format } }),
+            ...(temperature !== undefined && { temperature }),
+            ...(stop_sequences && { stop_sequences }),
+            ...(thinkingConfig && { thinking: thinkingConfig }),
+            ...(betas.length > 0 && { betas }),
+            metadata: getAPIMetadata(),
+          },
+          { signal: innerSignal },
+        ),
       {
-        model: normalizedModel,
-        max_tokens,
-        system: systemBlocks,
-        messages,
-        ...(tools && { tools }),
-        ...(tool_choice && { tool_choice }),
-        ...(output_format && { output_config: { format: output_format } }),
-        ...(temperature !== undefined && { temperature }),
-        ...(stop_sequences && { stop_sequences }),
-        ...(thinkingConfig && { thinking: thinkingConfig }),
-        ...(betas.length > 0 && { betas }),
-        metadata: getAPIMetadata(),
+        signal: requestSignal,
+        provider,
+        maxRetries,
       },
-      { signal },
     )
   } catch (error) {
     endTrace(
@@ -467,9 +487,11 @@ function updateSideQueryUsage(
   }
 }
 
-async function collectAnthropicStreamToBetaMessage(
+export async function collectAnthropicStreamToBetaMessage(
   stream: AsyncIterable<BetaRawMessageStreamEvent>,
   fallbackModel: string,
+  signal: AbortSignal,
+  guardOptions?: ProviderStreamGuardOptions,
 ): Promise<BetaMessage> {
   const contentBlocks: Record<number, SideQueryContentBlock> = {}
   let partialMessage: BetaMessage | null = null
@@ -482,7 +504,10 @@ async function collectAnthropicStreamToBetaMessage(
     cache_read_input_tokens: 0,
   }
 
-  for await (const event of stream) {
+  for await (const event of guardProviderStreamCancellation(stream, signal, {
+    operation: 'Side query provider stream',
+    ...guardOptions,
+  })) {
     switch (event.type) {
       case 'message_start': {
         partialMessage = event.message as BetaMessage
@@ -573,10 +598,10 @@ async function collectAnthropicStreamToBetaMessage(
 }
 
 /**
- * Run a lazy compatible-provider stream factory inside the shared retry
+ * Run a side-query request/stream factory inside the shared abort-aware retry
  * policy and discard retry-progress transcript messages. sideQuery callers
- * only consume the final BetaMessage, so progress remains debug/telemetry
- * state rather than leaking into the caller's conversation.
+ * only consume the final result, so progress remains debug/telemetry state
+ * rather than leaking into the caller's conversation.
  */
 async function createRetriedSideQueryStream<T>(
   createStream: (signal: AbortSignal) => Promise<T>,
@@ -721,9 +746,13 @@ async function sideQueryViaCursor(
           : runtime?.thinkingEffort
   const reasoningEffort =
     thinking === false ? null : resolveReasoningEffort(scopedEnv, effort)
-  const credentials = await resolveCursorCredentials({
-    envOverride: runtime?.env,
-  })
+  const credentials = await waitForProviderAbortSettlement(
+    resolveCursorCredentials({
+      envOverride: runtime?.env,
+    }),
+    signal,
+    'Side query Cursor credential resolution',
+  )
   const start = Date.now()
   const adaptedStream = await createRetriedSideQueryStream(
     async innerSignal => {
@@ -749,6 +778,7 @@ async function sideQueryViaCursor(
   const collectedResponse = await collectAnthropicStreamToBetaMessage(
     adaptedStream,
     cursorModel,
+    signal,
   )
   const response = forcedToolName
     ? synthesizeCursorForcedToolUse(collectedResponse, forcedToolName)
@@ -916,6 +946,7 @@ async function sideQueryViaOpenAICompatible(
     const response = await collectAnthropicStreamToBetaMessage(
       adaptedStream,
       openaiModel,
+      requestSignal,
     )
 
     const now = Date.now()
@@ -956,16 +987,26 @@ async function sideQueryViaOpenAICompatible(
   const client =
     provider === 'grok'
       ? getGrokClient({
-          maxRetries: opts.maxRetries ?? 2,
+          // SDK retry sleeps ignore AbortSignal; retry outside the SDK.
+          maxRetries: 0,
           envOverride: runtime?.env,
         })
       : getOpenAIClient({
-          maxRetries: opts.maxRetries ?? 2,
+          maxRetries: 0,
           envOverride: runtime?.env,
         })
-  const response = await client.chat.completions.create(
-    requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
-    { signal },
+  const requestSignal = signal ?? new AbortController().signal
+  const response = await createRetriedSideQueryStream(
+    innerSignal =>
+      client.chat.completions.create(
+        requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
+        { signal: innerSignal },
+      ),
+    {
+      signal: requestSignal,
+      provider,
+      maxRetries: opts.maxRetries ?? 2,
+    },
   )
 
   const choice = response.choices[0]
@@ -1139,25 +1180,7 @@ async function sideQueryViaGemini(
 
   const start = Date.now()
 
-  const res = await fetch(url, {
-    ...getProxyFetchOptions({ forAnthropicAPI: false }),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': scopedEnv.GEMINI_API_KEY || '',
-    },
-    body: JSON.stringify(body),
-    signal,
-  })
-
-  if (!res.ok) {
-    const errorBody = await res.text().catch(() => '')
-    throw new Error(
-      `Gemini API request failed (${res.status} ${res.statusText}): ${errorBody || 'empty response body'}`,
-    )
-  }
-
-  const geminiResponse = (await res.json()) as {
+  type GeminiSideQueryResponse = {
     candidates?: Array<{
       content?: {
         role?: string
@@ -1175,6 +1198,35 @@ async function sideQueryViaGemini(
     }
     id?: string
   }
+  const requestSignal = signal ?? new AbortController().signal
+  const geminiResponse = await createRetriedSideQueryStream(
+    async innerSignal => {
+      const res = await fetch(url, {
+        ...getProxyFetchOptions({ forAnthropicAPI: false }),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': scopedEnv.GEMINI_API_KEY || '',
+        },
+        body: JSON.stringify(body),
+        signal: innerSignal,
+      })
+
+      if (!res.ok) {
+        const errorBody = await res.text().catch(() => '')
+        throw new Error(
+          `Gemini API request failed (${res.status} ${res.statusText}): ${errorBody || 'empty response body'}`,
+        )
+      }
+
+      return (await res.json()) as GeminiSideQueryResponse
+    },
+    {
+      signal: requestSignal,
+      provider: 'gemini',
+      maxRetries: opts.maxRetries ?? 2,
+    },
+  )
 
   // Build content blocks from Gemini response
   const contentBlocks: Array<

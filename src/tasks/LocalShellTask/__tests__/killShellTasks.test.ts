@@ -10,6 +10,8 @@ mock.module('src/utils/task/diskOutput.ts', () => ({
 
 import type { AppState } from '../../../state/AppState'
 import type { AgentId } from '../../../types/ids'
+import { ShellResultSettlementError } from '../../../utils/ShellCommand'
+import { StopConfirmationError } from '../../../utils/stopConfirmation'
 import { killShellTasksForAgent, killTask } from '../killShellTasks'
 
 function deferred<T>(): {
@@ -24,20 +26,31 @@ function deferred<T>(): {
 }
 
 function makeState(
-  killResult: Promise<boolean>,
-  options: { shellCommand?: 'present' | 'missing'; agentId?: AgentId } = {},
+  killResult: Promise<boolean> | (() => Promise<boolean>),
+  options: {
+    shellCommand?: 'present' | 'missing'
+    agentId?: AgentId
+    terminationConfirmed?: boolean
+    resultSettled?: boolean
+  } = {},
 ): {
   getState: () => AppState
   setAppState: (updater: (state: AppState) => AppState) => void
   cleanup: ReturnType<typeof mock>
+  kill: ReturnType<typeof mock>
 } {
   const cleanup = mock(() => {})
+  const kill = mock(
+    typeof killResult === 'function' ? killResult : () => killResult,
+  )
   const shellCommand =
     options.shellCommand === 'missing'
       ? null
       : {
-          kill: mock(() => killResult),
+          kill,
           cleanup,
+          terminationConfirmed: options.terminationConfirmed ?? false,
+          resultSettled: options.resultSettled ?? false,
         }
   let state = {
     tasks: {
@@ -61,6 +74,7 @@ function makeState(
       state = updater(state)
     },
     cleanup,
+    kill,
   }
 }
 
@@ -88,6 +102,60 @@ describe('killTask', () => {
     )
     expect(getState().tasks.shell?.status).toBe('running')
     expect(cleanup).not.toHaveBeenCalled()
+  })
+
+  test('bounds a kill implementation that never settles', async () => {
+    const { getState, setAppState, cleanup } = makeState(
+      new Promise<boolean>(() => {}),
+    )
+
+    await expect(
+      killTask('shell', setAppState, {
+        timeoutMs: 10,
+        abortGraceMs: 5,
+      }),
+    ).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(getState().tasks.shell?.status).toBe('running')
+    expect(cleanup).not.toHaveBeenCalled()
+  })
+
+  test('retains the process handle so a later Stop can retry', async () => {
+    let attempts = 0
+    const { getState, setAppState, cleanup, kill } = makeState(async () => {
+      attempts += 1
+      return attempts > 1
+    })
+
+    await expect(killTask('shell', setAppState)).rejects.toThrow(
+      'could not be confirmed',
+    )
+    expect(getState().tasks.shell?.status).toBe('running')
+
+    await killTask('shell', setAppState)
+    expect(kill).toHaveBeenCalledTimes(2)
+    expect(getState().tasks.shell?.status).toBe('killed')
+    expect(cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  test('publishes failed when termination succeeded but result collection stalled', async () => {
+    const failure = new ShellResultSettlementError(
+      'result collection stalled',
+      new Error('stalled'),
+    )
+    const { getState, setAppState, cleanup } = makeState(
+      async () => {
+        throw failure
+      },
+      { terminationConfirmed: true },
+    )
+
+    await killTask('shell', setAppState)
+
+    expect(getState().tasks.shell?.status).toBe('failed')
+    expect(
+      (getState().tasks.shell as { shellCommand?: unknown }).shellCommand,
+    ).toBeNull()
+    expect(cleanup).toHaveBeenCalledTimes(1)
   })
 
   test('rejects a matched running task that has no process handle', async () => {

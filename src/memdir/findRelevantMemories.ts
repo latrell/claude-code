@@ -4,6 +4,7 @@ import { errorMessage } from '../utils/errors.js'
 import { getSonnetModelAndRuntime } from '../utils/model/sonnetProvider.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { sideQuery } from '../utils/sideQuery.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 import type { LangfuseSpan } from '../services/langfuse/index.js'
 import {
   formatMemoryManifest,
@@ -124,6 +125,7 @@ async function selectRelevantMemories(
       ? selectedMemoriesFromJsonTextResult(result.content, validFilenames)
       : selectedMemoriesFromToolResult(result.content, validFilenames)
   } catch (e) {
+    if (e instanceof StopConfirmationError) throw e
     if (signal.aborted) {
       return []
     }

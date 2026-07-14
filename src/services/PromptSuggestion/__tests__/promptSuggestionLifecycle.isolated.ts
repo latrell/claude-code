@@ -15,6 +15,7 @@ mock.module('bun:bundle', () => ({
 type DeferredRequest = {
   controller: AbortController
   resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
 }
 
 const requests: DeferredRequest[] = []
@@ -35,10 +36,11 @@ mock.module('src/utils/forkedAgent.ts', () => ({
   runForkedAgent: (options: {
     overrides: { abortController: AbortController }
   }) =>
-    new Promise(resolve => {
+    new Promise((resolve, reject) => {
       requests.push({
         controller: options.overrides.abortController,
         resolve,
+        reject,
       })
     }),
 }))
@@ -65,8 +67,12 @@ mock.module('src/services/PromptSuggestion/speculation.ts', () => ({
 const {
   abortPromptSuggestion,
   cancelPromptSuggestionForParent,
+  drainPromptSuggestionForParent,
   executePromptSuggestion,
 } = await import('../promptSuggestion.js')
+const { StopConfirmationError } = await import(
+  '../../../utils/stopConfirmation.js'
+)
 
 function modelResult(suggestion: string): unknown {
   return {
@@ -157,6 +163,27 @@ afterEach(async () => {
 })
 
 describe('prompt suggestion lifecycle', () => {
+  test('normal parent drain waits without cancelling the suggestion', async () => {
+    const parent = new AbortController()
+    const { context, suggestions } = createContext(parent)
+    const execution = executePromptSuggestion(context)
+    await waitForRequestCount(1)
+
+    let drained = false
+    const drain = drainPromptSuggestionForParent(parent).then(() => {
+      drained = true
+    })
+    await Promise.resolve()
+
+    expect(requests[0]!.controller.signal.aborted).toBe(false)
+    expect(drained).toBe(false)
+
+    requests[0]!.resolve(modelResult('run the tests'))
+    await Promise.all([execution, drain])
+    expect(drained).toBe(true)
+    expect(suggestions).toEqual(['run the tests'])
+  })
+
   test('links the request to its turn and drains before cancellation resolves', async () => {
     const parent = new AbortController()
     const { context, suggestions } = createContext(parent)
@@ -229,5 +256,38 @@ describe('prompt suggestion lifecycle', () => {
     speculationRequests[0]!.resolve()
     await Promise.all([execution, cancellation])
     expect(drained).toBe(true)
+  })
+
+  test('does not start a replacement after the previous Stop was unconfirmed', async () => {
+    const first = createContext(new AbortController())
+    const second = createContext(new AbortController())
+    const third = createContext(new AbortController())
+    const firstError = executePromptSuggestion(first.context).catch(
+      error => error,
+    )
+    await waitForRequestCount(1)
+    const secondError = executePromptSuggestion(second.context).catch(
+      error => error,
+    )
+    const cancellationError = cancelPromptSuggestionForParent(
+      first.context.toolUseContext.abortController,
+    ).catch(error => error)
+
+    const stopError = new StopConfirmationError(
+      'previous suggestion remained active',
+    )
+    requests[0]!.reject(stopError)
+
+    expect(await firstError).toBe(stopError)
+    expect(await secondError).toBe(stopError)
+    expect(await cancellationError).toBe(stopError)
+    expect(requests).toHaveLength(1)
+    expect(second.suggestions).toEqual([])
+
+    await expect(
+      executePromptSuggestion(third.context),
+    ).resolves.toBeUndefined()
+    expect(requests).toHaveLength(1)
+    expect(third.suggestions).toEqual([])
   })
 })

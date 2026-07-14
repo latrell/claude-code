@@ -324,7 +324,13 @@ export async function runBridgeLoop(
   const pendingCleanups = new Set<Promise<unknown>>()
   function trackCleanup(p: Promise<unknown>): void {
     pendingCleanups.add(p)
-    void p.finally(() => pendingCleanups.delete(p))
+    const release = (): void => {
+      pendingCleanups.delete(p)
+    }
+    // Do not use an ignored finally() here: the promise returned by finally
+    // rejects again when cleanup fails, creating a second unhandled rejection
+    // even though shutdown owns and observes the original promise.
+    void p.then(release, release)
   }
   let connBackoff = 0
   let generalBackoff = 0

@@ -24,11 +24,13 @@ import type {
   TeammateIdentity,
 } from '../../tasks/InProcessTeammateTask/types.js'
 import { createAbortController } from '../abortController.js'
+import { waitForBoundedSettlement } from '../abortSettlement.js'
 import { markAutonomyRunFailed } from '../autonomyRuns.js'
 import { formatAgentId } from '../agentId.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import { evictTaskOutput } from '../task/diskOutput.js'
 import {
   evictTerminalTask,
@@ -47,6 +49,9 @@ import {
   waitForInProcessTeammateRunner,
 } from './inProcessLifecycle.js'
 import { removeMemberByAgentId } from './teamHelpers.js'
+
+const IN_PROCESS_FINALIZATION_TIMEOUT_MS = 10_000
+const IN_PROCESS_FINALIZATION_ABORT_GRACE_MS = 2_000
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
 
@@ -189,7 +194,11 @@ export async function spawnInProcessTeammate(
     // Register cleanup handler for graceful shutdown
     const unregisterCleanup = registerCleanup(async () => {
       logForDebugging(`[spawnInProcessTeammate] Cleanup called for ${agentId}`)
-      await killInProcessTeammate(taskId, setAppState)
+      if (!(await killInProcessTeammate(taskId, setAppState))) {
+        throw new StopConfirmationError(
+          `In-process teammate ${taskId} did not confirm runner termination during cleanup`,
+        )
+      }
     })
     taskState.unregisterCleanup = unregisterCleanup
 
@@ -239,6 +248,85 @@ export async function spawnInProcessTeammate(
  * @param setAppState - AppState setter
  * @returns true only after the runner has exited and the task is marked killed
  */
+function failSettledUnconfirmedInProcessTeammate(
+  taskId: string,
+  setAppState: SetAppStateFn,
+  error: StopConfirmationError,
+): void {
+  let unregisterCleanup: (() => void) | undefined
+  let idleCallbacks: Array<() => void> = []
+  let toolUseId: string | undefined
+  let description: string | undefined
+  let agentId: string | undefined
+  let published = false
+
+  setAppState(prev => {
+    const task = prev.tasks[taskId]
+    if (
+      !task ||
+      task.type !== 'in_process_teammate' ||
+      task.status !== 'running'
+    ) {
+      return prev
+    }
+
+    published = true
+    unregisterCleanup = task.unregisterCleanup
+    idleCallbacks = task.onIdleCallbacks ?? []
+    toolUseId = task.toolUseId
+    description = task.description
+    agentId = task.identity.agentId
+    return {
+      ...prev,
+      tasks: {
+        ...prev.tasks,
+        [taskId]: {
+          ...task,
+          status: 'failed' as const,
+          notified: true,
+          error: error.message,
+          isIdle: true,
+          endTime: Date.now(),
+          onIdleCallbacks: [],
+          messages: task.messages?.length
+            ? [task.messages[task.messages.length - 1]!]
+            : undefined,
+          pendingUserMessages: [],
+          inProgressToolUseIDs: undefined,
+          abortController: undefined,
+          unregisterCleanup: undefined,
+          currentWorkAbortController: undefined,
+          stopRequested: undefined,
+        },
+      },
+    }
+  })
+
+  if (!published) return
+  try {
+    unregisterCleanup?.()
+  } catch (cleanupError) {
+    logForDebugging(
+      `[killInProcessTeammate] Failed to unregister unconfirmed runner ${taskId}: ${String(cleanupError)}`,
+    )
+  }
+  for (const callback of idleCallbacks) {
+    try {
+      callback()
+    } catch (callbackError) {
+      logForDebugging(
+        `[killInProcessTeammate] Failed to notify an idle waiter for unconfirmed runner ${taskId}: ${String(callbackError)}`,
+      )
+    }
+  }
+  emitTaskTerminatedSdk(taskId, 'failed', {
+    toolUseId,
+    summary: description,
+  })
+  if (agentId) unregisterPerfettoAgent(agentId)
+  void evictTaskOutput(taskId)
+}
+
 export async function killInProcessTeammate(
   taskId: string,
   setAppState: SetAppStateFn,
@@ -284,7 +372,15 @@ export async function killInProcessTeammate(
   // Do not advertise a terminal state while runAgent/compaction may still be
   // unwinding. This settlement represents the complete runner, not merely UI
   // stream consumption.
-  const runnerSettled = await waitForInProcessTeammateRunner(taskId)
+  let runnerSettled: boolean
+  try {
+    runnerSettled = await waitForInProcessTeammateRunner(taskId)
+  } catch (error) {
+    if (error instanceof StopConfirmationError) {
+      failSettledUnconfirmedInProcessTeammate(taskId, setAppState, error)
+    }
+    throw error
+  }
   if (!runnerSettled) {
     // An aborted controller is only cancellation intent. Without a runner
     // reservation/settlement there is no proof execution stopped, so keep the
@@ -322,6 +418,7 @@ export async function finalizeKilledInProcessTeammate(
   let agentId: string | null = null
   let toolUseId: string | undefined
   let description: string | undefined
+  let abortSignal: AbortSignal | undefined
   let unregisterCleanup: (() => void) | undefined
   let idleCallbacks: Array<() => void> = []
   let pendingAutonomyRuns: Array<{ runId: string; rootDir?: string }> = []
@@ -346,6 +443,7 @@ export async function finalizeKilledInProcessTeammate(
     agentId = teammateTask.identity.agentId
     toolUseId = teammateTask.toolUseId
     description = teammateTask.description
+    abortSignal = teammateTask.abortController.signal
     unregisterCleanup = teammateTask.unregisterCleanup
     idleCallbacks = teammateTask.onIdleCallbacks ?? []
 
@@ -406,35 +504,70 @@ export async function finalizeKilledInProcessTeammate(
     return false
   }
 
-  unregisterCleanup?.()
-  idleCallbacks.forEach(callback => callback())
+  try {
+    unregisterCleanup?.()
+  } catch (error) {
+    logForDebugging(
+      `[killInProcessTeammate] Failed to unregister cleanup for ${taskId}: ${String(error)}`,
+    )
+  }
+  for (const callback of idleCallbacks) {
+    try {
+      callback()
+    } catch (error) {
+      logForDebugging(
+        `[killInProcessTeammate] Failed to notify an idle waiter for ${taskId}: ${String(error)}`,
+      )
+    }
+  }
 
   // Remove from team file (outside state updater to avoid file I/O in callback)
   if (teamName && agentId) {
-    removeMemberByAgentId(teamName, agentId)
+    try {
+      removeMemberByAgentId(teamName, agentId)
+    } catch (error) {
+      logForDebugging(
+        `[killInProcessTeammate] Failed to remove ${agentId} from team ${teamName}: ${String(error)}`,
+      )
+    }
   }
 
-  const autonomyResults = await Promise.allSettled(
-    pendingAutonomyRuns.map(run =>
-      markAutonomyRunFailed(
+  const finalizationWork = [
+    ...pendingAutonomyRuns.map(run => ({
+      label: `queued autonomy run ${run.runId}`,
+      work: markAutonomyRunFailed(
         run.runId,
         `Teammate ${agentId ?? taskId} was stopped before it could consume the queued autonomy prompt.`,
         run.rootDir,
       ),
-    ),
-  )
-  for (const result of autonomyResults) {
-    if (result.status === 'rejected') {
-      logForDebugging(
-        `[killInProcessTeammate] Failed to finalize queued autonomy run for ${taskId}: ${String(result.reason)}`,
-      )
-    }
-  }
+    })),
+    {
+      label: 'task output eviction',
+      work: evictTaskOutput(taskId),
+    },
+  ]
+
   try {
-    await evictTaskOutput(taskId)
+    const results = await waitForBoundedSettlement(
+      Promise.allSettled(finalizationWork.map(item => item.work)),
+      {
+        signal: abortSignal,
+        timeoutMs: IN_PROCESS_FINALIZATION_TIMEOUT_MS,
+        abortGraceMs: IN_PROCESS_FINALIZATION_ABORT_GRACE_MS,
+        operation: `In-process teammate ${taskId} finalization`,
+      },
+    )
+    for (let index = 0; index < results.length; index++) {
+      const result = results[index]!
+      if (result.status === 'rejected') {
+        logForDebugging(
+          `[killInProcessTeammate] Failed to finalize ${finalizationWork[index]!.label} for ${taskId}: ${String(result.reason)}`,
+        )
+      }
+    }
   } catch (error) {
     logForDebugging(
-      `[killInProcessTeammate] Failed to flush task output for ${taskId}: ${String(error)}`,
+      `[killInProcessTeammate] Finalization did not settle for ${taskId}: ${String(error)}`,
     )
   }
   // notified:true was pre-set so no XML notification fires; close the SDK

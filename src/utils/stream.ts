@@ -7,8 +7,9 @@ export class Stream<T> implements AsyncIterator<T> {
   private isDone: boolean = false
   private hasError: unknown | undefined
   private started = false
+  private returnPromise?: Promise<IteratorResult<T, unknown>>
 
-  constructor(private readonly returned?: () => void) {}
+  constructor(private readonly returned?: () => void | Promise<void>) {}
 
   [Symbol.asyncIterator](): AsyncIterableIterator<T> {
     if (this.started) {
@@ -75,6 +76,11 @@ export class Stream<T> implements AsyncIterator<T> {
   }
 
   return(): Promise<IteratorResult<T, unknown>> {
+    // A second Stop while the first cancellation is still unwinding must wait
+    // for the same producer settlement. `isDone` is set before the async
+    // returned callback settles, so checking it first would falsely confirm
+    // termination on repeated iterator.return() calls.
+    if (this.returnPromise) return this.returnPromise
     if (this.isDone) {
       return Promise.resolve({ done: true, value: undefined })
     }
@@ -86,9 +92,25 @@ export class Stream<T> implements AsyncIterator<T> {
       this.readReject = undefined
       resolve({ done: true, value: undefined })
     }
-    if (this.returned && !this.hasError) {
-      this.returned()
+    if (!this.returned || this.hasError) {
+      return Promise.resolve({ done: true, value: undefined })
     }
-    return Promise.resolve({ done: true, value: undefined })
+
+    // A producer's cancellation dispatcher may need to wait for the exact
+    // underlying operation (HTTP request, tool call, subprocess) to settle.
+    // Do not acknowledge iterator.return() merely because cancellation was
+    // sent; doing so would let outer executors report Stop while work remains.
+    try {
+      this.returnPromise = Promise.resolve(this.returned()).then(() => ({
+        done: true as const,
+        value: undefined,
+      }))
+      return this.returnPromise
+    } catch (error) {
+      this.returnPromise = Promise.reject(error)
+      // The caller receives this exact rejection. Keep the cached promise so
+      // later return() calls cannot bypass the failed settlement attempt.
+      return this.returnPromise
+    }
   }
 }

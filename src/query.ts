@@ -49,8 +49,23 @@ import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
+import {
+  guardAsyncIterableCancellation,
+  guardProviderStreamCancellation,
+} from './services/api/providerCancellation.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
 import { isAbortError } from './utils/errors.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from './utils/abortSettlement.js'
+import { createChildAbortController } from './utils/abortController.js'
+import { StopConfirmationError } from './utils/stopConfirmation.js'
+import { registerDetachedAuxiliaryWork } from './utils/detachedAuxiliaryWork.js'
+import {
+  type SettledPromise,
+  trackPromiseSettlement,
+} from './utils/settledPromise.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -117,7 +132,10 @@ import { runTools } from './services/tools/toolOrchestration.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
-import { cancelPromptSuggestionForParent } from './services/PromptSuggestion/promptSuggestion.js'
+import {
+  cancelPromptSuggestionForParent,
+  drainPromptSuggestionForParent,
+} from './services/PromptSuggestion/promptSuggestion.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
@@ -199,6 +217,282 @@ function* yieldMissingToolResultBlocks(
  * rules, ye will be punished with an entire day of debugging and hair pulling.
  */
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
+const QUERY_OWNED_SETTLEMENT_TIMEOUT_MS = 30_000
+const QUERY_ABORT_SETTLEMENT_GRACE_MS = 2_000
+const AUTONOMY_FINALIZATION_TIMEOUT_MS = 10_000
+const AUTONOMY_ABORT_SETTLEMENT_GRACE_MS = 2_000
+
+type QueryOwnedSettlementOptions = {
+  signal: AbortSignal
+  finishPostSamplingHooks: () => Promise<void>
+  abortPostSamplingHooks: (reason: unknown) => void | Promise<void>
+  settlePromptSuggestion?: () => Promise<void>
+  abortPromptSuggestion?: (reason: unknown) => void | Promise<void>
+  settleExtractMemories?: () => Promise<void>
+  abortExtractMemories?: (reason: unknown) => void | Promise<void>
+  thrownError?: unknown
+  includeThrownError?: boolean
+  timeoutMs?: number
+  abortGraceMs?: number
+}
+
+type QueryOwnedDetachmentOptions = Pick<
+  QueryOwnedSettlementOptions,
+  | 'finishPostSamplingHooks'
+  | 'abortPostSamplingHooks'
+  | 'settlePromptSuggestion'
+  | 'abortPromptSuggestion'
+  | 'settleExtractMemories'
+  | 'abortExtractMemories'
+  | 'abortGraceMs'
+>
+
+function startCleanupPromise(start: () => Promise<void>): Promise<void> {
+  try {
+    return Promise.resolve(start())
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+function dispatchOwnedCancellation(start: () => void | Promise<void>): void {
+  try {
+    void Promise.resolve(start()).catch(error => {
+      // The exact drain promise remains the termination evidence. This catch
+      // only prevents a distinct cancellation wrapper from going unhandled.
+      if (!(error instanceof StopConfirmationError)) logError(error)
+    })
+  } catch (error) {
+    logError(error)
+  }
+}
+
+function throwQueryOwnedFailures(
+  operation: string,
+  results: readonly PromiseSettledResult<void>[],
+): void {
+  const failures = [
+    ...new Set(
+      results.flatMap(result =>
+        result.status === 'rejected' ? [result.reason] : [],
+      ),
+    ),
+  ]
+  if (failures.length === 0) return
+  const stopFailures = failures.filter(
+    failure => failure instanceof StopConfirmationError,
+  )
+  if (stopFailures.length > 0) {
+    if (failures.length === 1) throw stopFailures[0]
+    throw new StopConfirmationError(operation, failures)
+  }
+  // These requests are settled, so an ordinary operational error must be
+  // reported without falsely claiming that remote work is still alive.
+  throw failures[0]
+}
+
+/**
+ * Normal completion starts all turn-owned drains but transfers their lifetime
+ * to the detached auxiliary owner. The foreground query can become idle
+ * immediately; Esc still has a separate cancellation/confirmation route.
+ */
+export function detachQueryOwnedRequests({
+  finishPostSamplingHooks,
+  abortPostSamplingHooks,
+  settlePromptSuggestion,
+  abortPromptSuggestion,
+  settleExtractMemories,
+  abortExtractMemories,
+  abortGraceMs = QUERY_ABORT_SETTLEMENT_GRACE_MS,
+}: QueryOwnedDetachmentOptions): void {
+  const settlements = [
+    startCleanupPromise(finishPostSamplingHooks),
+    ...(settlePromptSuggestion
+      ? [startCleanupPromise(settlePromptSuggestion)]
+      : []),
+    ...(settleExtractMemories
+      ? [startCleanupPromise(settleExtractMemories)]
+      : []),
+  ]
+  const settlement = Promise.allSettled(settlements).then(results => {
+    throwQueryOwnedFailures(
+      'Query auxiliary work did not settle cleanly',
+      results,
+    )
+  })
+
+  registerDetachedAuxiliaryWork({
+    operation: 'query auxiliary work',
+    settlement,
+    abortGraceMs,
+    onError: error => logError(error),
+    cancel: reason => {
+      const cancellations = [
+        startCleanupPromise(() =>
+          Promise.resolve(abortPostSamplingHooks(reason)),
+        ),
+        ...(abortPromptSuggestion
+          ? [
+              startCleanupPromise(() =>
+                Promise.resolve(abortPromptSuggestion(reason)),
+              ),
+            ]
+          : []),
+        ...(abortExtractMemories
+          ? [
+              startCleanupPromise(() =>
+                Promise.resolve(abortExtractMemories(reason)),
+              ),
+            ]
+          : []),
+      ]
+      return Promise.allSettled(cancellations).then(results => {
+        throwQueryOwnedFailures(
+          'Query auxiliary cancellation dispatch failed',
+          results,
+        )
+      })
+    },
+  })
+}
+
+async function cancelExtractMemoriesOwnedByQuery(
+  parentAbortController: AbortController,
+  reason: unknown,
+): Promise<void> {
+  if (feature('EXTRACT_MEMORIES')) {
+    const { cancelExtractMemoriesForParent } = await import(
+      './services/extractMemories/extractMemories.js'
+    )
+    await cancelExtractMemoriesForParent(parentAbortController, reason)
+  }
+}
+
+async function drainExtractMemoriesOwnedByQuery(
+  parentAbortController: AbortController,
+): Promise<void> {
+  if (feature('EXTRACT_MEMORIES')) {
+    const { drainExtractMemoriesForParent } = await import(
+      './services/extractMemories/extractMemories.js'
+    )
+    await drainExtractMemoriesForParent(parentAbortController)
+  }
+}
+
+async function executeOwnedStopFailureHooks(
+  lastMessage: AssistantMessage,
+  toolUseContext: ToolUseContext,
+): Promise<void> {
+  const hookAbortController = createChildAbortController(
+    toolUseContext.abortController,
+  )
+  const hookToolUseContext: ToolUseContext = {
+    ...toolUseContext,
+    abortController: hookAbortController,
+  }
+  try {
+    await waitForBoundedSettlement(
+      executeStopFailureHooks(lastMessage, hookToolUseContext),
+      {
+        signal: toolUseContext.abortController.signal,
+        timeoutMs: QUERY_OWNED_SETTLEMENT_TIMEOUT_MS,
+        abortGraceMs: QUERY_ABORT_SETTLEMENT_GRACE_MS,
+        operation: 'StopFailure hooks',
+        onAbort: reason => hookAbortController.abort(reason),
+      },
+    )
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
+    if (error instanceof AbortSettlementTimeoutError) {
+      throw new StopConfirmationError(
+        'StopFailure hooks did not confirm termination',
+        [error],
+      )
+    }
+    throw error
+  } finally {
+    if (!hookAbortController.signal.aborted) {
+      hookAbortController.abort('StopFailure hooks settled')
+    }
+  }
+}
+
+/**
+ * Start all turn-owned request drains before awaiting either one. A timeout is
+ * a failed Stop confirmation, not permission to leave the query lifecycle
+ * blocked forever. The returned error is thrown only after best-effort cleanup
+ * (autonomy bookkeeping, tracing, and performance buffers) has also run.
+ */
+export async function settleQueryOwnedRequests({
+  signal,
+  finishPostSamplingHooks,
+  abortPostSamplingHooks,
+  settlePromptSuggestion,
+  abortPromptSuggestion,
+  settleExtractMemories,
+  abortExtractMemories,
+  thrownError,
+  includeThrownError = false,
+  timeoutMs = QUERY_OWNED_SETTLEMENT_TIMEOUT_MS,
+  abortGraceMs = QUERY_ABORT_SETTLEMENT_GRACE_MS,
+}: QueryOwnedSettlementOptions): Promise<StopConfirmationError | undefined> {
+  const postSamplingPromise = startCleanupPromise(finishPostSamplingHooks)
+  const promptSuggestionPromise = settlePromptSuggestion
+    ? startCleanupPromise(settlePromptSuggestion)
+    : undefined
+  const extractMemoriesPromise = settleExtractMemories
+    ? startCleanupPromise(settleExtractMemories)
+    : undefined
+
+  const settlements = [
+    waitForBoundedSettlement(postSamplingPromise, {
+      signal,
+      timeoutMs,
+      abortGraceMs,
+      operation: 'post-sampling hooks',
+      onAbort: reason => {
+        dispatchOwnedCancellation(() => abortPostSamplingHooks(reason))
+      },
+    }),
+    ...(promptSuggestionPromise
+      ? [
+          waitForBoundedSettlement(promptSuggestionPromise, {
+            signal,
+            timeoutMs,
+            abortGraceMs,
+            operation: 'prompt suggestion settlement',
+            onAbort: reason =>
+              dispatchOwnedCancellation(() => abortPromptSuggestion?.(reason)),
+          }),
+        ]
+      : []),
+    ...(extractMemoriesPromise
+      ? [
+          waitForBoundedSettlement(extractMemoriesPromise, {
+            signal,
+            timeoutMs,
+            abortGraceMs,
+            operation: 'memory extraction settlement',
+            onAbort: reason =>
+              dispatchOwnedCancellation(() => abortExtractMemories?.(reason)),
+          }),
+        ]
+      : []),
+  ]
+  const results = await Promise.allSettled(settlements)
+  const settlementFailures = results.flatMap(result =>
+    result.status === 'rejected' ? [result.reason] : [],
+  )
+  if (settlementFailures.length === 0) return undefined
+
+  const failures = includeThrownError
+    ? [thrownError, ...settlementFailures]
+    : settlementFailures
+  return new StopConfirmationError(
+    `Query cleanup could not confirm ${settlementFailures.length} owned request settlement${settlementFailures.length === 1 ? '' : 's'}`,
+    failures,
+  )
+}
 
 /**
  * Is this a max_output_tokens error message? If so, the streaming loop should
@@ -272,7 +566,9 @@ type State = {
   maxOutputTokensRecoveryCount: number
   hasAttemptedReactiveCompact: boolean
   maxOutputTokensOverride: number | undefined
-  pendingToolUseSummary: Promise<ToolUseSummaryMessage | null> | undefined
+  pendingToolUseSummary:
+    | SettledPromise<ToolUseSummaryMessage | null>
+    | undefined
   stopHookActive: boolean | undefined
   turnCount: number
   // Why the previous iteration continued. Undefined on first iteration.
@@ -329,6 +625,7 @@ export async function* query(
   let terminal: Terminal | undefined
   let didThrow = false
   let thrownError: unknown
+  let stopConfirmationError: StopConfirmationError | undefined
   try {
     terminal = yield* queryLoop(
       paramsWithTrace,
@@ -339,7 +636,6 @@ export async function* query(
   } catch (error) {
     didThrow = true
     thrownError = error
-    throw error
   } finally {
     const isAborted =
       terminal?.reason === 'aborted_streaming' ||
@@ -349,44 +645,113 @@ export async function* query(
       terminal === undefined ||
       isAborted ||
       paramsWithTrace.toolUseContext.abortController.signal.aborted
-    await postSamplingHooks.finish({
-      abort: shouldAbortPostSamplingHooks,
-      reason:
-        paramsWithTrace.toolUseContext.abortController.signal.reason ??
-        (didThrow ? thrownError : 'query-closed'),
-    })
+    const cleanupReason =
+      paramsWithTrace.toolUseContext.abortController.signal.reason ??
+      (didThrow ? thrownError : 'query-closed')
+    const ownedRequestCallbacks: QueryOwnedDetachmentOptions = {
+      finishPostSamplingHooks: () =>
+        postSamplingHooks.finish({
+          abort: shouldAbortPostSamplingHooks,
+          reason: cleanupReason,
+        }),
+      abortPostSamplingHooks: reason =>
+        postSamplingHooks.finish({ abort: true, reason }),
+      settlePromptSuggestion: () =>
+        drainPromptSuggestionForParent(
+          paramsWithTrace.toolUseContext.abortController,
+        ),
+      abortPromptSuggestion: reason =>
+        cancelPromptSuggestionForParent(
+          paramsWithTrace.toolUseContext.abortController,
+          reason,
+        ),
+      settleExtractMemories: () =>
+        drainExtractMemoriesOwnedByQuery(
+          paramsWithTrace.toolUseContext.abortController,
+        ),
+      abortExtractMemories: reason =>
+        cancelExtractMemoriesOwnedByQuery(
+          paramsWithTrace.toolUseContext.abortController,
+          reason,
+        ),
+    }
+    const completedNormally =
+      !didThrow &&
+      terminal?.reason === 'completed' &&
+      !paramsWithTrace.toolUseContext.abortController.signal.aborted
 
-    if (shouldAbortPostSamplingHooks) {
-      await cancelPromptSuggestionForParent(
-        paramsWithTrace.toolUseContext.abortController,
-        paramsWithTrace.toolUseContext.abortController.signal.reason ??
-          (didThrow ? thrownError : 'query-closed'),
-      )
+    if (completedNormally) {
+      // Suggestions, memory extraction, and post-sampling hooks are useful
+      // background work, but they are not part of the foreground completion
+      // gate. Their owner keeps Esc cancellation independently routable.
+      detachQueryOwnedRequests(ownedRequestCallbacks)
+    } else {
+      // Abort, failure, and generator.return() still require synchronous,
+      // bounded settlement before the query lifecycle may close.
+      stopConfirmationError = await settleQueryOwnedRequests({
+        signal: paramsWithTrace.toolUseContext.abortController.signal,
+        ...ownedRequestCallbacks,
+        ...(didThrow ? { thrownError } : {}),
+        includeThrownError: didThrow,
+      })
     }
 
-    await finalizeAutonomyCommandsForTurn({
-      commands: consumedAutonomyCommands,
-      outcome: getAutonomyTurnOutcome({
-        terminal,
-        ...(didThrow ? { thrownError } : {}),
-      }),
-      priority: 'later',
-    })
-      .then(nextCommands => {
-        for (const command of nextCommands) {
-          enqueue(command)
-        }
-      })
-      .catch(logError)
+    try {
+      const nextCommands = await waitForBoundedSettlement(
+        finalizeAutonomyCommandsForTurn({
+          commands: consumedAutonomyCommands,
+          outcome: getAutonomyTurnOutcome({
+            terminal,
+            ...(didThrow ? { thrownError } : {}),
+          }),
+          priority: 'later',
+        }),
+        {
+          signal: paramsWithTrace.toolUseContext.abortController.signal,
+          timeoutMs: AUTONOMY_FINALIZATION_TIMEOUT_MS,
+          abortGraceMs: AUTONOMY_ABORT_SETTLEMENT_GRACE_MS,
+          operation: 'autonomy command finalization',
+        },
+      )
+      for (const command of nextCommands) {
+        enqueue(command)
+      }
+    } catch (error) {
+      if (
+        error instanceof StopConfirmationError ||
+        (paramsWithTrace.toolUseContext.abortController.signal.aborted &&
+          error instanceof AbortSettlementTimeoutError)
+      ) {
+        const failures = stopConfirmationError
+          ? [...stopConfirmationError.failures, error]
+          : [error]
+        stopConfirmationError = new StopConfirmationError(
+          'Query cleanup could not confirm autonomy finalization after cancellation',
+          failures,
+        )
+      } else {
+        logError(error)
+      }
+    }
 
     // Only end the trace if we created it — sub-agents own their traces
     if (ownsTrace) {
-      endTrace(langfuseTrace, undefined, isAborted ? 'interrupted' : undefined)
-      // Flush the processor to release span data (including serialized
-      // conversation history stored as langfuse.observation.input). Without
-      // this, SpanImpl objects retain hundreds of KB of JSON until the
-      // processor's batch timer fires (default 10s).
-      await flushLangfuse()
+      try {
+        endTrace(
+          langfuseTrace,
+          undefined,
+          isAborted ? 'interrupted' : undefined,
+        )
+      } catch (error) {
+        logError(error)
+      }
+      // Telemetry flushing is neither inference nor semantic turn state. It
+      // must never retain the user-visible completion gate.
+      void flushLangfuse().catch(error => {
+        logForDebugging(`[query] Langfuse flush failed: ${String(error)}`, {
+          level: 'warn',
+        })
+      })
     }
 
     // Break the closure chain: toolUseContext captures langfuseTrace which
@@ -412,7 +777,16 @@ export async function* query(
         // Non-critical — some environments may not support all methods
       }
     }
+
+    if (stopConfirmationError) {
+      // biome-ignore lint/correctness/noUnsafeFinally: an unconfirmed Stop must override AbortError and generator.return() so callers cannot report a false killed state.
+      throw stopConfirmationError
+    }
   }
+
+  // Preserve the query's original thrown value exactly (including
+  // `undefined`) after bounded cleanup has completed.
+  if (didThrow) throw thrownError
 
   // Only reached if queryLoop returned normally. Skipped on throw (error
   // propagates through yield*) and on .return() (Return completion closes
@@ -516,16 +890,31 @@ async function* queryLoop(
     // nothing in prod). Turn-0 user-input discovery still blocks in
     // userInputAttachments — that's the one signal where there's no prior
     // work to hide under.
-    const pendingSkillPrefetch = skillPrefetch?.startSkillDiscoveryPrefetch(
-      null,
-      messages,
-      toolUseContext,
-    )
-    const pendingToolPrefetch =
-      searchExtraToolsPrefetch?.startSearchExtraToolsPrefetch(
-        toolUseContext.options.tools ?? [],
-        messages,
-      )
+    const pendingSkillPrefetch = skillPrefetch
+      ? trackPromiseSettlement(
+          skillPrefetch.startSkillDiscoveryPrefetch(
+            null,
+            messages,
+            toolUseContext,
+            postSamplingHooks.signal,
+          ),
+        )
+      : undefined
+    const pendingToolPrefetch = searchExtraToolsPrefetch
+      ? trackPromiseSettlement(
+          searchExtraToolsPrefetch.startSearchExtraToolsPrefetch(
+            toolUseContext.options.tools ?? [],
+            messages,
+            postSamplingHooks.signal,
+          ),
+        )
+      : undefined
+    if (pendingSkillPrefetch) {
+      postSamplingHooks.trackOwnedRequest(pendingSkillPrefetch.promise)
+    }
+    if (pendingToolPrefetch) {
+      postSamplingHooks.trackOwnedRequest(pendingToolPrefetch.promise)
+    }
 
     yield { type: 'stream_request_start' }
 
@@ -945,73 +1334,76 @@ async function* queryLoop(
         try {
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
-          for await (const message of deps.callModel({
-            messages: prependUserContext(messagesForQuery, userContext),
-            systemPrompt: fullSystemPrompt,
-            // A connection profile pinned to 'off' suppresses thinking for
-            // every provider (the Anthropic/Gemini paths key off
-            // thinkingConfig; OpenAI-compat additionally gets
-            // OPENAI_ENABLE_THINKING=0 injected at activation).
-            thinkingConfig:
-              connectionThinkingEffort === 'off'
-                ? { type: 'disabled' as const }
-                : toolUseContext.options.thinkingConfig,
-            tools: toolUseContext.options.tools,
-            signal: toolUseContext.abortController.signal,
-            options: {
-              async getToolPermissionContext() {
-                const appState = toolUseContext.getAppState()
-                return appState.toolPermissionContext
-              },
-              model: currentModel,
-              ...(config.gates.fastModeEnabled && {
-                fastMode: appState.fastMode,
-              }),
-              toolChoice: undefined,
-              isNonInteractiveSession:
-                toolUseContext.options.isNonInteractiveSession,
-              fallbackModel,
-              onStreamingFallback: () => {
-                streamingFallbackOccured = true
-              },
-              querySource,
-              agents: toolUseContext.options.agentDefinitions.activeAgents,
-              allowedAgentTypes:
-                toolUseContext.options.agentDefinitions.allowedAgentTypes,
-              hasAppendSystemPrompt:
-                !!toolUseContext.options.appendSystemPrompt,
-              maxOutputTokensOverride,
-              fetchOverride: dumpPromptsFetch,
-              mcpTools: appState.mcp.tools,
-              hasPendingMcpServers: appState.mcp.clients.some(
-                c => c.type === 'pending',
-              ),
-              queryTracking,
-              // Effort precedence: env CLAUDE_CODE_EFFORT_LEVEL (applied
-              // downstream in resolveAppliedEffort) > user /effort (appState)
-              // > connection profile thinkingEffort (slot-aware, see above)
-              // > model default.
-              effortValue:
-                appState.effortValue ??
-                mapThinkingEffortToEffortValue(connectionThinkingEffort),
-              thinkingEffortTransport: connectionThinkingEffortTransport,
-              advisorModel: appState.advisorModel,
-              skipCacheWrite,
-              agentId: toolUseContext.agentId,
-              addNotification: toolUseContext.addNotification,
-              ...(params.taskBudget && {
-                taskBudget: {
-                  total: params.taskBudget.total,
-                  ...(taskBudgetRemaining !== undefined && {
-                    remaining: taskBudgetRemaining,
-                  }),
+          for await (const message of guardProviderStreamCancellation(
+            deps.callModel({
+              messages: prependUserContext(messagesForQuery, userContext),
+              systemPrompt: fullSystemPrompt,
+              // A connection profile pinned to 'off' suppresses thinking for
+              // every provider (the Anthropic/Gemini paths key off
+              // thinkingConfig; OpenAI-compat additionally gets
+              // OPENAI_ENABLE_THINKING=0 injected at activation).
+              thinkingConfig:
+                connectionThinkingEffort === 'off'
+                  ? { type: 'disabled' as const }
+                  : toolUseContext.options.thinkingConfig,
+              tools: toolUseContext.options.tools,
+              signal: toolUseContext.abortController.signal,
+              options: {
+                async getToolPermissionContext() {
+                  const appState = toolUseContext.getAppState()
+                  return appState.toolPermissionContext
                 },
-              }),
-              langfuseTrace: toolUseContext.langfuseTrace,
-              providerRuntimeConfig:
-                toolUseContext.options.providerRuntimeConfig,
-            },
-          })) {
+                model: currentModel,
+                ...(config.gates.fastModeEnabled && {
+                  fastMode: appState.fastMode,
+                }),
+                toolChoice: undefined,
+                isNonInteractiveSession:
+                  toolUseContext.options.isNonInteractiveSession,
+                fallbackModel,
+                onStreamingFallback: () => {
+                  streamingFallbackOccured = true
+                },
+                querySource,
+                agents: toolUseContext.options.agentDefinitions.activeAgents,
+                allowedAgentTypes:
+                  toolUseContext.options.agentDefinitions.allowedAgentTypes,
+                hasAppendSystemPrompt:
+                  !!toolUseContext.options.appendSystemPrompt,
+                maxOutputTokensOverride,
+                fetchOverride: dumpPromptsFetch,
+                mcpTools: appState.mcp.tools,
+                hasPendingMcpServers: appState.mcp.clients.some(
+                  c => c.type === 'pending',
+                ),
+                queryTracking,
+                // Effort precedence: env CLAUDE_CODE_EFFORT_LEVEL (applied
+                // downstream in resolveAppliedEffort) > user /effort (appState)
+                // > connection profile thinkingEffort (slot-aware, see above)
+                // > model default.
+                effortValue:
+                  appState.effortValue ??
+                  mapThinkingEffortToEffortValue(connectionThinkingEffort),
+                thinkingEffortTransport: connectionThinkingEffortTransport,
+                advisorModel: appState.advisorModel,
+                skipCacheWrite,
+                agentId: toolUseContext.agentId,
+                addNotification: toolUseContext.addNotification,
+                ...(params.taskBudget && {
+                  taskBudget: {
+                    total: params.taskBudget.total,
+                    ...(taskBudgetRemaining !== undefined && {
+                      remaining: taskBudgetRemaining,
+                    }),
+                  },
+                }),
+                langfuseTrace: toolUseContext.langfuseTrace,
+                providerRuntimeConfig:
+                  toolUseContext.options.providerRuntimeConfig,
+              },
+            }),
+            toolUseContext.abortController.signal,
+          )) {
             // We won't use the tool_calls from the first attempt
             // We could.. but then we'd have to merge assistant messages
             // with different ids and double up on full the tool_results
@@ -1037,7 +1429,7 @@ async function* queryLoop(
               // a fresh executor. This prevents orphan tool_results (with old tool_use_ids)
               // from being yielded after the fallback response arrives.
               if (streamingToolExecutor) {
-                streamingToolExecutor.discard()
+                await streamingToolExecutor.discard()
                 streamingToolExecutor = new StreamingToolExecutor(
                   toolUseContext.options.tools,
                   canUseTool,
@@ -1233,7 +1625,7 @@ async function* queryLoop(
             // fresh executor. This prevents orphan tool_results (with old
             // tool_use_ids) from leaking into the retry.
             if (streamingToolExecutor) {
-              streamingToolExecutor.discard()
+              await streamingToolExecutor.discard()
               streamingToolExecutor = new StreamingToolExecutor(
                 toolUseContext.options.tools,
                 canUseTool,
@@ -1276,6 +1668,9 @@ async function* queryLoop(
         }
       }
     } catch (error) {
+      if (error instanceof StopConfirmationError) {
+        throw error
+      }
       // Some transports throw while their AbortSignal is being torn down.
       // Cancellation is control flow, not a model failure: let the unified
       // abort path below synthesize missing tool results and the interruption
@@ -1416,11 +1811,18 @@ async function* queryLoop(
       )
     }
 
-    // Yield tool use summary from previous turn — haiku (~1s) resolved during model streaming (5-30s)
+    // Yield the previous turn's optional tool-use summary only when it already
+    // resolved under model streaming. A slow/hung Haiku request must not retain
+    // the foreground completion gate after the final assistant text is shown;
+    // PostSamplingHookLifecycle still owns its exact promise for cancellation.
     if (pendingToolUseSummary) {
-      const summary = await pendingToolUseSummary
-      if (summary) {
-        yield summary
+      const settlement = pendingToolUseSummary.peek()
+      if (settlement.status === 'fulfilled') {
+        if (settlement.value) {
+          yield settlement.value
+        }
+      } else if (settlement.status === 'rejected') {
+        throw settlement.reason
       }
     }
 
@@ -1432,7 +1834,7 @@ async function* queryLoop(
     // truncated/invalid assistant turn.
     const lastAssistantMsg = assistantMessages.at(-1)
     if (lastAssistantMsg?.isApiErrorMessage) {
-      void executeStopFailureHooks(lastAssistantMsg, toolUseContext)
+      await executeOwnedStopFailureHooks(lastAssistantMsg, toolUseContext)
       return {
         reason: 'model_error' as const,
         error:
@@ -1552,14 +1954,14 @@ async function* queryLoop(
         // on prompt-too-long creates a death spiral: error → hook blocking
         // → retry → error → … (the hook injects more tokens each cycle).
         yield lastMessage!
-        void executeStopFailureHooks(lastMessage!, toolUseContext)
+        await executeOwnedStopFailureHooks(lastMessage!, toolUseContext)
         return { reason: isWithheldMedia ? 'image_error' : 'prompt_too_long' }
       } else if (feature('CONTEXT_COLLAPSE') && isWithheld413) {
         // reactiveCompact compiled out but contextCollapse withheld and
         // couldn't recover (staged queue empty/stale). Surface. Same
         // early-return rationale — don't fall through to stop hooks.
         yield lastMessage
-        void executeStopFailureHooks(lastMessage, toolUseContext)
+        await executeOwnedStopFailureHooks(lastMessage, toolUseContext)
         return { reason: 'prompt_too_long' }
       }
 
@@ -1750,7 +2152,16 @@ async function* queryLoop(
 
     const toolUpdates = streamingToolExecutor
       ? streamingToolExecutor.getRemainingResults()
-      : runTools(toolUseBlocks, assistantMessages, canUseTool, toolUseContext)
+      : guardAsyncIterableCancellation(
+          runTools(
+            toolUseBlocks,
+            assistantMessages,
+            canUseTool,
+            toolUseContext,
+          ),
+          toolUseContext.abortController.signal,
+          { operation: 'non-streaming tool execution' },
+        )
 
     for await (const update of toolUpdates) {
       if (update.message) {
@@ -1781,7 +2192,7 @@ async function* queryLoop(
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:
-      | Promise<ToolUseSummaryMessage | null>
+      | SettledPromise<ToolUseSummaryMessage | null>
       | undefined
     if (
       config.gates.emitToolUseSummaries &&
@@ -1842,19 +2253,29 @@ async function* queryLoop(
       })
 
       // Fire off summary generation without blocking the next API call
-      nextPendingToolUseSummary = generateToolUseSummary({
-        tools: toolInfoForSummary,
-        signal: toolUseContext.abortController.signal,
-        isNonInteractiveSession: toolUseContext.options.isNonInteractiveSession,
-        lastAssistantText,
-      })
-        .then(summary => {
-          if (summary) {
-            return createToolUseSummaryMessage(summary, toolUseIds)
-          }
-          return null
+      nextPendingToolUseSummary = trackPromiseSettlement(
+        generateToolUseSummary({
+          tools: toolInfoForSummary,
+          signal: postSamplingHooks.signal,
+          isNonInteractiveSession:
+            toolUseContext.options.isNonInteractiveSession,
+          lastAssistantText,
         })
-        .catch(() => null)
+          .then(summary => {
+            if (summary) {
+              return createToolUseSummaryMessage(summary, toolUseIds)
+            }
+            return null
+          })
+          .catch(error => {
+            if (error instanceof StopConfirmationError) throw error
+            return null
+          }),
+      )
+      // The summary runs concurrently with the next model turn. Keep it in the
+      // query-owned lifecycle so an early return/abort cannot orphan its HTTP
+      // request merely because pendingToolUseSummary was never consumed.
+      postSamplingHooks.trackOwnedRequest(nextPendingToolUseSummary.promise)
     }
 
     // We were aborted during tool calls
@@ -2009,29 +2430,28 @@ async function* queryLoop(
       pendingMemoryPrefetch.consumedOnIteration = turnCount - 1
     }
 
-    // Inject prefetched skill discovery. collectSkillDiscoveryPrefetch emits
-    // hidden_by_main_turn — true when the prefetch resolved before this point
-    // (should be >98% at AKI@250ms / Haiku@573ms vs turn durations of 2-30s).
+    // Consume discovery prefetches only if they already settled under model or
+    // tool work. They are optional hints, not completion gates; unresolved
+    // promises remain query-owned and cancellable through postSamplingHooks.
     if (skillPrefetch && pendingSkillPrefetch) {
-      const skillAttachments =
-        await skillPrefetch.collectSkillDiscoveryPrefetch(pendingSkillPrefetch)
-      for (const att of skillAttachments) {
-        const msg = createAttachmentMessage(att)
-        yield msg
-        toolResults.push(msg)
+      const settlement = pendingSkillPrefetch.peek()
+      if (settlement.status === 'fulfilled') {
+        for (const att of settlement.value) {
+          const msg = createAttachmentMessage(att)
+          yield msg
+          toolResults.push(msg)
+        }
       }
     }
 
-    // Inject prefetched tool discovery.
     if (searchExtraToolsPrefetch && pendingToolPrefetch) {
-      const toolAttachments =
-        await searchExtraToolsPrefetch.collectSearchExtraToolsPrefetch(
-          pendingToolPrefetch,
-        )
-      for (const att of toolAttachments) {
-        const msg = createAttachmentMessage(att)
-        yield msg
-        toolResults.push(msg)
+      const settlement = pendingToolPrefetch.peek()
+      if (settlement.status === 'fulfilled') {
+        for (const att of settlement.value) {
+          const msg = createAttachmentMessage(att)
+          yield msg
+          toolResults.push(msg)
+        }
       }
     }
 

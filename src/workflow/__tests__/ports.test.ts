@@ -6,13 +6,17 @@ import { expect, test } from 'bun:test'
 // logEvent/logForDebugging are silent no-ops when sink is not attached, no need to mock.
 
 import { buildRegistry } from '../registry.js'
-import { createWorkflowPorts } from '../ports.js'
+import {
+  createWorkflowPorts,
+  waitForWorkflowRunStopSettlement,
+} from '../ports.js'
 import { createProgressBus } from '../progress/bus.js'
 import { createProgressStoreFromBus } from '../progress/store.js'
 import { getProjectRoot } from '../../bootstrap/state.js'
 import type { SetAppState } from '../../Task.js'
 import type { AppState } from '../../state/AppState.tsx'
 import { killWorkflowTask } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 test('buildRegistry registers claude-code as default and resolve hits', () => {
   const reg = buildRegistry()
@@ -47,6 +51,20 @@ test('createWorkflowPorts assembles full ports (incl. agentAdapterRegistry and p
     meta: null,
   })
   expect(store.get('t')?.workflowName).toBe('w')
+})
+
+test('workflow run Stop settlement is bounded after abort', async () => {
+  const controller = new AbortController()
+  controller.abort()
+
+  await expect(
+    waitForWorkflowRunStopSettlement(
+      new Promise<void>(() => {}),
+      controller.signal,
+      'stuck-run',
+      { timeoutMs: 1_000, abortGraceMs: 10 },
+    ),
+  ).rejects.toBeInstanceOf(StopConfirmationError)
 })
 
 test('taskRegistrar.register/complete/kill routes via RunBinding (real setAppState, no mock)', () => {
@@ -166,7 +184,11 @@ test('workflow Stop rejects when terminal task state cannot be published and rem
 
   const stopping = Promise.resolve(tr.kill(runId))
   expect(() => tr.finishKill(runId)).toThrow(publicationError)
-  expect(await stopping.catch(error => error)).toBe(publicationError)
+  const stopError = await stopping.catch(error => error)
+  expect(stopError).toBeInstanceOf(StopConfirmationError)
+  expect((stopError as StopConfirmationError).failures).toContain(
+    publicationError,
+  )
   expect(state.tasks[taskId]?.status).toBe('running')
 
   // The runner is already settled and the failed task remains visible. A

@@ -21,7 +21,9 @@ import {
 import { forwardSessionUpdates } from '../bridge.js'
 import type { ToolUseCache } from '../bridge.js'
 import { promptToQueryInput } from '../promptConversion.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 import { sanitizeTitle } from '../utils.js'
+import { sendAcpSessionUpdate } from '../sessionUpdate.js'
 import { AcpAgent } from './AcpAgent.js'
 import type { AcpSession } from './sessionTypes.js'
 import { flattenConfigOptionValues } from './configOptions.js'
@@ -31,6 +33,9 @@ import {
   readClientCapabilities,
   syncSessionConfigState,
 } from './internalAccessors.js'
+
+const SESSION_INFO_UPDATE_TIMEOUT_MS = 1_000
+const SESSION_INFO_UPDATE_ABORT_GRACE_MS = 100
 
 // ── prompt ───────────────────────────────────────────────────────
 
@@ -87,6 +92,7 @@ async function prompt(
     // After a previous interrupt(), the internal controller is stuck in
     // aborted state — without this, submitMessage() fails immediately.
     session.queryEngine.resetAbortController()
+    const promptAbortSignal = session.queryEngine.getAbortSignal()
     // Switch global session state so recordTranscript writes to the correct
     // session file. Without this, multi-session scenarios (or creating a new
     // session after another) write transcript data to the wrong file.
@@ -98,7 +104,7 @@ async function prompt(
       params.sessionId,
       sdkMessages,
       getConnection(this),
-      session.queryEngine.getAbortSignal(),
+      promptAbortSignal,
       session.toolUseCache,
       readClientCapabilities(this),
       session.cwd,
@@ -113,7 +119,15 @@ async function prompt(
     // Emit a session_info_update so Clients learn the session's display
     // title / last-activity timestamp via the stable v1 session/update
     // channel. The title is derived from the first user prompt.
-    await emitSessionInfoUpdate(this, params.sessionId, promptInput)
+    await emitSessionInfoUpdate(
+      this,
+      params.sessionId,
+      promptInput,
+      promptAbortSignal,
+    )
+    if (session.cancelled) {
+      return { stopReason: 'cancelled' }
+    }
 
     // Per session-usage.mdx RFD and the bundled SDK schema, PromptResponse
     // carries an optional `usage` field at the root with cumulative token
@@ -153,6 +167,7 @@ async function prompt(
       ...(userMessageId ? { userMessageId } : {}),
     }
   } catch (err: unknown) {
+    if (err instanceof StopConfirmationError) throw err
     // Treat AbortError / cancellation-shaped errors as a turn cancellation
     // regardless of the session.cancelled flag, to close the race window
     // between interrupt() firing and cancel() setting the flag. Per
@@ -273,6 +288,7 @@ async function emitSessionInfoUpdate(
   agent: AcpAgent,
   sessionId: string,
   firstPrompt: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const session = agent.sessions.get(sessionId)
   if (!session) return
@@ -285,16 +301,31 @@ async function emitSessionInfoUpdate(
   cache.__sessionInfoTitleSent = true
   const title = sanitizeTitle(firstPrompt).slice(0, 100)
   try {
-    await getConnection(agent).sessionUpdate({
-      sessionId,
-      update: {
-        sessionUpdate: 'session_info_update',
-        ...(title ? { title } : {}),
-        updatedAt: new Date().toISOString(),
+    await sendAcpSessionUpdate(
+      getConnection(agent),
+      {
+        sessionId,
+        update: {
+          sessionUpdate: 'session_info_update',
+          ...(title ? { title } : {}),
+          updatedAt: new Date().toISOString(),
+        },
       },
-    })
+      {
+        signal,
+        timeoutMs: SESSION_INFO_UPDATE_TIMEOUT_MS,
+        abortGraceMs: SESSION_INFO_UPDATE_ABORT_GRACE_MS,
+        operation: 'ACP session info update',
+      },
+    )
   } catch (err) {
-    console.error('[ACP] Failed to send session_info_update:', err)
+    // A client transport that ignores cancellation may still own the outbound
+    // write. Do not normalize that failed settlement proof into a harmless
+    // best-effort title update merely because the parent signal is aborted.
+    if (err instanceof StopConfirmationError) throw err
+    if (!signal.aborted) {
+      console.error('[ACP] Failed to send session_info_update:', err)
+    }
   }
 }
 

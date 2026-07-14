@@ -9,6 +9,7 @@ import { extractTextContent } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { asSystemPrompt } from '../systemPromptType.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import type { REPLHookContext } from './postSamplingHooks.js'
 
 export type ApiQueryHookContext = REPLHookContext & {
@@ -159,6 +160,7 @@ export function createApiQueryHook<TResult>(
         )
       }
     } catch (error) {
+      if (error instanceof StopConfirmationError) throw error
       if (
         context.toolUseContext.abortController.signal.aborted ||
         isAbortError(error)

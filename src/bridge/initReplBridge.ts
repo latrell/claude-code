@@ -67,6 +67,11 @@ import {
   createBridgeSession,
   updateBridgeSessionTitle,
 } from './createSession.js'
+import {
+  createBridgeTitleLifecycle,
+  type BridgeTitleRequest,
+  wrapBridgeTitleLifecycle,
+} from './bridgeTitleLifecycle.js'
 import { logBridgeSkip } from './debugUtils.js'
 import { checkEnvLessBridgeMinVersion } from './envLessBridgeConfig.js'
 import { getPollIntervalConfig } from './pollConfig.js'
@@ -306,7 +311,7 @@ export async function initReplBridge(
 
   // Shared by both v1 and v2 — fires on every title-worthy user message until
   // it returns true. At count 1: deriveTitle placeholder immediately, then
-  // generateSessionTitle (Haiku, sentence-case) fire-and-forget upgrade. At
+  // generateSessionTitle (Haiku, sentence-case) as owned auxiliary work. At
   // count 3: re-generate over the full conversation. Skips entirely if the
   // title is explicit (/remote-control <name> or /rename) — re-checks
   // sessionStorage at call time so /rename between messages isn't clobbered.
@@ -315,40 +320,62 @@ export async function initReplBridge(
   // retags internally.
   let userMessageCount = 0
   let lastBridgeSessionId: string | undefined
-  let genSeq = 0
+  const titleLifecycle = createBridgeTitleLifecycle()
+  const reportTitleCancellationFailure = (error: unknown): void => {
+    logForDebugging(
+      `[bridge:repl] title cancellation was not confirmed: ${errorMessage(error)}`,
+      { level: 'error' },
+    )
+  }
+  const settleTitlesBeforeTeardown = async (): Promise<void> => {
+    const cancellation = titleLifecycle.cancel()
+    if (cancellation.synchronous) return
+    try {
+      await cancellation.settlement
+    } catch (error) {
+      // Title generation is auxiliary. Record the unconfirmed remote request,
+      // but let the main bridge transport close instead of pinning shutdown.
+      reportTitleCancellationFailure(error)
+    }
+  }
   const patch = (
     derived: string,
     bridgeSessionId: string,
     atCount: number,
-  ): void => {
+    signal: AbortSignal,
+  ): Promise<void> => {
     hasTitle = true
     title = derived
     logForDebugging(
       `[bridge:repl] derived title from message ${atCount}: ${derived}`,
     )
-    void updateBridgeSessionTitle(bridgeSessionId, derived, {
+    return updateBridgeSessionTitle(bridgeSessionId, derived, {
       baseUrl,
       getAccessToken: getBridgeAccessToken,
-    }).catch(() => {})
+      signal,
+    })
   }
-  // Fire-and-forget Haiku generation with post-await guards. Re-checks /rename
-  // (sessionStorage), v1 env-lost (lastBridgeSessionId), and same-session
-  // out-of-order resolution (genSeq — count-1's Haiku resolving after count-3
-  // would clobber the richer title). generateSessionTitle never rejects.
-  const generateAndPatch = (input: string, bridgeSessionId: string): void => {
-    const gen = ++genSeq
+  // The generation and its PATCH share one request scope. Replacement turns,
+  // sendResult, and teardown abort that scope; late completions are guarded by
+  // both revision and bridge-session identity before they can mutate the title.
+  const generateAndPatch = (
+    input: string,
+    bridgeSessionId: string,
+    request: BridgeTitleRequest,
+  ): void => {
     const atCount = userMessageCount
-    void generateSessionTitle(input, AbortSignal.timeout(15_000)).then(
-      generated => {
+    titleLifecycle.track(
+      request,
+      (async () => {
+        const generated = await generateSessionTitle(input, request.signal)
         if (
           generated &&
-          gen === genSeq &&
-          lastBridgeSessionId === bridgeSessionId &&
+          titleLifecycle.isCurrent(request, lastBridgeSessionId) &&
           !getCurrentSessionTitle(getSessionId())
         ) {
-          patch(generated, bridgeSessionId, atCount)
+          await patch(generated, bridgeSessionId, atCount, request.signal)
         }
-      },
+      })(),
     )
   }
   const onUserMessage = (text: string, bridgeSessionId: string): boolean => {
@@ -368,15 +395,29 @@ export async function initReplBridge(
     lastBridgeSessionId = bridgeSessionId
     userMessageCount++
     if (userMessageCount === 1 && !hasTitle) {
-      const placeholder = deriveTitle(text)
-      if (placeholder) patch(placeholder, bridgeSessionId, userMessageCount)
-      generateAndPatch(text, bridgeSessionId)
+      const request = titleLifecycle.begin(bridgeSessionId)
+      if (request) {
+        const placeholder = deriveTitle(text)
+        if (placeholder) {
+          titleLifecycle.track(
+            request,
+            patch(
+              placeholder,
+              bridgeSessionId,
+              userMessageCount,
+              request.signal,
+            ),
+          )
+        }
+        generateAndPatch(text, bridgeSessionId, request)
+      }
     } else if (userMessageCount === 3) {
       const msgs = getMessages?.()
       const input = msgs
         ? extractConversationText(getMessagesAfterCompactBoundary(msgs))
         : text
-      generateAndPatch(input, bridgeSessionId)
+      const request = titleLifecycle.begin(bridgeSessionId)
+      if (request) generateAndPatch(input, bridgeSessionId, request)
     }
     // Also re-latches if v1 env-lost resets the transport's done flag past 3.
     return userMessageCount >= 3
@@ -431,7 +472,7 @@ export async function initReplBridge(
       '[bridge:repl] Using env-less bridge path (tengu_bridge_repl_v2)',
     )
     const { initEnvLessBridgeCore } = await import('./remoteBridgeCore.js')
-    return initEnvLessBridgeCore({
+    const handle = await initEnvLessBridgeCore({
       baseUrl,
       orgUUID,
       title,
@@ -457,7 +498,16 @@ export async function initReplBridge(
       onStateChange,
       outboundOnly,
       tags,
+      beforeTeardown: settleTitlesBeforeTeardown,
     })
+    return handle
+      ? wrapBridgeTitleLifecycle(
+          handle,
+          titleLifecycle,
+          reportTitleCancellationFailure,
+          { innerHandleOwnsTeardownCancellation: true },
+        )
+      : null
   }
 
   // ── v1 path: env-based (register/poll/ack/heartbeat) ──────────────────
@@ -493,7 +543,7 @@ export async function initReplBridge(
   // 6. Delegate. BridgeCoreHandle is a structural superset of
   // ReplBridgeHandle (adds writeSdkMessages which REPL callers don't use),
   // so no adapter needed — just the narrower type on the way out.
-  return initBridgeCore({
+  const handle = await initBridgeCore({
     dir: getOriginalCwd(),
     machineName: hostname(),
     branch,
@@ -546,8 +596,17 @@ export async function initReplBridge(
     onSetMaxThinkingTokens,
     onSetPermissionMode,
     onStateChange,
+    beforeTeardown: settleTitlesBeforeTeardown,
     perpetual,
   })
+  return handle
+    ? wrapBridgeTitleLifecycle(
+        handle,
+        titleLifecycle,
+        reportTitleCancellationFailure,
+        { innerHandleOwnsTeardownCancellation: true },
+      )
+    : null
 }
 
 const TITLE_MAX_LEN = 50

@@ -8,6 +8,10 @@ import type { AppState } from '../../state/AppState.js'
 import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
 import type { AgentId } from '../../types/ids.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../../utils/abortSettlement.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { registerTask, updateTaskState } from '../../utils/task/framework.js'
@@ -18,6 +22,8 @@ type MonitorMcpSettlement = {
 }
 
 const monitorMcpSettlements = new Map<string, MonitorMcpSettlement>()
+const MONITOR_MCP_SETTLEMENT_TIMEOUT_MS = 30_000
+const MONITOR_MCP_ABORT_GRACE_MS = 2_000
 
 export type MonitorMcpTaskState = TaskStateBase & {
   type: 'monitor_mcp'
@@ -31,6 +37,8 @@ export type MonitorMcpTaskState = TaskStateBase & {
   agentId?: AgentId
   /** Abort controller to cancel the subscription. */
   abortController?: AbortController
+  /** Failure detail when the runner could not confirm remote termination. */
+  error?: string
 }
 
 export function isMonitorMcpTask(task: unknown): task is MonitorMcpTaskState {
@@ -58,15 +66,24 @@ export function registerMonitorMcpTask(
 ): string {
   const id = generateTaskId('monitor_mcp')
   if (opts.settlement) {
+    const settled = opts.settlement.then(
+      () => undefined,
+      error => {
+        if (error instanceof StopConfirmationError) {
+          failMonitorMcpTask(id, setAppState, error.message)
+          throw error
+        }
+        // Other failures still prove the monitor runner has exited. Its owner
+        // remains responsible for publishing the ordinary failed state.
+        return undefined
+      },
+    )
     monitorMcpSettlements.set(id, {
       abortController: opts.abortController,
-      // Stop only needs settlement proof. The producer remains responsible
-      // for reflecting success/failure in task state.
-      settled: opts.settlement.then(
-        () => undefined,
-        () => undefined,
-      ),
+      settled,
     })
+    // The task may fail without a concurrent Stop waiter.
+    void settled.catch(() => undefined)
   }
   const task: MonitorMcpTaskState = {
     ...createTaskStateBase(id, 'monitor_mcp', opts.description, opts.toolUseId),
@@ -104,6 +121,7 @@ export function completeMonitorMcpTask(
 export function failMonitorMcpTask(
   taskId: string,
   setAppState: SetAppState,
+  error?: string,
 ): void {
   monitorMcpSettlements.delete(taskId)
   updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => ({
@@ -112,12 +130,17 @@ export function failMonitorMcpTask(
     endTime: Date.now(),
     notified: true,
     abortController: undefined,
+    ...(error !== undefined ? { error } : {}),
   }))
 }
 
 export async function killMonitorMcp(
   taskId: string,
   setAppState: SetAppState,
+  settlementTiming: {
+    timeoutMs?: number
+    abortGraceMs?: number
+  } = {},
 ): Promise<boolean> {
   let matched = false
   let abortController: AbortController | undefined
@@ -143,7 +166,22 @@ export async function killMonitorMcp(
   // absence of one is not proof that no runner exists. Without settlement,
   // publishing killed could hide a live subscription or HTTP/SSE stream.
   if (!matchingSettlement) return false
-  await matchingSettlement.settled
+  try {
+    await waitForBoundedSettlement(matchingSettlement.settled, {
+      signal: abortController?.signal,
+      timeoutMs:
+        settlementTiming.timeoutMs ?? MONITOR_MCP_SETTLEMENT_TIMEOUT_MS,
+      abortGraceMs: settlementTiming.abortGraceMs ?? MONITOR_MCP_ABORT_GRACE_MS,
+      operation: `MCP monitor task ${taskId} runner settlement`,
+    })
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
+    const message =
+      error instanceof AbortSettlementTimeoutError
+        ? `MCP monitor task ${taskId} runner did not settle after cancellation`
+        : `MCP monitor task ${taskId} runner settlement failed`
+    throw new StopConfirmationError(message, [error])
+  }
 
   let confirmedTerminal = false
   updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => {

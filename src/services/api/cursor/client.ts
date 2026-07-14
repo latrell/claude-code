@@ -269,6 +269,15 @@ export async function* streamCursorChat(
 
   const parser = new StreamingFrameParser()
   const reader = response.body.getReader()
+  const cancelReaderOnAbort = (): void => {
+    // Do not rely solely on fetch() propagating the request signal to an
+    // already-open HTTP/2 response body. Some custom fetch/proxy transports
+    // leave reader.read() pending after abort unless the reader is cancelled.
+    void reader.cancel().catch(() => undefined)
+  }
+
+  if (signal?.aborted) cancelReaderOnAbort()
+  else signal?.addEventListener('abort', cancelReaderOnAbort, { once: true })
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -283,6 +292,7 @@ export async function* streamCursorChat(
       yield frame
     }
   } finally {
+    signal?.removeEventListener('abort', cancelReaderOnAbort)
     // Cancel before releasing: if the generator is abandoned early (error
     // frame, consumer break/abort), the response body would otherwise stay
     // half-open on the pooled HTTP/2 connection and poison later requests

@@ -60,6 +60,7 @@ import {
   executePreCompactHooks,
 } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
   createCompactBoundaryMessage,
@@ -1273,6 +1274,7 @@ async function streamCompactSummary({
           preCompactTokenCount,
         })
       } catch (error) {
+        if (error instanceof StopConfirmationError) throw error
         logError(error)
         logEvent('tengu_compact_cache_sharing_fallback', {
           reason:

@@ -4,7 +4,12 @@
 import type { AppState } from '../state/AppState.js'
 import type { TaskStateBase } from '../Task.js'
 import { getTaskByType } from '../tasks.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../utils/abortSettlement.js'
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 import { isLocalShellTask } from './LocalShellTask/guards.js'
 
 export class StopTaskError extends Error {
@@ -20,6 +25,8 @@ export class StopTaskError extends Error {
 type StopTaskContext = {
   getAppState: () => AppState
   setAppState: (f: (prev: AppState) => AppState) => void
+  /** @internal Allows cancellation tests to use a short deterministic bound. */
+  stopTimeoutMs?: number
 }
 
 type StopTaskResult = {
@@ -62,7 +69,28 @@ export async function stopTask(
     )
   }
 
-  await taskImpl.kill(taskId, setAppState)
+  try {
+    await waitForBoundedSettlement(taskImpl.kill(taskId, setAppState), {
+      timeoutMs: context.stopTimeoutMs ?? 45_000,
+      abortGraceMs: 100,
+      operation: `Stop task ${taskId}`,
+    })
+  } catch (error) {
+    if (error instanceof AbortSettlementTimeoutError) {
+      throw new StopConfirmationError(
+        `Task ${taskId} did not confirm termination before the Stop deadline`,
+        [error],
+      )
+    }
+    throw error
+  }
+
+  const settledTask = getAppState().tasks?.[taskId] as TaskStateBase | undefined
+  if (settledTask?.status === 'running') {
+    throw new StopConfirmationError(
+      `Task ${taskId} stop handler returned without publishing a terminal state`,
+    )
+  }
 
   // Bash: suppress the "exit code 137" notification (noise). Agent tasks: don't
   // suppress — the AbortError catch sends a notification carrying

@@ -10,7 +10,12 @@ import {
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
-import { SdkRunLifecycle } from 'src/cli/sdkRunLifecycle.js'
+import {
+  cancelSdkOwnedRuns,
+  SdkRunLifecycle,
+  waitForSdkBackgroundTaskPoll,
+  waitForSdkStopSettlement,
+} from 'src/cli/sdkRunLifecycle.js'
 import {
   type Command,
   formatDescriptionWithSource,
@@ -152,6 +157,11 @@ import {
   createChildAbortController,
 } from 'src/utils/abortController.js'
 import { createCombinedAbortSignal } from 'src/utils/combinedAbortSignal.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+} from 'src/utils/abortSettlement.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import { generateSessionTitle } from 'src/utils/sessionTitle.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
 import { runSideQuestion } from 'src/utils/sideQuestion.js'
@@ -1117,10 +1127,23 @@ function runHeadlessStreaming(
     }
   })
 
+  type PushSuggestionRun = {
+    abortController: AbortController
+    settled: Promise<void>
+  }
+  type SessionTitleRun = {
+    abortController: AbortController
+    settled: Promise<void>
+  }
+  const sessionTitleRuns = new Set<SessionTitleRun>()
+  let sessionTitleDisabledAfterUnconfirmedStop = false
+
   // Prompt suggestion tracking (push model)
   const suggestionState: {
     abortController: AbortController | null
     inflightPromise: Promise<void> | null
+    runs: Set<PushSuggestionRun>
+    disabledAfterUnconfirmedStop: boolean
     lastEmitted: {
       text: string
       emittedAt: number
@@ -1141,9 +1164,56 @@ function runHeadlessStreaming(
   } = {
     abortController: null,
     inflightPromise: null,
+    runs: new Set(),
+    disabledAfterUnconfirmedStop: false,
     lastEmitted: null,
     pendingSuggestion: null,
     pendingLastEmittedEntry: null,
+  }
+
+  async function cancelPushSuggestions(reason: unknown): Promise<void> {
+    const runs = [...suggestionState.runs]
+    suggestionState.abortController = null
+    await cancelSdkOwnedRuns(
+      runs,
+      reason,
+      'SDK push prompt suggestion cancellation',
+    )
+  }
+
+  async function confirmPushSuggestionCancellation(
+    reason: unknown,
+  ): Promise<boolean> {
+    try {
+      await cancelPushSuggestions(reason)
+      return true
+    } catch (error) {
+      logForDebugging(
+        `[print.ts] Push suggestion cancellation was not confirmed: ${errorMessage(error)}`,
+        { level: 'error' },
+      )
+      return false
+    }
+  }
+
+  async function cancelSessionTitleRequests(reason: unknown): Promise<void> {
+    const runs = [...sessionTitleRuns]
+    await cancelSdkOwnedRuns(runs, reason, 'SDK session title cancellation')
+  }
+
+  async function confirmSessionTitleCancellation(
+    reason: unknown,
+  ): Promise<boolean> {
+    try {
+      await cancelSessionTitleRequests(reason)
+      return true
+    } catch (error) {
+      logForDebugging(
+        `[print.ts] Session title cancellation was not confirmed: ${errorMessage(error)}`,
+        { level: 'error' },
+      )
+      return false
+    }
   }
 
   // Set up AWS auth status listener if enabled
@@ -1876,6 +1946,39 @@ function runHeadlessStreaming(
     })
   })
 
+  async function closeHeadlessOutput(): Promise<void> {
+    const failures: unknown[] = []
+    const ownedSettlements = await Promise.allSettled([
+      cancelPushSuggestions('sdk-output-closing'),
+      cancelSessionTitleRequests('sdk-output-closing'),
+    ])
+    for (const result of ownedSettlements) {
+      if (result.status === 'rejected') failures.push(result.reason)
+    }
+    try {
+      await finalizePendingAsyncHooks()
+    } catch (error) {
+      failures.push(error)
+    }
+
+    unsubscribeSkillChanges()
+    unsubscribeAuthStatus?.()
+    statusListeners.delete(rateLimitListener)
+
+    if (failures.length > 0) {
+      output.error(
+        failures.length === 1 && failures[0] instanceof StopConfirmationError
+          ? failures[0]
+          : new StopConfirmationError(
+              'Headless output cleanup could not confirm all owned work settled',
+              failures,
+            ),
+      )
+      return
+    }
+    output.done()
+  }
+
   // Proactive mode: schedule a tick to keep the model looping autonomously.
   // setTimeout(0) yields to the event loop so pending stdin messages
   // (interrupts, user messages) are processed before the tick fires.
@@ -2193,8 +2296,7 @@ function runHeadlessStreaming(
           }
 
           // Abort any in-flight suggestion generation and track acceptance
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
+          await cancelPushSuggestions('sdk-command-started')
           suggestionState.pendingSuggestion = null
           suggestionState.pendingLastEmittedEntry = null
           if (suggestionState.lastEmitted) {
@@ -2420,14 +2522,10 @@ function runHeadlessStreaming(
           // Generate and emit prompt suggestion for SDK consumers
           if (
             options.promptSuggestions &&
+            !suggestionState.disabledAfterUnconfirmedStop &&
             !isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION)
           ) {
-            // TS narrows suggestionState to never in the while loop body;
-            // cast via unknown to reset narrowing.
-            const state = suggestionState as unknown as typeof suggestionState
-            state.abortController?.abort()
-            const localAbort = new AbortController()
-            suggestionState.abortController = localAbort
+            await cancelPushSuggestions('sdk-push-suggestion-replaced')
 
             const cacheSafeParams = getLastCacheSafeParams()
             if (!cacheSafeParams) {
@@ -2438,9 +2536,14 @@ function runHeadlessStreaming(
                 'sdk',
               )
             } else {
+              const localAbort = new AbortController()
+              suggestionState.abortController = localAbort
               // Use a ref object so the IIFE's finally can compare against its own
               // promise without a self-reference (which upsets TypeScript's flow analysis).
-              const ref: { promise: Promise<void> | null } = { promise: null }
+              const ref: {
+                promise: Promise<void> | null
+                run?: PushSuggestionRun
+              } = { promise: null }
               ref.promise = (async () => {
                 try {
                   const result = await tryGenerateSuggestion(
@@ -2480,6 +2583,19 @@ function runHeadlessStreaming(
                     output.enqueue(suggestionMsg)
                   }
                 } catch (error) {
+                  if (error instanceof StopConfirmationError) {
+                    // The local wrapper is terminal even though remote Stop
+                    // was not confirmed. Remove it from active ownership so a
+                    // later interrupt can recover the main run, but fuse this
+                    // auxiliary feature for the rest of the SDK session to
+                    // prevent a replacement request from overlapping it.
+                    suggestionState.disabledAfterUnconfirmedStop = true
+                    logForDebugging(
+                      `[print.ts] Disabling push suggestions after unconfirmed Stop: ${errorMessage(error)}`,
+                      { level: 'error' },
+                    )
+                    throw error
+                  }
                   if (
                     error instanceof Error &&
                     (error.name === 'AbortError' ||
@@ -2495,12 +2611,23 @@ function runHeadlessStreaming(
                   }
                   logError(toError(error))
                 } finally {
+                  if (ref.run) suggestionState.runs.delete(ref.run)
                   if (suggestionState.inflightPromise === ref.promise) {
                     suggestionState.inflightPromise = null
                   }
+                  if (suggestionState.abortController === localAbort) {
+                    suggestionState.abortController = null
+                  }
                 }
               })()
+              const run: PushSuggestionRun = {
+                abortController: localAbort,
+                settled: ref.promise,
+              }
+              ref.run = run
+              suggestionState.runs.add(run)
               suggestionState.inflightPromise = ref.promise
+              void ref.promise.catch(() => {})
             }
           }
 
@@ -2539,12 +2666,22 @@ function runHeadlessStreaming(
             t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
           )
           const hasMainThreadQueued = peek(isMainThread) !== undefined
-          if (hasRunningBg || hasMainThreadQueued) {
+          if (runAbortController.signal.aborted) {
+            // Background tasks may intentionally outlive a foreground turn,
+            // but they must not pin the cancelled SDK generation forever.
+            // Their task records remain intact so stop_task or a later
+            // interrupt can retry any unconfirmed termination.
+            waitingForAgents = false
+          } else if (hasRunningBg || hasMainThreadQueued) {
             waitingForAgents = true
             if (!hasMainThreadQueued) {
               runPhase = 'waiting_for_agents'
-              // No commands ready yet, wait for tasks to complete
-              await sleep(100)
+              // Wake immediately on generation cancellation. A plain sleep
+              // followed by another task-state check loops forever when a
+              // background runner is stuck in status=running.
+              waitingForAgents = await waitForSdkBackgroundTaskPoll(
+                runAbortController.signal,
+              )
             }
             // Loop back to drain any newly queued commands
           }
@@ -2568,6 +2705,20 @@ function runHeadlessStreaming(
         }
       }
     } catch (error) {
+      let finalError = error
+      const auxiliarySettlements = await Promise.allSettled([
+        cancelPushSuggestions(error),
+        cancelSessionTitleRequests(error),
+      ])
+      const auxiliaryFailures = auxiliarySettlements.flatMap(result =>
+        result.status === 'rejected' ? [result.reason] : [],
+      )
+      if (auxiliaryFailures.length > 0) {
+        finalError = new StopConfirmationError(
+          'SDK run failed and auxiliary request termination was not confirmed',
+          [error, ...auxiliaryFailures],
+        )
+      }
       // Emit error result message before shutting down
       // Write directly to structuredIO to ensure immediate delivery
       try {
@@ -2586,14 +2737,13 @@ function runHeadlessStreaming(
           permission_denials: [],
           uuid: randomUUID(),
           errors: [
-            errorMessage(error),
+            errorMessage(finalError),
             ...getInMemoryErrors().map(_ => _.error),
           ],
         })
       } catch {
         // If we can't emit the error result, continue with shutdown anyway
       }
-      suggestionState.abortController?.abort()
       gracefulShutdownSync(1)
       return
     } finally {
@@ -2620,6 +2770,7 @@ function runHeadlessStreaming(
 
     // Proactive tick: if proactive is active and queue is empty, inject a tick
     if (
+      !runAbortController.signal.aborted &&
       (feature('PROACTIVE') || feature('KAIROS')) &&
       proactiveModule?.isProactiveActive() &&
       !proactiveModule.isProactivePaused()
@@ -2639,6 +2790,11 @@ function runHeadlessStreaming(
       void run()
       return
     }
+
+    // The control-plane cancellation handler owns acknowledgement and any
+    // retry. Do not enter the long-lived teammate polling loop after this
+    // generation has been cancelled, or generation.settle() can never run.
+    if (runAbortController.signal.aborted) return
 
     // Check for unread teammate messages and process them
     // This mirrors what useInboxPoller does in interactive REPL mode
@@ -2844,17 +3000,7 @@ function runHeadlessStreaming(
         })
         void run()
       } else {
-        // Wait for any in-flight push suggestion before closing the output stream.
-        if (suggestionState.inflightPromise) {
-          await Promise.race([suggestionState.inflightPromise, sleep(5000)])
-        }
-        suggestionState.abortController?.abort()
-        suggestionState.abortController = null
-        await finalizePendingAsyncHooks()
-        unsubscribeSkillChanges()
-        unsubscribeAuthStatus?.()
-        statusListeners.delete(rateLimitListener)
-        output.done()
+        await closeHeadlessOutput()
       }
     }
   }
@@ -3051,10 +3197,28 @@ function runHeadlessStreaming(
     string,
     { controller: AbortController; settled: Promise<void> }
   >()
-  const abortActiveSideQuestions = async (): Promise<void> => {
+  let sideQuestionsDisabledAfterUnconfirmedStop = false
+  const abortActiveSideQuestions = async (
+    reason: unknown = 'SDK side-question cancellation',
+  ): Promise<boolean> => {
     const active = [...activeSideQuestions.values()]
-    for (const { controller } of active) controller.abort()
-    await Promise.allSettled(active.map(({ settled }) => settled))
+    try {
+      await cancelSdkOwnedRuns(
+        active.map(({ controller, settled }) => ({
+          abortController: controller,
+          settled,
+        })),
+        reason,
+        'SDK side-question cancellation',
+      )
+      return true
+    } catch (error) {
+      logForDebugging(
+        `[print.ts] Side-question cancellation was not confirmed: ${errorMessage(error)}`,
+        { level: 'error' },
+      )
+      return false
+    }
   }
   // Track manual callback URL submit functions for active OAuth flows.
   // Used when localhost is not reachable (e.g., browser-based IDEs).
@@ -3116,6 +3280,7 @@ function runHeadlessStreaming(
         const req = msg.request as Record<string, unknown>
         if (msg.request.subtype === 'interrupt') {
           const cancellation = runLifecycle.beginCancellation('interrupt')
+          let cancellationConfirmed = false
           // Track escapes for attribution (ant-only feature)
           try {
             if (feature('COMMIT_ATTRIBUTION')) {
@@ -3128,38 +3293,81 @@ function runHeadlessStreaming(
               }))
             }
             abortController?.abort('interrupt')
-            suggestionState.abortController?.abort()
-            suggestionState.abortController = null
             suggestionState.lastEmitted = null
             suggestionState.pendingSuggestion = null
-            await Promise.all([
-              abortActiveSideQuestions(),
-              cancellation.settled,
+            const [
+              sideQuestionsSettled,
+              runSettled,
+              suggestionSettled,
+              titleSettled,
+            ] = await Promise.all([
+              abortActiveSideQuestions('interrupt'),
+              waitForSdkStopSettlement(cancellation.settled),
+              confirmPushSuggestionCancellation('interrupt'),
+              confirmSessionTitleCancellation('interrupt'),
             ])
-            sendControlResponseSuccess(msg)
+            cancellationConfirmed =
+              sideQuestionsSettled &&
+              runSettled &&
+              suggestionSettled &&
+              titleSettled
+            if (cancellationConfirmed) {
+              sendControlResponseSuccess(msg)
+            } else {
+              sendControlResponseError(
+                msg,
+                'Active run cancellation could not be confirmed before the Stop deadline',
+              )
+            }
           } finally {
-            cancellation.releaseAfterAcknowledgement()
+            // A negative ACK keeps the cancellation epoch (and therefore the
+            // replacement-run gate) alive. A later interrupt can retry the
+            // still-owned requests and release the same epoch after proof.
+            cancellation.releaseAfterAcknowledgement(cancellationConfirmed)
           }
         } else if (req.subtype === 'end_session') {
           const cancellation = runLifecycle.beginCancellation('end_session')
+          let cancellationConfirmed = false
           try {
             logForDebugging(
               `[print.ts] end_session received, reason=${req.reason ?? 'unspecified'}`,
             )
             abortController?.abort('end_session')
-            suggestionState.abortController?.abort()
-            suggestionState.abortController = null
             suggestionState.lastEmitted = null
             suggestionState.pendingSuggestion = null
-            await Promise.all([
-              abortActiveSideQuestions(),
-              cancellation.settled,
+            const [
+              sideQuestionsSettled,
+              runSettled,
+              suggestionSettled,
+              titleSettled,
+            ] = await Promise.all([
+              abortActiveSideQuestions('end_session'),
+              waitForSdkStopSettlement(cancellation.settled),
+              confirmPushSuggestionCancellation('end_session'),
+              confirmSessionTitleCancellation('end_session'),
             ])
-            sendControlResponseSuccess(msg)
+            cancellationConfirmed =
+              sideQuestionsSettled &&
+              runSettled &&
+              suggestionSettled &&
+              titleSettled
+            if (cancellationConfirmed) {
+              sendControlResponseSuccess(msg)
+            } else {
+              sendControlResponseError(
+                msg,
+                'Session cancellation could not be confirmed before the Stop deadline',
+              )
+            }
           } finally {
-            cancellation.releaseAfterAcknowledgement()
+            cancellation.releaseAfterAcknowledgement(cancellationConfirmed)
           }
-          break // exits for-await → falls through to inputClosed=true drain below
+          // Preserve the live input/control loop after a negative ACK so the
+          // caller can retry Stop. Breaking here would discard ownership of
+          // requests whose remote termination is still unconfirmed.
+          if (cancellationConfirmed) {
+            break // exits for-await → falls through to inputClosed=true drain below
+          }
         } else if (msg.request.subtype === 'initialize') {
           // SDK MCP server names from the initialize message
           // Populated by both browser and ProcessTransport sessions
@@ -4094,22 +4302,32 @@ function runHeadlessStreaming(
             sendControlResponseError(msg, errorMessage(error))
           }
         } else if (req.subtype === 'generate_session_title') {
+          if (sessionTitleDisabledAfterUnconfirmedStop) {
+            sendControlResponseError(
+              msg,
+              'Session title generation is disabled because a previous request did not confirm termination',
+            )
+            continue
+          }
           // Fire-and-forget so the Haiku call does not block the stdin loop
           // (which would delay processing of subsequent user messages /
           // interrupts for the duration of the API roundtrip).
           const description = req.description as string
           const persist = req.persist as boolean
-          // Reuse the live controller only if it has not already been aborted
-          // (e.g. by interrupt()); an aborted signal would cause queryHaiku to
-          // immediately throw APIUserAbortError → {title: null}.
-          const titleSignal = (
+          // Link title generation to the live run without sharing its
+          // controller: interrupt/end_session can cancel and drain this exact
+          // auxiliary request without aborting unrelated work.
+          const titleController =
             abortController && !abortController.signal.aborted
-              ? abortController
+              ? createChildAbortController(abortController)
               : createAbortController()
-          ).signal
-          void (async () => {
+          const ref: { run?: SessionTitleRun } = {}
+          const settled = (async () => {
             try {
-              const title = await generateSessionTitle(description, titleSignal)
+              const title = await generateSessionTitle(
+                description,
+                titleController.signal,
+              )
               if (title && persist) {
                 try {
                   saveAiGeneratedTitle(getSessionId() as UUID, title)
@@ -4119,14 +4337,35 @@ function runHeadlessStreaming(
               }
               sendControlResponseSuccess(msg, { title })
             } catch (e) {
-              // Unreachable in practice — generateSessionTitle wraps its
-              // own body and returns null, saveAiGeneratedTitle is wrapped
-              // above. Propagate (not swallow) so unexpected failures are
-              // visible to the SDK caller (hostComms.ts catches and logs).
               sendControlResponseError(msg, errorMessage(e))
+              if (e instanceof StopConfirmationError) {
+                sessionTitleDisabledAfterUnconfirmedStop = true
+                logForDebugging(
+                  `[print.ts] Disabling session title generation after unconfirmed Stop: ${errorMessage(e)}`,
+                  { level: 'error' },
+                )
+                throw e
+              }
+            } finally {
+              if (ref.run) sessionTitleRuns.delete(ref.run)
             }
           })()
+          const titleRun: SessionTitleRun = {
+            abortController: titleController,
+            settled,
+          }
+          ref.run = titleRun
+          sessionTitleRuns.add(titleRun)
+          // Parent interrupt/close paths observe the original promise above.
+          void settled.catch(() => {})
         } else if (req.subtype === 'side_question') {
+          if (sideQuestionsDisabledAfterUnconfirmedStop) {
+            sendControlResponseError(
+              msg,
+              'Side questions are disabled because a previous request did not confirm termination',
+            )
+            continue
+          }
           // Same fire-and-forget pattern as generate_session_title above —
           // the forked agent's API roundtrip must not block the stdin loop.
           //
@@ -4187,6 +4426,14 @@ function runHeadlessStreaming(
               sendControlResponseSuccess(msg, { response: result.response })
             } catch (e) {
               sendControlResponseError(msg, errorMessage(e))
+              if (e instanceof StopConfirmationError) {
+                sideQuestionsDisabledAfterUnconfirmedStop = true
+                logForDebugging(
+                  `[print.ts] Disabling side questions after unconfirmed Stop: ${errorMessage(e)}`,
+                  { level: 'error' },
+                )
+                throw e
+              }
             } finally {
               if (
                 activeSideQuestions.get(msg.request_id)?.controller ===
@@ -4200,7 +4447,10 @@ function runHeadlessStreaming(
             controller: sideQuestionController,
             settled: sideQuestionRun,
           })
-          void sideQuestionRun
+          // The cancellation snapshot observes this original promise. Its
+          // finally block removes the terminal wrapper even on an unconfirmed
+          // remote Stop; the session-level fuse above prevents overlap.
+          void sideQuestionRun.catch(() => {})
         } else if (
           (feature('PROACTIVE') || feature('KAIROS')) &&
           (msg.request as { subtype: string }).subtype === 'set_proactive'
@@ -4278,19 +4528,29 @@ function runHeadlessStreaming(
                           cmd.bridgeOrigin === true,
                       )
                       abortController?.abort('remote-interrupt')
-                      suggestionState.abortController?.abort('remote-interrupt')
-                      suggestionState.abortController = null
-                      await Promise.all([
-                        abortActiveSideQuestions(),
-                        cancellation.settled,
+                      const [
+                        sideQuestionsSettled,
+                        runSettled,
+                        suggestionSettled,
+                        titleSettled,
+                      ] = await Promise.all([
+                        abortActiveSideQuestions('remote-interrupt'),
+                        waitForSdkStopSettlement(cancellation.settled),
+                        confirmPushSuggestionCancellation('remote-interrupt'),
+                        confirmSessionTitleCancellation('remote-interrupt'),
                       ])
+                      const confirmed =
+                        sideQuestionsSettled &&
+                        runSettled &&
+                        suggestionSettled &&
+                        titleSettled
                       return {
-                        confirmed: true,
-                        afterAcknowledgement:
-                          cancellation.releaseAfterAcknowledgement,
+                        confirmed,
+                        afterAcknowledgement: () =>
+                          cancellation.releaseAfterAcknowledgement(confirmed),
                       }
                     } catch (error) {
-                      cancellation.releaseAfterAcknowledgement()
+                      cancellation.releaseAfterAcknowledgement(false)
                       throw error
                     }
                   },
@@ -4490,18 +4750,7 @@ function runHeadlessStreaming(
     inputClosed = true
     cronScheduler?.stop()
     if (!running) {
-      // If a push-suggestion is in-flight, wait for it to emit before closing
-      // the output stream (5 s safety timeout to prevent hanging).
-      if (suggestionState.inflightPromise) {
-        await Promise.race([suggestionState.inflightPromise, sleep(5000)])
-      }
-      suggestionState.abortController?.abort()
-      suggestionState.abortController = null
-      await finalizePendingAsyncHooks()
-      unsubscribeSkillChanges()
-      unsubscribeAuthStatus?.()
-      statusListeners.delete(rateLimitListener)
-      output.done()
+      await closeHeadlessOutput()
     }
   })()
 
@@ -4589,6 +4838,24 @@ export function createCanUseToolWithPermissionPrompt(
     cleanupAbortListener()
 
     if (raceResult === 'aborted' || combinedSignal.aborted) {
+      try {
+        await waitForAbortSettlement(
+          toolCallPromise,
+          combinedSignal,
+          2_000,
+          'SDK permission prompt tool cancellation',
+        )
+      } catch (error) {
+        if (error instanceof AbortSettlementTimeoutError) {
+          throw new StopConfirmationError(
+            'Permission prompt tool did not confirm termination after cancellation',
+            [error],
+          )
+        }
+        if (error instanceof StopConfirmationError) throw error
+        // Rejection proves the permission call settled; the abort decision is
+        // still authoritative for ordinary cancellation-shaped failures.
+      }
       return {
         behavior: 'deny',
         message: 'Permission prompt was aborted.',

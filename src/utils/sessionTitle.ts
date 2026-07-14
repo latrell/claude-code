@@ -19,12 +19,17 @@ import { queryHaiku } from '../services/api/claude.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { isAbortError } from './errors.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from './abortSettlement.js'
 import { findFirstJsonObject, safeParseJSON } from './json.js'
 import { getPreferredLanguage } from './language.js'
 import { lazySchema } from './lazySchema.js'
 import { extractTextContent } from './messages.js'
 import { getGraphemeSegmenter } from './intl.js'
 import { asSystemPrompt } from './systemPromptType.js'
+import { StopConfirmationError } from './stopConfirmation.js'
 
 const MAX_CONVERSATION_TEXT = 1000
 
@@ -100,9 +105,12 @@ export type SessionTitleRequest = Readonly<{
 }>
 
 export type SessionTitleRequestGuard = {
-  begin: (sessionId: string) => SessionTitleRequest
+  begin: (sessionId: string) => SessionTitleRequest | undefined
   invalidate: () => void
   isCurrent: (request: SessionTitleRequest, currentSessionId: string) => boolean
+  track: <T>(request: SessionTitleRequest, promise: Promise<T>) => Promise<T>
+  cancelAndWait: (timeoutMs?: number) => Promise<void>
+  finish: (timeoutMs?: number, cancellationTimeoutMs?: number) => Promise<void>
 }
 
 /**
@@ -114,9 +122,98 @@ export type SessionTitleRequestGuard = {
 export function createSessionTitleRequestGuard(): SessionTitleRequestGuard {
   let generation = 0
   let controller: AbortController | undefined
+  const pending = new Set<Promise<unknown>>()
+  const unconfirmedFailures: StopConfirmationError[] = []
+  let blockedByUnconfirmedStop = false
+
+  const invalidate = (): void => {
+    generation += 1
+    controller?.abort()
+    controller = undefined
+  }
+
+  const assertConfirmed = (results: PromiseSettledResult<unknown>[]): void => {
+    const failures = [
+      ...unconfirmedFailures.splice(0),
+      ...results.flatMap(result =>
+        result.status === 'rejected' &&
+        result.reason instanceof StopConfirmationError
+          ? [result.reason]
+          : [],
+      ),
+    ]
+    if (failures.length > 0) {
+      throw new StopConfirmationError(
+        'Session title request termination was not confirmed',
+        failures,
+      )
+    }
+  }
+
+  const cancelAndWait = async (timeoutMs = 2_000): Promise<void> => {
+    invalidate()
+    const owned = [...pending]
+    let results: PromiseSettledResult<unknown>[] = []
+    if (owned.length > 0) {
+      try {
+        results = await waitForBoundedSettlement(Promise.allSettled(owned), {
+          timeoutMs,
+          abortGraceMs: 1,
+          operation: 'session title request cancellation',
+        })
+      } catch (error) {
+        if (error instanceof AbortSettlementTimeoutError) {
+          throw new StopConfirmationError(
+            'Session title request did not confirm termination after cancellation',
+            [error],
+          )
+        }
+        throw error
+      }
+    }
+    assertConfirmed(results)
+  }
+
+  const finish = async (
+    timeoutMs = 5_000,
+    cancellationTimeoutMs = 2_000,
+  ): Promise<void> => {
+    const owned = [...pending]
+    if (owned.length === 0) {
+      assertConfirmed([])
+      return
+    }
+    try {
+      const results = await waitForBoundedSettlement(
+        Promise.allSettled(owned),
+        {
+          timeoutMs,
+          abortGraceMs: 1,
+          operation: 'session title request completion',
+        },
+      )
+      assertConfirmed(results)
+    } catch (error) {
+      if (!(error instanceof AbortSettlementTimeoutError)) throw error
+      // A title is auxiliary, but it still owns a remote request. If it misses
+      // its completion deadline, abort it and require termination confirmation
+      // before publishing the turn as fully complete.
+      await cancelAndWait(cancellationTimeoutMs)
+    }
+  }
 
   return {
     begin(sessionId) {
+      // Never overlap title requests. If an earlier request is still locally
+      // pending, abort it and let its tracked settlement decide whether a
+      // later turn may retry. Once a provider reports StopConfirmationError,
+      // the old remote request may still be running, so this guard remains
+      // fused for the rest of its lifetime.
+      if (blockedByUnconfirmedStop) return undefined
+      if (pending.size > 0) {
+        invalidate()
+        return undefined
+      }
       controller?.abort()
       controller = new AbortController()
       generation += 1
@@ -126,11 +223,7 @@ export function createSessionTitleRequestGuard(): SessionTitleRequestGuard {
         signal: controller.signal,
       }
     },
-    invalidate() {
-      generation += 1
-      controller?.abort()
-      controller = undefined
-    },
+    invalidate,
     isCurrent(request, currentSessionId) {
       return (
         request.generation === generation &&
@@ -138,6 +231,26 @@ export function createSessionTitleRequestGuard(): SessionTitleRequestGuard {
         !request.signal.aborted
       )
     },
+    track<T>(request: SessionTitleRequest, promise: Promise<T>): Promise<T> {
+      // Ignore stale callers that try to register after a replacement began,
+      // but still preserve their promise for the caller's own error handling.
+      if (request.generation !== generation) return promise
+
+      pending.add(promise)
+      void promise.then(
+        () => pending.delete(promise),
+        error => {
+          pending.delete(promise)
+          if (error instanceof StopConfirmationError) {
+            blockedByUnconfirmedStop = true
+            unconfirmedFailures.push(error)
+          }
+        },
+      )
+      return promise
+    },
+    cancelAndWait,
+    finish,
   }
 }
 
@@ -238,6 +351,7 @@ export async function generateSessionTitle(
 
     return title
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted || isAbortError(error)) return null
 
     logForDebugging(`generateSessionTitle failed: ${error}`, {

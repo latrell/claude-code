@@ -14,6 +14,7 @@ import type { Message, MessageOrigin } from '../../types/message.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { createUserMessage } from '../../utils/messages.js';
 import { killInProcessTeammate } from '../../utils/swarm/spawnInProcess.js';
+import { StopConfirmationError } from '../../utils/stopConfirmation.js';
 import { updateTaskState } from '../../utils/task/framework.js';
 import type { InProcessTeammateTaskState, PendingTeammateUserMessage } from './types.js';
 import { appendCappedMessage, isInProcessTeammateTask } from './types.js';
@@ -25,7 +26,10 @@ export const InProcessTeammateTask: Task = {
   name: 'InProcessTeammateTask',
   type: 'in_process_teammate',
   async kill(taskId, setAppState) {
-    await killInProcessTeammate(taskId, setAppState);
+    const killed = await killInProcessTeammate(taskId, setAppState);
+    if (!killed) {
+      throw new StopConfirmationError(`In-process teammate ${taskId} did not confirm runner termination`);
+    }
   },
 };
 

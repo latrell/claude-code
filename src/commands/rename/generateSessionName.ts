@@ -6,6 +6,7 @@ import { safeParseJSON } from '../../utils/json.js'
 import { extractTextContent } from '../../utils/messages.js'
 import { extractConversationText } from '../../utils/sessionTitle.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 export async function generateSessionName(
   messages: Message[],
@@ -58,6 +59,7 @@ export async function generateSessionName(
     }
     return null
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     // Haiku timeout/rate-limit/network are expected operational failures —
     // logForDebugging, not logError. Called automatically on every 3rd bridge
     // message (initReplBridge.ts), so errors here would flood the error file.

@@ -7,6 +7,7 @@
 import type { Command, LocalCommandCall } from '../../types/command.js'
 import type { Message } from '../../types/message.js'
 import { t } from '../../i18n/t.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 /** Only user/assistant/system messages are valid for API calls. */
 const API_SAFE_TYPES = new Set(['user', 'assistant', 'system'])
@@ -60,6 +61,7 @@ const call: LocalCommandCall = async (_args, context) => {
       value: `Session summary updated.\n\n${content}`,
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     return {
       type: 'text',
       value: `Failed to generate session summary: ${error instanceof Error ? error.message : String(error)}`,

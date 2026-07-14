@@ -94,13 +94,16 @@ export function buildToolDiscoveryAttachment(
 export async function startSearchExtraToolsPrefetch(
   tools: Tools,
   messages: Message[],
+  signal?: AbortSignal,
 ): Promise<Attachment[]> {
   const startedAt = Date.now()
   const queryText = extractQueryFromMessages(null, messages)
   if (!queryText.trim()) return []
 
   try {
-    const index = await getToolIndex(tools)
+    signal?.throwIfAborted()
+    const index = await getToolIndex(tools, signal)
+    signal?.throwIfAborted()
     const results = searchTools(queryText, index, 3)
 
     const newResults = results.filter(

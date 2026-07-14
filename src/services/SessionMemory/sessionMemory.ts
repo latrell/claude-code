@@ -69,6 +69,7 @@ import {
 // on GrowthBook initialization. Values may be stale but are updated in background.
 
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import {
   getDynamicConfig_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
@@ -448,6 +449,7 @@ export async function manuallyExtractSessionMemory(
       return { success: true, memoryPath }
     })
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     return {
       success: false,
       error: errorMessage(error),

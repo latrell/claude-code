@@ -17,6 +17,10 @@ import type {
   ToolUseSummaryMessage,
 } from '../types/message.js'
 import { createAttachmentMessage } from '../utils/attachments.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../utils/abortSettlement.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import type { REPLHookContext } from '../utils/hooks/postSamplingHooks.js'
@@ -35,6 +39,7 @@ import {
   createUserMessage,
 } from '../utils/messages.js'
 import type { SystemPrompt } from '../utils/systemPromptType.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 
@@ -114,19 +119,40 @@ export async function* handleStopHooks(
     const turnAssistantMessages = stopHookContext.messages.filter(
       (m): m is AssistantMessage => m.type === 'assistant',
     )
-    const p = jobClassifierModule!
-      .classifyAndWriteState(process.env.CLAUDE_JOB_DIR, turnAssistantMessages)
-      .catch(err => {
+    const p = jobClassifierModule!.classifyAndWriteState(
+      process.env.CLAUDE_JOB_DIR,
+      turnAssistantMessages,
+    )
+    try {
+      await waitForBoundedSettlement(p, {
+        signal: toolUseContext.abortController.signal,
+        timeoutMs: 60_000,
+        abortGraceMs: 2_000,
+        operation: 'template job classifier',
+      })
+    } catch (err) {
+      if (err instanceof StopConfirmationError) throw err
+      if (err instanceof AbortSettlementTimeoutError) {
+        throw new StopConfirmationError(
+          'Template job classifier did not confirm termination',
+          [err],
+        )
+      }
+      if (!toolUseContext.abortController.signal.aborted) {
         logForDebugging(`[job] classifier error: ${errorMessage(err)}`, {
           level: 'error',
         })
-      })
-    await Promise.race([
-      p,
-      // eslint-disable-next-line no-restricted-syntax -- sleep() has no .unref(); timer must not block exit
-      new Promise<void>(r => setTimeout(r, 60_000).unref()),
-    ])
+      }
+    }
   }
+
+  // Do not launch post-turn side requests after this turn has already been
+  // cancelled. The active model/tool paths were drained by queryLoop.
+  if (toolUseContext.abortController.signal.aborted) {
+    yield createUserInterruptionMessage({ toolUse: false })
+    return { blockingErrors: [], preventContinuation: true }
+  }
+
   // --bare / SIMPLE: skip background bookkeeping (prompt suggestion,
   // memory extraction, auto-dream). Scripted -p calls don't want auto-memory
   // or forked agents contending for resources during shutdown.
@@ -140,7 +166,18 @@ export async function* handleStopHooks(
       !isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION) &&
       !poorMode
     ) {
-      void executePromptSuggestion(stopHookContext)
+      const promptSuggestion = executePromptSuggestion(stopHookContext)
+      // The original promise remains registered with the query-owned
+      // prompt-suggestion lifecycle. This observer only prevents an ignored
+      // rejection from becoming process-level noise before query teardown.
+      void promptSuggestion.catch(error => {
+        if (!(error instanceof StopConfirmationError)) {
+          logForDebugging(
+            `[promptSuggestion] background error: ${errorMessage(error)}`,
+            { level: 'error' },
+          )
+        }
+      })
     }
     if (
       feature('EXTRACT_MEMORIES') &&
@@ -148,22 +185,44 @@ export async function* handleStopHooks(
       isExtractModeActive() &&
       !poorMode
     ) {
-      // Fire-and-forget in both interactive and non-interactive. For -p/SDK,
-      // print.ts drains the in-flight promise after flushing the response
-      // but before gracefulShutdownSync (see drainPendingExtraction).
-      void import('../services/extractMemories/extractMemories.js')
-        .then(({ executeExtractMemories }) =>
-          executeExtractMemories(
-            stopHookContext,
-            toolUseContext.appendSystemMessage as
-              | ((msg: import('../types/message.js').SystemMessage) => void)
-              | undefined,
-          ),
+      // Await only module registration, not extraction itself. This guarantees
+      // the parent-scoped run is published before query finally snapshots and
+      // drains its owned work; the extraction remains concurrent with hooks.
+      const { executeExtractMemories } = await import(
+        '../services/extractMemories/extractMemories.js'
+      )
+      if (!toolUseContext.abortController.signal.aborted) {
+        const extraction = executeExtractMemories(
+          stopHookContext,
+          toolUseContext.appendSystemMessage as
+            | ((msg: import('../types/message.js').SystemMessage) => void)
+            | undefined,
         )
-        .catch(() => {})
+        void extraction.catch(error => {
+          // Query teardown observes the original promise from the
+          // parent-scoped registry. This branch only prevents early
+          // process-level rejection noise.
+          if (!(error instanceof StopConfirmationError)) {
+            logForDebugging(
+              `[extractMemories] launcher error: ${errorMessage(error)}`,
+              { level: 'error' },
+            )
+          }
+        })
+      }
     }
     if (!toolUseContext.agentId && !poorMode) {
-      void executeAutoDream(stopHookContext, toolUseContext.appendSystemMessage)
+      const autoDream = executeAutoDream(
+        stopHookContext,
+        toolUseContext.appendSystemMessage,
+      )
+      // Auto-dream is an explicit DreamTask with its own Stop owner. Do not
+      // link it to this turn; merely observe scheduler-level failures.
+      void autoDream.catch(error => {
+        logForDebugging(`[autoDream] scheduler error: ${errorMessage(error)}`, {
+          level: 'error',
+        })
+      })
     }
   }
 
@@ -205,6 +264,8 @@ export async function* handleStopHooks(
     let preventedContinuation = false
     let stopReason = ''
     let hasOutput = false
+    let stopHooksCancelled = false
+    let interruptionMessageEmitted = false
     const hookErrors: string[] = []
     const hookInfos: StopHookInfo[] = []
 
@@ -299,11 +360,25 @@ export async function* handleStopHooks(
 
           queryDepth: toolUseContext.queryTracking?.depth,
         })
-        yield createUserInterruptionMessage({
-          toolUse: false,
-        })
-        return { blockingErrors: [], preventContinuation: true }
+        stopHooksCancelled = true
+        if (!interruptionMessageEmitted) {
+          interruptionMessageEmitted = true
+          yield createUserInterruptionMessage({
+            toolUse: false,
+          })
+        }
       }
+    }
+
+    if (toolUseContext.abortController.signal.aborted) {
+      stopHooksCancelled = true
+      if (!interruptionMessageEmitted) {
+        yield createUserInterruptionMessage({ toolUse: false })
+      }
+    }
+
+    if (stopHooksCancelled) {
+      return { blockingErrors: [], preventContinuation: true }
     }
 
     // Create summary system message if hooks ran
@@ -362,6 +437,7 @@ export async function* handleStopHooks(
       )
 
       for (const task of inProgressTasks) {
+        let taskCompletedHooksCancelled = false
         const taskCompletedGenerator = executeTaskCompletedHooks(
           task.id,
           task.subject,
@@ -406,8 +482,14 @@ export async function* handleStopHooks(
             })
           }
           if (toolUseContext.abortController.signal.aborted) {
-            return { blockingErrors: [], preventContinuation: true }
+            taskCompletedHooksCancelled = true
           }
+        }
+        if (toolUseContext.abortController.signal.aborted) {
+          taskCompletedHooksCancelled = true
+        }
+        if (taskCompletedHooksCancelled) {
+          return { blockingErrors: [], preventContinuation: true }
         }
       }
 
@@ -419,6 +501,7 @@ export async function* handleStopHooks(
         toolUseContext.abortController.signal,
       )
 
+      let teammateIdleHooksCancelled = false
       for await (const result of teammateIdleGenerator) {
         if (result.message) {
           if (result.message.type === 'progress' && result.message.toolUseID) {
@@ -448,8 +531,15 @@ export async function* handleStopHooks(
           })
         }
         if (toolUseContext.abortController.signal.aborted) {
-          return { blockingErrors: [], preventContinuation: true }
+          teammateIdleHooksCancelled = true
         }
+      }
+      if (toolUseContext.abortController.signal.aborted) {
+        teammateIdleHooksCancelled = true
+      }
+
+      if (teammateIdleHooksCancelled) {
+        return { blockingErrors: [], preventContinuation: true }
       }
 
       if (teammatePreventedContinuation) {
@@ -466,6 +556,7 @@ export async function* handleStopHooks(
 
     return { blockingErrors: [], preventContinuation: false }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     const durationMs = Date.now() - hookStartTime
     logEvent('tengu_stop_hook_error', {
       duration: durationMs,

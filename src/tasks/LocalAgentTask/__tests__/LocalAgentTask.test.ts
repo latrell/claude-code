@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { AbortSettlementTimeoutError } from '../../../utils/abortSettlement.js'
 import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 // ─── Mocks ───
@@ -67,6 +68,7 @@ const {
   trackLocalAgentExecution,
   updateAgentProgress,
   isLocalAgentTask,
+  LOCAL_AGENT_STOP_ABORT_GRACE_MS,
 } = await import('../LocalAgentTask.js')
 
 // ─── Helpers ───
@@ -400,6 +402,63 @@ describe('failAgentTask', () => {
 })
 
 describe('killAsyncAgent', () => {
+  test('uses a short post-abort confirmation grace', () => {
+    expect(LOCAL_AGENT_STOP_ABORT_GRACE_MS).toBe(2_000)
+  })
+
+  test('keeps an unconfirmed runner addressable so Stop can be retried', async () => {
+    const runner = createDeferred()
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'stop-watchdog-agent',
+      description: 'Stop watchdog agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const tracked = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => runner.promise,
+      setAppState: setAppState as any,
+    })
+
+    const stop = killAsyncAgent(task.agentId, setAppState as any, {
+      waitForStopSettlement: async (_settlement, signal, taskId) => {
+        expect(signal.aborted).toBe(true)
+        expect(taskId).toBe(task.agentId)
+        throw new AbortSettlementTimeoutError('injected stop timeout')
+      },
+    })
+
+    await expect(stop).rejects.toThrow(
+      `did not settle within ${LOCAL_AGENT_STOP_ABORT_GRACE_MS}ms after abort`,
+    )
+    expect(getState().tasks[task.agentId].status).toBe('running')
+    expect(getState().tasks[task.agentId].error).toBeUndefined()
+    expect(getState().tasks[task.agentId].abortController).toBe(
+      task.abortController,
+    )
+
+    let retryReachedSettlement = false
+    const retry = killAsyncAgent(task.agentId, setAppState as any, {
+      waitForStopSettlement: async settlement => {
+        retryReachedSettlement = true
+        await settlement
+      },
+    })
+    await Promise.resolve()
+    expect(retryReachedSettlement).toBe(true)
+    expect(getState().tasks[task.agentId].status).toBe('running')
+
+    // When the actual runner finally exits, both the retry and the task state
+    // are allowed to publish a confirmed killed terminal transition.
+    runner.resolve()
+    await tracked
+    expect(await retry).toBe('killed')
+    expect(getState().tasks[task.agentId].status).toBe('killed')
+  })
+
   test('keeps a result-ready task stoppable and rejects a late completion transition', async () => {
     const runner = createDeferred()
     const { setAppState, getState } = createSetAppState()
@@ -482,6 +541,130 @@ describe('killAsyncAgent', () => {
 
     expect(await stopError).toBeInstanceOf(StopConfirmationError)
     expect(getState().tasks[task.agentId].status).toBe('failed')
+  })
+
+  test('converts a settled runner StopConfirmation into an honest failed terminal task', async () => {
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'runner-unconfirmed-agent',
+      description: 'Runner unconfirmed agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const unconfirmed = new StopConfirmationError(
+      'owned provider request did not confirm termination',
+    )
+    const trackedOutcome = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => Promise.reject(unconfirmed),
+      setAppState: setAppState as any,
+    }).catch(error => error)
+
+    expect(await trackedOutcome).toBe(unconfirmed)
+    expect(getState().tasks[task.agentId].status).toBe('failed')
+    expect(getState().tasks[task.agentId].abortController).toBeUndefined()
+    expect(getState().tasks[task.agentId].error).toContain(
+      'termination was not confirmed',
+    )
+
+    expect(await killAsyncAgent(task.agentId, setAppState as any)).toBe(
+      'already_terminal',
+    )
+    expect(getState().tasks[task.agentId].status).toBe('failed')
+  })
+
+  test('does not remain running when finalization rejects StopConfirmation during Stop', async () => {
+    let rejectRunner!: (error: unknown) => void
+    const runner = new Promise<void>((_resolve, reject) => {
+      rejectRunner = reject
+    })
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'finalizer-unconfirmed-agent',
+      description: 'Finalizer unconfirmed agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const unconfirmed = new StopConfirmationError(
+      'summary request did not settle after abort',
+    )
+    const tracked = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => runner,
+      setAppState: setAppState as any,
+    }).catch(error => error)
+
+    const stopping = killAsyncAgent(task.agentId, setAppState as any).catch(
+      error => error,
+    )
+    rejectRunner(unconfirmed)
+
+    expect(await tracked).toBe(unconfirmed)
+    expect(await stopping).toBe(unconfirmed)
+    expect(getState().tasks[task.agentId].status).toBe('failed')
+    expect(getState().tasks[task.agentId].error).toContain(
+      'summary request did not settle after abort',
+    )
+    expect(getState().tasks[task.agentId].abortController).toBeUndefined()
+  })
+
+  test('does not let a late unconfirmed generation fail its replacement', async () => {
+    let rejectOldRunner!: (error: unknown) => void
+    const oldRunner = new Promise<void>((_resolve, reject) => {
+      rejectOldRunner = reject
+    })
+    const newRunner = createDeferred()
+    const { setAppState, getState } = createSetAppState()
+    const oldTask = registerAsyncAgent({
+      agentId: 'replaced-generation-agent',
+      description: 'Old generation',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const trackedOld = trackLocalAgentExecution({
+      taskId: oldTask.agentId,
+      abortController: oldTask.abortController!,
+      startExecution: () => oldRunner,
+      setAppState: setAppState as any,
+    }).catch(error => error)
+
+    const replacement = registerAsyncAgent({
+      agentId: oldTask.agentId,
+      description: 'Replacement generation',
+      prompt: 'continue',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const trackedReplacement = trackLocalAgentExecution({
+      taskId: replacement.agentId,
+      abortController: replacement.abortController!,
+      startExecution: () => newRunner.promise,
+      setAppState: setAppState as any,
+    })
+
+    const oldError = new StopConfirmationError(
+      'old generation cleanup was unconfirmed',
+    )
+    rejectOldRunner(oldError)
+    expect(await trackedOld).toBe(oldError)
+    expect(getState().tasks[replacement.agentId].status).toBe('running')
+    expect(getState().tasks[replacement.agentId].abortController).toBe(
+      replacement.abortController,
+    )
+
+    const stoppingReplacement = killAsyncAgent(
+      replacement.agentId,
+      setAppState as any,
+    )
+    newRunner.resolve()
+    await trackedReplacement
+    expect(await stoppingReplacement).toBe('killed')
+    expect(getState().tasks[replacement.agentId].status).toBe('killed')
   })
 
   test('transitions running task to killed', async () => {
@@ -1104,6 +1287,40 @@ describe('enqueueAgentNotification', () => {
     })
 
     expect(enqueuedNotifications).toHaveLength(0)
+  })
+
+  test('does not let a late notification consume a replacement generation', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({
+          toolUseId: 'new-tool-use',
+          notified: false,
+        }),
+      },
+    })
+
+    enqueueAgentNotification({
+      taskId: 'test-agent-001',
+      description: 'old generation',
+      status: 'completed',
+      setAppState: setAppState as any,
+      toolUseId: 'old-tool-use',
+    })
+
+    expect(enqueuedNotifications).toHaveLength(0)
+    expect(getState().tasks['test-agent-001'].notified).toBe(false)
+
+    enqueueAgentNotification({
+      taskId: 'test-agent-001',
+      description: 'new generation',
+      status: 'completed',
+      setAppState: setAppState as any,
+      toolUseId: 'new-tool-use',
+    })
+
+    expect(enqueuedNotifications).toHaveLength(1)
+    expect(enqueuedNotifications[0]).toContain('new generation')
+    expect(getState().tasks['test-agent-001'].notified).toBe(true)
   })
 })
 

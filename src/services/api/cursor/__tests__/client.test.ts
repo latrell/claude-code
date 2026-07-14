@@ -156,4 +156,48 @@ describe('streamCursorChat HTTP error mapping', () => {
       expect(frame.message).toBe('[502] Cursor upstream error')
     }
   })
+
+  test('passes the signal and actively cancels a pending HTTP/2 body on abort', async () => {
+    const abortController = new AbortController()
+    let capturedSignal: AbortSignal | null | undefined
+    let bodyCancelled = false
+    let notifyReadStarted!: () => void
+    const readStarted = new Promise<void>(resolve => {
+      notifyReadStarted = resolve
+    })
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull() {
+          notifyReadStarted()
+        },
+        cancel() {
+          bodyCancelled = true
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    const fetchOverride = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      capturedSignal = init?.signal
+      return new Response(body, { status: 200 })
+    }) as typeof fetch
+    const stream = streamCursorChat({
+      model: 'default',
+      messages: [{ role: 'user', content: 'hi' }],
+      credentials,
+      signal: abortController.signal,
+      fetchOverride,
+      envOverride: {},
+    })
+    const pending = stream.next()
+
+    await readStarted
+    abortController.abort('user-cancel')
+    await pending
+
+    expect(capturedSignal).toBe(abortController.signal)
+    expect(bodyCancelled).toBe(true)
+  })
 })

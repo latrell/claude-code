@@ -16,8 +16,10 @@ import type { SetToolJSXFn, Tool, ToolCallProgress, ValidationResult } from 'src
 import { buildTool, type ToolDef } from 'src/Tool.js';
 import {
   backgroundExistingForegroundTask,
+  failForegroundAfterConfirmedTermination,
   markTaskNotified,
   registerForeground,
+  retainForegroundAfterUnconfirmedStop,
   spawnShellTask,
   unregisterForeground,
 } from 'src/tasks/LocalShellTask/LocalShellTask.js';
@@ -33,7 +35,8 @@ import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js
 import { getPlatform } from 'src/utils/platform.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
 import { exec } from 'src/utils/Shell.js';
-import type { ExecResult } from 'src/utils/ShellCommand.js';
+import { type ExecResult, ShellResultSettlementError, waitForForegroundShellResult } from 'src/utils/ShellCommand.js';
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from 'src/utils/semanticBoolean.js';
 import { semanticNumber } from 'src/utils/semanticNumber.js';
@@ -885,7 +888,9 @@ async function* runPowerShellCommand({
     };
   }
 
-  const resultPromise = shellCommand.result;
+  const resultPromise = waitForForegroundShellResult(shellCommand, abortController.signal, {
+    operation: `PowerShell command ${shellCommand.taskOutput.taskId} Stop`,
+  });
 
   // Helper to spawn a background task and return its ID
   async function spawnBackgroundTask(): Promise<string> {
@@ -1010,6 +1015,32 @@ async function* runPowerShellCommand({
   let nextProgressTime = startTime + PROGRESS_THRESHOLD_MS;
   let foregroundTaskId: string | undefined;
 
+  const handleForegroundStopFailure = (error: unknown): void => {
+    if (
+      error instanceof ShellResultSettlementError ||
+      (error instanceof StopConfirmationError && (shellCommand.terminationConfirmed || shellCommand.resultSettled))
+    ) {
+      if (foregroundTaskId) {
+        failForegroundAfterConfirmedTermination(foregroundTaskId, shellCommand, setAppState);
+      }
+      return;
+    }
+
+    if (error instanceof StopConfirmationError && shellCommand.status === 'running') {
+      foregroundTaskId = retainForegroundAfterUnconfirmedStop(
+        {
+          command,
+          description: description || command,
+          shellCommand,
+          agentId,
+        },
+        setAppState,
+        toolUseId,
+        foregroundTaskId,
+      );
+    }
+  };
+
   // Progress loop: wrap in try/finally so stopPolling is called on every exit
   // path — normal completion, timeout/interrupt backgrounding, and Ctrl+B
   // (matches BashTool pattern; see PR #18887 review thread at :560)
@@ -1089,7 +1120,7 @@ async function* runPowerShellCommand({
         }
         const confirmed = await shellCommand.kill();
         if (!confirmed) {
-          throw new Error('Unable to confirm PowerShell process stopped');
+          throw new StopConfirmationError('Unable to confirm PowerShell process stopped');
         }
       }
 
@@ -1152,12 +1183,15 @@ async function* runPowerShellCommand({
 
       nextProgressTime = Date.now() + PROGRESS_INTERVAL_MS;
     }
+  } catch (error) {
+    handleForegroundStopFailure(error);
+    throw error;
   } finally {
     TaskOutput.stopPolling(shellCommand.taskOutput.taskId);
     // Ensure cleanup runs on every exit path (success, rejection, abort).
     // Skip when backgrounded — LocalShellTask owns cleanup for those.
     // Matches main #21105.
-    if (!backgroundShellId && shellCommand.status !== 'backgrounded') {
+    if (!backgroundShellId && (shellCommand.status === 'completed' || shellCommand.status === 'killed')) {
       if (foregroundTaskId) {
         unregisterForeground(foregroundTaskId, setAppState);
       }

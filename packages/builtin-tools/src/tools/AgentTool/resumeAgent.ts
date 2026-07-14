@@ -14,6 +14,7 @@ import { asAgentId } from 'src/types/ids.js'
 import { runWithAgentContext } from 'src/utils/agentContext.js'
 import { runWithCwdOverride } from 'src/utils/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
+import { errorMessage } from 'src/utils/errors.js'
 import {
   createUserMessage,
   filterOrphanedThinkingOnlyMessages,
@@ -268,6 +269,15 @@ export async function resumeAgentBackground({
         ),
       ),
     setAppState: rootSetAppState,
+  }).catch(error => {
+    // runAsyncAgentLifecycle publishes the terminal task state before a
+    // StopConfirmationError escapes. Resume is detached just like the initial
+    // background launch, so observe that rejection instead of letting it reach
+    // the process-level unhandled-rejection path.
+    logForDebugging(
+      `Resumed agent ${agentId} lifecycle did not settle: ${errorMessage(error)}`,
+      { level: 'error' },
+    )
   })
 
   return {

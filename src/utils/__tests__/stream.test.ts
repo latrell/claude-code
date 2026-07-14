@@ -120,6 +120,52 @@ describe('Stream', () => {
     expect(calls).toBe(1)
   })
 
+  test('return() waits for exact asynchronous producer settlement', async () => {
+    let settleProducer!: () => void
+    const producerSettlement = new Promise<void>(resolve => {
+      settleProducer = resolve
+    })
+    const stream = new Stream<number>(() => producerSettlement)
+    stream[Symbol.asyncIterator]()
+
+    let returned = false
+    const returning = stream.return().then(() => {
+      returned = true
+    })
+    await Promise.resolve()
+    expect(returned).toBe(false)
+
+    settleProducer()
+    await returning
+    expect(returned).toBe(true)
+  })
+
+  test('repeated return() shares the pending producer settlement', async () => {
+    let settleProducer!: () => void
+    const producerSettlement = new Promise<void>(resolve => {
+      settleProducer = resolve
+    })
+    const stream = new Stream<number>(() => producerSettlement)
+    stream[Symbol.asyncIterator]()
+
+    const firstReturn = stream.return()
+    const secondReturn = stream.return()
+    expect(secondReturn).toBe(firstReturn)
+
+    let secondReturned = false
+    void secondReturn.then(() => {
+      secondReturned = true
+    })
+    await Promise.resolve()
+    expect(secondReturned).toBe(false)
+
+    settleProducer()
+    await expect(secondReturn).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
+  })
+
   test('iterator cleanup after a producer error does not signal consumer cancellation', async () => {
     let calls = 0
     const stream = new Stream<number>(() => {

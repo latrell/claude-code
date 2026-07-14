@@ -75,6 +75,11 @@ export type SessionsWebSocketCallbacks = {
   onReconnecting?: () => void
 }
 
+type SessionsWebSocketOptions = {
+  /** @internal Allows acknowledgement tests to use a short deadline. */
+  controlRequestTimeoutMs?: number
+}
+
 // Common interface between globalThis.WebSocket and ws.WebSocket
 type WebSocketLike = {
   close(): void
@@ -113,6 +118,7 @@ export class SessionsWebSocket {
     private readonly orgUuid: string,
     private readonly getAccessToken: () => string,
     private readonly callbacks: SessionsWebSocketCallbacks,
+    private readonly options: SessionsWebSocketOptions = {},
   ) {}
 
   /**
@@ -412,8 +418,7 @@ export class SessionsWebSocket {
         reject(
           new Error(`Timed out waiting for ${request.subtype} acknowledgement`),
         )
-      }, CONTROL_REQUEST_TIMEOUT_MS)
-      timer.unref?.()
+      }, this.options.controlRequestTimeoutMs ?? CONTROL_REQUEST_TIMEOUT_MS)
       this.pendingControlRequests.set(requestId, { resolve, reject, timer })
       // Keep the serialized request until acknowledgement. If the socket
       // drops after send() but before the response, reconnect will replay the

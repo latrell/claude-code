@@ -145,6 +145,8 @@ export type EnvLessBridgeParams = {
   outboundOnly?: boolean
   /** Free-form tags for session categorization (e.g. ['ccr-mirror']). */
   tags?: string[]
+  /** Await bounded auxiliary-request cancellation before transport teardown. */
+  beforeTeardown?: () => Promise<void>
 }
 
 /**
@@ -176,6 +178,7 @@ export async function initEnvLessBridgeCore(
     onStateChange,
     outboundOnly,
     tags,
+    beforeTeardown,
   } = params
 
   const cfg = await getEnvLessBridgeConfig()
@@ -712,6 +715,10 @@ export async function initEnvLessBridgeCore(
   //   - result write: fire-and-forget, archive latency covers the drain
   //   - 401 retry: only if first archive 401s, shares the same budget
   async function teardown(): Promise<void> {
+    if (tornDown) return
+    await beforeTeardown?.()
+    // Explicit teardown and the cleanup registry may race while awaiting the
+    // auxiliary lifecycle. Only one caller may own the transport afterward.
     if (tornDown) return
     tornDown = true
     refresh.cancelAll()

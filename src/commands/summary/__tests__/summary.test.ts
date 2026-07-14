@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 const mockManuallyExtract = mock(
   (): Promise<any> => Promise.resolve({ success: true }),
@@ -74,6 +75,15 @@ describe('summary command', () => {
       'Failed to generate session summary',
     )
     expect((result as any).value).toContain('timeout')
+  })
+
+  test('preserves an unconfirmed Stop from session-memory extraction', async () => {
+    const stopError = new StopConfirmationError(
+      'summary request may still be active',
+    )
+    mockManuallyExtract.mockImplementation(() => Promise.reject(stopError))
+
+    await expect(callSummary()).rejects.toBe(stopError)
   })
 
   test('handles empty content after extraction', async () => {

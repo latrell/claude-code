@@ -13,6 +13,7 @@ import { type Tools } from '../../../Tool.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { isAbortError } from '../../../utils/errors.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -259,6 +260,7 @@ export async function* queryModelGemini(
           : undefined,
     })
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (signal.aborted) return
     if (isAbortError(error)) throw error
 

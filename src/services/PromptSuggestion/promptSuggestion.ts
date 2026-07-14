@@ -18,6 +18,7 @@ import {
   getLastAssistantMessage,
 } from '../../utils/messages.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { isTeammate } from '../../utils/teammate.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
@@ -37,6 +38,7 @@ type PromptSuggestionRun = {
 let promptSuggestionGeneration = 0
 let currentPromptSuggestionRun: PromptSuggestionRun | null = null
 const promptSuggestionRuns = new Set<PromptSuggestionRun>()
+let promptSuggestionBlockedByUnconfirmedStop = false
 
 export type PromptVariant = 'user_intent' | 'stated_intent'
 
@@ -116,7 +118,33 @@ async function drainPromptSuggestionRun(
   run: PromptSuggestionRun | null,
 ): Promise<void> {
   if (!run) return
-  await Promise.allSettled([run.settled])
+  const results = await Promise.allSettled([run.settled])
+  throwPromptSuggestionStopFailures(results)
+}
+
+function getPromptSuggestionRunsForParent(
+  parentAbortController: AbortController,
+): PromptSuggestionRun[] {
+  return [...promptSuggestionRuns].filter(
+    run => run.parentAbortController === parentAbortController,
+  )
+}
+
+function throwPromptSuggestionStopFailures(
+  results: readonly PromiseSettledResult<void>[],
+): void {
+  const failures = results.flatMap(result =>
+    result.status === 'rejected' &&
+    result.reason instanceof StopConfirmationError
+      ? [result.reason]
+      : [],
+  )
+  if (failures.length === 0) return
+  if (failures.length === 1) throw failures[0]
+  throw new StopConfirmationError(
+    `Failed to confirm termination of ${failures.length} prompt suggestion runs`,
+    failures,
+  )
 }
 
 /**
@@ -142,9 +170,7 @@ export async function cancelPromptSuggestionForParent(
   parentAbortController: AbortController,
   reason: unknown = 'prompt-suggestion-parent-cancelled',
 ): Promise<void> {
-  const runs = [...promptSuggestionRuns].filter(
-    run => run.parentAbortController === parentAbortController,
-  )
+  const runs = getPromptSuggestionRunsForParent(parentAbortController)
   if (runs.length === 0) return
 
   if (
@@ -153,7 +179,24 @@ export async function cancelPromptSuggestionForParent(
     promptSuggestionGeneration++
   }
   for (const run of runs) abortPromptSuggestionRun(run, reason)
-  await Promise.allSettled(runs.map(run => run.settled))
+  const results = await Promise.allSettled(runs.map(run => run.settled))
+  for (const run of runs) promptSuggestionRuns.delete(run)
+  throwPromptSuggestionStopFailures(results)
+}
+
+/**
+ * Wait for suggestion work owned by the exact query turn without cancelling
+ * it. Query cleanup uses this on normal completion, and separately dispatches
+ * cancelPromptSuggestionForParent if Esc or the cleanup deadline fires.
+ */
+export async function drainPromptSuggestionForParent(
+  parentAbortController: AbortController,
+): Promise<void> {
+  const runs = getPromptSuggestionRunsForParent(parentAbortController)
+  if (runs.length === 0) return
+  const results = await Promise.allSettled(runs.map(run => run.settled))
+  for (const run of runs) promptSuggestionRuns.delete(run)
+  throwPromptSuggestionStopFailures(results)
 }
 
 /**
@@ -189,6 +232,10 @@ export async function tryGenerateSuggestion(
   promptId: PromptVariant
   generationRequestId: string | null
 } | null> {
+  if (promptSuggestionBlockedByUnconfirmedStop) {
+    logSuggestionSuppressed('unconfirmed_stop', undefined, undefined, source)
+    return null
+  }
   if (abortController.signal.aborted) {
     logSuggestionSuppressed('aborted', undefined, undefined, source)
     return null
@@ -241,6 +288,10 @@ export function executePromptSuggestion(
   context: REPLHookContext,
 ): Promise<void> {
   if (context.querySource !== 'repl_main_thread') return Promise.resolve()
+  if (promptSuggestionBlockedByUnconfirmedStop) {
+    logSuggestionSuppressed('unconfirmed_stop', undefined, undefined, 'cli')
+    return Promise.resolve()
+  }
 
   const generation = ++promptSuggestionGeneration
   const previousRun = currentPromptSuggestionRun
@@ -251,6 +302,7 @@ export function executePromptSuggestion(
   const parentAbortController = context.toolUseContext.abortController
   const abortController = createChildAbortController(parentAbortController)
 
+  let stopWasUnconfirmed = false
   const settled = (async (): Promise<void> => {
     // Let the run record be published before an already-aborted parent takes
     // the fast path, so parent-specific teardown can still find and drain it.
@@ -271,6 +323,11 @@ export function executePromptSuggestion(
         generation,
       )
     } catch (error) {
+      if (error instanceof StopConfirmationError) {
+        stopWasUnconfirmed = true
+        promptSuggestionBlockedByUnconfirmedStop = true
+        throw error
+      }
       if (!abortController.signal.aborted) {
         logError(toError(error))
       }
@@ -278,10 +335,15 @@ export function executePromptSuggestion(
       if (currentPromptSuggestionRun?.generation === generation) {
         currentPromptSuggestionRun = null
       }
-      for (const run of promptSuggestionRuns) {
-        if (run.generation === generation) {
-          promptSuggestionRuns.delete(run)
-          break
+      // Keep an unconfirmed terminal promise discoverable until the exact
+      // parent query drains it. Ordinary completion/abort is removed
+      // immediately and may be followed by a later suggestion.
+      if (!stopWasUnconfirmed) {
+        for (const run of promptSuggestionRuns) {
+          if (run.generation === generation) {
+            promptSuggestionRuns.delete(run)
+            break
+          }
         }
       }
       if (!abortController.signal.aborted) {
@@ -344,6 +406,7 @@ async function runPromptSuggestion(
       )
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (
       error instanceof Error &&
       (error.name === 'AbortError' || error.name === 'APIUserAbortError')

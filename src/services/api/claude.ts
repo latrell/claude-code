@@ -110,6 +110,8 @@ import {
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 import { bedrockAdapter } from '../providerUsage/adapters/bedrock.js'
 import { updateProviderBuckets } from '../providerUsage/store.js'
+import { guardProviderStreamCancellation } from './providerCancellation.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
@@ -778,19 +780,31 @@ export async function queryModelWithoutStreaming({
   // Store the assistant message but continue consuming the generator to ensure
   // logAPISuccessAndDuration gets called (which happens after all yields)
   let assistantMessage: AssistantMessage | undefined
-  for await (const message of withStreamingVCR(messages, async function* () {
-    yield* queryModel(
-      messages,
-      systemPrompt,
-      thinkingConfig,
-      tools,
+  try {
+    for await (const message of guardProviderStreamCancellation(
+      withStreamingVCR(messages, async function* () {
+        yield* queryModel(
+          messages,
+          systemPrompt,
+          thinkingConfig,
+          tools,
+          signal,
+          options,
+        )
+      }),
       signal,
-      options,
-    )
-  })) {
-    if (message.type === 'assistant') {
-      assistantMessage = message as AssistantMessage
+      { operation: `Non-streaming model request (${options.querySource})` },
+    )) {
+      if (message.type === 'assistant') {
+        assistantMessage = message as AssistantMessage
+      }
     }
+  } catch (error) {
+    // A settlement timeout means the provider may still be executing and must
+    // never be normalized into an ordinary, falsely-confirmed user abort.
+    if (error instanceof StopConfirmationError) throw error
+    if (signal.aborted) throw new APIUserAbortError()
+    throw error
   }
   if (!assistantMessage) {
     // If the signal was aborted, throw APIUserAbortError instead of a generic error
@@ -821,16 +835,20 @@ export async function* queryModelWithStreaming({
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
-  return yield* withStreamingVCR(messages, async function* () {
-    yield* queryModel(
-      messages,
-      systemPrompt,
-      thinkingConfig,
-      tools,
-      signal,
-      options,
-    )
-  })
+  return yield* guardProviderStreamCancellation(
+    withStreamingVCR(messages, async function* () {
+      yield* queryModel(
+        messages,
+        systemPrompt,
+        thinkingConfig,
+        tools,
+        signal,
+        options,
+      )
+    }),
+    signal,
+    { operation: `Streaming model request (${options.querySource})` },
+  )
 }
 
 /**

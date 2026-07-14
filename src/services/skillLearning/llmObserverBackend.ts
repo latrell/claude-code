@@ -8,6 +8,7 @@ import type {
   ObserverBackendContext,
 } from './observerBackend.js'
 import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import {
   INSTINCT_DOMAINS,
   type InstinctDomain,
@@ -29,7 +30,8 @@ import {
  * - Caps input to the tail of the observation buffer so the prompt stays
  *   small and predictable, and combines the configured timeout with the
  *   owning turn's abort signal so Esc cancels the Haiku round-trip too.
- * - On ANY failure (abort, parse error, empty output) returns `[]` —
+ * - Operational failures (parse error, rate limit, empty output) fall back —
+ *   an unconfirmed Stop remains terminal so the owning turn cannot continue.
  *   the backend is opt-in via `SKILL_LEARNING_OBSERVER_BACKEND=llm` and
  *   must never destabilise skill-learning when the API is unavailable.
  */
@@ -111,7 +113,8 @@ async function analyseWithHaiku(
     // Success: reset failure counter.
     consecutiveFailures = 0
     responseText = extractResponseText(response.message?.content)
-  } catch {
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (ctx?.signal?.aborted) return []
     // Haiku failure (timeout / rate limit / bad response) — increment failure
     // counter and potentially open the circuit breaker.
@@ -148,7 +151,8 @@ async function runHeuristicFallback(
     const { heuristicObserverBackend } = await import('./sessionObserver.js')
     const result = heuristicObserverBackend.analyze(observations, ctx)
     return Array.isArray(result) ? result : await result
-  } catch {
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     return []
   }
 }

@@ -18,6 +18,10 @@ mock.module('src/bootstrap/state.ts', () => ({
 }))
 mock.module('src/utils/teammate.ts', () => ({
   getTeamName: () => undefined,
+  // This mock is process-global in Bun. Keep the lazy AppStateStore reads
+  // available for test files loaded after this suite.
+  isTeammate: () => false,
+  isPlanModeRequired: () => false,
 }))
 mock.module('src/utils/teammateContext.ts', () => ({
   getTeammateContext: () => undefined,

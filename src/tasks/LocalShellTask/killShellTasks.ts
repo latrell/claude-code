@@ -4,10 +4,17 @@
 
 import type { AppState } from '../../state/AppState.js'
 import type { AgentId } from '../../types/ids.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../../utils/abortSettlement.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { dequeueAllMatching } from '../../utils/messageQueueManager.js'
-import type { ShellCommand } from '../../utils/ShellCommand.js'
+import {
+  type ShellCommand,
+  ShellResultSettlementError,
+} from '../../utils/ShellCommand.js'
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { evictTaskOutput } from '../../utils/task/diskOutput.js'
 import { updateTaskState } from '../../utils/task/framework.js'
@@ -15,9 +22,56 @@ import { isLocalShellTask } from './guards.js'
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
 
+const LOCAL_SHELL_KILL_TIMEOUT_MS = 20_000
+const LOCAL_SHELL_KILL_GRACE_MS = 250
+
+export type LocalShellKillSettlementOptions = {
+  timeoutMs?: number
+  abortGraceMs?: number
+}
+
+function failTaskAfterConfirmedTermination(
+  taskId: string,
+  command: ShellCommand,
+  setAppState: SetAppStateFn,
+): void {
+  let cleanupFn: (() => void) | undefined
+
+  updateTaskState(taskId, setAppState, task => {
+    if (
+      task.status !== 'running' ||
+      !isLocalShellTask(task) ||
+      task.shellCommand !== command
+    ) {
+      return task
+    }
+
+    cleanupFn = task.unregisterCleanup
+    if (task.cleanupTimeoutId) clearTimeout(task.cleanupTimeoutId)
+    try {
+      command.cleanup()
+    } catch (error) {
+      logError(error)
+    }
+
+    return {
+      ...task,
+      status: 'failed',
+      shellCommand: null,
+      unregisterCleanup: undefined,
+      cleanupTimeoutId: undefined,
+      endTime: Date.now(),
+    }
+  })
+
+  cleanupFn?.()
+  void evictTaskOutput(taskId)
+}
+
 export async function killTask(
   taskId: string,
   setAppState: SetAppStateFn,
+  settlementOptions: LocalShellKillSettlementOptions = {},
 ): Promise<void> {
   const selected: { command: ShellCommand | null } = { command: null }
   let matchedRunningTask = false
@@ -41,8 +95,44 @@ export async function killTask(
   }
 
   logForDebugging(`LocalShellTask ${taskId} kill requested`)
-  const confirmed = await command.kill()
+  let confirmed: boolean
+  try {
+    confirmed = await waitForBoundedSettlement(
+      Promise.resolve().then(() => command.kill()),
+      {
+        timeoutMs: settlementOptions.timeoutMs ?? LOCAL_SHELL_KILL_TIMEOUT_MS,
+        abortGraceMs:
+          settlementOptions.abortGraceMs ?? LOCAL_SHELL_KILL_GRACE_MS,
+        operation: `LocalShellTask ${taskId} process termination`,
+      },
+    )
+  } catch (error) {
+    if (
+      error instanceof ShellResultSettlementError ||
+      command.terminationConfirmed ||
+      command.resultSettled
+    ) {
+      // Process execution has reached a terminal point. A retry can only
+      // replay the same failed result collector, so close the task honestly
+      // instead of preserving a fake running state forever.
+      failTaskAfterConfirmedTermination(taskId, command, setAppState)
+      return
+    }
+    if (error instanceof StopConfirmationError) throw error
+    const detail =
+      error instanceof AbortSettlementTimeoutError
+        ? 'did not settle within the cancellation deadline'
+        : 'failed before process exit was confirmed'
+    throw new StopConfirmationError(
+      `LocalShellTask ${taskId} process termination ${detail}`,
+      [error],
+    )
+  }
   if (!confirmed) {
+    if (command.terminationConfirmed || command.resultSettled) {
+      failTaskAfterConfirmedTermination(taskId, command, setAppState)
+      return
+    }
     throw new StopConfirmationError(
       `LocalShellTask ${taskId} process exit could not be confirmed`,
     )

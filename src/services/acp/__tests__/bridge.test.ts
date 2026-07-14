@@ -11,6 +11,8 @@ import { promptToQueryInput } from '../promptConversion.js'
 import { markdownEscape, toDisplayPath } from '../utils.js'
 import type { AgentSideConnection, ToolKind } from '@agentclientprotocol/sdk'
 import type { SDKMessage } from '../../../entrypoints/sdk/coreTypes.js'
+import { AbortSettlementTimeoutError } from '../../../utils/abortSettlement.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -995,6 +997,32 @@ describe('forwardSessionUpdates', () => {
     expect(result.stopReason).toBe('end_turn')
   })
 
+  test('does not publish completion before the SDK iterator finalizes', async () => {
+    const stream = {
+      next: () => Promise.resolve({ done: true, value: undefined } as const),
+      return: () => new Promise<IteratorResult<SDKMessage, void>>(() => {}),
+      throw: () => Promise.resolve({ done: true, value: undefined } as const),
+      [Symbol.asyncIterator]() {
+        return this
+      },
+    } as unknown as AsyncGenerator<SDKMessage, void, unknown>
+
+    await expect(
+      forwardSessionUpdates(
+        's1',
+        stream,
+        makeConn(),
+        new AbortController().signal,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        5,
+        5,
+      ),
+    ).rejects.toBeInstanceOf(StopConfirmationError)
+  })
+
   test('returns cancelled when aborted before iteration', async () => {
     const ac = new AbortController()
     ac.abort()
@@ -1059,7 +1087,7 @@ describe('forwardSessionUpdates', () => {
     expect(abortListeners).toBe(0)
   })
 
-  test('cleans abort listeners when abort wins the race', async () => {
+  test('reports unconfirmed cancellation when a pending generator never closes', async () => {
     const ac = new AbortController()
     let abortListeners = 0
     const add = ac.signal.addEventListener.bind(ac.signal)
@@ -1091,11 +1119,14 @@ describe('forwardSessionUpdates', () => {
       makeConn(),
       ac.signal,
       {},
+      undefined,
+      undefined,
+      undefined,
+      5,
     )
     ac.abort()
-    const result = await resultPromise
 
-    expect(result.stopReason).toBe('cancelled')
+    await expect(resultPromise).rejects.toBeInstanceOf(StopConfirmationError)
     expect(abortListeners).toBe(0)
   })
 
@@ -1125,6 +1156,94 @@ describe('forwardSessionUpdates', () => {
 
     expect((await resultPromise).stopReason).toBe('cancelled')
     expect(returnCalls).toBe(1)
+  })
+
+  test('reports unconfirmed cancellation and closes the generator when session update never settles', async () => {
+    const ac = new AbortController()
+    let resolveWriteStarted!: () => void
+    const writeStarted = new Promise<void>(resolve => {
+      resolveWriteStarted = resolve
+    })
+    const conn = makeConn({
+      sessionUpdate: mock(() => {
+        resolveWriteStarted()
+        return new Promise<void>(() => {})
+      }),
+    })
+    let nextCalls = 0
+    let returnCalls = 0
+    const assistant = {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'finished' }],
+      },
+      parent_tool_use_id: null,
+    } as unknown as SDKMessage
+    const stream = {
+      next: () => {
+        nextCalls++
+        if (nextCalls === 1) {
+          return Promise.resolve({ done: false, value: assistant } as const)
+        }
+        return new Promise<IteratorResult<SDKMessage, void>>(() => {})
+      },
+      return: () => {
+        returnCalls++
+        return Promise.resolve({ done: true, value: undefined } as const)
+      },
+      throw: () => Promise.resolve({ done: true, value: undefined } as const),
+      [Symbol.asyncIterator]() {
+        return this
+      },
+    } as unknown as AsyncGenerator<SDKMessage, void, unknown>
+
+    const resultPromise = forwardSessionUpdates(
+      's1',
+      stream,
+      conn,
+      ac.signal,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      5,
+    )
+    await writeStarted
+    ac.abort('test-cancel')
+
+    await expect(resultPromise).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(returnCalls).toBe(1)
+  })
+
+  test('bounds a stalled client write even when no cancellation arrives', async () => {
+    const conn = makeConn({
+      sessionUpdate: mock(() => new Promise<void>(() => {})),
+    })
+    const assistant = {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'finished' }],
+      },
+      parent_tool_use_id: null,
+    } as unknown as SDKMessage
+
+    await expect(
+      forwardSessionUpdates(
+        's1',
+        makeStream([assistant]),
+        conn,
+        new AbortController().signal,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        5,
+        5,
+        5,
+      ),
+    ).rejects.toBeInstanceOf(AbortSettlementTimeoutError)
   })
 
   test('forwards assistant text message as agent_message_chunk', async () => {

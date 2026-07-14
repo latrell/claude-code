@@ -17,8 +17,10 @@ import type { SetToolJSXFn, ToolCallProgress, ToolUseContext, ValidationResult }
 import { buildTool, type ToolDef } from 'src/Tool.js';
 import {
   backgroundExistingForegroundTask,
+  failForegroundAfterConfirmedTermination,
   markTaskNotified,
   registerForeground,
+  retainForegroundAfterUnconfirmedStop,
   spawnShellTask,
   unregisterForeground,
 } from 'src/tasks/LocalShellTask/LocalShellTask.js';
@@ -39,11 +41,12 @@ import { expandPath } from 'src/utils/path.js';
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
 import { exec } from 'src/utils/Shell.js';
-import type { ExecResult } from 'src/utils/ShellCommand.js';
+import { type ExecResult, ShellResultSettlementError, waitForForegroundShellResult } from 'src/utils/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from 'src/utils/semanticBoolean.js';
 import { semanticNumber } from 'src/utils/semanticNumber.js';
 import { EndTruncatingAccumulator } from 'src/utils/stringUtils.js';
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
 import { isOutputLineTruncated } from 'src/utils/terminal.js';
@@ -1063,7 +1066,9 @@ async function* runShellCommand({
   });
 
   // Start the command execution
-  const resultPromise = shellCommand.result;
+  const resultPromise = waitForForegroundShellResult(shellCommand, abortController.signal, {
+    operation: `Bash command ${shellCommand.taskOutput.taskId} Stop`,
+  });
 
   // Helper to spawn a background task and return its ID
   async function spawnBackgroundTask(): Promise<string> {
@@ -1190,14 +1195,46 @@ async function* runShellCommand({
   const startTime = Date.now();
   let foregroundTaskId: string | undefined;
 
+  const handleForegroundStopFailure = (error: unknown): void => {
+    if (
+      error instanceof ShellResultSettlementError ||
+      (error instanceof StopConfirmationError && (shellCommand.terminationConfirmed || shellCommand.resultSettled))
+    ) {
+      if (foregroundTaskId) {
+        failForegroundAfterConfirmedTermination(foregroundTaskId, shellCommand, setAppState);
+      }
+      return;
+    }
+
+    if (error instanceof StopConfirmationError && shellCommand.status === 'running') {
+      foregroundTaskId = retainForegroundAfterUnconfirmedStop(
+        {
+          command,
+          description: description || command,
+          shellCommand,
+          agentId,
+        },
+        setAppState,
+        toolUseId,
+        foregroundTaskId,
+      );
+    }
+  };
+
   {
-    const initialResult = await Promise.race([
-      resultPromise,
-      new Promise<null>(resolve => {
-        const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_THRESHOLD_MS, resolve);
-        t.unref();
-      }),
-    ]);
+    let initialResult: ExecResult | null;
+    try {
+      initialResult = await Promise.race([
+        resultPromise,
+        new Promise<null>(resolve => {
+          const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_THRESHOLD_MS, resolve);
+          t.unref();
+        }),
+      ]);
+    } catch (error) {
+      handleForegroundStopFailure(error);
+      throw error;
+    }
 
     if (initialResult !== null) {
       shellCommand.cleanup();
@@ -1336,6 +1373,9 @@ async function* runShellCommand({
         ...(timeout ? { timeoutMs } : undefined),
       };
     }
+  } catch (error) {
+    handleForegroundStopFailure(error);
+    throw error;
   } finally {
     TaskOutput.stopPolling(shellCommand.taskOutput.taskId);
   }

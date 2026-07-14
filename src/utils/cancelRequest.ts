@@ -1,9 +1,31 @@
 export function canCancelRequest(
   abortSignal: AbortSignal | undefined,
   isExternalLoading: boolean,
+  isQueryActive = false,
 ): boolean {
   return (
-    isExternalLoading || (abortSignal !== undefined && !abortSignal.aborted)
+    isQueryActive ||
+    isExternalLoading ||
+    (abortSignal !== undefined && !abortSignal.aborted)
+  )
+}
+
+export function isAuxiliaryOnlyCancellation({
+  hasCancelableAuxiliaryWork,
+  hasLocalQueryInFlight,
+  isExternalLoading,
+  hasMainAbortController,
+}: {
+  hasCancelableAuxiliaryWork: boolean
+  hasLocalQueryInFlight: boolean
+  isExternalLoading: boolean
+  hasMainAbortController: boolean
+}): boolean {
+  return (
+    hasCancelableAuxiliaryWork &&
+    !hasLocalQueryInFlight &&
+    !isExternalLoading &&
+    !hasMainAbortController
   )
 }
 

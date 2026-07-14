@@ -22,6 +22,7 @@ import {
 } from '../../utils/forkedAgent.js'
 import { logError } from '../../utils/log.js'
 import { getAgentTranscript } from '../../utils/sessionStorage.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { buildSummaryContext } from './summaryContext.js'
 import {
   buildSummaryPrompt,
@@ -29,6 +30,32 @@ import {
 } from './summaryPrompt.js'
 
 const SUMMARY_INTERVAL_MS = 30_000
+const SUMMARY_STOP_TIMEOUT_MS = 5_000
+
+export type AgentSummaryStopResult = 'settled' | 'timed_out'
+
+function waitForStopSettlement(
+  run: Promise<void>,
+  timeoutMs: number,
+): Promise<AgentSummaryStopResult> {
+  return new Promise(resolve => {
+    let finished = false
+    const finish = (result: AgentSummaryStopResult): void => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish('timed_out'), timeoutMs)
+    void run.then(
+      () => finish('settled'),
+      error =>
+        finish(
+          error instanceof StopConfirmationError ? 'timed_out' : 'settled',
+        ),
+    )
+  })
+}
 
 export type AgentSummaryDependencies = Partial<{
   clearTimeout: typeof clearTimeout
@@ -39,10 +66,89 @@ export type AgentSummaryDependencies = Partial<{
   runForkedAgent: typeof runForkedAgent
   setTimeout: typeof setTimeout
   updateAgentSummary: typeof updateAgentSummary
+  waitForStopSettlement: typeof waitForStopSettlement
 }>
 
 export type AgentSummaryHandle = {
-  stop: () => Promise<void>
+  stop: () => Promise<AgentSummaryStopResult>
+  /** Dispatch Stop and await the actual active run rather than its 5s view. */
+  stopExactly: () => Promise<void>
+}
+
+function stopSummaryHandle(
+  handle: AgentSummaryHandle,
+): Promise<AgentSummaryStopResult> {
+  try {
+    return handle.stop().catch(() => 'timed_out')
+  } catch {
+    return Promise.resolve('timed_out')
+  }
+}
+
+function stopSummaryHandleExactly(handle: AgentSummaryHandle): Promise<void> {
+  try {
+    return handle.stopExactly()
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+/**
+ * Owns every summarizer started by one Agent execution.
+ *
+ * Cache-safe params are normally published once, but keeping a Set prevents a
+ * repeated callback from replacing the only reference to an older timer or
+ * request. Handles added after shutdown has begun are stopped immediately.
+ */
+export class AgentSummaryScope {
+  private readonly handles = new Set<AgentSummaryHandle>()
+  private stoppingHandles: AgentSummaryHandle[] | null = null
+  private stopped = false
+  private stopPromise: Promise<AgentSummaryStopResult> | null = null
+  private exactStopPromise: Promise<void> | null = null
+
+  add(handle: AgentSummaryHandle): void {
+    if (this.stopped) {
+      // A late cache-safe callback is unusual, but still dispatch cancellation
+      // immediately and observe it so it cannot become an unhandled orphan.
+      void stopSummaryHandleExactly(handle).catch(() => undefined)
+      return
+    }
+    this.handles.add(handle)
+  }
+
+  stopAll(): Promise<AgentSummaryStopResult> {
+    if (this.stopPromise) return this.stopPromise
+
+    const handles = this.beginStop()
+    if (handles.length === 0) {
+      this.stopPromise = Promise.resolve('settled')
+      return this.stopPromise
+    }
+
+    this.stopPromise = Promise.all(handles.map(stopSummaryHandle)).then(
+      results => (results.includes('timed_out') ? 'timed_out' : 'settled'),
+    )
+    return this.stopPromise
+  }
+
+  stopAllExactly(): Promise<void> {
+    if (this.exactStopPromise) return this.exactStopPromise
+
+    const handles = this.beginStop()
+    this.exactStopPromise = Promise.all(
+      handles.map(stopSummaryHandleExactly),
+    ).then(() => undefined)
+    return this.exactStopPromise
+  }
+
+  private beginStop(): AgentSummaryHandle[] {
+    if (this.stoppingHandles) return this.stoppingHandles
+    this.stopped = true
+    this.stoppingHandles = [...this.handles]
+    this.handles.clear()
+    return this.stoppingHandles
+  }
 }
 
 export function startAgentSummarization(
@@ -61,7 +167,8 @@ export function startAgentSummarization(
   let activeRun: Promise<void> | null = null
   let timeoutId: ReturnType<typeof setTimeout> | null = null
   let stopped = false
-  let stopPromise: Promise<void> | null = null
+  let stopPromise: Promise<AgentSummaryStopResult> | null = null
+  let exactStopPromise: Promise<void> | null = null
   let timerGeneration = 0
   let previousSummary: string | null = null
   let lastHandledTranscriptFingerprint: string | null = null
@@ -75,6 +182,8 @@ export function startAgentSummarization(
   const setTimeoutImpl = dependencies.setTimeout ?? setTimeout
   const updateAgentSummaryImpl =
     dependencies.updateAgentSummary ?? updateAgentSummary
+  const waitForStopSettlementImpl =
+    dependencies.waitForStopSettlement ?? waitForStopSettlement
 
   async function runSummary(): Promise<void> {
     if (stopped || parentAbortController.signal.aborted) return
@@ -196,6 +305,9 @@ export function startAgentSummarization(
         }
       }
     } catch (e) {
+      if (e instanceof StopConfirmationError) {
+        throw e
+      }
       if (
         !stopped &&
         !parentAbortController.signal.aborted &&
@@ -226,15 +338,19 @@ export function startAgentSummarization(
     const run = Promise.resolve()
       .then(runSummary)
       .catch(error => {
+        if (error instanceof StopConfirmationError) {
+          throw error
+        }
         // runSummary handles request failures itself. This final boundary also
         // covers failures in its scheduling cleanup and guarantees stop() is a
         // non-rejecting settlement barrier for the owning agent lifecycle.
         logErrorImpl(error)
       })
     activeRun = run
-    void run.then(() => {
+    const clearActiveRun = (): void => {
       if (activeRun === run) activeRun = null
-    })
+    }
+    void run.then(clearActiveRun, clearActiveRun)
     return run
   }
 
@@ -248,9 +364,8 @@ export function startAgentSummarization(
     }, SUMMARY_INTERVAL_MS)
   }
 
-  function stop(): Promise<void> {
-    if (stopPromise) return stopPromise
-
+  function stopExactly(): Promise<void> {
+    if (exactStopPromise) return exactStopPromise
     logForDebuggingImpl(`[AgentSummary] Stopping summarization for ${taskId}`)
     stopped = true
     timerGeneration += 1
@@ -266,14 +381,23 @@ export function startAgentSummarization(
     // callback that has not started yet now observes stopped; a callback that
     // already started published activeRun synchronously before its first await.
     const runToSettle = activeRun
-    stopPromise = runToSettle
-      ? runToSettle.then(() => undefined)
-      : Promise.resolve()
+    exactStopPromise = runToSettle ?? Promise.resolve()
+    return exactStopPromise
+  }
+
+  function stop(): Promise<AgentSummaryStopResult> {
+    if (stopPromise) return stopPromise
+
+    const exactSettlement = stopExactly()
+    stopPromise = waitForStopSettlementImpl(
+      exactSettlement,
+      SUMMARY_STOP_TIMEOUT_MS,
+    )
     return stopPromise
   }
 
   // Start the first timer
   scheduleNext()
 
-  return { stop }
+  return { stop, stopExactly }
 }

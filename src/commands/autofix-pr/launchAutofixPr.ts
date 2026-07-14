@@ -24,6 +24,7 @@ import {
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import { detectCurrentRepositoryWithHost } from '../../utils/detectRepository.js'
 import { stopRemoteSession, teleportToRemote } from '../../utils/teleport.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { AutofixProgress } from './AutofixProgress.js'
 import { createAutofixTeammate } from './inProcessAgent.js'
 import {
@@ -291,6 +292,7 @@ export const callAutofixPr: LocalJSXCommandCall = async (
           signal: teammate.abortController.signal,
         })
       } catch (error) {
+        if (error instanceof StopConfirmationError) throw error
         if (teammate.abortController.signal.aborted) return null
         throw error
       }
@@ -366,6 +368,7 @@ If no fix was needed, omit <commits-pushed> and <files-changed> and explain in <
           onCreateFail: captureFailMsg,
         })
       } catch (teleErr: unknown) {
+        if (teleErr instanceof StopConfirmationError) throw teleErr
         if (teammate.abortController.signal.aborted) return null
         const teleMsg =
           teleErr instanceof Error ? teleErr.message : String(teleErr)

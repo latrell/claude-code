@@ -19,7 +19,6 @@ import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
 import { getOrganizationUUID } from '../services/oauth/client.js';
-import type { SessionsWebSocket as SessionsWebSocketClient } from '../remote/SessionsWebSocket.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
@@ -52,6 +51,80 @@ import {
 } from './teleport/api.js';
 import { fetchEnvironments } from './teleport/environments.js';
 import { createAndUploadGitBundle } from './teleport/gitBundle.js';
+import { StopConfirmationError } from './stopConfirmation.js';
+
+export class RemoteStopDeadlineError extends Error {
+  constructor(operation: string, timeoutMs: number) {
+    super(`${operation} timed out after ${timeoutMs}ms`);
+    this.name = 'RemoteStopDeadlineError';
+  }
+}
+
+/** @internal Exported for deterministic deadline tests. */
+export async function withRemoteStopDeadline<T>(
+  operation: string,
+  timeoutMs: number,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new RemoteStopDeadlineError(operation, timeoutMs);
+      reject(error);
+      controller.abort(error);
+    }, timeoutMs);
+  });
+  const workPromise = Promise.resolve().then(() => work(controller.signal));
+  try {
+    return await Promise.race([workPromise, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+type RemoteInterruptSocketCallbacks = {
+  onMessage: () => void;
+  onConnected: () => void;
+  onClose: () => void;
+  onError: (error: Error) => void;
+};
+
+type RemoteInterruptSocket = {
+  connect: () => Promise<void>;
+  close: () => void;
+  sendControlRequest: (request: { subtype: 'interrupt' }) => Promise<{
+    response: { subtype: string };
+  }>;
+};
+
+type InterruptRemoteSessionDependencies = {
+  getAccessToken?: () => string | undefined;
+  getOrganizationUUID?: () => Promise<string | undefined>;
+  createSocket?: (
+    callbacks: RemoteInterruptSocketCallbacks,
+    accessToken: string,
+    orgUUID: string,
+  ) => Promise<RemoteInterruptSocket>;
+};
+
+type ArchiveRemoteSessionDependencies = {
+  getAccessToken?: () => string | undefined;
+  getOrganizationUUID?: () => Promise<string | undefined>;
+  postArchive?: (
+    url: string,
+    headers: Record<string, string>,
+    timeoutMs: number,
+    signal: AbortSignal,
+  ) => Promise<{ status: number; data: unknown }>;
+};
+
+type StopRemoteSessionOptions = {
+  interruptTimeoutMs?: number;
+  archiveTimeoutMs?: number;
+  interruptDependencies?: InterruptRemoteSessionDependencies;
+  archiveDependencies?: ArchiveRemoteSessionDependencies;
+};
 
 export type TeleportResult = {
   messages: Message[];
@@ -167,6 +240,7 @@ async function generateTitleAndBranch(description: string, signal: AbortSignal):
 
     return { title: fallbackTitle, branchName: fallbackBranch };
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error;
     logError(new Error(`Error generating title and branch: ${error}`));
     return { title: fallbackTitle, branchName: fallbackBranch };
   }
@@ -1335,6 +1409,7 @@ export async function teleportToRemote(options: {
       title: sessionData.title || requestBody.title,
     };
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error;
     const err = toError(error);
     logError(err);
     return null;
@@ -1347,32 +1422,52 @@ export async function teleportToRemote(options: {
  * attempt another write for some time. Explicit Stop actions must call
  * stopRemoteSession() instead.
  */
-export async function archiveRemoteSession(sessionId: string, timeout = 10_000): Promise<boolean> {
+export async function archiveRemoteSession(
+  sessionId: string,
+  timeout = 10_000,
+  dependencies: ArchiveRemoteSessionDependencies = {},
+): Promise<boolean> {
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-    if (!accessToken) {
-      logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing OAuth token`);
-      return false;
-    }
-    const orgUUID = await getOrganizationUUID();
-    if (!orgUUID) {
-      logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing organization UUID`);
-      return false;
-    }
-    const headers = {
-      ...getOAuthHeaders(accessToken),
-      'anthropic-beta': 'ccr-byoc-2025-07-29',
-      'x-organization-uuid': orgUUID,
-    };
-    const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/archive`;
-    const resp = await axios.post(url, {}, { headers, timeout, validateStatus: s => s < 500 });
-    if (resp.status === 200 || resp.status === 409) {
-      logForDebugging(`[archiveRemoteSession] archived ${sessionId}`);
-      return true;
-    } else {
+    return await withRemoteStopDeadline(`Archive remote session ${sessionId}`, timeout, async signal => {
+      const accessToken = (dependencies.getAccessToken ?? (() => getClaudeAIOAuthTokens()?.accessToken))();
+      if (!accessToken) {
+        logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing OAuth token`);
+        return false;
+      }
+      const resolveOrganizationUUID = dependencies.getOrganizationUUID ?? getOrganizationUUID;
+      const orgUUID = await resolveOrganizationUUID();
+      signal.throwIfAborted();
+      if (!orgUUID) {
+        logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing organization UUID`);
+        return false;
+      }
+      const headers = {
+        ...getOAuthHeaders(accessToken),
+        'anthropic-beta': 'ccr-byoc-2025-07-29',
+        'x-organization-uuid': orgUUID,
+      };
+      const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/archive`;
+      const postArchive =
+        dependencies.postArchive ??
+        ((requestUrl, requestHeaders, requestTimeout, requestSignal) =>
+          axios.post(
+            requestUrl,
+            {},
+            {
+              headers: requestHeaders,
+              timeout: requestTimeout,
+              signal: requestSignal,
+              validateStatus: status => status < 500,
+            },
+          ));
+      const resp = await postArchive(url, headers, timeout, signal);
+      if (resp.status === 200 || resp.status === 409) {
+        logForDebugging(`[archiveRemoteSession] archived ${sessionId}`);
+        return true;
+      }
       logForDebugging(`[archiveRemoteSession] ${sessionId} failed ${resp.status}: ${jsonStringify(resp.data)}`);
       return false;
-    }
+    });
   } catch (err) {
     logError(err);
     return false;
@@ -1383,60 +1478,77 @@ export async function archiveRemoteSession(sessionId: string, timeout = 10_000):
  * Interrupt a first-party remote worker and wait for its matching control ACK.
  * Merely closing this observer WebSocket would leave the worker running.
  */
-export async function interruptRemoteSession(sessionId: string, timeout = 15_000): Promise<boolean> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-  if (!accessToken) {
-    logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing OAuth token`);
-    return false;
-  }
-  const orgUUID = await getOrganizationUUID();
-  if (!orgUUID) {
-    logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing organization UUID`);
-    return false;
-  }
-
-  const { SessionsWebSocket } = await import('../remote/SessionsWebSocket.js');
-  let socket: SessionsWebSocketClient | undefined;
-  let requestStarted = false;
-  let finish: (result: boolean) => void = () => {};
-  const result = new Promise<boolean>(resolve => {
-    let settled = false;
-    const complete = (value: boolean): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-    finish = complete;
-    const timer = setTimeout(() => complete(false), timeout);
-    timer.unref?.();
-
-    socket = new SessionsWebSocket(sessionId, orgUUID, () => getClaudeAIOAuthTokens()?.accessToken ?? accessToken, {
-      onMessage: () => {},
-      onConnected: () => {
-        if (requestStarted || !socket) return;
-        requestStarted = true;
-        void socket
-          .sendControlRequest({ subtype: 'interrupt' })
-          .then(response => complete(response.response.subtype === 'success'))
-          .catch(error => {
-            logError(error);
-            complete(false);
-          });
-      },
-      onClose: () => complete(false),
-      onError: error => logError(error),
-    });
-  });
-
+export async function interruptRemoteSession(
+  sessionId: string,
+  timeout = 15_000,
+  dependencies: InterruptRemoteSessionDependencies = {},
+): Promise<boolean> {
+  let socket: RemoteInterruptSocket | undefined;
   try {
-    await socket!.connect();
-    const interrupted = await result;
+    const interrupted = await withRemoteStopDeadline(`Interrupt remote session ${sessionId}`, timeout, async signal => {
+      const readAccessToken = dependencies.getAccessToken ?? (() => getClaudeAIOAuthTokens()?.accessToken);
+      const accessToken = readAccessToken();
+      if (!accessToken) {
+        logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing OAuth token`);
+        return false;
+      }
+      const resolveOrganizationUUID = dependencies.getOrganizationUUID ?? getOrganizationUUID;
+      const orgUUID = await resolveOrganizationUUID();
+      signal.throwIfAborted();
+      if (!orgUUID) {
+        logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing organization UUID`);
+        return false;
+      }
+
+      let requestStarted = false;
+      let complete: (result: boolean) => void = () => {};
+      const acknowledgement = new Promise<boolean>(resolve => {
+        let settled = false;
+        complete = value => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+      });
+      const callbacks: RemoteInterruptSocketCallbacks = {
+        onMessage: () => {},
+        onConnected: () => {
+          if (requestStarted || !socket || signal.aborted) return;
+          requestStarted = true;
+          void socket
+            .sendControlRequest({ subtype: 'interrupt' })
+            .then(response => complete(response.response.subtype === 'success'))
+            .catch(error => {
+              logError(error);
+              complete(false);
+            });
+        },
+        onClose: () => complete(false),
+        onError: error => logError(error),
+      };
+      if (dependencies.createSocket) {
+        socket = await dependencies.createSocket(callbacks, accessToken, orgUUID);
+      } else {
+        const { SessionsWebSocket } = await import('../remote/SessionsWebSocket.js');
+        socket = new SessionsWebSocket(sessionId, orgUUID, () => readAccessToken() ?? accessToken, callbacks);
+      }
+      signal.throwIfAborted();
+      signal.addEventListener('abort', () => socket?.close(), { once: true });
+      try {
+        void socket.connect().catch(error => {
+          logError(error);
+          complete(false);
+        });
+      } catch (error) {
+        logError(error);
+        complete(false);
+      }
+      return acknowledgement;
+    });
     logForDebugging(`[interruptRemoteSession] ${sessionId} ${interrupted ? 'acknowledged' : 'failed'}`);
     return interrupted;
   } catch (error) {
     logError(error);
-    finish(false);
     return false;
   } finally {
     socket?.close();
@@ -1444,11 +1556,15 @@ export async function interruptRemoteSession(sessionId: string, timeout = 15_000
 }
 
 /** Interrupt execution first, then archive to prevent any later event replay. */
-export async function stopRemoteSession(sessionId: string): Promise<boolean> {
+export async function stopRemoteSession(sessionId: string, options: StopRemoteSessionOptions = {}): Promise<boolean> {
   // An archived session rejects future events, but does not prove an already
   // accepted inference/tool turn has stopped. Always require the worker's
   // interrupt acknowledgement, even when another caller archived first.
-  const interrupted = await interruptRemoteSession(sessionId);
+  const interrupted = await interruptRemoteSession(
+    sessionId,
+    options.interruptTimeoutMs,
+    options.interruptDependencies,
+  );
   if (!interrupted) return false;
-  return archiveRemoteSession(sessionId);
+  return archiveRemoteSession(sessionId, options.archiveTimeoutMs, options.archiveDependencies);
 }

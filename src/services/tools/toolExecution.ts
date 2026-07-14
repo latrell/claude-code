@@ -88,6 +88,7 @@ import {
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
 import {
@@ -497,6 +498,7 @@ export async function* runToolUse(
       yield update
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (toolUseContext.abortController.signal.aborted || isAbortError(error)) {
       logEvent('tengu_tool_use_cancelled', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -554,12 +556,17 @@ function streamedCheckPermissionsAndCallTool(
   //
   // Ideally the progress reporting and tool call reporting would
   // be via separate mechanisms.
-  const stream = new Stream<MessageUpdateLazy>(() => {
+  let executionSettlement: Promise<void> | undefined
+  const stream = new Stream<MessageUpdateLazy>(async () => {
     if (!toolUseContext.abortController.signal.aborted) {
       toolUseContext.abortController.abort('stream_consumer_cancelled')
     }
+    // Abort dispatch is not termination confirmation. Keep iterator.return()
+    // pending until the exact tool/hook pipeline settles so the outer
+    // StreamingToolExecutor can fail closed if an adapter ignores cancellation.
+    await executionSettlement
   })
-  checkPermissionsAndCallTool(
+  executionSettlement = checkPermissionsAndCallTool(
     tool,
     toolUseID,
     input,

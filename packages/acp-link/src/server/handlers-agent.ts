@@ -72,16 +72,24 @@ export async function handleConnect(ws: WSContext): Promise<void> {
       // The wrapper may exit before a spawned tool/HTTP worker. Keep the PID
       // long enough to verify the whole process group is gone.
       if (state.process === agentProcess) {
-        void terminateAgentProcess(state).then(stopped => {
-          if (!stopped) {
+        void terminateAgentProcess(state).then(
+          stopped => {
+            if (!stopped) {
+              logAgent.error(
+                { pid: agentProcess?.pid },
+                'agent exited but descendants are still alive',
+              )
+              return
+            }
+            send(ws, 'status', { connected: false })
+          },
+          error => {
             logAgent.error(
-              { pid: agentProcess?.pid },
-              'agent exited but descendants are still alive',
+              { error, pid: agentProcess?.pid },
+              'agent descendant termination failed',
             )
-            return
-          }
-          send(ws, 'status', { connected: false })
-        })
+          },
+        )
       }
     })
 

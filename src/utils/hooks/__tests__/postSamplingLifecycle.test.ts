@@ -39,6 +39,7 @@ const {
   registerPostSamplingHook,
 } = await import('../postSamplingHooks.js')
 const { createApiQueryHook } = await import('../apiQueryHookHelper.js')
+const { StopConfirmationError } = await import('../../stopConfirmation.js')
 
 const systemPrompt = [] as unknown as SystemPrompt
 
@@ -156,6 +157,41 @@ describe('PostSamplingHookLifecycle', () => {
     expect(observedReason).toBe('escape')
     expect(laterHookRan).toBe(false)
     expect(logErrorCalls).toBe(0)
+  })
+
+  test('retains an early unconfirmed failure until turn finalization', async () => {
+    const parent = new AbortController()
+    const lifecycle = new PostSamplingHookLifecycle(parent)
+    const failure = new StopConfirmationError('side request still running')
+
+    lifecycle.trackOwnedRequest(Promise.reject(failure))
+    // Let the request's immediate rejection observer remove it from pending.
+    await Promise.resolve()
+
+    await expect(lifecycle.finish()).rejects.toBeInstanceOf(
+      StopConfirmationError,
+    )
+  })
+
+  test('waits for a tracked non-hook request before finishing', async () => {
+    const parent = new AbortController()
+    const lifecycle = new PostSamplingHookLifecycle(parent)
+    let release: (() => void) | undefined
+    const request = new Promise<void>(resolve => {
+      release = resolve
+    })
+    lifecycle.trackOwnedRequest(request)
+
+    let finished = false
+    const finishing = lifecycle.finish().then(() => {
+      finished = true
+    })
+    await Promise.resolve()
+    expect(finished).toBe(false)
+
+    release?.()
+    await finishing
+    expect(finished).toBe(true)
   })
 })
 

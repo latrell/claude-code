@@ -4,7 +4,9 @@ import { getTerminalFocusState, subscribeTerminalFocus } from '@anthropic/ink'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { generateAwaySummary } from '../services/awaySummary.js'
 import type { Message } from '../types/message.js'
+import { logForDebugging } from '../utils/debug.js'
 import { createAwaySummaryMessage } from '../utils/messages.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 
 const BLUR_DELAY_MS = 5 * 60_000
 
@@ -35,6 +37,11 @@ export function useAwaySummary(
 ): void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const generationRunRef = useRef<Promise<void> | null>(null)
+  // Once a provider fails to confirm cancellation, do not launch another
+  // hidden summary request in this mounted session. The old remote request may
+  // still be live even though its local wrapper has already failed.
+  const generationDisabledRef = useRef(false)
   const messagesRef = useRef(messages)
   const isLoadingRef = useRef(isLoading)
   const pendingRef = useRef(false)
@@ -64,18 +71,48 @@ export function useAwaySummary(
       abortRef.current = null
     }
 
-    async function generate(): Promise<void> {
+    async function runGeneration(): Promise<void> {
       pendingRef.current = false
+      if (generationDisabledRef.current) return
       if (hasSummarySinceLastUserTurn(messagesRef.current)) return
-      abortInFlight()
       const controller = new AbortController()
       abortRef.current = controller
-      const text = await generateAwaySummary(
-        messagesRef.current,
-        controller.signal,
-      )
-      if (controller.signal.aborted || text === null) return
-      setMessages(prev => [...prev, createAwaySummaryMessage(text)])
+      try {
+        const text = await generateAwaySummary(
+          messagesRef.current,
+          controller.signal,
+        )
+        if (controller.signal.aborted || text === null) return
+        setMessages(prev => [...prev, createAwaySummaryMessage(text)])
+      } catch (error) {
+        if (error instanceof StopConfirmationError) {
+          generationDisabledRef.current = true
+          logForDebugging(
+            `[awaySummary] cancellation was not confirmed; disabling replacement summaries: ${error.message}`,
+            { level: 'error' },
+          )
+          return
+        }
+        throw error
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null
+      }
+    }
+
+    function generate(): Promise<void> {
+      // Never replace an aborted-but-unsettled request. Abort dispatch is not
+      // termination proof, and starting another hidden summary here can leave
+      // two provider requests running concurrently.
+      const existing = generationRunRef.current
+      if (existing) return existing
+
+      const run = runGeneration()
+      generationRunRef.current = run
+      const clear = (): void => {
+        if (generationRunRef.current === run) generationRunRef.current = null
+      }
+      void run.then(clear, clear)
+      return run
     }
 
     function onBlurTimerFire(): void {
@@ -84,7 +121,11 @@ export function useAwaySummary(
         pendingRef.current = true
         return
       }
-      void generate()
+      void generate().catch(error => {
+        logForDebugging(`[awaySummary] generation lifecycle failed: ${error}`, {
+          level: 'error',
+        })
+      })
     }
 
     function onFocusChange(): void {
@@ -121,7 +162,11 @@ export function useAwaySummary(
     if (!pendingRef.current) return
     const state = getTerminalFocusState()
     if (state !== 'blurred' && state !== 'unknown') return
-    void generateRef.current?.()
+    void generateRef.current?.().catch(error => {
+      logForDebugging(`[awaySummary] generation lifecycle failed: ${error}`, {
+        level: 'error',
+      })
+    })
   }, [isLoading])
 
   // For 'unknown' terminals: use isLoading transitions as presence signal.
@@ -152,7 +197,12 @@ export function useAwaySummary(
           pendingRef.current = true
           return
         }
-        void generateRef.current?.()
+        void generateRef.current?.().catch(error => {
+          logForDebugging(
+            `[awaySummary] generation lifecycle failed: ${error}`,
+            { level: 'error' },
+          )
+        })
       }, BLUR_DELAY_MS)
     }
   }, [isLoading, gbEnabled])

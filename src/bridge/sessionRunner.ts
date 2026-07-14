@@ -13,6 +13,7 @@ import {
 } from '../utils/processTermination.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import { debugTruncate } from './debugUtils.js'
+import { createRetryableTermination } from './retryableTermination.js'
 import type {
   SessionActivity,
   SessionDoneStatus,
@@ -362,27 +363,42 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
       }
       let closed = false
       let terminationRequested = false
-      let termSent = false
-      let sigkillSent = false
-      let terminationPromise: Promise<boolean> | null = null
       let firstUserMessageSeen = false
 
       const signalTree = async (signal: TerminationSignal): Promise<void> => {
         const pid = child.pid
         if (!pid || !isProcessTreeAlive(pid, processTreeOptions)) return
-        if (signal === 'SIGTERM') {
-          if (termSent) return
-          termSent = true
-        } else {
-          if (sigkillSent) return
-          sigkillSent = true
-        }
         terminationRequested = true
         deps.onDebug(
           `[bridge:session] Sending ${signal} to process tree sessionId=${opts.sessionId} pid=${pid}`,
         )
         await signalProcessTree(pid, signal, processTreeOptions)
       }
+
+      // Share only a currently-running escalation. A false/rejected result is
+      // not reusable proof: a later Stop must re-check liveness and may need
+      // to deliver TERM/KILL again after a transient signalling failure.
+      const terminateProcess = createRetryableTermination(
+        (graceMs = 5_000, forceWaitMs = 5_000) =>
+          terminateWithEscalation({
+            signal: signalTree,
+            waitForExit: timeoutMs =>
+              waitForTermination(
+                () =>
+                  closed &&
+                  (!child.pid ||
+                    !isProcessTreeAlive(child.pid, processTreeOptions)),
+                timeoutMs,
+              ),
+            graceMs,
+            forceWaitMs,
+            onSignalError: (signal, error) => {
+              deps.onDebug(
+                `[bridge:session] Failed to send ${signal} to sessionId=${opts.sessionId}: ${String(error)}`,
+              )
+            },
+          }),
+      )
 
       // Buffer stderr for error diagnostics
       if (child.stderr) {
@@ -529,28 +545,8 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
           return currentActivity
         },
         terminate(graceMs = 5_000, forceWaitMs = 5_000): Promise<boolean> {
-          if (terminationPromise) return terminationPromise
-
           terminationRequested = true
-          terminationPromise = terminateWithEscalation({
-            signal: signalTree,
-            waitForExit: timeoutMs =>
-              waitForTermination(
-                () =>
-                  closed &&
-                  (!child.pid ||
-                    !isProcessTreeAlive(child.pid, processTreeOptions)),
-                timeoutMs,
-              ),
-            graceMs,
-            forceWaitMs,
-            onSignalError: (signal, error) => {
-              deps.onDebug(
-                `[bridge:session] Failed to send ${signal} to sessionId=${opts.sessionId}: ${String(error)}`,
-              )
-            },
-          })
-          return terminationPromise
+          return terminateProcess(graceMs, forceWaitMs)
         },
         writeStdin(data: string): void {
           if (child.stdin && !child.stdin.destroyed) {

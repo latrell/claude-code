@@ -7,6 +7,7 @@ import { logForDebugging } from '../debug.js'
 import type { ShellCommand } from '../ShellCommand.js'
 import { invalidateSessionEnvCache } from '../sessionEnvironment.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import { emitHookResponse, startHookProgressInterval } from './hookEvents.js'
 
 export type PendingAsyncHook = {
@@ -293,7 +294,7 @@ export async function finalizePendingAsyncHooks(): Promise<void> {
         if (hook.shellCommand && hook.shellCommand.status !== 'killed') {
           const confirmed = await hook.shellCommand.kill()
           if (!confirmed) {
-            throw new Error(
+            throw new StopConfirmationError(
               `Unable to confirm async hook process ${hook.processId} stopped`,
             )
           }

@@ -40,7 +40,7 @@ import type {
   Message,
   SystemMessage,
 } from '../../types/message.js'
-import { createAbortController } from '../../utils/abortController.js'
+import { createChildAbortController } from '../../utils/abortController.js'
 import { count, uniq } from '../../utils/array.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
@@ -52,6 +52,7 @@ import {
   createMemorySavedMessage,
   createUserMessage,
 } from '../../utils/messages.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { logEvent } from '../analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
@@ -273,6 +274,19 @@ function extractWrittenPaths(agentMessages: Message[]): string[] {
 
 type AppendSystemMessageFn = (msg: SystemMessage) => void
 
+type ExtractionRun = {
+  parentAbortController: AbortController
+  abortController: AbortController
+  settled: Promise<void>
+}
+
+type PendingExtraction = {
+  context: REPLHookContext
+  appendSystemMessage?: AppendSystemMessageFn
+  resolve: () => void
+  reject: (error: unknown) => void
+}
+
 /** The active extractor function, set by initExtractMemories(). */
 let extractor:
   | ((
@@ -280,6 +294,33 @@ let extractor:
       appendSystemMessage?: AppendSystemMessageFn,
     ) => Promise<void>)
   | null = null
+
+/** Parent-scoped cancellation hook installed by initExtractMemories(). */
+let parentCanceller: (
+  parentAbortController: AbortController,
+  reason?: unknown,
+) => Promise<void> = async () => {}
+
+/** Parent-scoped normal-completion drain installed by initExtractMemories(). */
+let parentDrainer: (parentAbortController: AbortController) => Promise<void> =
+  async () => {}
+
+function throwExtractionStopFailures(
+  results: readonly PromiseSettledResult<void>[],
+): void {
+  const failures = results.flatMap(result =>
+    result.status === 'rejected' &&
+    result.reason instanceof StopConfirmationError
+      ? [result.reason]
+      : [],
+  )
+  if (failures.length === 0) return
+  if (failures.length === 1) throw failures[0]
+  throw new StopConfirmationError(
+    `Failed to confirm termination of ${failures.length} memory extraction runs`,
+    failures,
+  )
+}
 
 /** The active drain function, set by initExtractMemories(). No-op until init. */
 let drainer: (timeoutMs?: number) => Promise<void> = async () => {}
@@ -293,11 +334,8 @@ let drainer: (timeoutMs?: number) => Promise<void> = async () => {}
 export function initExtractMemories(): void {
   // --- Closure-scoped mutable state ---
 
-  /** Every promise handed out by the extractor that hasn't settled yet.
-   *  Coalesced calls that stash-and-return add fast-resolving promises
-   *  (harmless); the call that starts real work adds a promise covering the
-   *  full trailing-run chain via runExtraction's recursive finally. */
-  const inFlightExtractions = new Set<Promise<void>>()
+  /** Every turn-owned extraction that has not been positively settled yet. */
+  const extractionRuns = new Set<ExtractionRun>()
 
   /** UUID of the last message processed — cursor so each run only
    *  considers messages added since the previous extraction. */
@@ -309,17 +347,16 @@ export function initExtractMemories(): void {
   /** True while runExtraction is executing — prevents overlapping runs. */
   let inProgress = false
 
+  /** Once a provider fails to confirm Stop, never start another memory writer
+   *  in this process: the previous remote request may still be active. */
+  let blockedByUnconfirmedStop = false
+
   /** Counts eligible turns since the last extraction run. Resets to 0 after each run. */
   let turnsSinceLastExtraction = 0
 
   /** When a call arrives during an in-progress run, we stash the context here
    *  and run one trailing extraction after the current one finishes. */
-  let pendingContext:
-    | {
-        context: REPLHookContext
-        appendSystemMessage?: AppendSystemMessageFn
-      }
-    | undefined
+  let pendingContext: PendingExtraction | undefined
 
   // --- Inner extraction logic ---
 
@@ -332,6 +369,8 @@ export function initExtractMemories(): void {
     appendSystemMessage?: AppendSystemMessageFn
     isTrailingRun?: boolean
   }): Promise<void> {
+    if (context.toolUseContext.abortController.signal.aborted) return
+
     const { messages } = context
     const memoryDir = getAutoMemPath()
     const newMessageCount = countModelVisibleMessagesSince(
@@ -384,6 +423,7 @@ export function initExtractMemories(): void {
 
     inProgress = true
     const startTime = Date.now()
+    let unconfirmedStop: StopConfirmationError | undefined
     try {
       logForDebugging(
         `[extractMemories] starting — ${newMessageCount} new messages, memoryDir=${memoryDir}`,
@@ -393,8 +433,12 @@ export function initExtractMemories(): void {
       // a turn on `ls`. Reuses findRelevantMemories' frontmatter scan.
       // Placed after the throttle gate so skipped turns don't pay the scan cost.
       const existingMemories = formatMemoryManifest(
-        await scanMemoryFiles(memoryDir, createAbortController().signal),
+        await scanMemoryFiles(
+          memoryDir,
+          context.toolUseContext.abortController.signal,
+        ),
       )
+      if (context.toolUseContext.abortController.signal.aborted) return
 
       const userPrompt =
         feature('TEAMMEM') && teamMemoryEnabled
@@ -492,6 +536,11 @@ export function initExtractMemories(): void {
         appendSystemMessage?.(msg)
       }
     } catch (error) {
+      if (error instanceof StopConfirmationError) {
+        blockedByUnconfirmedStop = true
+        unconfirmedStop = error
+        throw error
+      }
       // Extraction is best-effort — log but don't notify on error
       logForDebugging(`[extractMemories] error: ${error}`)
       logEvent('tengu_extract_memories_error', {
@@ -507,14 +556,21 @@ export function initExtractMemories(): void {
       const trailing = pendingContext
       pendingContext = undefined
       if (trailing) {
-        logForDebugging(
-          '[extractMemories] running trailing extraction for stashed context',
-        )
-        await runExtraction({
-          context: trailing.context,
-          appendSystemMessage: trailing.appendSystemMessage,
-          isTrailingRun: true,
-        })
+        if (unconfirmedStop) {
+          // The previous provider may still be running. Starting the queued
+          // extraction would overlap two writers after an unconfirmed Stop.
+          trailing.reject(unconfirmedStop)
+        } else {
+          logForDebugging(
+            '[extractMemories] running trailing extraction for stashed context',
+          )
+          const trailingRun = runExtraction({
+            context: trailing.context,
+            appendSystemMessage: trailing.appendSystemMessage,
+            isTrailingRun: true,
+          })
+          void trailingRun.then(trailing.resolve, trailing.reject)
+        }
       }
     }
   }
@@ -525,6 +581,14 @@ export function initExtractMemories(): void {
     context: REPLHookContext,
     appendSystemMessage?: AppendSystemMessageFn,
   ): Promise<void> {
+    if (blockedByUnconfirmedStop) {
+      logForDebugging(
+        '[extractMemories] disabled after an unconfirmed cancellation',
+        { level: 'error' },
+      )
+      return
+    }
+
     // Only run for the main agent, not subagents
     if (context.toolUseContext.agentId) {
       return
@@ -556,30 +620,135 @@ export function initExtractMemories(): void {
         '[extractMemories] extraction in progress — stashing for trailing run',
       )
       logEvent('tengu_extract_memories_coalesced', {})
-      pendingContext = { context, appendSystemMessage }
+      // The newest context contains the full transcript, so it supersedes an
+      // older queued context. Resolve the superseded owner's wait: it no
+      // longer owns any work once replaced.
+      pendingContext?.resolve()
+      await new Promise<void>((resolve, reject) => {
+        const signal = context.toolUseContext.abortController.signal
+        const finish = (): void => {
+          signal.removeEventListener('abort', onAbort)
+          resolve()
+        }
+        const onAbort = (): void => {
+          if (pendingContext?.context === context) {
+            pendingContext = undefined
+          }
+          finish()
+        }
+        pendingContext = {
+          context,
+          appendSystemMessage,
+          resolve: finish,
+          reject: error => {
+            signal.removeEventListener('abort', onAbort)
+            reject(error)
+          },
+        }
+        if (signal.aborted) onAbort()
+        else signal.addEventListener('abort', onAbort, { once: true })
+      })
       return
     }
 
     await runExtraction({ context, appendSystemMessage })
   }
 
-  extractor = async (context, appendSystemMessage) => {
-    const p = executeExtractMemoriesImpl(context, appendSystemMessage)
-    inFlightExtractions.add(p)
-    try {
-      await p
-    } finally {
-      inFlightExtractions.delete(p)
+  extractor = (context, appendSystemMessage) => {
+    const parentAbortController = context.toolUseContext.abortController
+    const abortController = createChildAbortController(parentAbortController)
+    const ownedContext: REPLHookContext = {
+      ...context,
+      toolUseContext: {
+        ...context.toolUseContext,
+        abortController,
+      },
     }
+    const settled = executeExtractMemoriesImpl(
+      ownedContext,
+      appendSystemMessage,
+    )
+    const run: ExtractionRun = {
+      parentAbortController,
+      abortController,
+      settled,
+    }
+    extractionRuns.add(run)
+
+    const removeSettledRun = (): void => {
+      extractionRuns.delete(run)
+      if (!abortController.signal.aborted) {
+        abortController.abort('extract-memories-complete')
+      }
+    }
+    void settled.then(removeSettledRun, error => {
+      // Keep an unconfirmed cancellation discoverable until the owning
+      // query's finally block drains it. Ordinary failures are best-effort.
+      if (error instanceof StopConfirmationError) return
+      removeSettledRun()
+    })
+    // The launcher is intentionally fire-and-forget; parentCanceller/drainer
+    // still observe the original rejecting promise and surface unconfirmed
+    // cancellation. This observer only prevents a process-level unhandled
+    // rejection before query teardown reaches it.
+    void settled.catch(() => {})
+    return settled
+  }
+
+  parentCanceller = async (parentAbortController, reason) => {
+    const runs = [...extractionRuns].filter(
+      run => run.parentAbortController === parentAbortController,
+    )
+    if (runs.length === 0) return
+
+    for (const run of runs) {
+      if (!run.abortController.signal.aborted) {
+        run.abortController.abort(reason)
+      }
+    }
+    const results = await Promise.allSettled(runs.map(run => run.settled))
+    for (const run of runs) extractionRuns.delete(run)
+    throwExtractionStopFailures(results)
+  }
+
+  parentDrainer = async parentAbortController => {
+    const runs = [...extractionRuns].filter(
+      run => run.parentAbortController === parentAbortController,
+    )
+    if (runs.length === 0) return
+    const results = await Promise.allSettled(runs.map(run => run.settled))
+    // This parent has now observed every terminal wrapper, including an
+    // explicit StopConfirmationError. Retaining those already-rejected
+    // promises would make every later/global drain replay the same failure
+    // forever even though blockedByUnconfirmedStop already prevents overlap.
+    for (const run of runs) extractionRuns.delete(run)
+    throwExtractionStopFailures(results)
   }
 
   drainer = async (timeoutMs = 60_000) => {
-    if (inFlightExtractions.size === 0) return
-    await Promise.race([
-      Promise.all(inFlightExtractions).catch(() => {}),
-      // eslint-disable-next-line no-restricted-syntax -- sleep() has no .unref(); timer must not block exit
-      new Promise<void>(r => setTimeout(r, timeoutMs).unref()),
-    ])
+    if (extractionRuns.size === 0) return
+    const runs = [...extractionRuns]
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<'timeout'>(resolve => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs)
+    })
+    const settlement = Promise.allSettled(runs.map(run => run.settled))
+    const result = await Promise.race([settlement, deadline])
+    if (timer !== undefined) clearTimeout(timer)
+    if (result === 'timeout') {
+      for (const run of runs) {
+        if (!run.abortController.signal.aborted) {
+          run.abortController.abort('extract-memories-drain-timeout')
+        }
+      }
+      throw new StopConfirmationError(
+        `Memory extraction did not settle within ${timeoutMs}ms`,
+      )
+    }
+    // A completed shutdown drain is also an owner observation boundary. Only
+    // genuinely pending runs survive the timeout path above for a later retry.
+    for (const run of runs) extractionRuns.delete(run)
+    throwExtractionStopFailures(result)
   }
 }
 
@@ -597,6 +766,29 @@ export async function executeExtractMemories(
   appendSystemMessage?: AppendSystemMessageFn,
 ): Promise<void> {
   await extractor?.(context, appendSystemMessage)
+}
+
+/**
+ * Cancel and drain only extraction work started by the exact query turn.
+ * The query lifecycle supplies the outer settlement deadline so a provider
+ * that ignores AbortSignal cannot keep Stop pending forever.
+ */
+export async function cancelExtractMemoriesForParent(
+  parentAbortController: AbortController,
+  reason: unknown = 'extract-memories-parent-cancelled',
+): Promise<void> {
+  await parentCanceller(parentAbortController, reason)
+}
+
+/**
+ * Wait for memory extraction owned by the exact query turn without aborting
+ * it. Query cleanup separately invokes cancelExtractMemoriesForParent if Esc
+ * or its bounded-settlement deadline fires.
+ */
+export async function drainExtractMemoriesForParent(
+  parentAbortController: AbortController,
+): Promise<void> {
+  await parentDrainer(parentAbortController)
 }
 
 /**

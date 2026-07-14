@@ -1,3 +1,10 @@
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+  waitForBoundedSettlement,
+} from '../utils/abortSettlement.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
+
 export type SdkRunGeneration = Readonly<{
   generation: number
   settled: Promise<void>
@@ -12,18 +19,132 @@ export type SdkRunCancellation = Readonly<{
   /** The generation captured when this cancellation epoch began. */
   settled: Promise<void>
   /**
-   * Open the run gate after the cancellation response has been queued.
+   * Release this acknowledgement lease. Passing false retains the epoch's
+   * replacement gate so a later Stop can retry unconfirmed owned work.
    * Idempotent for each cancellation lease.
    */
-  releaseAfterAcknowledgement: () => void
+  releaseAfterAcknowledgement: (confirmed?: boolean) => void
 }>
+
+export type SdkOwnedAbortRun = Readonly<{
+  abortController: AbortController
+  settled: Promise<unknown>
+}>
+
+/**
+ * Dispatch cancellation to every auxiliary request owned by an SDK session
+ * and require each original promise to settle. Ordinary rejection proves
+ * settlement; StopConfirmationError/timeout means remote termination remains
+ * unconfirmed and must be reported to the control-plane caller.
+ */
+export async function cancelSdkOwnedRuns(
+  runs: readonly SdkOwnedAbortRun[],
+  reason: unknown,
+  operation: string,
+  abortGraceMs = 2_000,
+): Promise<void> {
+  for (const run of runs) {
+    if (!run.abortController.signal.aborted) {
+      run.abortController.abort(reason)
+    }
+  }
+
+  const results = await Promise.allSettled(
+    runs.map(run =>
+      waitForAbortSettlement(
+        run.settled,
+        run.abortController.signal,
+        abortGraceMs,
+        operation,
+      ),
+    ),
+  )
+  const failures = results.flatMap(result => {
+    if (result.status !== 'rejected') return []
+    if (result.reason instanceof StopConfirmationError) {
+      return [result.reason]
+    }
+    if (result.reason instanceof AbortSettlementTimeoutError) {
+      return [
+        new StopConfirmationError(`${operation} was not confirmed`, [
+          result.reason,
+        ]),
+      ]
+    }
+    return []
+  })
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) {
+    throw new StopConfirmationError(
+      `${failures.length} owned SDK requests did not confirm termination`,
+      failures,
+    )
+  }
+}
+
+/**
+ * Bound the control-plane acknowledgement wait without pretending the
+ * generation stopped. SdkRunLifecycle separately keeps the replacement gate
+ * closed until the captured run settles and a cancellation attempt confirms
+ * every owned request.
+ */
+export async function waitForSdkStopSettlement(
+  settlement: Promise<unknown>,
+  timeoutMs = 35_000,
+  operation = 'SDK run cancellation',
+): Promise<boolean> {
+  try {
+    await waitForBoundedSettlement(settlement, {
+      timeoutMs,
+      abortGraceMs: 100,
+      operation,
+    })
+    return true
+  } catch (error) {
+    if (error instanceof AbortSettlementTimeoutError) return false
+    throw error
+  }
+}
+
+/**
+ * Wait for the next background-task poll without letting a cancelled SDK
+ * generation stay trapped in the waiting_for_agents loop. Returns false as
+ * soon as cancellation is observed, including when the signal was already
+ * aborted before the poll began.
+ */
+export function waitForSdkBackgroundTaskPoll(
+  signal: AbortSignal,
+  pollMs = 100,
+): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false)
+
+  return new Promise(resolve => {
+    let settled = false
+    const finish = (shouldPollAgain: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal.removeEventListener('abort', onAbort)
+      resolve(shouldPollAgain)
+    }
+    const onAbort = (): void => finish(false)
+    const timer = setTimeout(() => finish(true), pollMs)
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    // Close the race where cancellation lands between the initial check and
+    // listener registration.
+    if (signal.aborted) onAbort()
+  })
+}
 
 type CancellationGate = {
   epoch: number
   settled: Promise<void>
+  settledDone: boolean
   released: Promise<void>
   resolveReleased: () => void
   leases: number
+  confirmed: boolean
 }
 
 /**
@@ -40,6 +161,14 @@ export class SdkRunLifecycle {
   #nextCancellationEpoch = 0
   #active: SdkRunGenerationHandle | null = null
   #cancellationGate: CancellationGate | null = null
+
+  #releaseCancellationGateIfReady(gate: CancellationGate): void {
+    if (!gate.confirmed || !gate.settledDone || gate.leases !== 0) return
+    if (this.#cancellationGate === gate) {
+      this.#cancellationGate = null
+    }
+    gate.resolveReleased()
+  }
 
   start(): SdkRunGenerationHandle {
     if (this.#cancellationGate) {
@@ -120,30 +249,33 @@ export class SdkRunLifecycle {
       gate = {
         epoch: ++this.#nextCancellationEpoch,
         settled: active?.settled ?? Promise.resolve(),
+        settledDone: active === null,
         released,
         resolveReleased,
         leases: 0,
+        confirmed: false,
       }
 
       // Publish the gate before aborting: AbortSignal listeners run
       // synchronously and may otherwise try to start the next generation.
       this.#cancellationGate = gate
       active?.abortController.abort(reason)
+      void gate.settled.then(() => {
+        gate!.settledDone = true
+        this.#releaseCancellationGateIfReady(gate!)
+      })
     }
 
     gate.leases++
     let released = false
     return {
       settled: gate.settled,
-      releaseAfterAcknowledgement: () => {
+      releaseAfterAcknowledgement: (confirmed = true) => {
         if (released) return
         released = true
+        gate.confirmed ||= confirmed
         gate.leases--
-        if (gate.leases !== 0) return
-        if (this.#cancellationGate === gate) {
-          this.#cancellationGate = null
-        }
-        gate.resolveReleased()
+        this.#releaseCancellationGateIfReady(gate)
       },
     }
   }

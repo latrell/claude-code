@@ -104,6 +104,10 @@ import {
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { terminateProcessTree } from '../../utils/processTermination.js'
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+} from '../../utils/abortSettlement.js'
 import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   isPersistError,
@@ -214,6 +218,7 @@ export const isMcpSessionExpiredError = isMcpSessionExpiredErrorFromPackage
  * Default timeout for MCP tool calls (effectively infinite - ~27.8 hours).
  */
 const DEFAULT_MCP_TOOL_TIMEOUT_MS = 100_000_000
+const MCP_TOOL_ABORT_SETTLEMENT_GRACE_MS = 2_000
 
 /**
  * Cap on MCP tool descriptions and server instructions sent to the model.
@@ -3012,7 +3017,8 @@ export async function callMCPToolWithUrlElicitationRetry({
   }
 }
 
-async function callMCPTool({
+/** @internal Exported for deterministic cancellation tests. */
+export async function callMCPTool({
   client: { client, name, config },
   tool,
   args,
@@ -3021,6 +3027,7 @@ async function callMCPTool({
   onProgress,
   imageLimits,
   hasResultSizeAnnotation = false,
+  abortSettlementGraceMs = MCP_TOOL_ABORT_SETTLEMENT_GRACE_MS,
 }: {
   client: ConnectedMCPServer
   tool: string
@@ -3030,6 +3037,8 @@ async function callMCPTool({
   onProgress?: (data: MCPProgress) => void
   imageLimits?: ImageLimits
   hasResultSizeAnnotation?: boolean
+  /** @internal Test override; production callers use the two-second default. */
+  abortSettlementGraceMs?: number
 }): Promise<{
   content: MCPToolResult
   _meta?: Record<string, unknown>
@@ -3078,7 +3087,7 @@ async function callMCPTool({
       )
     })
 
-    const result = await Promise.race([
+    const toolCall = Promise.race([
       client.callTool(
         {
           name: tool,
@@ -3105,11 +3114,28 @@ async function callMCPTool({
         },
       ),
       timeoutPromise,
-    ]).finally(() => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
-    })
+    ])
+
+    const result = await waitForAbortSettlement(
+      toolCall,
+      signal,
+      abortSettlementGraceMs,
+      `MCP server "${name}" tool "${tool}"`,
+    )
+      .catch(error => {
+        if (error instanceof AbortSettlementTimeoutError) {
+          throw new StopConfirmationError(
+            `MCP server "${name}" tool "${tool}" did not confirm termination after cancellation`,
+            [error],
+          )
+        }
+        throw error
+      })
+      .finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+      })
 
     if (signal.aborted) {
       throw new AbortError('MCP tool call was cancelled')

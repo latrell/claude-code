@@ -41,6 +41,7 @@ import {
 import { getLeaderToolUseConfirmQueue } from '../utils/swarm/leaderPermissionBridge.js';
 import { getTaskListId, getTasksDir, listTasks, onTasksUpdated } from '../utils/tasks.js';
 import { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import { awaitPendingReplBridgeTeardown } from './replBridgeTeardown.js';
 
 const TASK_STATE_DEBOUNCE_MS = 50;
 const TASK_STATE_POLL_MS = 5000;
@@ -172,8 +173,7 @@ export function useReplBridge(
           // server may tear down the freshly-created environment.
           if (teardownPromiseRef.current) {
             logForDebugging('[bridge:repl] Hook: waiting for previous teardown to complete before re-init');
-            await teardownPromiseRef.current;
-            teardownPromiseRef.current = undefined;
+            await awaitPendingReplBridgeTeardown(teardownPromiseRef);
             logForDebugging('[bridge:repl] Hook: previous teardown complete, proceeding with re-init');
           }
           if (cancelled) return;
@@ -726,7 +726,14 @@ export function useReplBridge(
           logForDebugging(
             `[bridge:repl] Hook cleanup: starting teardown for env=${handleRef.current.environmentId} session=${handleRef.current.bridgeSessionId}`,
           );
-          teardownPromiseRef.current = handleRef.current.teardown();
+          const teardown = handleRef.current.teardown();
+          teardownPromiseRef.current = teardown;
+          // Cleanup callbacks cannot await. Observe failure immediately while
+          // retaining the original promise for the next initialization to
+          // report once and release through awaitPendingReplBridgeTeardown().
+          void teardown.catch(error => {
+            logForDebugging(`[bridge:repl] Hook teardown failed: ${errorMessage(error)}`, { level: 'error' });
+          });
           handleRef.current = null;
           setReplBridgeHandle(null);
         }

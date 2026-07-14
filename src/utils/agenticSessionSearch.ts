@@ -6,6 +6,7 @@ import { getFastModelAndRuntime } from './model/fastProvider.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from './sideQuery.js'
 import { jsonParse } from './slowOperations.js'
+import { StopConfirmationError } from './stopConfirmation.js'
 
 // Limits for transcript extraction
 const MAX_TRANSCRIPT_CHARS = 2000 // Max chars of transcript per session
@@ -301,6 +302,7 @@ Find the sessions that are most relevant to this query.`
 
     return relevantLogs
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logError(error as Error)
     logForDebugging(`Agentic search error: ${error}`)
     return []

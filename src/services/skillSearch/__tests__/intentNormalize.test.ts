@@ -36,6 +36,7 @@ import {
   isIntentNormalizeEnabled,
   normalizeQueryIntent,
 } from '../intentNormalize.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 
 const originalEnv = { ...process.env }
 
@@ -182,6 +183,21 @@ describe('normalizeQueryIntent — graceful fallback', () => {
     }
     const result = await normalizeQueryIntent('重构代码')
     expect(result).toBe('重构代码')
+    expect(haikuCalls.length).toBe(1)
+  })
+
+  test('unconfirmed Stop is propagated instead of cached as a fallback', async () => {
+    process.env.SKILL_SEARCH_INTENT_ENABLED = '1'
+    const stopError = new StopConfirmationError(
+      'intent normalization request may still be active',
+    )
+    haikuResponder = async () => {
+      throw stopError
+    }
+
+    await expect(
+      normalizeQueryIntent('重构代码', new AbortController().signal),
+    ).rejects.toBe(stopError)
     expect(haikuCalls.length).toBe(1)
   })
 

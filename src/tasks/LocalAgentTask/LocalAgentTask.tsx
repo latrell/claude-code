@@ -23,6 +23,7 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@claude-code-best/builtin-tools/tool
 import { asAgentId } from '../../types/ids.js';
 import type { Message } from '../../types/message.js';
 import { createAbortController, createChildAbortController } from '../../utils/abortController.js';
+import { AbortSettlementTimeoutError, waitForBoundedSettlement } from '../../utils/abortSettlement.js';
 import { registerCleanup } from '../../utils/cleanupRegistry.js';
 import { getSearchExtraToolsOrReadInfo } from '../../utils/collapseReadSearch.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
@@ -65,6 +66,32 @@ export function suppressAgentNotification(taskId: string): () => void {
 }
 
 const MAX_RECENT_ACTIVITIES = 5;
+const LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS = 20_000;
+export const LOCAL_AGENT_STOP_ABORT_GRACE_MS = 2_000;
+
+type WaitForLocalAgentStopSettlement = (
+  settlement: Promise<void>,
+  signal: AbortSignal,
+  taskId: string,
+) => Promise<void>;
+
+function waitForLocalAgentStopSettlement(
+  settlement: Promise<void>,
+  signal: AbortSignal,
+  taskId: string,
+): Promise<void> {
+  return waitForBoundedSettlement(settlement, {
+    signal,
+    timeoutMs: LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS,
+    // killAsyncAgent aborts the controller before entering this wait. Using
+    // the full execution timeout here therefore made every abort-ignoring
+    // agent hold TaskStop (and the UI) for 20 seconds. Give transports the
+    // same short confirmation grace used by the rest of the cancellation
+    // stack while retaining the live execution record for a later retry.
+    abortGraceMs: LOCAL_AGENT_STOP_ABORT_GRACE_MS,
+    operation: `Agent task ${taskId} execution settlement`,
+  });
+}
 
 export type ProgressTracker = {
   toolUseCount: number;
@@ -197,6 +224,7 @@ type LocalAgentExecutionRecord = {
   attached: boolean;
   stopRequested: boolean;
   didSettle: boolean;
+  unconfirmedError?: StopConfirmationError;
   settled: Promise<void>;
   resolveSettled: () => void;
   rejectSettled: (error: unknown) => void;
@@ -292,6 +320,21 @@ function settleLocalAgentExecution(record: LocalAgentExecutionRecord): void {
   record.didSettle = true;
 
   try {
+    if (record.unconfirmedError) {
+      // The JavaScript runner returned, but one of its owned transports or
+      // side requests explicitly reported that termination was not confirmed.
+      // There is no live runner left for a later Stop to retry, so retaining a
+      // running task here would be permanent. Publish an honest failed state:
+      // it does not claim the remote request was killed or the task completed.
+      failAgentTaskForExecution(
+        record.taskId,
+        `Agent finalization failed because termination was not confirmed: ${record.unconfirmedError.message}`,
+        record.setAppState,
+        record.abortController,
+      );
+      record.rejectSettled(record.unconfirmedError);
+      return;
+    }
     if (record.stopRequested || record.abortController.signal.aborted) {
       finalizeKilledAgentTask(record.taskId, record.setAppState, record.abortController);
     }
@@ -336,11 +379,28 @@ export function trackLocalAgentExecution<T>({
   try {
     execution = startExecution();
   } catch (error) {
+    if (error instanceof StopConfirmationError) {
+      record.unconfirmedError = error;
+    }
     settleLocalAgentExecution(record);
-    failAgentTask(taskId, error instanceof Error ? error.message : String(error), setAppState);
+    if (!(error instanceof StopConfirmationError)) {
+      failAgentTask(taskId, error instanceof Error ? error.message : String(error), setAppState);
+    }
     throw error;
   }
-  return execution.finally(() => settleLocalAgentExecution(record));
+  return execution.then(
+    value => {
+      settleLocalAgentExecution(record);
+      return value;
+    },
+    error => {
+      if (error instanceof StopConfirmationError) {
+        record.unconfirmedError = error;
+      }
+      settleLocalAgentExecution(record);
+      throw error;
+    },
+  );
 }
 
 export function isLocalAgentTask(task: unknown): task is LocalAgentTaskState {
@@ -442,7 +502,11 @@ export function enqueueAgentNotification({
   // enqueueing to avoid sending redundant messages to the model.
   let shouldEnqueue = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
-    if (task.notified) {
+    // A completed agent may be resumed under the same task id before its
+    // detached worktree cleanup assembles the old completion notification.
+    // Tool-use ids identify those generations; never let a late callback mark
+    // the replacement notified or suppress its eventual lifecycle event.
+    if (task.notified || task.toolUseId !== toolUseId) {
       return task;
     }
     shouldEnqueue = true;
@@ -513,7 +577,13 @@ export const LocalAgentTask: Task = {
  */
 export type KillAsyncAgentOutcome = 'killed' | 'already_terminal';
 
-export async function killAsyncAgent(taskId: string, setAppState: SetAppState): Promise<KillAsyncAgentOutcome> {
+export async function killAsyncAgent(
+  taskId: string,
+  setAppState: SetAppState,
+  dependencies: {
+    waitForStopSettlement?: WaitForLocalAgentStopSettlement;
+  } = {},
+): Promise<KillAsyncAgentOutcome> {
   let abortController: AbortController | undefined;
   let unregisterCleanup: (() => void) | undefined;
   let wasRunning = false;
@@ -547,7 +617,28 @@ export async function killAsyncAgent(taskId: string, setAppState: SetAppState): 
   unregisterCleanup?.();
 
   if (execution?.attached) {
-    await execution.settled;
+    try {
+      await (dependencies.waitForStopSettlement ?? waitForLocalAgentStopSettlement)(
+        execution.settled,
+        abortController.signal,
+        taskId,
+      );
+    } catch (error) {
+      if (!(error instanceof AbortSettlementTimeoutError)) {
+        throw error;
+      }
+
+      // The deadline and the runner can resolve in the same turn. Prefer the
+      // concrete runner settlement if its finally won before this catch runs.
+      if (!execution.didSettle) {
+        const message = `Agent task ${taskId} execution did not settle within ${LOCAL_AGENT_STOP_ABORT_GRACE_MS}ms after abort`;
+        // Do not publish a fake failed terminal state or discard the only
+        // settlement handle. The runner may still be alive; retaining both the
+        // running task and its execution record lets a second Stop wait again,
+        // and lets a late real finally publish the killed transition.
+        throw new StopConfirmationError(message);
+      }
+    }
   } else if (execution) {
     // Registration and execution attachment happen in the same JavaScript
     // turn. An unattached record therefore represents work that never started.
@@ -729,7 +820,8 @@ export function publishAgentResult(result: AgentToolResult, setAppState: SetAppS
 }
 
 /**
- * Complete an agent task after every owned lifecycle step has settled.
+ * Complete an agent task after its model and required safety gates settle.
+ * Successful worktree cleanup may continue under its detached lifecycle owner.
  */
 export function completeAgentTask(result: AgentToolResult, setAppState: SetAppState): void {
   const taskId = result.agentId;
@@ -762,10 +854,18 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
 /**
  * Fail an agent task with error.
  */
-export function failAgentTask(taskId: string, error: string, setAppState: SetAppState): void {
+function failAgentTaskForExecution(
+  taskId: string,
+  error: string,
+  setAppState: SetAppState,
+  expectedAbortController?: AbortController,
+): void {
   let didFail = false;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
-    if (task.status !== 'running') {
+    if (
+      task.status !== 'running' ||
+      (expectedAbortController !== undefined && task.abortController !== expectedAbortController)
+    ) {
       return task;
     }
 
@@ -787,6 +887,10 @@ export function failAgentTask(taskId: string, error: string, setAppState: SetApp
     void evictTaskOutput(taskId);
   }
   // Note: Notification is sent by AgentTool via enqueueAgentNotification
+}
+
+export function failAgentTask(taskId: string, error: string, setAppState: SetAppState): void {
+  failAgentTaskForExecution(taskId, error, setAppState);
 }
 
 /**

@@ -46,10 +46,13 @@ const mockSubmitMessage = mock(async function* (_input: string) {})
 
 mockModulePreservingExports('../../../QueryEngine.ts', {
   QueryEngine: class MockQueryEngine {
+    abortController = new AbortController()
     submitMessage = mockSubmitMessage
-    interrupt = mock(() => {})
-    resetAbortController = mock(() => {})
-    getAbortSignal = mock(() => new AbortController().signal)
+    interrupt = mock(() => this.abortController.abort('test-interrupt'))
+    resetAbortController = mock(() => {
+      this.abortController = new AbortController()
+    })
+    getAbortSignal = mock(() => this.abortController.signal)
     setModel = mockSetModel
   },
 })
@@ -198,15 +201,19 @@ mockModulePreservingExports('../../../commands.ts', {
 
 const { AcpAgent } = await import('../agent.js')
 const { forwardSessionUpdates } = await import('../bridge.js')
+const { StopConfirmationError } = await import(
+  '../../../utils/stopConfirmation.js'
+)
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function makeConn() {
+function makeConn(overrides: Record<string, unknown> = {}) {
   return {
     sessionUpdate: mock(async () => {}),
     requestPermission: mock(async () => ({
       outcome: { outcome: 'cancelled' },
     })),
+    ...overrides,
   } as any
 }
 
@@ -575,6 +582,37 @@ describe('AcpAgent', () => {
       expect(res2.stopReason).toBe('end_turn')
     })
 
+    test('does not confirm cancel when session info update never settles', async () => {
+      const conn = makeConn()
+      const agent = new AcpAgent(conn)
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      let resolveWriteStarted!: () => void
+      const writeStarted = new Promise<void>(resolve => {
+        resolveWriteStarted = resolve
+      })
+      ;(conn.sessionUpdate as ReturnType<typeof mock>).mockImplementation(
+        (params: { update?: { sessionUpdate?: string } }) => {
+          if (params.update?.sessionUpdate !== 'session_info_update') {
+            return Promise.resolve()
+          }
+          resolveWriteStarted()
+          return new Promise<void>(() => {})
+        },
+      )
+      ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
+        { stopReason: 'end_turn' },
+      )
+
+      const promptPromise = agent.prompt({
+        sessionId,
+        prompt: [{ type: 'text', text: 'finished agent' }],
+      } as any)
+      await writeStarted
+      await agent.cancel({ sessionId } as any)
+
+      await expect(promptPromise).rejects.toBeInstanceOf(StopConfirmationError)
+    })
+
     test('propagates unexpected prompt errors', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
@@ -590,6 +628,25 @@ describe('AcpAgent', () => {
           prompt: [{ type: 'text', text: 'hello' }],
         } as any),
       ).rejects.toThrow('unexpected')
+    })
+
+    test('does not downgrade an unconfirmed stream stop to cancelled', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      ;(
+        forwardSessionUpdates as ReturnType<typeof mock>
+      ).mockImplementationOnce(async () => {
+        throw new StopConfirmationError(
+          'ACP query cancellation could not be confirmed',
+        )
+      })
+
+      await expect(
+        agent.prompt({
+          sessionId,
+          prompt: [{ type: 'text', text: 'hello' }],
+        } as any),
+      ).rejects.toBeInstanceOf(StopConfirmationError)
     })
 
     test('returns usage at root and under _meta.claudeCode.usage from forwardSessionUpdates', async () => {

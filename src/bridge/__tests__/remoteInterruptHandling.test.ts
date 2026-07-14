@@ -60,6 +60,16 @@ describe('handleRemoteInterrupt', () => {
     expect(await interrupt).toBe(true)
   })
 
+  test('returns a negative acknowledgement when turn settlement never finishes', async () => {
+    const interrupt = handleRemoteInterrupt(
+      new AbortController(),
+      () => new Promise<void>(() => {}),
+      5,
+    )
+
+    expect(await interrupt).toBe(false)
+  })
+
   test('aborts a controller published during dispatch and waits for finalization', async () => {
     const queryGuard = new QueryGuard()
     expect(queryGuard.reserve()).toBe(true)
@@ -87,5 +97,21 @@ describe('handleRemoteInterrupt', () => {
 
     await settlement
     expect(confirmed).toBe(true)
+  })
+
+  test('unsubscribes a lifecycle waiter when its deadline is cancelled', async () => {
+    const queryGuard = new QueryGuard()
+    expect(queryGuard.reserve()).toBe(true)
+    const cancellationController = new AbortController()
+
+    const settlement = waitForActiveTurnSettlement(
+      () => null,
+      queryGuard,
+      cancellationController.signal,
+    )
+
+    cancellationController.abort()
+    await settlement
+    expect(queryGuard.status).toBe('dispatching')
   })
 })

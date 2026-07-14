@@ -30,6 +30,7 @@ export class WorkerStateUploader {
   private inflight: Promise<void> | null = null
   private pending: Record<string, unknown> | null = null
   private closed = false
+  private retrySleepController: AbortController | null = null
   private readonly config: WorkerStateUploaderConfig
 
   constructor(config: WorkerStateUploaderConfig) {
@@ -43,12 +44,22 @@ export class WorkerStateUploader {
   enqueue(patch: Record<string, unknown>): void {
     if (this.closed) return
     this.pending = this.pending ? coalescePatches(this.pending, patch) : patch
+    // A state transition supersedes the stale state currently backing off.
+    // Wake immediately so an `idle` completion is not stranded for up to the
+    // 30-second retry ceiling. Metadata-only updates remain coalesced without
+    // defeating transport backoff.
+    if ('worker_status' in patch) {
+      this.retrySleepController?.abort('worker-state-changed')
+    }
     void this.drain()
   }
 
   close(): void {
     this.closed = true
     this.pending = null
+    // Wake a retry sleeping at the exponential-backoff ceiling. Otherwise
+    // its referenced timer can keep teardown/process exit alive for ~30s.
+    this.retrySleepController?.abort('worker-state-uploader-closed')
   }
 
   private async drain(): Promise<void> {
@@ -58,12 +69,30 @@ export class WorkerStateUploader {
     const payload = this.pending
     this.pending = null
 
-    this.inflight = this.sendWithRetry(payload).then(() => {
+    const attempt = this.sendWithRetry(payload).catch(() => {
+      // sendWithRetry normally absorbs transport failures. If an unexpected
+      // implementation error still escapes, retain this payload behind any
+      // newer patch instead of losing the worker's terminal state.
+      if (!this.closed) {
+        this.pending = this.pending
+          ? coalescePatches(payload, this.pending)
+          : payload
+      }
+    })
+    let tracked: Promise<void>
+    tracked = attempt.finally(() => {
+      // A late completion must never clear a replacement drain installed by
+      // a newer generation.
+      if (this.inflight !== tracked) return
       this.inflight = null
       if (this.pending && !this.closed) {
         void this.drain()
       }
     })
+    this.inflight = tracked
+    // enqueue() is intentionally fire-and-forget; keep that boundary from
+    // becoming a process-level unhandled rejection if finalization ever fails.
+    void tracked.catch(() => {})
   }
 
   /** Retries indefinitely with exponential backoff until success or close(). */
@@ -71,16 +100,57 @@ export class WorkerStateUploader {
     let current = payload
     let failures = 0
     while (!this.closed) {
-      const ok = await this.config.send(current)
+      // Network clients can reject as well as resolve false. Treat both as a
+      // retryable delivery failure; otherwise drain() keeps `inflight` pinned
+      // to an already-rejected promise and every later worker/completion patch
+      // is silently stranded behind that stale cache entry.
+      let ok = false
+      try {
+        ok = await this.config.send(current)
+      } catch {
+        // Both a synchronous adapter throw and a rejected HTTP request are a
+        // retryable failed PUT.
+        ok = false
+      }
       if (ok) return
 
       failures++
-      await sleep(this.retryDelay(failures))
+
+      // A newer state may have arrived while the failed request was in
+      // flight, before the retry sleep was installed. Retry that state now
+      // and give it a fresh backoff budget instead of inheriting a stale
+      // request's 30-second ceiling.
+      if (this.pending && 'worker_status' in this.pending) {
+        current = coalescePatches(current, this.pending)
+        this.pending = null
+        failures = 0
+        continue
+      }
+
+      await this.waitForRetry(this.retryDelay(failures))
 
       // Absorb any patches that arrived during the retry
       if (this.pending && !this.closed) {
+        if ('worker_status' in this.pending) failures = 0
         current = coalescePatches(current, this.pending)
         this.pending = null
+      }
+    }
+  }
+
+  private async waitForRetry(delayMs: number): Promise<void> {
+    const controller = new AbortController()
+    this.retrySleepController = controller
+    if (this.closed) controller.abort('worker-state-uploader-closed')
+    try {
+      await sleep(delayMs, controller.signal)
+    } catch (error) {
+      // Both close() and a superseding worker state intentionally wake the
+      // delay. Preserve unexpected timer failures for drain() to requeue.
+      if (!controller.signal.aborted) throw error
+    } finally {
+      if (this.retrySleepController === controller) {
+        this.retrySleepController = null
       }
     }
   }

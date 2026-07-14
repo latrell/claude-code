@@ -14,6 +14,7 @@ import { createTrace, endTrace, isLangfuseEnabled } from './langfuse/index.js'
 import { getSessionId } from '../bootstrap/state.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { getSessionMemoryContent } from './SessionMemory/sessionMemoryUtils.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 
 // Recap only needs recent context — truncate to avoid "prompt too long" on
 // large sessions. 30 messages ≈ ~15 exchanges, plenty for "where we left off."
@@ -90,6 +91,7 @@ export async function generateAwaySummary(
     endTrace(langfuseTrace)
     return getAssistantMessageText(response)
   } catch (err) {
+    if (err instanceof StopConfirmationError) throw err
     if (err instanceof APIUserAbortError || signal.aborted) {
       return null
     }

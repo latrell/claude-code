@@ -75,7 +75,7 @@ import { waitUntilNextFrame } from '../../utils/deferUntilNextFrame.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage, toError } from '../../utils/errors.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import {
   getFastModeUnavailableReason,
@@ -115,6 +115,7 @@ import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
+import { StopConfirmationError } from '../../utils/stopConfirmation.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 // AutoModeOptInDialog removed — auto mode is available to all users
 import { BridgeDialog } from '../BridgeDialog.js';
@@ -888,6 +889,22 @@ function PromptInput({
 
   const { addNotification, removeNotification } = useNotifications();
 
+  const reportAuxiliaryStopFailure = useCallback(
+    (error: unknown): void => {
+      logError(toError(error));
+      addNotification({
+        key: 'auxiliary-stop-unconfirmed',
+        text:
+          error instanceof StopConfirmationError
+            ? 'Stop was sent, but a background model request did not confirm termination.'
+            : `Could not stop a background model request: ${errorMessage(error)}`,
+        color: 'warning',
+        priority: 'immediate',
+      });
+    },
+    [addNotification],
+  );
+
   // Show ultrathink notification
   useEffect(() => {
     if (thinkTriggers.length && isUltrathinkEnabled()) {
@@ -1012,7 +1029,7 @@ function PromptInput({
       dismissStashHint();
 
       // Cancel any pending prompt suggestion and speculation when user types
-      void abortPromptSuggestion('user-input');
+      void abortPromptSuggestion('user-input').catch(reportAuxiliaryStopFailure);
       abortSpeculation(setAppState);
 
       // Check if this is a single character insertion at the start
@@ -1048,7 +1065,17 @@ function PromptInput({
 
       trackAndSetInput(processedValue);
     },
-    [trackAndSetInput, onModeChange, input, cursorOffset, pushToBuffer, pastedContents, dismissStashHint, setAppState],
+    [
+      trackAndSetInput,
+      onModeChange,
+      input,
+      cursorOffset,
+      pushToBuffer,
+      pastedContents,
+      dismissStashHint,
+      setAppState,
+      reportAuxiliaryStopFailure,
+    ],
   );
 
   const { resetHistory, onHistoryUp, onHistoryDown, dismissSearchHint, historyIndex } = useArrowKeyHistory(
@@ -1185,7 +1212,7 @@ function PromptInput({
               speculationSessionTimeSavedMs: speculationSessionTimeSavedMs,
               setAppState,
             },
-          );
+          ).catch(reportAuxiliaryStopFailure);
           return; // Skip normal query - speculation handled it
         }
 
@@ -1199,7 +1226,12 @@ function PromptInput({
       // Typing aborts immediately in onChange; submission also drains the
       // owned side requests so a replacement turn cannot overlap their HTTP
       // streams or receive a late suggestion/speculation update.
-      await Promise.all([abortPromptSuggestion('user-input-submitted'), abortSpeculationAndWait(setAppState)]);
+      try {
+        await Promise.all([abortPromptSuggestion('user-input-submitted'), abortSpeculationAndWait(setAppState)]);
+      } catch (error) {
+        reportAuxiliaryStopFailure(error);
+        return;
+      }
 
       // Handle @name direct message
       if (isAgentSwarmsEnabled()) {
@@ -1311,6 +1343,7 @@ function PromptInput({
       pastedContents,
       removeNotification,
       setSuggestionsState,
+      reportAuxiliaryStopFailure,
     ],
   );
 
@@ -1849,7 +1882,7 @@ function PromptInput({
   useKeybinding(
     'app:interrupt',
     () => {
-      void abortSpeculationAndWait(setAppState);
+      void abortSpeculationAndWait(setAppState).catch(reportAuxiliaryStopFailure);
     },
     {
       context: 'Global',
@@ -2093,7 +2126,7 @@ function PromptInput({
     if (key.escape) {
       // Abort active speculation
       if (speculation.status === 'active') {
-        void abortSpeculationAndWait(setAppState);
+        void abortSpeculationAndWait(setAppState).catch(reportAuxiliaryStopFailure);
         return;
       }
 

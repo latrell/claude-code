@@ -2,8 +2,13 @@ import type { ChildProcess } from 'child_process'
 import { stat } from 'fs/promises'
 import type { Readable } from 'stream'
 import { generateTaskId } from '../Task.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from './abortSettlement.js'
 import { formatDuration } from './format.js'
 import { terminateProcessTree } from './processTermination.js'
+import { StopConfirmationError } from './stopConfirmation.js'
 import {
   MAX_TASK_OUTPUT_BYTES,
   MAX_TASK_OUTPUT_BYTES_DISPLAY,
@@ -32,7 +37,18 @@ export type ExecResult = {
 export type ShellCommand = {
   background: (backgroundTaskId: string) => boolean
   result: Promise<ExecResult>
-  /** Resolves true only after the child process has actually exited. */
+  /**
+   * True once process-tree termination has been positively confirmed. This
+   * can become true before output/result collection settles.
+   */
+  readonly terminationConfirmed: boolean
+  /** True once the result promise has resolved. */
+  readonly resultSettled: boolean
+  /**
+   * Resolves true only after process termination and result collection have
+   * both settled. A {@link ShellResultSettlementError} means termination was
+   * confirmed but local result collection failed to finish.
+   */
   kill: () => Promise<boolean>
   status: 'running' | 'backgrounded' | 'completed' | 'killed'
   /**
@@ -53,6 +69,168 @@ const SIGKILL = 137
 // so a stuck append loop can fill the disk. Poll file size and kill when exceeded.
 const SIZE_WATCHDOG_INTERVAL_MS = 5_000
 const KILL_CONFIRM_TIMEOUT_MS = 5_000
+const KILL_RESULT_SETTLEMENT_TIMEOUT_MS = 10_000
+const KILL_RESULT_ABORT_GRACE_MS = 2_000
+const FOREGROUND_STOP_SETTLEMENT_TIMEOUT_MS = 10_000
+const FOREGROUND_STOP_SETTLEMENT_GRACE_MS = 100
+
+export type ShellKillSettlementOptions = {
+  timeoutMs?: number
+  abortGraceMs?: number
+}
+
+export type ForegroundShellSettlementOptions = {
+  timeoutMs?: number
+  abortGraceMs?: number
+  operation?: string
+}
+
+/**
+ * The process is no longer live, but local output/result collection did not
+ * finish. This is a terminal execution failure, not an unconfirmed Stop: there
+ * is no live process handle for a later Stop to retry.
+ */
+export class ShellResultSettlementError extends Error {
+  readonly failure: unknown
+
+  constructor(message: string, failure: unknown) {
+    super(message)
+    this.name = 'ShellResultSettlementError'
+    this.failure = failure
+  }
+}
+
+/**
+ * Observe a foreground shell result without treating cancellation dispatch as
+ * completion. ShellCommand owns the process-tree signal, while this guard
+ * makes its confirmation part of the foreground tool's awaited lifecycle.
+ *
+ * `interrupt` is intentionally excluded: submitting a new message backgrounds
+ * the command instead of stopping it. Commands that have already been
+ * backgrounded are likewise owned by LocalShellTask, not the foreground turn.
+ */
+export function waitForForegroundShellResult(
+  shellCommand: ShellCommand,
+  abortSignal: AbortSignal,
+  options: ForegroundShellSettlementOptions = {},
+): Promise<ExecResult> {
+  const operation =
+    options.operation ??
+    `Shell process ${shellCommand.taskOutput.taskId} foreground Stop`
+
+  return new Promise<ExecResult>((resolve, reject) => {
+    let settled = false
+    let stopStarted = false
+    let abortListenerRegistered = false
+
+    const cleanup = (): void => {
+      if (!abortListenerRegistered) return
+      abortSignal.removeEventListener('abort', onAbort)
+      abortListenerRegistered = false
+    }
+    const finishResolve = (result: ExecResult): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(result)
+    }
+    const finishReject = (error: unknown): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const shouldStop = (): boolean =>
+      abortSignal.aborted &&
+      abortSignal.reason !== 'interrupt' &&
+      shellCommand.status !== 'backgrounded'
+
+    const startStop = (): void => {
+      if (settled || stopStarted || !shouldStop()) return
+      stopStarted = true
+
+      const killRequest = Promise.resolve().then(() => shellCommand.kill())
+      void waitForBoundedSettlement(killRequest, {
+        timeoutMs: options.timeoutMs ?? FOREGROUND_STOP_SETTLEMENT_TIMEOUT_MS,
+        abortGraceMs:
+          options.abortGraceMs ?? FOREGROUND_STOP_SETTLEMENT_GRACE_MS,
+        operation,
+      }).then(
+        confirmed => {
+          if (!confirmed) {
+            finishReject(
+              new StopConfirmationError(
+                `${operation} could not confirm process-tree termination`,
+              ),
+            )
+            return
+          }
+
+          // kill() confirms both process exit and result capture. Read the
+          // original result only after that proof so an exit/abort race cannot
+          // publish a successful tool result while descendants are still live.
+          void shellCommand.result.then(finishResolve, finishReject)
+        },
+        error => {
+          if (
+            error instanceof ShellResultSettlementError ||
+            shellCommand.terminationConfirmed
+          ) {
+            finishReject(
+              error instanceof ShellResultSettlementError
+                ? error
+                : new ShellResultSettlementError(
+                    `${operation} terminated the process tree but result collection failed`,
+                    error,
+                  ),
+            )
+            return
+          }
+          if (error instanceof StopConfirmationError) {
+            finishReject(error)
+            return
+          }
+          const detail =
+            error instanceof AbortSettlementTimeoutError
+              ? 'did not settle within the cancellation deadline'
+              : 'failed before termination was confirmed'
+          finishReject(
+            new StopConfirmationError(`${operation} ${detail}`, [error]),
+          )
+        },
+      )
+    }
+    const onAbort = (): void => {
+      startStop()
+    }
+
+    if (abortSignal.aborted) startStop()
+    else {
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+      abortListenerRegistered = true
+    }
+
+    void shellCommand.result.then(
+      result => {
+        // If Stop won the race, process-tree confirmation has priority over
+        // the raw child result. A shell exit alone does not prove inherited
+        // descendants were terminated.
+        if (shouldStop()) {
+          startStop()
+          return
+        }
+        finishResolve(result)
+      },
+      error => {
+        if (shouldStop()) {
+          startStop()
+          return
+        }
+        finishReject(error)
+      },
+    )
+  })
+}
 
 function prependStderr(prefix: string, stderr: string): string {
   return stderr ? `${prefix} ${stderr}` : prefix
@@ -138,6 +316,9 @@ class ShellCommandImpl implements ShellCommand {
   #killConfirmed = false
   #killAttempt: Promise<boolean> | null = null
   #isolatedProcessGroup: boolean
+  #killResultSettlementTimeoutMs: number
+  #killResultAbortGraceMs: number
+  #resultSettled = false
   readonly taskOutput: TaskOutput
 
   static #handleTimeout(self: ShellCommandImpl): void {
@@ -148,7 +329,7 @@ class ShellCommandImpl implements ShellCommand {
       // A foreground timeout is a terminal cancellation. Use a forceful tree
       // signal so an ignored SIGTERM cannot keep tools running after the UI
       // has reported a timeout.
-      void self.#doKill(SIGKILL)
+      void self.#doKill(SIGKILL).catch(() => undefined)
     }
   }
 
@@ -165,6 +346,7 @@ class ShellCommandImpl implements ShellCommand {
     shouldAutoBackground = false,
     maxOutputBytes = MAX_TASK_OUTPUT_BYTES,
     isolatedProcessGroup = false,
+    killSettlementOptions: ShellKillSettlementOptions = {},
   ) {
     this.#childProcess = childProcess
     this.#abortSignal = abortSignal
@@ -172,6 +354,10 @@ class ShellCommandImpl implements ShellCommand {
     this.#shouldAutoBackground = shouldAutoBackground
     this.#maxOutputBytes = maxOutputBytes
     this.#isolatedProcessGroup = isolatedProcessGroup
+    this.#killResultSettlementTimeoutMs =
+      killSettlementOptions.timeoutMs ?? KILL_RESULT_SETTLEMENT_TIMEOUT_MS
+    this.#killResultAbortGraceMs =
+      killSettlementOptions.abortGraceMs ?? KILL_RESULT_ABORT_GRACE_MS
     this.taskOutput = taskOutput
 
     // In file mode (bash commands), both stdout and stderr go to the
@@ -197,13 +383,21 @@ class ShellCommandImpl implements ShellCommand {
     return this.#status
   }
 
+  get terminationConfirmed(): boolean {
+    return this.#killConfirmed
+  }
+
+  get resultSettled(): boolean {
+    return this.#resultSettled
+  }
+
   #abortHandler(): void {
     // On 'interrupt' (user submitted a new message), don't kill — let the
     // caller background the process so the model can see partial output.
     if (this.#abortSignal.reason === 'interrupt') {
       return
     }
-    void this.kill()
+    void this.kill().catch(() => undefined)
   }
 
   #exitHandler(code: number | null, signal: NodeJS.Signals | null): void {
@@ -275,17 +469,20 @@ class ShellCommandImpl implements ShellCommand {
           ) {
             this.#killedForSize = true
             this.#clearSizeWatchdog()
-            void this.#doKill(SIGKILL).then(confirmed => {
-              if (!confirmed) {
-                this.#killedForSize = false
-                // A failed signal/confirmation is retryable. Keep protecting
-                // a still-running background task instead of silently
-                // disabling the output limit forever.
-                if (this.#status === 'backgrounded') {
-                  this.#startSizeWatchdog()
+            void this.#doKill(SIGKILL).then(
+              confirmed => {
+                if (!confirmed) {
+                  this.#killedForSize = false
+                  // A failed signal/confirmation is retryable. Keep protecting
+                  // a still-running background task instead of silently
+                  // disabling the output limit forever.
+                  if (this.#status === 'backgrounded') {
+                    this.#startSizeWatchdog()
+                  }
                 }
-              }
-            })
+              },
+              () => undefined,
+            )
           }
         },
         () => {
@@ -381,6 +578,7 @@ class ShellCommandImpl implements ShellCommand {
 
     const resultResolver = this.#resultResolver
     if (resultResolver) {
+      this.#resultSettled = true
       this.#resultResolver = null
       resultResolver(result)
     }
@@ -395,8 +593,8 @@ class ShellCommandImpl implements ShellCommand {
       (this.#childProcess.exitCode !== null ||
         this.#childProcess.signalCode !== null)
     )
-      return this.result.then(() => true)
-    if (this.#killConfirmed) return this.result.then(() => true)
+      return this.#waitForKillResultSettlement()
+    if (this.#killConfirmed) return this.#waitForKillResultSettlement()
     if (this.#killPromise) return this.#killPromise
 
     this.#killRequested = true
@@ -406,14 +604,23 @@ class ShellCommandImpl implements ShellCommand {
     this.#killAttempt = attempt
     let trackedAttempt: Promise<boolean>
     trackedAttempt = attempt.then(async confirmed => {
-      if (confirmed) await this.result
+      if (confirmed) {
+        try {
+          return await this.#waitForKillResultSettlement()
+        } catch (error) {
+          if (this.#killPromise === trackedAttempt) {
+            this.#killPromise = null
+          }
+          throw error
+        }
+      }
       // A failed confirmation is retryable. The child may still be alive, so
       // a later Stop must be allowed to signal it again rather than inheriting
       // a permanently-false cached promise.
-      if (!confirmed && this.#killPromise === trackedAttempt) {
+      if (this.#killPromise === trackedAttempt) {
         this.#killPromise = null
       }
-      return confirmed
+      return false
     })
     this.#killPromise = trackedAttempt
 
@@ -436,6 +643,23 @@ class ShellCommandImpl implements ShellCommand {
     )
 
     return trackedAttempt
+  }
+
+  async #waitForKillResultSettlement(): Promise<boolean> {
+    try {
+      await waitForBoundedSettlement(this.result, {
+        signal: this.#abortSignal,
+        timeoutMs: this.#killResultSettlementTimeoutMs,
+        abortGraceMs: this.#killResultAbortGraceMs,
+        operation: `Shell process ${this.#childProcess.pid ?? 'unknown'} result settlement`,
+      })
+      return true
+    } catch (error) {
+      throw new ShellResultSettlementError(
+        `Shell process ${this.#childProcess.pid ?? 'unknown'} exited but its result did not settle`,
+        error,
+      )
+    }
   }
 
   kill(): Promise<boolean> {
@@ -465,7 +689,12 @@ class ShellCommandImpl implements ShellCommand {
     // A timed-out kill confirmation means the child is still live. Preserve
     // listeners and process references so its eventual exit can settle the
     // result and a subsequent Stop can retry termination.
-    if (this.#status !== 'completed' && this.#status !== 'killed') return
+    if (
+      this.#status !== 'completed' &&
+      this.#status !== 'killed' &&
+      !this.#resultSettled
+    )
+      return
     this.#stdoutWrapper?.cleanup()
     this.#stderrWrapper?.cleanup()
     this.taskOutput.clear()
@@ -492,6 +721,7 @@ export function wrapSpawn(
   shouldAutoBackground = false,
   maxOutputBytes = MAX_TASK_OUTPUT_BYTES,
   isolatedProcessGroup = false,
+  killSettlementOptions: ShellKillSettlementOptions = {},
 ): ShellCommand {
   return new ShellCommandImpl(
     childProcess,
@@ -501,6 +731,7 @@ export function wrapSpawn(
     shouldAutoBackground,
     maxOutputBytes,
     isolatedProcessGroup,
+    killSettlementOptions,
   )
 }
 
@@ -509,6 +740,8 @@ export function wrapSpawn(
  */
 class AbortedShellCommand implements ShellCommand {
   readonly status = 'killed' as const
+  readonly terminationConfirmed = true
+  readonly resultSettled = true
   readonly result: Promise<ExecResult>
   readonly taskOutput: TaskOutput
 
@@ -552,6 +785,8 @@ export function createFailedCommand(preSpawnError: string): ShellCommand {
   const taskOutput = new TaskOutput(generateTaskId('local_bash'), null)
   return {
     status: 'completed' as const,
+    terminationConfirmed: true,
+    resultSettled: true,
     result: Promise.resolve({
       code: 1,
       stdout: '',

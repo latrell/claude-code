@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoundedUUIDSet } from '../bridge/bridgeMessaging.js'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
@@ -34,8 +34,22 @@ import {
   type StreamingToolUse,
 } from '../utils/messages.js'
 import { generateSessionTitle } from '../utils/sessionTitle.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 import { updateSessionTitle } from '../utils/teleport/api.js'
+import {
+  canPublishRemoteSessionIdle,
+  canRetryRemoteTitleAfterCancellation,
+  hasCancelableRemoteTitleWork,
+  RemoteTitleOwnership,
+  type RemoteTitleRun,
+  resolveRemoteCancellationOutcome,
+} from '../remote/remoteTitleLifecycle.js'
+import {
+  beginRemoteSessionCallbackGeneration,
+  invalidateRemoteSessionCallbacks,
+  resetRemoteSessionLifecycle,
+} from '../remote/remoteSessionLifecycle.js'
 
 // How long to wait for a response before showing a warning
 const RESPONSE_TIMEOUT_MS = 60000 // 60 seconds
@@ -60,6 +74,8 @@ type UseRemoteSessionProps = {
 
 type UseRemoteSessionResult = {
   isRemoteMode: boolean
+  /** Auxiliary title inference can be stopped without keeping the main spinner active. */
+  hasCancelableAuxiliaryWork: boolean
   sendMessage: (
     content: RemoteMessageContent,
     opts?: { uuid?: string },
@@ -123,11 +139,174 @@ export function useRemoteSession({
   const isCompactingRef = useRef(false)
 
   const managerRef = useRef<RemoteSessionManager | null>(null)
+  const retiredManagersRef = useRef(new Set<RemoteSessionManager>())
+  const retiredManagerDisconnectsRef = useRef(
+    new Map<RemoteSessionManager, Promise<boolean>>(),
+  )
+  const managerCallbackGenerationRef = useRef(0)
   const cancellationPendingRef = useRef(false)
+  const cancellationGenerationRef = useRef(0)
+  const remoteCancellationUnconfirmedRef = useRef(false)
+  const remoteTurnActiveRef = useRef(config?.hasInitialPrompt ?? false)
+  const cancellationWarningShownRef = useRef(false)
 
   // Track whether we've already updated the session title (for no-initial-prompt sessions)
   const hasUpdatedTitleRef = useRef(false)
-  const titleAbortControllerRef = useRef<AbortController | null>(null)
+  const titleOwnershipRef = useRef(new RemoteTitleOwnership())
+  const observedTitleCancellationRef = useRef<Promise<boolean> | null>(null)
+  const titleCancellationUnconfirmedRef = useRef(false)
+  const [hasCancelableAuxiliaryWork, setHasCancelableAuxiliaryWork] =
+    useState(false)
+  const syncAuxiliaryStopAvailability = useCallback(() => {
+    setHasCancelableAuxiliaryWork(
+      hasCancelableRemoteTitleWork({
+        titleRunActive: titleOwnershipRef.current.hasActiveOwner,
+      }),
+    )
+  }, [])
+  const remotePermissionIdsRef = useRef(new Set<string>())
+
+  const clearRemotePermissions = useCallback(() => {
+    if (remotePermissionIdsRef.current.size === 0) return
+    const ids = new Set(remotePermissionIdsRef.current)
+    remotePermissionIdsRef.current.clear()
+    setToolUseConfirmQueue(queue =>
+      queue.filter(item => !ids.has(item.toolUseID)),
+    )
+  }, [setToolUseConfirmQueue])
+
+  const resetRemoteLifecycle = useCallback(
+    (
+      reason: unknown,
+      next: Readonly<{
+        remoteTurnActive?: boolean
+        titleOwnerActive?: boolean
+        managerOwnerActive?: boolean
+      }> = {},
+    ): void => {
+      logForDebugging(
+        `[useRemoteSession] Resetting main lifecycle: ${String(reason)}`,
+      )
+      invalidateRemoteSessionCallbacks(managerCallbackGenerationRef)
+      resetRemoteSessionLifecycle(
+        {
+          cancellationPending: cancellationPendingRef,
+          cancellationGeneration: cancellationGenerationRef,
+          remoteCancellationUnconfirmed: remoteCancellationUnconfirmedRef,
+          remoteTurnActive: remoteTurnActiveRef,
+          cancellationWarningShown: cancellationWarningShownRef,
+          isCompacting: isCompactingRef,
+          hasUpdatedTitle: hasUpdatedTitleRef,
+          responseTimeout: responseTimeoutRef,
+        },
+        setIsLoading,
+        next,
+      )
+      clearRemotePermissions()
+      runningTaskIdsRef.current.clear()
+      writeTaskCount()
+      setInProgressToolUseIDs?.(prev => (prev.size > 0 ? new Set() : prev))
+      setConnStatus('disconnected')
+    },
+    [
+      clearRemotePermissions,
+      setConnStatus,
+      setInProgressToolUseIDs,
+      setIsLoading,
+      writeTaskCount,
+    ],
+  )
+
+  const reportUnconfirmedStop = useCallback(() => {
+    if (cancellationWarningShownRef.current) return
+    cancellationWarningShownRef.current = true
+    setMessages(prev => [
+      ...prev,
+      createSystemMessage(
+        t('Remote request could not be confirmed as stopped.'),
+        'warning',
+      ),
+    ])
+  }, [setMessages])
+
+  const retireRemoteManager = useCallback(
+    (manager: RemoteSessionManager): Promise<boolean> => {
+      const existing = retiredManagerDisconnectsRef.current.get(manager)
+      if (existing) return existing
+
+      retiredManagersRef.current.add(manager)
+      setIsLoading(true)
+      const disconnect = manager.disconnect()
+      let observed: Promise<boolean>
+      const finish = (confirmed: boolean): boolean => {
+        if (retiredManagerDisconnectsRef.current.get(manager) !== observed) {
+          return confirmed
+        }
+        retiredManagerDisconnectsRef.current.delete(manager)
+        if (confirmed) retiredManagersRef.current.delete(manager)
+        else reportUnconfirmedStop()
+
+        if (retiredManagersRef.current.size > 0) {
+          setIsLoading(true)
+        } else if (
+          canPublishRemoteSessionIdle({
+            remoteTurnActive: remoteTurnActiveRef.current,
+            titleRunActive: titleOwnershipRef.current.hasActiveOwner,
+            managerDisconnectActive: false,
+            cancellationPending: cancellationPendingRef.current,
+            remoteCancellationUnconfirmed:
+              remoteCancellationUnconfirmedRef.current,
+            titleCancellationUnconfirmed:
+              titleCancellationUnconfirmedRef.current,
+          })
+        ) {
+          setIsLoading(false)
+        }
+        return confirmed
+      }
+      observed = disconnect.then(finish, () => finish(false))
+      retiredManagerDisconnectsRef.current.set(manager, observed)
+      void observed.catch(() => {})
+      return observed
+    },
+    [reportUnconfirmedStop, setIsLoading],
+  )
+
+  const retireRemoteTitle = useCallback(
+    (reason: unknown): void => {
+      const ownership = titleOwnershipRef.current
+      const cancellation = ownership.cancel(reason)
+      if (!cancellation) return
+
+      // Title work remains separately Stop-routable, but it is auxiliary and
+      // must not keep a completed main worker turn in the loading state.
+      syncAuxiliaryStopAvailability()
+      if (observedTitleCancellationRef.current === cancellation) return
+      observedTitleCancellationRef.current = cancellation
+      void cancellation.then(confirmed => {
+        if (observedTitleCancellationRef.current !== cancellation) return
+        observedTitleCancellationRef.current = null
+        titleCancellationUnconfirmedRef.current = ownership.hasUnconfirmedStop
+        syncAuxiliaryStopAvailability()
+        if (!confirmed) reportUnconfirmedStop()
+        if (
+          canPublishRemoteSessionIdle({
+            remoteTurnActive: remoteTurnActiveRef.current,
+            titleRunActive: ownership.hasActiveOwner,
+            managerDisconnectActive: retiredManagersRef.current.size > 0,
+            cancellationPending: cancellationPendingRef.current,
+            remoteCancellationUnconfirmed:
+              remoteCancellationUnconfirmedRef.current,
+            titleCancellationUnconfirmed:
+              titleCancellationUnconfirmedRef.current,
+          })
+        ) {
+          setIsLoading(false)
+        }
+      })
+    },
+    [reportUnconfirmedStop, setIsLoading, syncAuxiliaryStopAvailability],
+  )
 
   // UUIDs of user messages we POSTed locally — the WS echoes them back and
   // we must filter them out when convertUserTextMessages is on, or the viewer
@@ -152,12 +331,35 @@ export function useRemoteSession({
   useEffect(() => {
     // Skip if not in remote mode
     if (!config) {
+      const staleManager = managerRef.current
+      managerRef.current = null
+      if (staleManager) void retireRemoteManager(staleManager)
+      retireRemoteTitle('remote-session-config-cleared')
+      resetRemoteLifecycle('remote-session-config-cleared', {
+        titleOwnerActive: titleOwnershipRef.current.hasActiveOwner,
+        managerOwnerActive: retiredManagersRef.current.size > 0,
+      })
       return
     }
 
-    titleAbortControllerRef.current?.abort('remote-session-changed')
-    titleAbortControllerRef.current = null
+    // Normalize state inherited from config A before config B installs its
+    // callback epoch. A title owned by A is retired separately and remains a
+    // loading owner until its bounded cancellation result is known.
+    retireRemoteTitle('remote-session-config-replaced')
+    resetRemoteLifecycle('remote-session-config-replaced', {
+      remoteTurnActive: config.hasInitialPrompt ?? false,
+      titleOwnerActive: titleOwnershipRef.current.hasActiveOwner,
+      managerOwnerActive: retiredManagersRef.current.size > 0,
+    })
+    const isCurrentManagerCallback = beginRemoteSessionCallbackGeneration(
+      managerCallbackGenerationRef,
+    )
+
+    remoteCancellationUnconfirmedRef.current = false
+    cancellationWarningShownRef.current = false
     hasUpdatedTitleRef.current = false
+    titleCancellationUnconfirmedRef.current =
+      titleOwnershipRef.current.hasUnconfirmedStop
 
     logForDebugging(
       `[useRemoteSession] Initializing for session ${config.sessionId}`,
@@ -165,6 +367,7 @@ export function useRemoteSession({
 
     const manager = new RemoteSessionManager(config, {
       onMessage: sdkMessage => {
+        if (!isCurrentManagerCallback()) return
         const parts = [`type=${sdkMessage.type}`]
         if ('subtype' in sdkMessage)
           parts.push(`subtype=${sdkMessage.subtype as string}`)
@@ -251,7 +454,26 @@ export function useRemoteSession({
         // Check if session ended
         if (isSessionEndMessage(sdkMessage)) {
           isCompactingRef.current = false
-          setIsLoading(false)
+          remoteTurnActiveRef.current = false
+          // A terminal worker event is independent proof that the main remote
+          // turn ended, even if an earlier interrupt ACK timed out.
+          remoteCancellationUnconfirmedRef.current = false
+          // The remote worker can finish before the viewer-owned Haiku title.
+          // Publish main idle immediately; title Stop routing is independent.
+          if (
+            canPublishRemoteSessionIdle({
+              remoteTurnActive: remoteTurnActiveRef.current,
+              titleRunActive: titleOwnershipRef.current.hasActiveOwner,
+              managerDisconnectActive: retiredManagersRef.current.size > 0,
+              cancellationPending: cancellationPendingRef.current,
+              remoteCancellationUnconfirmed:
+                remoteCancellationUnconfirmedRef.current,
+              titleCancellationUnconfirmed:
+                titleCancellationUnconfirmedRef.current,
+            })
+          ) {
+            setIsLoading(false)
+          }
         }
 
         // Clear in-progress tool_use IDs when their tool_result arrives.
@@ -346,6 +568,7 @@ export function useRemoteSession({
         // 'ignored' messages are silently dropped
       },
       onPermissionRequest: (request, requestId) => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging(
           `[useRemoteSession] Permission request for tool: ${request.tool_name}`,
         )
@@ -369,6 +592,13 @@ export function useRemoteSession({
           blockedPath: request.blocked_path,
         }
 
+        const removeRemotePermission = (): void => {
+          remotePermissionIdsRef.current.delete(request.tool_use_id)
+          setToolUseConfirmQueue(queue =>
+            queue.filter(item => item.toolUseID !== request.tool_use_id),
+          )
+        }
+
         const toolUseConfirm: ToolUseConfirm = {
           assistantMessage: syntheticMessage,
           tool,
@@ -384,61 +614,63 @@ export function useRemoteSession({
             // No-op for remote — classifier runs on the container
           },
           onAbort() {
+            if (!isCurrentManagerCallback()) return
             const response: RemotePermissionResponse = {
               behavior: 'deny',
               message: t('User aborted'),
             }
             manager.respondToPermissionRequest(requestId, response)
-            setToolUseConfirmQueue(queue =>
-              queue.filter(item => item.toolUseID !== request.tool_use_id),
-            )
+            removeRemotePermission()
           },
           onAllow(updatedInput, _permissionUpdates, _feedback) {
+            if (!isCurrentManagerCallback()) return
             const response: RemotePermissionResponse = {
               behavior: 'allow',
               updatedInput,
             }
             manager.respondToPermissionRequest(requestId, response)
-            setToolUseConfirmQueue(queue =>
-              queue.filter(item => item.toolUseID !== request.tool_use_id),
-            )
+            removeRemotePermission()
             // Resume loading indicator after approving
             setIsLoading(true)
           },
           onReject(feedback?: string) {
+            if (!isCurrentManagerCallback()) return
             const response: RemotePermissionResponse = {
               behavior: 'deny',
               message: feedback ?? t('User denied permission'),
             }
             manager.respondToPermissionRequest(requestId, response)
-            setToolUseConfirmQueue(queue =>
-              queue.filter(item => item.toolUseID !== request.tool_use_id),
-            )
+            removeRemotePermission()
           },
           async recheckPermission() {
             // No-op for remote — permission state is on the container
           },
         }
 
+        remotePermissionIdsRef.current.add(request.tool_use_id)
         setToolUseConfirmQueue(queue => [...queue, toolUseConfirm])
         // Pause loading indicator while waiting for permission
         setIsLoading(false)
       },
       onPermissionCancelled: (requestId, toolUseId) => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging(
           `[useRemoteSession] Permission request cancelled: ${requestId}`,
         )
         const idToRemove = toolUseId ?? requestId
+        remotePermissionIdsRef.current.delete(idToRemove)
         setToolUseConfirmQueue(queue =>
           queue.filter(item => item.toolUseID !== idToRemove),
         )
         setIsLoading(true)
       },
       onConnected: () => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging('[useRemoteSession] Connected')
         setConnStatus('connected')
       },
       onReconnecting: () => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging('[useRemoteSession] Reconnecting')
         setConnStatus('reconnecting')
         // WS gap = we may miss task_notification events. Clear rather than
@@ -450,32 +682,55 @@ export function useRemoteSession({
         setInProgressToolUseIDs?.(prev => (prev.size > 0 ? new Set() : prev))
       },
       onDisconnected: () => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging('[useRemoteSession] Disconnected')
         setConnStatus('disconnected')
-        if (!cancellationPendingRef.current) setIsLoading(false)
+        if (
+          canPublishRemoteSessionIdle({
+            remoteTurnActive: remoteTurnActiveRef.current,
+            titleRunActive: titleOwnershipRef.current.hasActiveOwner,
+            managerDisconnectActive: retiredManagersRef.current.size > 0,
+            cancellationPending: cancellationPendingRef.current,
+            remoteCancellationUnconfirmed:
+              remoteCancellationUnconfirmedRef.current,
+            titleCancellationUnconfirmed:
+              titleCancellationUnconfirmedRef.current,
+          })
+        ) {
+          setIsLoading(false)
+        }
         runningTaskIdsRef.current.clear()
         writeTaskCount()
         setInProgressToolUseIDs?.(prev => (prev.size > 0 ? new Set() : prev))
       },
       onError: error => {
+        if (!isCurrentManagerCallback()) return
         logForDebugging(`[useRemoteSession] Error: ${error.message}`)
       },
     })
 
+    // A replacement manager starts a fresh request lifecycle. A late result
+    // from the previous manager must not keep this session's loading gate set.
+    cancellationPendingRef.current = false
+    cancellationGenerationRef.current += 1
+    cancellationWarningShownRef.current = false
     managerRef.current = manager
     manager.connect()
 
     return () => {
       logForDebugging('[useRemoteSession] Cleanup - disconnecting')
-      titleAbortControllerRef.current?.abort('remote-session-disconnected')
-      titleAbortControllerRef.current = null
+      if (isCurrentManagerCallback()) {
+        invalidateRemoteSessionCallbacks(managerCallbackGenerationRef)
+      }
+      cancellationGenerationRef.current += 1
+      retireRemoteTitle('remote-session-disconnected')
       // Clear any pending timeout
       if (responseTimeoutRef.current) {
         clearTimeout(responseTimeoutRef.current)
         responseTimeoutRef.current = null
       }
-      manager.disconnect()
-      managerRef.current = null
+      void retireRemoteManager(manager)
+      if (managerRef.current === manager) managerRef.current = null
     }
   }, [
     config,
@@ -488,6 +743,11 @@ export function useRemoteSession({
     setInProgressToolUseIDs,
     setConnStatus,
     writeTaskCount,
+    reportUnconfirmedStop,
+    clearRemotePermissions,
+    resetRemoteLifecycle,
+    retireRemoteTitle,
+    retireRemoteManager,
   ])
 
   // Send a user message to the remote session
@@ -501,12 +761,30 @@ export function useRemoteSession({
         logForDebugging('[useRemoteSession] Cannot send - no manager')
         return false
       }
+      if (retiredManagersRef.current.size > 0) {
+        // A prior manager still owns a POST whose causal final interrupt was
+        // not confirmed. Do not let the replacement session overlap it.
+        setIsLoading(true)
+        reportUnconfirmedStop()
+        return false
+      }
+      if (remoteCancellationUnconfirmedRef.current) {
+        // The main worker still lacks termination proof. Auxiliary title
+        // failures are reported separately and never start another title run
+        // because hasUpdatedTitleRef remains latched on unconfirmed cleanup.
+        setIsLoading(true)
+        reportUnconfirmedStop()
+        return false
+      }
+      const requestGeneration = cancellationGenerationRef.current
 
       // Clear any existing timeout
       if (responseTimeoutRef.current) {
         clearTimeout(responseTimeoutRef.current)
       }
 
+      remoteTurnActiveRef.current = true
+      cancellationWarningShownRef.current = false
       setIsLoading(true)
 
       // Track locally-added message UUIDs so the WS echo can be filtered.
@@ -515,11 +793,24 @@ export function useRemoteSession({
       if (opts?.uuid) sentUUIDsRef.current.add(opts.uuid)
 
       const success = await manager.sendMessage(content, opts)
+      const requestLifecycleChanged =
+        managerRef.current !== manager ||
+        cancellationGenerationRef.current !== requestGeneration
 
       if (!success) {
         // No need to undo the pre-POST add — BoundedUUIDSet's ring evicts it.
-        setIsLoading(false)
+        if (!requestLifecycleChanged) {
+          remoteTurnActiveRef.current = false
+          setIsLoading(false)
+        }
         return false
+      }
+      if (requestLifecycleChanged) {
+        // Stop/session replacement took ownership while the HTTP POST was in
+        // flight. The causal interrupt handles the accepted user event; do not
+        // start a fresh viewer-side title request after its cancellation
+        // snapshot was already taken.
+        return true
       }
 
       // Update the session title after the first message when no initial prompt was provided.
@@ -529,9 +820,10 @@ export function useRemoteSession({
         !hasUpdatedTitleRef.current &&
         config &&
         !config.hasInitialPrompt &&
-        !config.viewerOnly
+        !config.viewerOnly &&
+        retiredManagersRef.current.size === 0 &&
+        !titleOwnershipRef.current.replacementBlocked
       ) {
-        hasUpdatedTitleRef.current = true
         const sessionId = config.sessionId
         // Extract plain text from content (may be string or content block array)
         const description =
@@ -540,23 +832,79 @@ export function useRemoteSession({
             : extractTextContent(content, ' ')
         if (description) {
           const titleAbortController = new AbortController()
-          titleAbortControllerRef.current = titleAbortController
-          // generateSessionTitle never rejects (wraps body in try/catch,
-          // returns null on failure), so no .catch needed on this chain.
-          void generateSessionTitle(description, titleAbortController.signal)
-            .then(title => {
-              if (titleAbortController.signal.aborted) return
-              void updateSessionTitle(
-                sessionId,
-                title ?? truncateToWidth(description, 75),
-                titleAbortController.signal,
-              )
-            })
-            .finally(() => {
-              if (titleAbortControllerRef.current === titleAbortController) {
-                titleAbortControllerRef.current = null
-              }
-            })
+          // Delay the provider call by one microtask so ownership is installed
+          // before any inference can start.
+          let launchTitle!: (owned: boolean) => void
+          const launch = new Promise<boolean>(resolve => {
+            launchTitle = resolve
+          })
+          const settled = launch.then(async (owned): Promise<void> => {
+            if (!owned) return
+            const title = await generateSessionTitle(
+              description,
+              titleAbortController.signal,
+            )
+            if (titleAbortController.signal.aborted) return
+            await updateSessionTitle(
+              sessionId,
+              title ?? truncateToWidth(description, 75),
+              titleAbortController.signal,
+            )
+          })
+          const titleRun: RemoteTitleRun = {
+            abortController: titleAbortController,
+            settled,
+          }
+          const ownership = titleOwnershipRef.current
+          if (ownership.tryStart(titleRun)) {
+            hasUpdatedTitleRef.current = true
+            titleCancellationUnconfirmedRef.current = false
+            // The worker may emit session-end before this continuation
+            // resolves. Keep Escape available for the title without pinning
+            // the main session spinner/loading state.
+            syncAuxiliaryStopAvailability()
+            launchTitle(true)
+            void settled
+              .catch(error => {
+                logForDebugging(
+                  `[useRemoteSession] Session title request failed: ${error instanceof Error ? error.message : String(error)}`,
+                )
+                if (!ownership.owns(titleRun)) return
+                if (error instanceof StopConfirmationError) {
+                  ownership.complete(titleRun, true)
+                  titleCancellationUnconfirmedRef.current = true
+                  syncAuxiliaryStopAvailability()
+                  reportUnconfirmedStop()
+                }
+              })
+              .finally(() => {
+                if (!ownership.owns(titleRun)) return
+                ownership.complete(titleRun)
+                syncAuxiliaryStopAvailability()
+                titleCancellationUnconfirmedRef.current =
+                  ownership.hasUnconfirmedStop
+                if (
+                  canPublishRemoteSessionIdle({
+                    remoteTurnActive: remoteTurnActiveRef.current,
+                    titleRunActive: ownership.hasActiveOwner,
+                    managerDisconnectActive:
+                      retiredManagersRef.current.size > 0,
+                    cancellationPending: cancellationPendingRef.current,
+                    remoteCancellationUnconfirmed:
+                      remoteCancellationUnconfirmedRef.current,
+                    titleCancellationUnconfirmed:
+                      titleCancellationUnconfirmedRef.current,
+                  })
+                ) {
+                  setIsLoading(false)
+                }
+              })
+          } else {
+            // A config replacement won the race before this microtask-backed
+            // request started. Abort it without ever calling the provider.
+            titleAbortController.abort('remote-title-ownership-lost')
+            launchTitle(false)
+          }
         }
       }
 
@@ -564,7 +912,7 @@ export function useRemoteSession({
       // the remote agent may be idle-shut and take >60s to respawn.
       // Use a longer timeout when the remote session is compacting, since
       // the CLI worker is busy with an API call and won't emit messages.
-      if (!config?.viewerOnly) {
+      if (!config?.viewerOnly && remoteTurnActiveRef.current) {
         const timeoutMs = isCompactingRef.current
           ? COMPACTION_TIMEOUT_MS
           : RESPONSE_TIMEOUT_MS
@@ -591,7 +939,13 @@ export function useRemoteSession({
 
       return success
     },
-    [config, setIsLoading, setMessages],
+    [
+      config,
+      setIsLoading,
+      setMessages,
+      reportUnconfirmedStop,
+      syncAuxiliaryStopAvailability,
+    ],
   )
 
   // Cancel the current request on the remote session
@@ -605,69 +959,198 @@ export function useRemoteSession({
     // Send interrupt signal to CCR. Skip in viewerOnly mode — Ctrl+C
     // should never interrupt the remote agent.
     if (!config?.viewerOnly) {
+      const titleOwnership = titleOwnershipRef.current
+      const titleRun = titleOwnership.currentRun
+      const hasMainCancellationWork =
+        remoteTurnActiveRef.current ||
+        cancellationPendingRef.current ||
+        remoteCancellationUnconfirmedRef.current ||
+        retiredManagersRef.current.size > 0
+
+      if (!hasMainCancellationWork) {
+        if (!titleRun) {
+          setIsLoading(false)
+          return
+        }
+
+        // The worker has already emitted its terminal event. Cancel only the
+        // auxiliary title chain; sending another worker interrupt would turn
+        // an idle session back into a misleading loading/cancellation state.
+        const cancellation = titleOwnership.cancel('user-cancel')
+        syncAuxiliaryStopAvailability()
+        if (!cancellation) return
+        if (observedTitleCancellationRef.current === cancellation) return
+        observedTitleCancellationRef.current = cancellation
+        void cancellation.then(confirmed => {
+          if (observedTitleCancellationRef.current !== cancellation) return
+          observedTitleCancellationRef.current = null
+          titleCancellationUnconfirmedRef.current =
+            titleOwnership.hasUnconfirmedStop
+          syncAuxiliaryStopAvailability()
+          if (confirmed) {
+            hasUpdatedTitleRef.current = false
+            cancellationWarningShownRef.current = false
+          } else {
+            reportUnconfirmedStop()
+          }
+          if (
+            canPublishRemoteSessionIdle({
+              remoteTurnActive: remoteTurnActiveRef.current,
+              titleRunActive: titleOwnership.hasActiveOwner,
+              managerDisconnectActive: retiredManagersRef.current.size > 0,
+              cancellationPending: cancellationPendingRef.current,
+              remoteCancellationUnconfirmed:
+                remoteCancellationUnconfirmedRef.current,
+              titleCancellationUnconfirmed:
+                titleCancellationUnconfirmedRef.current,
+            })
+          ) {
+            setIsLoading(false)
+          }
+        })
+        return
+      }
+
       // REPL resets its aggregate loading flags before invoking each concrete
       // canceller. Re-assert loading here and clear it only after the remote
       // worker acknowledges the interrupt; otherwise Escape merely makes the
       // local UI look idle while inference can still be running remotely.
       setIsLoading(true)
       cancellationPendingRef.current = true
+      const cancellationGeneration = ++cancellationGenerationRef.current
       const manager = managerRef.current
-      if (manager) {
-        void manager.cancelSession().then(cancelled => {
-          if (managerRef.current !== manager) return
-          if (cancelled) {
-            cancellationPendingRef.current = false
-            setIsLoading(false)
-            return
-          }
-          setMessages(prev => [
-            ...prev,
-            createSystemMessage(
-              t('Remote request could not be confirmed as stopped.'),
-              'warning',
-            ),
-          ])
+      const titleWasAlreadyUnconfirmed = titleCancellationUnconfirmedRef.current
+      const finishCancellation = (
+        managerCancelled: boolean,
+        titleCancelled: boolean,
+        retiredManagersCancelled: boolean,
+      ): void => {
+        // A newly-created manager owns its own loading state. A manager that
+        // was cleared during teardown does not: its late cancellation result
+        // must still release the old loading gate and report uncertainty.
+        if (
+          cancellationGenerationRef.current !== cancellationGeneration ||
+          (managerRef.current !== manager && managerRef.current !== null)
+        )
+          return
+        cancellationPendingRef.current = false
+        syncAuxiliaryStopAvailability()
+        const outcome = resolveRemoteCancellationOutcome({
+          managerCancelled,
+          titleCancelled,
+          remoteTurnActive: remoteTurnActiveRef.current,
         })
-      } else {
-        setMessages(prev => [
-          ...prev,
-          createSystemMessage(
-            t('Remote request could not be confirmed as stopped.'),
-            'warning',
-          ),
-        ])
+        const retiredManagerStopUnconfirmed =
+          !retiredManagersCancelled || retiredManagersRef.current.size > 0
+        titleCancellationUnconfirmedRef.current = outcome.titleStopUnconfirmed
+        if (
+          canRetryRemoteTitleAfterCancellation({
+            hadTitleRun: titleRun !== null,
+            titleCancelled,
+          })
+        ) {
+          // A later turn may retry title generation only after the original
+          // request chain proved that it ended. An unconfirmed request keeps
+          // hasUpdatedTitleRef latched to prevent overlapping remote inference.
+          hasUpdatedTitleRef.current = false
+        }
+        if (outcome.titleStopUnconfirmed || retiredManagerStopUnconfirmed) {
+          reportUnconfirmedStop()
+        }
+        if (outcome.mainTurnStopped) {
+          remoteTurnActiveRef.current = false
+          remoteCancellationUnconfirmedRef.current = false
+          if (!outcome.titleStopUnconfirmed && !retiredManagerStopUnconfirmed) {
+            titleCancellationUnconfirmedRef.current = false
+            cancellationWarningShownRef.current = false
+          }
+          setIsLoading(retiredManagerStopUnconfirmed)
+          return
+        }
+        // A negative ACK is not an idle transition. Keep the cancellation
+        // affordance live so Escape can retry instead of stranding a possibly
+        // running request behind an already-idle UI.
+        remoteCancellationUnconfirmedRef.current = true
+        setIsLoading(true)
+        reportUnconfirmedStop()
       }
+      const managerCancellation = manager
+        ? manager.cancelSession().catch(error => {
+            logForDebugging(
+              `[useRemoteSession] Remote cancellation failed: ${error instanceof Error ? error.message : String(error)}`,
+            )
+            return false
+          })
+        : Promise.resolve(false)
+      const titleCancellation = titleRun
+        ? (titleOwnership.cancel('user-cancel') ?? Promise.resolve(false))
+        : Promise.resolve(!titleWasAlreadyUnconfirmed)
+      syncAuxiliaryStopAvailability()
+      const retiredManagerCancellation = Promise.all(
+        [...retiredManagersRef.current].map(retireRemoteManager),
+      ).then(results => results.every(Boolean))
+      void Promise.all([
+        managerCancellation,
+        titleCancellation,
+        retiredManagerCancellation,
+      ]).then(
+        ([managerCancelled, titleCancelled, retiredManagersCancelled]) => {
+          finishCancellation(
+            managerCancelled,
+            titleCancelled,
+            retiredManagersCancelled,
+          )
+        },
+        error => {
+          logForDebugging(
+            `[useRemoteSession] Cancellation settlement failed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+          finishCancellation(false, false, false)
+        },
+      )
     } else {
-      setIsLoading(false)
+      cancellationPendingRef.current = false
+      remoteTurnActiveRef.current = false
+      setIsLoading(retiredManagersRef.current.size > 0)
     }
-
-    if (titleAbortControllerRef.current) {
-      titleAbortControllerRef.current.abort('user-cancel')
-      titleAbortControllerRef.current = null
-      hasUpdatedTitleRef.current = false
-    }
-  }, [config, setIsLoading, setMessages])
+  }, [
+    config,
+    setIsLoading,
+    reportUnconfirmedStop,
+    retireRemoteManager,
+    syncAuxiliaryStopAvailability,
+  ])
 
   // Disconnect from the session
   const disconnect = useCallback(() => {
-    // Clear any pending timeout
-    if (responseTimeoutRef.current) {
-      clearTimeout(responseTimeoutRef.current)
-      responseTimeoutRef.current = null
-    }
-    titleAbortControllerRef.current?.abort('remote-session-disconnected')
-    titleAbortControllerRef.current = null
-    managerRef.current?.disconnect()
+    const manager = managerRef.current
     managerRef.current = null
-  }, [])
+    if (manager) void retireRemoteManager(manager)
+    retireRemoteTitle('remote-session-disconnected')
+    resetRemoteLifecycle('remote-session-disconnected', {
+      titleOwnerActive: titleOwnershipRef.current.hasActiveOwner,
+      managerOwnerActive: retiredManagersRef.current.size > 0,
+    })
+  }, [resetRemoteLifecycle, retireRemoteTitle, retireRemoteManager])
 
-  // All four fields are already stable (boolean derived from a prop that
-  // doesn't change mid-session, three useCallbacks with stable deps). The
+  // All fields are stable (booleans plus three useCallbacks). The
   // result object is consumed by REPL's onSubmit useCallback deps — without
   // memoization the fresh literal invalidates onSubmit on every REPL render,
   // which in turn churns PromptInput's props and downstream memoization.
   return useMemo(
-    () => ({ isRemoteMode, sendMessage, cancelRequest, disconnect }),
-    [isRemoteMode, sendMessage, cancelRequest, disconnect],
+    () => ({
+      isRemoteMode,
+      hasCancelableAuxiliaryWork,
+      sendMessage,
+      cancelRequest,
+      disconnect,
+    }),
+    [
+      isRemoteMode,
+      hasCancelableAuxiliaryWork,
+      sendMessage,
+      cancelRequest,
+      disconnect,
+    ],
   )
 }

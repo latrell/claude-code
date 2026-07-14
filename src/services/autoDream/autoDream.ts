@@ -53,6 +53,7 @@ import {
 } from '../../tasks/DreamTask/DreamTask.js'
 import { FILE_EDIT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileEditTool/constants.js'
 import { FILE_WRITE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileWriteTool/prompt.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 // Scan throttle: when time-gate passes but session-gate doesn't, the lock
 // mtime doesn't advance, so the time-gate keeps passing every turn.
@@ -126,6 +127,9 @@ export function initAutoDream(): void {
   let lastSessionScanAt = 0
 
   runner = async function runAutoDream(context, appendSystemMessage) {
+    const parentSignal = context.toolUseContext.abortController.signal
+    if (parentSignal.aborted) return
+
     const cfg = getConfig()
     const force = isForced()
     if (!force && !isGateOpen()) return
@@ -140,6 +144,7 @@ export function initAutoDream(): void {
       )
       return
     }
+    if (parentSignal.aborted) return
     const hoursSince = (Date.now() - lastAt) / 3_600_000
     if (!force && hoursSince < cfg.minHours) return
 
@@ -151,6 +156,7 @@ export function initAutoDream(): void {
       )
       return
     }
+    if (parentSignal.aborted) return
     lastSessionScanAt = Date.now()
 
     // --- Session gate ---
@@ -163,6 +169,7 @@ export function initAutoDream(): void {
       )
       return
     }
+    if (parentSignal.aborted) return
     // Exclude the current session (its mtime is always recent).
     const currentSession = getSessionId()
     sessionIds = sessionIds.filter(id => id !== currentSession)
@@ -190,6 +197,13 @@ export function initAutoDream(): void {
         )
         return
       }
+    }
+
+    // Preflight belongs to the parent turn. Only after task registration does
+    // auto-dream become an explicit, independently stoppable DreamTask.
+    if (parentSignal.aborted) {
+      if (lockLease) await rollbackConsolidationLock(lockLease)
+      return
     }
 
     logForDebugging(
@@ -235,7 +249,7 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
         overrides: { abortController },
         onMessage: makeDreamProgressWatcher(taskId, setAppState),
       })
-      trackDreamTaskRun(taskId, runPromise)
+      trackDreamTaskRun(taskId, runPromise, setAppState)
       const result = await runPromise
 
       // The stream can resolve normally while an abort races with its final
@@ -266,6 +280,17 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
         sessions_reviewed: sessionIds.length,
       })
     } catch (e: unknown) {
+      // The runner itself is gone, so retaining a running task cannot make a
+      // later Stop succeed. trackDreamTaskRun has already published `failed`
+      // and released its runtime record; release the owner-scoped lock too.
+      if (e instanceof StopConfirmationError) {
+        logForDebugging(`[autoDream] stop was not confirmed: ${e.message}`)
+        logEvent('tengu_auto_dream_failed', {})
+        if (lockLease) {
+          await rollbackConsolidationLock(lockLease)
+        }
+        return
+      }
       // If the user killed from the bg-tasks dialog, DreamTask.kill already
       // aborted, rolled back the lock, and set status=killed. Don't overwrite
       // or double-rollback.

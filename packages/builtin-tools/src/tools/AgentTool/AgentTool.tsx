@@ -7,13 +7,14 @@ import { z } from 'zod/v4';
 import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 'src/bootstrap/state.js';
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from 'src/constants/prompts.js';
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js';
-import { startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js';
+import { AgentSummaryScope, startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js';
 import { clearDumpState } from 'src/services/api/dumpPrompts.js';
+import { guardAsyncIterableCancellation } from 'src/services/api/providerCancellation.js';
 import { t, tf } from 'src/i18n/t.js';
 import {
   completeAgentTask as completeAsyncAgent,
@@ -44,6 +45,8 @@ import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js';
 import { asAgentId } from 'src/types/ids.js';
 import { runWithAgentContext, type SubagentContext } from 'src/utils/agentContext.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
+import { AbortSettlementTimeoutError, waitForBoundedSettlement } from 'src/utils/abortSettlement.js';
+import { createCombinedAbortSignal } from 'src/utils/combinedAbortSignal.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/cwd.js';
 import { logForDebugging } from 'src/utils/debug.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
@@ -82,7 +85,12 @@ import {
   finalizeAgentTool,
   getForegroundAgentTerminalStatus,
   getLastToolUseName,
+  publishAgentResultAfterHandoffSafety,
+  registerDetachedAgentSummaryStop,
+  registerDetachedAgentWorktreeCleanup,
   runAsyncAgentLifecycle,
+  stopAgentSummaryScope,
+  waitForAgentWorktreeOperation,
 } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
@@ -108,6 +116,45 @@ import {
   userFacingName,
   userFacingNameBackgroundColor,
 } from './UI.js';
+
+const AGENT_WORKTREE_FINALIZER_TIMEOUT_MS = 30_000;
+const AGENT_FINALIZER_ABORT_GRACE_MS = 2_000;
+
+type ForegroundExecutionFinalizer = {
+  operation: string;
+  finalize: () => void;
+};
+
+/** @internal Exported for deterministic lifecycle tests. */
+export function runForegroundExecutionFinalizers(
+  finalizers: readonly ForegroundExecutionFinalizer[],
+  settleExecution: () => void,
+  preserveExistingError: boolean,
+): void {
+  const errors: unknown[] = [];
+  const runFinalizer = (operation: string, finalize: () => void): void => {
+    try {
+      finalize();
+    } catch (error) {
+      errors.push(error);
+      logForDebugging(`Foreground Agent ${operation} failed: ${errorMessage(error)}`, {
+        level: 'error',
+      });
+    }
+  };
+
+  try {
+    for (const finalizer of finalizers) {
+      runFinalizer(finalizer.operation, finalizer.finalize);
+    }
+  } finally {
+    runFinalizer('execution settlement', settleExecution);
+  }
+
+  // Preserve the error already propagating through the surrounding finally.
+  // On a successful main path, finalizer errors must remain observable.
+  if (errors.length > 0 && !preserveExistingError) throw errors[0];
+}
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactiveModule =
@@ -821,25 +868,80 @@ export const AgentTool = buildTool({
         logForDebugging(`Hook-based agent worktree kept at: ${worktreePath}`);
         return { worktreePath };
       }
-      if (headCommit) {
-        const changed = await hasWorktreeChanges(worktreePath, headCommit, abortSignal);
-        if (!changed) {
-          const removed = await removeAgentWorktree(worktreePath, worktreeBranch, gitRoot, false, abortSignal);
-          if (!removed) {
-            return { worktreePath, worktreeBranch };
+      const { signal: finalizerSignal, cleanup: cleanupFinalizerSignal } = createCombinedAbortSignal(abortSignal, {
+        timeoutMs: AGENT_WORKTREE_FINALIZER_TIMEOUT_MS,
+      });
+      try {
+        if (headCommit) {
+          let changed: boolean;
+          try {
+            changed = await waitForAgentWorktreeOperation({
+              settlement: hasWorktreeChanges(worktreePath, headCommit, finalizerSignal),
+              finalizerSignal,
+              ownerSignal: abortSignal,
+              abortGraceMs: AGENT_FINALIZER_ABORT_GRACE_MS,
+              operation: 'Agent worktree status check',
+            });
+          } catch (error) {
+            if (error instanceof StopConfirmationError) {
+              throw error;
+            }
+            if (error instanceof AbortSettlementTimeoutError) {
+              logForDebugging(`${error.message}; preserving ${worktreePath}`, { level: 'warn' });
+              return { worktreePath, worktreeBranch };
+            }
+            if (finalizerSignal.aborted) {
+              logForDebugging(`Agent worktree status check cancelled; preserving ${worktreePath}`, {
+                level: 'warn',
+              });
+              return { worktreePath, worktreeBranch };
+            }
+            throw error;
           }
-          // Clear worktreePath from metadata so resume doesn't try to use
-          // a deleted directory. Fire-and-forget to match runAgent's
-          // writeAgentMetadata handling.
-          void writeAgentMetadata(asAgentId(earlyAgentId), {
-            agentType: selectedAgent.agentType,
-            description,
-          }).catch(_err => logForDebugging(`Failed to clear worktree metadata: ${_err}`));
-          return {};
+          if (!changed) {
+            let removed: boolean;
+            try {
+              removed = await waitForAgentWorktreeOperation({
+                settlement: removeAgentWorktree(worktreePath, worktreeBranch, gitRoot, false, finalizerSignal),
+                finalizerSignal,
+                ownerSignal: abortSignal,
+                abortGraceMs: AGENT_FINALIZER_ABORT_GRACE_MS,
+                operation: 'Agent worktree removal',
+              });
+            } catch (error) {
+              if (error instanceof StopConfirmationError) {
+                throw error;
+              }
+              if (error instanceof AbortSettlementTimeoutError) {
+                logForDebugging(`${error.message}; preserving ${worktreePath}`, { level: 'warn' });
+                return { worktreePath, worktreeBranch };
+              }
+              if (finalizerSignal.aborted) {
+                logForDebugging(`Agent worktree removal cancelled; preserving ${worktreePath}`, {
+                  level: 'warn',
+                });
+                return { worktreePath, worktreeBranch };
+              }
+              throw error;
+            }
+            if (!removed) {
+              return { worktreePath, worktreeBranch };
+            }
+            // Clear worktreePath from metadata so resume doesn't try to use
+            // a deleted directory. Fire-and-forget to match runAgent's
+            // writeAgentMetadata handling.
+            void writeAgentMetadata(asAgentId(earlyAgentId), {
+              agentType: selectedAgent.agentType,
+              description,
+            }).catch(_err => logForDebugging(`Failed to clear worktree metadata: ${_err}`));
+            return {};
+          }
         }
+        logForDebugging(`Agent worktree has changes, keeping: ${worktreePath}`);
+        return { worktreePath, worktreeBranch };
+      } finally {
+        cleanupFinalizerSignal();
       }
-      logForDebugging(`Agent worktree has changes, keeping: ${worktreePath}`);
-      return { worktreePath, worktreeBranch };
     };
 
     if (shouldRunAsync) {
@@ -916,6 +1018,13 @@ export const AgentTool = buildTool({
             ),
           ),
         setAppState: rootSetAppState,
+      }).catch(error => {
+        // Detached execution failures are converted into task state by
+        // runAsyncAgentLifecycle/trackLocalAgentExecution. Observe the
+        // rejection here so a confirmation failure cannot become unhandled.
+        logForDebugging(`Async agent ${asyncAgentId} lifecycle did not settle: ${errorMessage(error)}`, {
+          level: 'error',
+        });
       });
 
       const canReadOutputFile = toolUseContext.options.tools.some(
@@ -987,6 +1096,7 @@ export const AgentTool = buildTool({
           let backgroundPromise: Promise<{ type: 'background' }> | undefined;
           let foregroundAbortController: AbortController | undefined;
           let settleForegroundExecution: (() => void) | undefined;
+          let rejectForegroundExecution: ((error: unknown) => void) | undefined;
           let cancelAutoBackground: (() => void) | undefined;
           if (!isBackgroundTasksDisabled) {
             const registration = registerAgentForeground({
@@ -1001,14 +1111,20 @@ export const AgentTool = buildTool({
             });
             foregroundTaskId = registration.taskId;
             foregroundAbortController = registration.abortController;
-            const foregroundExecution = new Promise<void>(resolve => {
+            const foregroundExecution = new Promise<void>((resolve, reject) => {
               settleForegroundExecution = resolve;
+              rejectForegroundExecution = reject;
             });
             void trackLocalAgentExecution({
               taskId: registration.taskId,
               abortController: registration.abortController,
               startExecution: () => foregroundExecution,
               setAppState: rootSetAppState,
+            }).catch(error => {
+              logForDebugging(
+                `Foreground agent ${registration.taskId} lifecycle did not settle: ${errorMessage(error)}`,
+                { level: 'error' },
+              );
             });
             backgroundPromise = registration.backgroundSignal.then(() => ({
               type: 'background' as const,
@@ -1023,32 +1139,47 @@ export const AgentTool = buildTool({
           let backgroundHintShown = false;
           // Track if the agent was backgrounded (cleanup handled by backgrounded finally)
           let wasBackgrounded = false;
-          // Per-scope stop function — NOT shared with the backgrounded closure.
-          // idempotent: repeated stop() calls share the same settlement promise.
-          let stopForegroundSummarization: (() => Promise<void>) | undefined;
+          // Own every summarizer started by this foreground execution. The
+          // callback is expected once, but a scope prevents a repeated callback
+          // from orphaning the previous request.
+          const foregroundSummaryScope = new AgentSummaryScope();
+          let foregroundSummariesDetached = false;
           // const capture for sound type narrowing inside the callback below
           const summaryTaskId = foregroundTaskId;
+          const stopForegroundSummaries = (allowUnconfirmed = false) =>
+            stopAgentSummaryScope({
+              scope: foregroundSummaryScope,
+              abortSignal: foregroundAbortSignal,
+              taskId: summaryTaskId ?? syncAgentId,
+              allowUnconfirmed,
+            });
 
           // Get async iterator for the agent
-          const agentIterator = runAgent({
-            ...runAgentParams,
-            override: {
-              ...runAgentParams.override,
-              agentId: syncAgentId,
-              ...(foregroundAbortController ? { abortController: foregroundAbortController } : {}),
-            },
-            onCacheSafeParams:
-              summaryTaskId && getSdkAgentProgressSummariesEnabled()
-                ? (params: CacheSafeParams) => {
-                    const { stop } = startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState);
-                    stopForegroundSummarization = stop;
-                  }
-                : undefined,
-          })[Symbol.asyncIterator]();
+          const agentIterator = guardAsyncIterableCancellation(
+            runAgent({
+              ...runAgentParams,
+              override: {
+                ...runAgentParams.override,
+                agentId: syncAgentId,
+                ...(foregroundAbortController ? { abortController: foregroundAbortController } : {}),
+              },
+              onCacheSafeParams:
+                summaryTaskId && getSdkAgentProgressSummariesEnabled()
+                  ? (params: CacheSafeParams) => {
+                      foregroundSummaryScope.add(
+                        startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState),
+                      );
+                    }
+                  : undefined,
+            }),
+            foregroundAbortSignal,
+            { operation: `Foreground agent ${syncAgentId} stream` },
+          )[Symbol.asyncIterator]();
 
           // Track if an error occurred during iteration
           let syncAgentError: Error | undefined;
           let foregroundLifecycleError: Error | undefined;
+          let agentIterationFailed = false;
           let wasAborted = false;
           let worktreeResult: {
             worktreePath?: string;
@@ -1099,29 +1230,63 @@ export const AgentTool = buildTool({
                 if (raceResult.type === 'background' && foregroundTaskId) {
                   const appState = toolUseContext.getAppState();
                   const task = appState.tasks[foregroundTaskId];
-                  if (isLocalAgentTask(task) && task.isBackgrounded) {
+                  if (
+                    isLocalAgentTask(task) &&
+                    task.status === 'running' &&
+                    task.isBackgrounded &&
+                    task.abortController
+                  ) {
                     // Capture the taskId for use in the async callback
                     const backgroundedTaskId = foregroundTaskId;
+                    const backgroundAbortController = task.abortController;
                     wasBackgrounded = true;
-                    // Stop foreground summarization; the backgrounded closure
-                    // below owns its own independent stop function.
-                    await stopForegroundSummarization?.();
+                    // The foreground controller is intentionally aborted during
+                    // handoff, but its summary request is still owned by this
+                    // agent generation. Do not start a replacement generation
+                    // until termination of the old request is confirmed.
+                    await stopForegroundSummaries();
 
                     // Workload: inherited via ALS at `void` invocation time,
                     // same as the async-from-start path above.
                     // Continue agent in background and return async result
                     void trackLocalAgentExecution({
                       taskId: backgroundedTaskId,
-                      abortController: task.abortController!,
+                      abortController: backgroundAbortController,
                       startExecution: () =>
                         runWithAgentContext(syncAgentContext, async () => {
-                          let stopBackgroundedSummarization: (() => Promise<void>) | undefined;
+                          const backgroundSummaryScope = new AgentSummaryScope();
+                          let backgroundSummariesDetached = false;
+                          const stopBackgroundSummaries = (allowUnconfirmed = false) =>
+                            stopAgentSummaryScope({
+                              scope: backgroundSummaryScope,
+                              abortSignal: backgroundAbortController.signal,
+                              taskId: backgroundedTaskId,
+                              allowUnconfirmed,
+                            });
                           try {
                             // backgroundAgentTask has already aborted the foreground
                             // controller and installed an independent background one.
                             // Wait for the outstanding next() and iterator cleanup to
                             // finish before starting another runAgent instance.
-                            await closeForegroundAgentBeforeBackgrounding(agentIterator, nextMessagePromise);
+                            try {
+                              await waitForBoundedSettlement(
+                                closeForegroundAgentBeforeBackgrounding(agentIterator, nextMessagePromise),
+                                {
+                                  signal: foregroundAbortSignal,
+                                  timeoutMs: 10_000,
+                                  abortGraceMs: AGENT_FINALIZER_ABORT_GRACE_MS,
+                                  operation: `Agent ${backgroundedTaskId} foreground handoff`,
+                                },
+                              );
+                            } catch (error) {
+                              if (error instanceof AbortSettlementTimeoutError) {
+                                throw new StopConfirmationError(
+                                  `Agent ${backgroundedTaskId} foreground request did not settle during background handoff`,
+                                  [error],
+                                );
+                              }
+                              throw error;
+                            }
                             // Initialize progress tracking from existing messages
                             const tracker = createProgressTracker();
                             const resolveActivity2 = createActivityDescriptionResolver(toolUseContext.options.tools);
@@ -1133,26 +1298,31 @@ export const AgentTool = buildTool({
                                 toolUseContext.options.tools,
                               );
                             }
-                            for await (const msg of runAgent({
-                              ...runAgentParams,
-                              isAsync: true, // Agent is now running in background
-                              override: {
-                                ...runAgentParams.override,
-                                agentId: asAgentId(backgroundedTaskId),
-                                abortController: task.abortController,
-                              },
-                              onCacheSafeParams: getSdkAgentProgressSummariesEnabled()
-                                ? (params: CacheSafeParams) => {
-                                    const { stop } = startAgentSummarization(
-                                      backgroundedTaskId,
-                                      asAgentId(backgroundedTaskId),
-                                      params,
-                                      rootSetAppState,
-                                    );
-                                    stopBackgroundedSummarization = stop;
-                                  }
-                                : undefined,
-                            })) {
+                            for await (const msg of guardAsyncIterableCancellation(
+                              runAgent({
+                                ...runAgentParams,
+                                isAsync: true, // Agent is now running in background
+                                override: {
+                                  ...runAgentParams.override,
+                                  agentId: asAgentId(backgroundedTaskId),
+                                  abortController: backgroundAbortController,
+                                },
+                                onCacheSafeParams: getSdkAgentProgressSummariesEnabled()
+                                  ? (params: CacheSafeParams) => {
+                                      backgroundSummaryScope.add(
+                                        startAgentSummarization(
+                                          backgroundedTaskId,
+                                          asAgentId(backgroundedTaskId),
+                                          params,
+                                          rootSetAppState,
+                                        ),
+                                      );
+                                    }
+                                  : undefined,
+                              }),
+                              backgroundAbortController.signal,
+                              { operation: `Backgrounded agent ${backgroundedTaskId} stream` },
+                            )) {
                               agentMessages.push(msg);
 
                               // Track progress for backgrounded agents
@@ -1171,68 +1341,95 @@ export const AgentTool = buildTool({
                                 );
                               }
                             }
-                            if (task.abortController?.signal.aborted) {
+                            if (backgroundAbortController.signal.aborted) {
                               throw new AbortError();
                             }
                             const agentResult = finalizeAgentTool(agentMessages, backgroundedTaskId, metadata);
 
-                            // Publish model output for TaskOutput without clearing
-                            // the controller. The remaining summary/classifier/
-                            // worktree lifecycle is still running and stoppable.
-                            publishAsyncAgentResult(agentResult, rootSetAppState);
-                            await stopBackgroundedSummarization?.();
+                            registerDetachedAgentSummaryStop({
+                              scope: backgroundSummaryScope,
+                              taskId: backgroundedTaskId,
+                            });
+                            backgroundSummariesDetached = true;
 
-                            // Extract text from agent result content for the notification
-                            let finalMessage = extractTextContent(agentResult.content, '\n');
-
+                            let handoffSafetyGate = Promise.resolve<string | null>(null);
                             if (feature('TRANSCRIPT_CLASSIFIER')) {
                               const backgroundedAppState = toolUseContext.getAppState();
-                              const handoffWarning = await classifyHandoffIfNeeded({
+                              handoffSafetyGate = classifyHandoffIfNeeded({
                                 agentMessages,
                                 tools: toolUseContext.options.tools,
                                 toolPermissionContext: backgroundedAppState.toolPermissionContext,
-                                abortSignal: task.abortController!.signal,
+                                abortSignal: backgroundAbortController.signal,
                                 subagentType: selectedAgent.agentType,
                                 totalToolUseCount: agentResult.totalToolUseCount,
                               });
-                              if (handoffWarning) {
-                                finalMessage = `${handoffWarning}\n\n${finalMessage}`;
-                              }
                             }
 
-                            // Clean up worktree before notification so we can include it
-                            if (task.abortController?.signal.aborted) {
-                              throw new AbortError();
-                            }
-                            const worktreeResult = await cleanupWorktreeIfNeeded(task.abortController?.signal);
-                            if (task.abortController?.signal.aborted) {
-                              throw new AbortError();
-                            }
-
-                            completeAsyncAgent(agentResult, rootSetAppState);
-
-                            enqueueAgentNotification({
-                              taskId: backgroundedTaskId,
-                              description,
-                              status: 'completed',
-                              setAppState: rootSetAppState,
-                              finalMessage,
-                              usage: {
-                                totalTokens: getTokenCountFromTracker(tracker),
-                                toolUses: agentResult.totalToolUseCount,
-                                durationMs: agentResult.totalDurationMs,
-                              },
-                              toolUseId: toolUseContext.toolUseId,
-                              ...worktreeResult,
+                            await publishAgentResultAfterHandoffSafety({
+                              agentResult,
+                              safetyGate: handoffSafetyGate,
+                              abortSignal: backgroundAbortController.signal,
+                              publish: result => publishAsyncAgentResult(result, rootSetAppState),
                             });
-                          } catch (error) {
-                            // A terminal task state is proof that every owned
-                            // request, including the summary fork, has settled.
-                            await stopBackgroundedSummarization?.();
-                            if (
-                              !(error instanceof StopConfirmationError) &&
-                              (error instanceof AbortError || task.abortController?.signal.aborted)
-                            ) {
+                            const finalMessage = extractTextContent(agentResult.content, '\n');
+                            registerDetachedAgentWorktreeCleanup({
+                              taskId: backgroundedTaskId,
+                              cleanup: cleanupWorktreeIfNeeded,
+                              onSettled: worktreeResult => {
+                                enqueueAgentNotification({
+                                  taskId: backgroundedTaskId,
+                                  description,
+                                  status: 'completed',
+                                  setAppState: rootSetAppState,
+                                  finalMessage,
+                                  usage: {
+                                    totalTokens: getTokenCountFromTracker(tracker),
+                                    toolUses: agentResult.totalToolUseCount,
+                                    durationMs: agentResult.totalDurationMs,
+                                  },
+                                  toolUseId: toolUseContext.toolUseId,
+                                  ...worktreeResult,
+                                });
+                              },
+                            });
+                            completeAsyncAgent(agentResult, rootSetAppState);
+                          } catch (caughtError) {
+                            let error = caughtError;
+                            // If explicit Stop reaches a summary request that
+                            // ignores abort, preserve that confirmation failure
+                            // instead of falsely reporting the task as killed.
+                            try {
+                              await stopBackgroundSummaries();
+                            } catch (summaryError) {
+                              error = summaryError;
+                            }
+                            if (error instanceof StopConfirmationError) {
+                              // The foreground/background runner has unwound;
+                              // there is no live execution for another Stop to
+                              // retry. Publish a failed (not killed/completed)
+                              // terminal state so the task cannot stay running
+                              // forever on a cached confirmation failure.
+                              const errMsg = errorMessage(error);
+                              failAsyncAgent(backgroundedTaskId, errMsg, rootSetAppState);
+                              enqueueAgentNotification({
+                                taskId: backgroundedTaskId,
+                                description,
+                                status: 'failed',
+                                error: errMsg,
+                                setAppState: rootSetAppState,
+                                toolUseId: toolUseContext.toolUseId,
+                              });
+                              void Promise.resolve()
+                                .then(() => cleanupWorktreeIfNeeded(backgroundAbortController.signal))
+                                .catch(cleanupError => {
+                                  logForDebugging(
+                                    `Agent ${backgroundedTaskId} worktree cleanup after unconfirmed finalization failed: ${errorMessage(cleanupError)}`,
+                                    { level: 'warn' },
+                                  );
+                                });
+                              throw error;
+                            }
+                            if (error instanceof AbortError || backgroundAbortController.signal.aborted) {
                               // The tracked execution keeps the task running until
                               // cleanup settles, then performs the killed transition.
                               logEvent('tengu_agent_tool_terminated', {
@@ -1246,7 +1443,7 @@ export const AgentTool = buildTool({
                                 reason:
                                   'user_cancel_background' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                               });
-                              const worktreeResult = await cleanupWorktreeIfNeeded(task.abortController?.signal);
+                              const worktreeResult = await cleanupWorktreeIfNeeded(backgroundAbortController.signal);
                               const partialResult = extractPartialResult(agentMessages);
                               enqueueAgentNotification({
                                 taskId: backgroundedTaskId,
@@ -1260,8 +1457,8 @@ export const AgentTool = buildTool({
                               return;
                             }
                             const errMsg = errorMessage(error);
-                            const worktreeResult = await cleanupWorktreeIfNeeded(task.abortController?.signal);
-                            if (!(error instanceof StopConfirmationError) && task.abortController?.signal.aborted) {
+                            const worktreeResult = await cleanupWorktreeIfNeeded(backgroundAbortController.signal);
+                            if (backgroundAbortController.signal.aborted) {
                               const partialResult = extractPartialResult(agentMessages);
                               enqueueAgentNotification({
                                 taskId: backgroundedTaskId,
@@ -1285,14 +1482,25 @@ export const AgentTool = buildTool({
                               ...worktreeResult,
                             });
                           } finally {
-                            await stopBackgroundedSummarization?.();
+                            // Idempotent and bounded. Errors were classified in
+                            // the catch path above, so final cleanup cannot mask
+                            // the task's chosen terminal state.
+                            if (!backgroundSummariesDetached) {
+                              await stopBackgroundSummaries(true);
+                            }
                             clearInvokedSkillsForAgent(syncAgentId);
                             clearDumpState(syncAgentId);
-                            // Note: worktree cleanup is done before enqueueAgentNotification
-                            // in both try and catch paths so we can include worktree info
+                            // Successful worktree cleanup is detached and owns
+                            // its completion notification. Error/Stop paths
+                            // still finalize it synchronously above.
                           }
                         }),
                       setAppState: rootSetAppState,
+                    }).catch(error => {
+                      logForDebugging(
+                        `Backgrounded agent ${backgroundedTaskId} lifecycle did not settle: ${errorMessage(error)}`,
+                        { level: 'error' },
+                      );
                     });
 
                     // Return async_launched result immediately
@@ -1311,6 +1519,14 @@ export const AgentTool = buildTool({
                       },
                     };
                   }
+                  // The background signal can race TaskStop. Never restart a
+                  // task whose replacement controller has already been removed.
+                  if (foregroundAbortSignal.aborted) {
+                    throw new AbortError();
+                  }
+                  throw new StopConfirmationError(
+                    `Agent ${foregroundTaskId} could not begin background handoff because it is no longer running`,
+                  );
                 }
 
                 // Process the message from the race result
@@ -1404,13 +1620,14 @@ export const AgentTool = buildTool({
                 }
               }
             } catch (error) {
+              agentIterationFailed = true;
               // Handle errors from the sync agent loop
               // AbortError should be re-thrown for proper interruption handling
-              if (error instanceof StopConfirmationError && foregroundTaskId) {
-                // The parent stop was dispatched, but owned work remained
-                // unconfirmed. Commit failed before the tracked execution's
-                // finally can otherwise classify an aborted controller as killed.
-                failAsyncAgent(foregroundTaskId, errorMessage(error), rootSetAppState);
+              if (error instanceof StopConfirmationError) {
+                // Propagate the confirmation failure. The outer foreground
+                // finalizer publishes a failed terminal state after the runner
+                // and bounded cleanup have unwound.
+                throw error;
               }
               if (
                 !(error instanceof StopConfirmationError) &&
@@ -1436,11 +1653,19 @@ export const AgentTool = buildTool({
               // Store the error to handle after cleanup
               syncAgentError = toError(error);
             } finally {
-              // Reaching this finally means the foreground iterator's outstanding
-              // next() has resolved/rejected and runAgent has unwound. Summary and
-              // worktree cleanup are still owned by this execution, so TaskStop
-              // must not be released until both have settled.
-              await stopForegroundSummarization?.();
+              // Summary abort is delivered synchronously and settlement is
+              // bounded. Explicit Stop remains a confirmation failure when the
+              // request ignores abort; an intentional handoff is allowed to
+              // continue under its replacement controller.
+              if (!wasBackgrounded && !agentIterationFailed && !foregroundAbortSignal.aborted) {
+                registerDetachedAgentSummaryStop({
+                  scope: foregroundSummaryScope,
+                  taskId: summaryTaskId ?? syncAgentId,
+                });
+                foregroundSummariesDetached = true;
+              } else {
+                await stopForegroundSummaries(wasBackgrounded);
+              }
 
               // Clear the background hint UI
               if (toolUseContext.setToolJSX) {
@@ -1512,13 +1737,11 @@ export const AgentTool = buildTool({
             }
 
             const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
-            if (foregroundTaskId) {
-              publishAsyncAgentResult(agentResult, rootSetAppState);
-            }
 
+            let handoffSafetyGate = Promise.resolve<string | null>(null);
             if (feature('TRANSCRIPT_CLASSIFIER')) {
               const currentAppState = toolUseContext.getAppState();
-              const handoffWarning = await classifyHandoffIfNeeded({
+              handoffSafetyGate = classifyHandoffIfNeeded({
                 agentMessages,
                 tools: toolUseContext.options.tools,
                 toolPermissionContext: currentAppState.toolPermissionContext,
@@ -1526,14 +1749,18 @@ export const AgentTool = buildTool({
                 subagentType: selectedAgent.agentType,
                 totalToolUseCount: agentResult.totalToolUseCount,
               });
-              if (handoffWarning) {
-                agentResult.content = [{ type: 'text' as const, text: handoffWarning }, ...agentResult.content];
-              }
             }
 
-            if (foregroundAbortSignal.aborted) {
-              throw new AbortError();
-            }
+            await publishAgentResultAfterHandoffSafety({
+              agentResult,
+              safetyGate: handoffSafetyGate,
+              abortSignal: foregroundAbortSignal,
+              publish: result => {
+                if (foregroundTaskId) {
+                  publishAsyncAgentResult(result, rootSetAppState);
+                }
+              },
+            });
 
             return {
               data: {
@@ -1544,38 +1771,73 @@ export const AgentTool = buildTool({
               },
             };
           } catch (error) {
-            foregroundLifecycleError = toError(error);
-            throw error;
+            let lifecycleError = error;
+            if (foregroundSummariesDetached) {
+              try {
+                await stopForegroundSummaries();
+              } catch (summaryError) {
+                lifecycleError = summaryError;
+              }
+            }
+            foregroundLifecycleError = toError(lifecycleError);
+            throw lifecycleError;
           } finally {
             // The foreground task remains registered and stoppable through
             // summary shutdown, worktree cleanup, classifier review, and final
             // result construction. Publish its SDK terminal event only now.
+            const foregroundFinalizers: ForegroundExecutionFinalizer[] = [];
             if (foregroundTaskId) {
-              unregisterAgentForeground(foregroundTaskId, rootSetAppState);
+              if (foregroundLifecycleError instanceof StopConfirmationError) {
+                foregroundFinalizers.push({
+                  operation: 'unconfirmed terminal state',
+                  finalize: () =>
+                    failAsyncAgent(foregroundTaskId, errorMessage(foregroundLifecycleError), rootSetAppState),
+                });
+              } else {
+                foregroundFinalizers.push({
+                  operation: 'unregistration',
+                  finalize: () => unregisterAgentForeground(foregroundTaskId, rootSetAppState),
+                });
+              }
               if (!wasBackgrounded) {
-                const progress = getProgressUpdate(syncTracker);
-                enqueueSdkEvent({
-                  type: 'system',
-                  subtype: 'task_notification',
-                  task_id: foregroundTaskId,
-                  tool_use_id: toolUseContext.toolUseId,
-                  status: getForegroundAgentTerminalStatus({
-                    wasAborted,
-                    signalAborted: foregroundAbortSignal.aborted,
-                    lifecycleError: foregroundLifecycleError,
-                    runError: syncAgentError,
-                  }),
-                  output_file: '',
-                  summary: description,
-                  usage: {
-                    total_tokens: progress.tokenCount,
-                    tool_uses: progress.toolUseCount,
-                    duration_ms: Date.now() - agentStartTime,
+                foregroundFinalizers.push({
+                  operation: 'SDK terminal event',
+                  finalize: () => {
+                    const progress = getProgressUpdate(syncTracker);
+                    enqueueSdkEvent({
+                      type: 'system',
+                      subtype: 'task_notification',
+                      task_id: foregroundTaskId,
+                      tool_use_id: toolUseContext.toolUseId,
+                      status: getForegroundAgentTerminalStatus({
+                        wasAborted,
+                        signalAborted: foregroundAbortSignal.aborted,
+                        lifecycleError: foregroundLifecycleError,
+                        runError: syncAgentError,
+                      }),
+                      output_file: '',
+                      summary: description,
+                      usage: {
+                        total_tokens: progress.tokenCount,
+                        tool_uses: progress.toolUseCount,
+                        duration_ms: Date.now() - agentStartTime,
+                      },
+                    });
                   },
                 });
               }
             }
-            settleForegroundExecution?.();
+            runForegroundExecutionFinalizers(
+              foregroundFinalizers,
+              () => {
+                if (foregroundLifecycleError instanceof StopConfirmationError) {
+                  rejectForegroundExecution?.(foregroundLifecycleError);
+                } else {
+                  settleForegroundExecution?.();
+                }
+              },
+              foregroundLifecycleError !== undefined,
+            );
           }
         }),
       );

@@ -13,6 +13,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseFrontmatter } from '../../utils/frontmatterParser.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 /**
  * Per-session memoization to avoid re-emitting the same skill discovery /
@@ -127,11 +128,13 @@ type SkillDiscoveryGap = {
 async function enrichResultsForAutoLoad(
   results: SearchResult[],
   context: ToolUseContext,
+  signal?: AbortSignal,
 ): Promise<SkillDiscoveryResult[]> {
   let loadedCount = 0
   const enriched: SkillDiscoveryResult[] = []
 
   for (const result of results) {
+    signal?.throwIfAborted()
     const base: SkillDiscoveryResult = {
       name: result.name,
       description: result.description,
@@ -143,13 +146,14 @@ async function enrichResultsForAutoLoad(
       continue
     }
 
-    const loaded = await loadSkillContent(result)
+    const loaded = await loadSkillContent(result, signal)
     if (!loaded) {
       enriched.push(base)
       continue
     }
 
     loadedCount++
+    signal?.throwIfAborted()
     await markAutoLoadedSkill(result.name, loaded.path, loaded.content, context)
     enriched.push({
       ...base,
@@ -164,6 +168,7 @@ async function enrichResultsForAutoLoad(
 
 async function loadSkillContent(
   result: SearchResult,
+  signal?: AbortSignal,
 ): Promise<{ path: string; content: string } | null> {
   if (!result.skillRoot) return null
 
@@ -174,12 +179,14 @@ async function loadSkillContent(
 
   for (const path of candidates) {
     try {
-      const raw = await readFile(path, 'utf8')
+      signal?.throwIfAborted()
+      const raw = await readFile(path, { encoding: 'utf8', signal })
       return {
         path,
         content: parseFrontmatter(raw).content.slice(0, AUTO_LOAD_MAX_CHARS),
       }
     } catch {
+      signal?.throwIfAborted()
       // Try next candidate.
     }
   }
@@ -250,6 +257,7 @@ export async function startSkillDiscoveryPrefetch(
   input: string | null,
   messages: Message[],
   toolUseContext: ToolUseContext,
+  signal?: AbortSignal,
 ): Promise<Attachment[]> {
   if (!isSkillSearchEnabled()) return []
 
@@ -258,10 +266,12 @@ export async function startSkillDiscoveryPrefetch(
   if (!queryText.trim()) return []
 
   try {
+    signal?.throwIfAborted()
     const cwd =
       ((toolUseContext as Record<string, unknown>).cwd as string) ??
       process.cwd()
     const index = await getSkillIndex(cwd)
+    signal?.throwIfAborted()
     const results = searchSkills(queryText, index)
 
     const newResults = results.filter(r => !discoveredThisSession.has(r.name))
@@ -270,7 +280,7 @@ export async function startSkillDiscoveryPrefetch(
     for (const r of newResults)
       addBoundedSessionEntry(discoveredThisSession, r.name)
 
-    const signal: DiscoverySignal = {
+    const discoverySignal: DiscoverySignal = {
       trigger: 'assistant_turn',
       queryText: queryText.slice(0, 200),
       startedAt,
@@ -280,13 +290,13 @@ export async function startSkillDiscoveryPrefetch(
     }
 
     logForDebugging(
-      `[skill-search] prefetch found ${newResults.length} skills in ${signal.durationMs}ms`,
+      `[skill-search] prefetch found ${newResults.length} skills in ${discoverySignal.durationMs}ms`,
     )
 
     return [
       buildDiscoveryAttachment(
-        await enrichResultsForAutoLoad(newResults, toolUseContext),
-        signal,
+        await enrichResultsForAutoLoad(newResults, toolUseContext, signal),
+        discoverySignal,
       ),
     ]
   } catch (error) {
@@ -329,7 +339,11 @@ export async function getTurnZeroSkillDiscovery(
     )
     if (context.abortController.signal.aborted) return null
     const results = searchSkills(searchQuery, index)
-    const enriched = await enrichResultsForAutoLoad(results, context)
+    const enriched = await enrichResultsForAutoLoad(
+      results,
+      context,
+      context.abortController.signal,
+    )
     const gap = enriched.some(result => result.autoLoaded)
       ? undefined
       : await maybeRecordSkillGap(input, results, context, 'user_input')
@@ -354,6 +368,7 @@ export async function getTurnZeroSkillDiscovery(
 
     return buildDiscoveryAttachment(enriched, signal, gap)
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     logForDebugging(`[skill-search] turn-zero error: ${error}`)
     return null
   }

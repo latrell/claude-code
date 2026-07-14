@@ -54,7 +54,9 @@ type CancelRequestHandlerProps = {
   isMessageSelectorVisible: boolean
   screen: Screen
   abortSignal?: AbortSignal
+  isQueryActive?: boolean
   isExternalLoading?: boolean
+  hasCancelableAuxiliaryWork?: boolean
   popCommandFromQueue?: () => void
   vimMode?: VimMode
   isLocalJSXCommand?: boolean
@@ -77,7 +79,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     isMessageSelectorVisible,
     screen,
     abortSignal,
+    isQueryActive = false,
     isExternalLoading = false,
+    hasCancelableAuxiliaryWork = false,
     popCommandFromQueue,
     vimMode,
     isLocalJSXCommand,
@@ -104,7 +108,10 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
     // Priority 1: If there's an active task running, cancel it first
     // This takes precedence over queue management so users can always interrupt Claude
-    if (canCancelRequest(abortSignal, isExternalLoading)) {
+    if (
+      canCancelRequest(abortSignal, isExternalLoading, isQueryActive) ||
+      hasCancelableAuxiliaryWork
+    ) {
       logEvent('tengu_cancel', cancelProps)
       setToolUseConfirmQueue(() => [])
       onCancel()
@@ -125,7 +132,9 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     onCancel()
   }, [
     abortSignal,
+    isQueryActive,
     isExternalLoading,
+    hasCancelableAuxiliaryWork,
     popCommandFromQueue,
     setToolUseConfirmQueue,
     onCancel,
@@ -137,7 +146,13 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   // Overlays (ModelPicker, ThinkingToggle, etc.) register themselves via useRegisterOverlay
   // Local JSX commands (like /model, /btw) handle their own input
   const isOverlayActive = useIsOverlayActive()
-  const canCancelRunningTask = canCancelRequest(abortSignal, isExternalLoading)
+  const canCancelRunningTask = canCancelRequest(
+    abortSignal,
+    isExternalLoading,
+    isQueryActive,
+  )
+  const canCancelForegroundOrAuxiliary =
+    canCancelRunningTask || hasCancelableAuxiliaryWork
   const hasQueuedCommands = queuedCommandsLength > 0
   // When in bash/background mode with empty input, escape should exit the mode
   // rather than cancel the request. Let PromptInput handle mode exit.
@@ -160,7 +175,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   // input, and to useBackgroundTaskNavigation when viewing a teammate
   const isEscapeActive =
     isContextActive &&
-    (canCancelRunningTask || hasQueuedCommands) &&
+    (canCancelForegroundOrAuxiliary || hasQueuedCommands) &&
     !isInSpecialModeWithEmptyInput &&
     !isViewingTeammate
 
@@ -170,7 +185,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   // handler and double-press-to-exit from ever seeing the keypress.
   const isCtrlCActive =
     isContextActive &&
-    (canCancelRunningTask || hasQueuedCommands || isViewingTeammate)
+    (canCancelForegroundOrAuxiliary || hasQueuedCommands || isViewingTeammate)
 
   useKeybinding('chat:cancel', handleCancel, {
     context: 'Chat',
@@ -279,14 +294,14 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
       killAllAgentsAndNotify()
       exitTeammateView(setAppState)
     }
-    if (canCancelRunningTask || hasQueuedCommands) {
+    if (canCancelForegroundOrAuxiliary || hasQueuedCommands) {
       handleCancel()
     }
   }, [
     isViewingTeammate,
     killAllAgentsAndNotify,
     setAppState,
-    canCancelRunningTask,
+    canCancelForegroundOrAuxiliary,
     hasQueuedCommands,
     handleCancel,
   ])

@@ -2,6 +2,7 @@ import { queryHaiku } from '../../services/api/claude.js'
 import { logError } from '../log.js'
 import { extractTextContent } from '../messages.js'
 import { asSystemPrompt } from '../systemPromptType.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 
 export type DateTimeParseResult =
   | { success: true; value: string }
@@ -102,6 +103,7 @@ Parse the user's input into ISO 8601 format. Return ONLY the formatted string, o
 
     return { success: true, value: parsedText }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     // Log error but don't expose details to user
     logError(error)
     return {

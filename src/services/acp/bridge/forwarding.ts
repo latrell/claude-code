@@ -12,6 +12,16 @@ import type {
   StopReason,
 } from '@agentclientprotocol/sdk'
 import type { SDKMessage } from '../../../entrypoints/sdk/coreTypes.generated.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForAbortSettlement,
+  waitForBoundedSettlement,
+} from '../../../utils/abortSettlement.js'
+import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
+import {
+  type AcpSessionUpdateParams,
+  sendAcpSessionUpdate,
+} from '../sessionUpdate.js'
 import type { BridgeSDKMessage, SessionUsage, ToolUseCache } from './types.js'
 import {
   assistantMessageToAcpNotifications,
@@ -61,6 +71,9 @@ export async function forwardSessionUpdates(
   clientCapabilities?: ClientCapabilities,
   cwd?: string,
   isCancelled?: () => boolean,
+  cancellationCloseGraceMs = 2_000,
+  normalCloseTimeoutMs = 60_000,
+  sessionUpdateTimeoutMs = 30_000,
 ): Promise<{ stopReason: StopReason; usage?: SessionUsage }> {
   let stopReason: StopReason = 'end_turn'
   const accumulatedUsage: SessionUsage = {
@@ -75,6 +88,13 @@ export async function forwardSessionUpdates(
   let lastAssistantModel: string | null = null
   let lastContextWindowSize = 200000
   let streamingActive = false
+  const sendSessionUpdate = (params: AcpSessionUpdateParams): Promise<void> =>
+    sendAcpSessionUpdate(conn, params, {
+      signal: abortSignal,
+      abortGraceMs: cancellationCloseGraceMs,
+      timeoutMs: sessionUpdateTimeoutMs,
+      operation: `ACP ${params.update.sessionUpdate} session update`,
+    })
 
   // Per message-id.mdx RFD: UUID identifying the current top-level agent
   // message. Lazily generated on the first sign of a new assistant message
@@ -85,6 +105,9 @@ export async function forwardSessionUpdates(
   // — they're nested inside a tool call and don't surface as top-level
   // agent_message_chunk / agent_thought_chunk in the spec sense.
   let currentAgentMessageId: string | null = null
+  let forwardingError: unknown
+  let forwardingFailed = false
+  let cancelled = false
 
   try {
     while (!abortSignal.aborted) {
@@ -107,7 +130,7 @@ export async function forwardSessionUpdates(
             // usage_update here because we don't know the post-compaction context
             // size — the next prompt's result will carry the corrected value.
             lastAssistantTotalUsage = 0
-            await conn.sessionUpdate({
+            await sendSessionUpdate({
               sessionId,
               update: {
                 sessionUpdate: 'agent_message_chunk',
@@ -149,7 +172,7 @@ export async function forwardSessionUpdates(
           // UX (clients showed 0/0), so we emit it whenever we have usage data.
           // See audit §4.1 for the prior strict-compliance rationale and revert.
           if (lastAssistantTotalUsage !== null) {
-            await conn.sessionUpdate({
+            await sendSessionUpdate({
               sessionId,
               update: {
                 sessionUpdate: 'usage_update',
@@ -233,7 +256,7 @@ export async function forwardSessionUpdates(
             },
           )
           for (const notification of notifications) {
-            await conn.sessionUpdate(notification)
+            await sendSessionUpdate(notification)
           }
           streamingActive = true
           break
@@ -296,7 +319,7 @@ export async function forwardSessionUpdates(
             },
           )
           for (const notification of notifications) {
-            await conn.sessionUpdate(notification)
+            await sendSessionUpdate(notification)
           }
 
           // Reset after the top-level assistant message completes so the
@@ -333,7 +356,7 @@ export async function forwardSessionUpdates(
               if (content) {
                 for (const block of content) {
                   if (block.type === 'text') {
-                    await conn.sessionUpdate({
+                    await sendSessionUpdate({
                       sessionId,
                       update: {
                         sessionUpdate: 'agent_message_chunk',
@@ -365,7 +388,7 @@ export async function forwardSessionUpdates(
           // Don't emit usage_update here — we don't know the post-compaction
           // context size. The next prompt's result will carry the corrected value.
           lastAssistantTotalUsage = 0
-          await conn.sessionUpdate({
+          await sendSessionUpdate({
             sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
@@ -383,22 +406,67 @@ export async function forwardSessionUpdates(
 
     // If we exited the loop because abort fired or cancel was requested, return cancelled
     if (abortSignal.aborted || isCancelled?.()) {
-      return { stopReason: 'cancelled', usage: accumulatedUsage }
+      cancelled = true
     }
   } catch (err: unknown) {
-    if (abortSignal.aborted) {
-      return { stopReason: 'cancelled', usage: accumulatedUsage }
+    if (!(err instanceof StopConfirmationError) && abortSignal.aborted) {
+      cancelled = true
+    } else {
+      forwardingFailed = true
+      forwardingError = err
     }
-    throw err
-  } finally {
-    // Promise.race does not cancel the losing next() call. Request iterator
-    // closure so QueryEngine can release the model stream and its tool loop
-    // after an ACP interrupt. Do not await here: a third-party async generator
-    // may be blocked in a non-cooperative await, and cancellation itself must
-    // remain responsive.
-    void sdkMessages.return().catch(() => {})
   }
 
+  // Promise.race does not cancel the losing next() call. Request iterator
+  // closure so QueryEngine can release the model stream and its tool loop
+  // after an ACP interrupt. Cancellation is not confirmed until that close
+  // request settles; otherwise ACP would report `cancelled` while the remote
+  // HTTP/SSE generation could still be running behind the detached next().
+  if (abortSignal.aborted || isCancelled?.()) {
+    cancelled = true
+    const close = Promise.resolve().then(() => sdkMessages.return())
+    try {
+      await waitForAbortSettlement(
+        close,
+        abortSignal,
+        cancellationCloseGraceMs,
+        'ACP query stream closure',
+      )
+    } catch (error) {
+      if (error instanceof AbortSettlementTimeoutError) {
+        throw new StopConfirmationError(
+          'ACP query stream did not confirm termination after cancellation',
+          forwardingFailed ? [forwardingError, error] : [error],
+        )
+      }
+      if (error instanceof StopConfirmationError) throw error
+      // A rejected return() still proves the iterator settled. The original
+      // cancellation result remains authoritative for ordinary close errors.
+    }
+  } else {
+    try {
+      await waitForBoundedSettlement(
+        Promise.resolve().then(() => sdkMessages.return()),
+        {
+          signal: abortSignal,
+          timeoutMs: normalCloseTimeoutMs,
+          abortGraceMs: cancellationCloseGraceMs,
+          operation: 'ACP completed query stream closure',
+        },
+      )
+    } catch (error) {
+      if (error instanceof AbortSettlementTimeoutError) {
+        throw new StopConfirmationError(
+          'ACP completed query stream did not confirm finalization',
+          [error],
+        )
+      }
+      throw error
+    }
+  }
+
+  if (forwardingFailed) throw forwardingError
+  if (cancelled) return { stopReason: 'cancelled', usage: accumulatedUsage }
   return { stopReason, usage: accumulatedUsage }
 }
 

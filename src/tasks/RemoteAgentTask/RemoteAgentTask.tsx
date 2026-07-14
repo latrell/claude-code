@@ -24,6 +24,7 @@ import {
 export type { BackgroundRemoteSessionPrecondition };
 import { logForDebugging } from '../../utils/debug.js';
 import { logError } from '../../utils/log.js';
+import { StopConfirmationError } from '../../utils/stopConfirmation.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { extractTag, extractTextContent } from '../../utils/messages.js';
 import { emitTaskTerminatedSdk } from '../../utils/sdkEventQueue.js';
@@ -1141,9 +1142,17 @@ export const RemoteAgentTask: Task = {
     }
 
     try {
-      const stopped = await stopPromise;
+      let stopped: boolean;
+      try {
+        stopped = await stopPromise;
+      } catch (error) {
+        throw new StopConfirmationError(
+          `Failed to stop remote task ${taskId}: session ${sessionId} termination could not be confirmed`,
+          [error],
+        );
+      }
       if (!stopped) {
-        throw new Error(
+        throw new StopConfirmationError(
           `Failed to stop remote task ${taskId}: session ${sessionId} did not acknowledge interrupt and archive`,
         );
       }

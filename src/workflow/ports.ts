@@ -28,6 +28,36 @@ import type { ProgressBus } from './progress/bus.js'
 import type { ProgressStore } from './progress/store.js'
 import type { SetAppState } from '../Task.js'
 import type { AssistantMessage } from '../types/message.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../utils/abortSettlement.js'
+import { StopConfirmationError } from '../utils/stopConfirmation.js'
+
+const WORKFLOW_RUN_SETTLEMENT_TIMEOUT_MS = 30_000
+const WORKFLOW_RUN_ABORT_GRACE_MS = 2_000
+
+export async function waitForWorkflowRunStopSettlement(
+  settled: Promise<void>,
+  signal: AbortSignal,
+  runId: string,
+  timing: { timeoutMs?: number; abortGraceMs?: number } = {},
+): Promise<void> {
+  try {
+    await waitForBoundedSettlement(settled, {
+      signal,
+      timeoutMs: timing.timeoutMs ?? WORKFLOW_RUN_SETTLEMENT_TIMEOUT_MS,
+      abortGraceMs: timing.abortGraceMs ?? WORKFLOW_RUN_ABORT_GRACE_MS,
+      operation: `Workflow run ${runId} settlement`,
+    })
+  } catch (error) {
+    const message =
+      error instanceof AbortSettlementTimeoutError
+        ? `Workflow run ${runId} did not settle after cancellation`
+        : `Workflow run ${runId} settlement failed during cancellation`
+    throw new StopConfirmationError(message, [error])
+  }
+}
 
 type RunBinding = {
   runId: string
@@ -166,8 +196,18 @@ export function createWorkflowPorts(opts: {
     for (const controller of binding.agentAbortControllers.values()) {
       controller.abort()
     }
-    binding.killPromise = binding.settled.then(() => true)
-    return binding.killPromise
+    const killPromise = waitForWorkflowRunStopSettlement(
+      binding.settled,
+      binding.abortController.signal,
+      runId,
+    ).then(() => true)
+    binding.killPromise = killPromise
+    void killPromise.catch(() => {
+      // An unconfirmed Stop is retryable. Keep the live binding and allow a
+      // later request to wait again if the runner eventually starts unwinding.
+      if (binding.killPromise === killPromise) binding.killPromise = null
+    })
+    return killPromise
   }
 
   // Telemetry subscription (independent of store). LogEventMetadata only accepts boolean/number/undefined,

@@ -165,7 +165,14 @@ import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js';
 import { CancelRequestHandler } from '../hooks/useCancelRequest.js';
-import { cancelActiveRequestSources } from '../utils/cancelRequest.js';
+import { cancelActiveRequestSources, isAuxiliaryOnlyCancellation } from '../utils/cancelRequest.js';
+import {
+  cancelAndWaitForDetachedAuxiliaryWork,
+  hasActiveDetachedAuxiliaryWork,
+  registerDetachedAuxiliaryWork,
+  startAuxiliaryWorkSettlement,
+  subscribeToDetachedAuxiliaryWork,
+} from '../utils/detachedAuxiliaryWork.js';
 import { useBackgroundTaskNavigation } from '../hooks/useBackgroundTaskNavigation.js';
 import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
@@ -249,6 +256,13 @@ import {
   formatCommandInputTags,
 } from '../utils/messages.js';
 import { createSessionTitleRequestGuard, fallbackSessionTitle, generateSessionTitle } from '../utils/sessionTitle.js';
+import {
+  runTurnCallback,
+  startTurnCallback,
+  type TurnCallbackExecution,
+  waitForTurnCallback,
+} from '../utils/turnCallbackSettlement.js';
+import { StopConfirmationError } from '../utils/stopConfirmation.js';
 import {
   BASH_INPUT_TAG,
   COMMAND_MESSAGE_TAG,
@@ -735,6 +749,8 @@ function TranscriptSearchBar({
 const TITLE_ANIMATION_FRAMES = ['⠂', '⠐'];
 const TITLE_STATIC_PREFIX = '✳';
 const TITLE_ANIMATION_INTERVAL_MS = 960;
+const TURN_CALLBACK_SETTLEMENT_TIMEOUT_MS = 10_000;
+const TURN_CALLBACK_ABORT_GRACE_MS = 2_000;
 
 /**
  * Sets the terminal tab title, with an animated prefix glyph while a query
@@ -1216,6 +1232,12 @@ export function REPL({
   // Subscribe to the guard — true during dispatching or running.
   // This is the single source of truth for "is a local query in flight".
   const isQueryActive = React.useSyncExternalStore(queryGuard.subscribe, queryGuard.getSnapshot);
+  // Auxiliary model work does not keep the spinner/query gate active, but it
+  // retains an independent Esc affordance until natural settlement.
+  const hasLocalCancelableAuxiliaryWork = React.useSyncExternalStore(
+    subscribeToDetachedAuxiliaryWork,
+    hasActiveDetachedAuxiliaryWork,
+  );
 
   // Separate loading flag for operations outside the local query guard:
   // remote sessions (useRemoteSession / useDirectConnect) and foregrounded
@@ -1448,16 +1470,38 @@ export function REPL({
   const sessionTitle = terminalTitleFromRename ? getCurrentSessionTitle(getSessionId()) : undefined;
   const [haikuTitle, setHaikuTitle] = useState<string>();
   const [titleRequestGuard] = useState(createSessionTitleRequestGuard);
+  const reportAuxiliaryStopFailure = useCallback(
+    (error: unknown) => {
+      logError(toError(error));
+      if (!(error instanceof StopConfirmationError)) return;
+      addNotification({
+        key: 'auxiliary-stop-unconfirmed',
+        text: tf('Could not confirm all background requests stopped: {error}', {
+          error: errorMessage(error),
+        }),
+        priority: 'immediate',
+        timeoutMs: 5000,
+      });
+    },
+    [addNotification],
+  );
   // Gates the one-shot Haiku call that generates the tab title. Seeded true
   // on resume (initialMessages present) so we don't re-title a resumed
   // session from mid-conversation context.
   const haikuTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
   const resetGeneratedTitleForClear = useCallback(() => {
-    titleRequestGuard.invalidate();
+    void cancelAndWaitForDetachedAuxiliaryWork('conversation-cleared').catch(reportAuxiliaryStopFailure);
+    void titleRequestGuard.cancelAndWait().catch(reportAuxiliaryStopFailure);
     haikuTitleAttemptedRef.current = false;
     setHaikuTitle(undefined);
-  }, [titleRequestGuard]);
-  useEffect(() => () => titleRequestGuard.invalidate(), [titleRequestGuard]);
+  }, [titleRequestGuard, reportAuxiliaryStopFailure]);
+  useEffect(
+    () => () => {
+      void cancelAndWaitForDetachedAuxiliaryWork('repl-unmounted').catch(error => logError(toError(error)));
+      void titleRequestGuard.cancelAndWait().catch(error => logError(toError(error)));
+    },
+    [titleRequestGuard],
+  );
   const agentTitle = mainThreadAgentDefinition?.agentType;
   const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? t('Claude Code');
   const isWaitingForApproval =
@@ -1782,6 +1826,9 @@ export function REPL({
 
   // Use whichever remote mode is active
   const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
+  const hasRemoteCancelableAuxiliaryWork =
+    'hasCancelableAuxiliaryWork' in activeRemote && activeRemote.hasCancelableAuxiliaryWork === true;
+  const hasCancelableAuxiliaryWork = hasLocalCancelableAuxiliaryWork || hasRemoteCancelableAuxiliaryWork;
 
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const [submitCount, setSubmitCount] = useState(0);
@@ -2073,6 +2120,35 @@ export function REPL({
     setToolJSX,
   });
 
+  // A turn-complete notification is a once-only lifecycle edge. Retain the
+  // exact callback settlement so a detached callback that misses a deadline
+  // cannot become an unaddressable live promise.
+  const completedMoreRightTurnsRef = useRef(new WeakMap<AbortController, TurnCallbackExecution<void>>());
+  const startMoreRightTurnCompletion = useCallback(
+    (controller: AbortController | null, aborted: boolean): TurnCallbackExecution<void> => {
+      if (controller) {
+        const existing = completedMoreRightTurnsRef.current.get(controller);
+        if (existing) return existing;
+      }
+
+      const execution = startTurnCallback(() => mrOnTurnComplete(messagesRef.current, aborted));
+      if (controller) completedMoreRightTurnsRef.current.set(controller, execution);
+      return execution;
+    },
+    [mrOnTurnComplete],
+  );
+  const completeMoreRightTurn = useCallback(
+    (controller: AbortController | null, aborted: boolean): Promise<void> => {
+      return waitForTurnCallback(startMoreRightTurnCompletion(controller, aborted), {
+        signal: controller?.signal,
+        timeoutMs: TURN_CALLBACK_SETTLEMENT_TIMEOUT_MS,
+        abortGraceMs: TURN_CALLBACK_ABORT_GRACE_MS,
+        operation: 'MoreRight turn-complete callback',
+      });
+    },
+    [startMoreRightTurnCompletion],
+  );
+
   const showSpinner =
     (!toolJSX || toolJSX.showSpinner === true) &&
     toolUseConfirmQueue.length === 0 &&
@@ -2272,7 +2348,21 @@ export function REPL({
         // Switch session (id + project dir atomically). fullPath may point to
         // a different project (cross-worktree, /branch); null derives from
         // current originalCwd.
-        titleRequestGuard.invalidate();
+        const titleStopResults = await Promise.allSettled([
+          cancelAndWaitForDetachedAuxiliaryWork('session-switch'),
+          titleRequestGuard.cancelAndWait(),
+        ]);
+        const titleStopFailures = titleStopResults.flatMap(result =>
+          result.status === 'rejected' ? [result.reason] : [],
+        );
+        for (const failure of titleStopFailures) reportAuxiliaryStopFailure(failure);
+        if (titleStopFailures.length === 1) throw titleStopFailures[0];
+        if (titleStopFailures.length > 1) {
+          throw new StopConfirmationError(
+            'Session switch could not confirm auxiliary request termination',
+            titleStopFailures,
+          );
+        }
         switchSession(asSessionId(sessionId), log.fullPath ? dirname(log.fullPath) : null);
         // Rename asciicast recording to match the resumed session ID
         const { renameRecordingForSession } = await import('../utils/asciicast.js');
@@ -2385,7 +2475,7 @@ export function REPL({
         throw error;
       }
     },
-    [resetLoadingState, setAppState, titleRequestGuard],
+    [resetLoadingState, setAppState, titleRequestGuard, reportAuxiliaryStopFailure],
   );
 
   // Lazy init: useRef(createX()) would call createX on every render and
@@ -2609,6 +2699,11 @@ export function REPL({
     }
     localJSXClosedAtRef.current = 0;
 
+    // Detached post-turn work is deliberately outside QueryGuard/isLoading,
+    // so every real Stop must cancel and observe it independently — including
+    // when the foreground query is already idle or a newer query is running.
+    void cancelAndWaitForDetachedAuxiliaryWork('user-cancel').catch(reportAuxiliaryStopFailure);
+
     logForDebugging(`[onCancel] focusedInputDialog=${focusedInputDialog} streamMode=${streamMode}`);
 
     // Pause proactive mode so the user gets control back.
@@ -2633,9 +2728,43 @@ export function REPL({
         persistCurrentGoal();
       }
     }
-    setWasAborted(true);
     const localQueryStatus = queryGuard.status;
     const hasLocalQueryInFlight = localQueryStatus !== 'idle';
+    if (
+      isAuxiliaryOnlyCancellation({
+        hasCancelableAuxiliaryWork,
+        hasLocalQueryInFlight,
+        isExternalLoading,
+        hasMainAbortController: abortControllerRef.current !== null,
+      })
+    ) {
+      // This Stop targets only detached/title work. Do not synthesize an
+      // interrupted main turn or emit MoreRight completion with controller=null.
+      void titleRequestGuard.cancelAndWait().catch(reportAuxiliaryStopFailure);
+      skillImprovementSurvey.cancelPending();
+      if (hasRemoteCancelableAuxiliaryWork) activeRemote.cancelRequest();
+      return;
+    }
+    // Read the synchronously-published ref rather than the render-time state.
+    // Stop can arrive between publishing a controller and React committing the
+    // corresponding state update.
+    const activeAbortController = abortControllerRef.current ?? abortController;
+    if (hasLocalQueryInFlight && activeAbortController?.signal.aborted) {
+      // A second Escape while cancellation cleanup is still running must stay
+      // routable, but must not duplicate the partial assistant row or reject
+      // the same permission waiters twice. The original AbortSignal remains
+      // latched, while remote cancellation is deliberately retried because a
+      // prior control-plane Stop may have received a negative acknowledgement.
+      titleRequestGuard.invalidate();
+      skillImprovementSurvey.cancelPending();
+      cancelActiveRequestSources({
+        abortController: activeAbortController,
+        isRemoteMode: activeRemote.isRemoteMode,
+        cancelRemoteRequest: activeRemote.cancelRequest,
+      });
+      return;
+    }
+    setWasAborted(true);
 
     // Title generation is a concurrent Haiku request started by this turn.
     // It has its own stale-result guard, so explicitly invalidate it as part
@@ -2682,31 +2811,31 @@ export function REPL({
     }
 
     cancelActiveRequestSources({
-      abortController,
+      abortController: activeAbortController,
       isRemoteMode: activeRemote.isRemoteMode,
       cancelRemoteRequest: activeRemote.cancelRequest,
     });
     skillImprovementSurvey.cancelPending();
-
-    // Clear the controller so subsequent Escape presses don't see a stale
-    // aborted signal. Without this, canCancelRunningTask is false (signal
-    // defined but .aborted === true), so isActive becomes false if no other
-    // activating conditions hold — leaving the Escape keybinding inactive.
-    setActiveAbortController(null);
 
     // Keep a local query reserved until its async generator has observed the
     // abort and run its finally cleanup. This prevents a new turn from
     // overlapping the cancelled HTTP/tool stream. Purely remote loading has
     // no local finally, so complete that path here.
     if (!hasLocalQueryInFlight) {
-      void mrOnTurnComplete(messagesRef.current, true).catch(logError);
+      if (abortControllerRef.current === activeAbortController) {
+        setActiveAbortController(null);
+      }
+      void completeMoreRightTurn(activeAbortController, true).catch(error => logError(toError(error)));
     } else if (localQueryStatus === 'dispatching') {
       // Pre-query processing may either enter onQuery (which owns completion)
       // or return/throw before a generator exists. Wait for that decision so
       // the latter path still receives exactly one turn-complete callback.
       void queryGuard.waitForDispatchSettlement().then(settledStatus => {
         if (settledStatus === 'idle') {
-          void mrOnTurnComplete(messagesRef.current, true).catch(logError);
+          if (abortControllerRef.current === activeAbortController) {
+            setActiveAbortController(null);
+          }
+          void completeMoreRightTurn(activeAbortController, true).catch(error => logError(toError(error)));
         }
       });
     }
@@ -2739,7 +2868,9 @@ export function REPL({
     isMessageSelectorVisible: isMessageSelectorVisible || !!showBashesDialog,
     screen,
     abortSignal: abortController?.signal,
+    isQueryActive,
     isExternalLoading: isExternalLoading || skillImprovementSurvey.isApplying,
+    hasCancelableAuxiliaryWork,
     popCommandFromQueue: handleQueuedCommandOnCancel,
     vimMode,
     isLocalJSXCommand: toolJSX?.isLocalJSXCommand,
@@ -3461,16 +3592,24 @@ export function REPL({
           // message retries the AI title. Functional update guards the race
           // where a late failure handler would overwrite a retry's AI title.
           const titleRequest = titleRequestGuard.begin(getSessionId());
-          const applyFallbackTitle = () => {
-            if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
-            setHaikuTitle(prev => prev ?? fallbackSessionTitle(text) ?? undefined);
+          if (!titleRequest) {
+            // A previous title transport is still settling (or failed to
+            // confirm Stop). Re-open the one-shot UI gate so a later turn can
+            // retry only if the request guard eventually permits it.
             haikuTitleAttemptedRef.current = false;
-          };
-          void generateSessionTitle(text, titleRequest.signal).then(title => {
-            if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
-            if (title) setHaikuTitle(title);
-            else applyFallbackTitle();
-          }, applyFallbackTitle);
+          } else {
+            const applyFallbackTitle = () => {
+              if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
+              setHaikuTitle(prev => prev ?? fallbackSessionTitle(text) ?? undefined);
+              haikuTitleAttemptedRef.current = false;
+            };
+            const titlePromise = titleRequestGuard.track(titleRequest, generateSessionTitle(text, titleRequest.signal));
+            void titlePromise.then(title => {
+              if (!titleRequestGuard.isCurrent(titleRequest, getSessionId())) return;
+              if (title) setHaikuTitle(title);
+              else applyFallbackTitle();
+            }, applyFallbackTitle);
+          }
         }
       }
 
@@ -3519,7 +3658,6 @@ export function REPL({
           }
         }
         resetLoadingState();
-        setActiveAbortController(null);
         return;
       }
 
@@ -3674,9 +3812,6 @@ export function REPL({
 
       // Log query profiling report if enabled
       logQueryProfileReport();
-
-      // Signal that a query turn has completed successfully
-      await onTurnComplete?.(messagesRef.current);
     },
     [
       initialMcpClients,
@@ -3685,7 +3820,6 @@ export function REPL({
       toolPermissionContext,
       setAppState,
       customSystemPrompt,
-      onTurnComplete,
       appendSystemPrompt,
       canUseTool,
       mainThreadAgentDefinition,
@@ -3740,6 +3874,7 @@ export function REPL({
         return false;
       }
 
+      let completedNormally = false;
       try {
         pipeReturnHadErrorRef.current = false;
         setWasAborted(false);
@@ -3764,13 +3899,24 @@ export function REPL({
         const latestMessages = messagesRef.current;
 
         if (input) {
-          await mrOnBeforeQuery(input, latestMessages, newMessages.length);
+          await runTurnCallback(() => mrOnBeforeQuery(input, latestMessages, newMessages.length), {
+            signal: abortController.signal,
+            timeoutMs: TURN_CALLBACK_SETTLEMENT_TIMEOUT_MS,
+            abortGraceMs: TURN_CALLBACK_ABORT_GRACE_MS,
+            operation: 'MoreRight pre-query callback',
+          });
         }
 
         // Pass full conversation history to callback
         if (onBeforeQueryCallback && input) {
-          const shouldProceed = await onBeforeQueryCallback(input, latestMessages);
+          const shouldProceed = await runTurnCallback(() => onBeforeQueryCallback(input, latestMessages), {
+            signal: abortController.signal,
+            timeoutMs: TURN_CALLBACK_SETTLEMENT_TIMEOUT_MS,
+            abortGraceMs: TURN_CALLBACK_ABORT_GRACE_MS,
+            operation: 'external pre-query callback',
+          });
           if (!shouldProceed) {
+            completedNormally = !abortController.signal.aborted;
             return true;
           }
         }
@@ -3785,6 +3931,16 @@ export function REPL({
             mainLoopModelParam,
             effort,
           );
+          completedNormally = !abortController.signal.aborted;
+          if (completedNormally && onTurnComplete) {
+            const execution = startTurnCallback(() => onTurnComplete(messagesRef.current));
+            registerDetachedAuxiliaryWork({
+              operation: 'external turn-complete callback',
+              settlement: execution.settlement,
+              cancel: reason => execution.cancel(reason),
+              onError: reportAuxiliaryStopFailure,
+            });
+          }
         } catch (error) {
           if (feature('UDS_INBOX')) {
             pipeReturnHadErrorRef.current = true;
@@ -3800,26 +3956,40 @@ export function REPL({
         // idle before mrOnTurnComplete and controller cleanup, the queue could
         // start a new turn and this stale finally could clear its controller.
         await queryGuard.finalize(thisGeneration, async () => {
+          const completionFailures: unknown[] = [];
+          const shouldDetachNormalCompletion = completedNormally && !abortController.signal.aborted;
           setWasAborted(abortController.signal.aborted);
           setLastQueryCompletionTime(Date.now());
           skipIdleCheckRef.current = false;
           // Always reset loading state in finally - this ensures cleanup even
-          // if onQueryImpl throws. onTurnComplete is called separately in
-          // onQueryImpl only on successful completion.
+          // if onQueryImpl throws. Successful external completion callbacks
+          // are independently owned and do not retain the foreground guard.
           resetLoadingState();
 
-          await mrOnTurnComplete(messagesRef.current, abortController.signal.aborted);
-
-          if (feature('UDS_INBOX') && !pipeReturnHadErrorRef.current) {
-            relayPipeMessage({
-              type: 'done',
-              data: '',
-            });
+          const moreRightExecution = startMoreRightTurnCompletion(abortController, abortController.signal.aborted);
+          const moreRightSettlement = startAuxiliaryWorkSettlement({
+            detach: shouldDetachNormalCompletion,
+            operation: 'MoreRight turn-complete callback',
+            start: () =>
+              shouldDetachNormalCompletion
+                ? moreRightExecution.settlement
+                : waitForTurnCallback(moreRightExecution, {
+                    signal: abortController.signal,
+                    timeoutMs: TURN_CALLBACK_SETTLEMENT_TIMEOUT_MS,
+                    abortGraceMs: TURN_CALLBACK_ABORT_GRACE_MS,
+                    operation: 'MoreRight turn-complete callback',
+                  }),
+            cancel: reason => moreRightExecution.cancel(reason),
+            onError: reportAuxiliaryStopFailure,
+          });
+          if (moreRightSettlement) {
+            try {
+              // Failure/abort paths retain synchronous bounded cleanup.
+              await moreRightSettlement;
+            } catch (error) {
+              completionFailures.push(error);
+            }
           }
-
-          // Notify bridge clients that the turn is complete so mobile apps
-          // can stop the spark animation and show post-turn UI.
-          sendBridgeResultRef.current();
 
           // Auto-hide tungsten panel content at turn end (ant-only), but keep
           // tungstenActiveSession set so the pill stays in the footer and the user
@@ -3880,11 +4050,50 @@ export function REPL({
               ]);
             }
           }
-          // Clear the controller so CancelRequestHandler's canCancelRunningTask
-          // reads false at the idle prompt. Without this, the stale non-aborted
-          // controller makes ctrl+c fire onCancel() (aborting nothing) instead of
-          // propagating to the double-press exit flow.
-          setActiveAbortController(null);
+          try {
+            if (!shouldDetachNormalCompletion || completionFailures.length > 0) {
+              await titleRequestGuard.cancelAndWait();
+            } else {
+              // Local title generation is auxiliary. Transfer its exact
+              // settlement to the detached owner so QueryGuard becomes idle
+              // immediately while Esc remains independently routable.
+              const titleSettlement = titleRequestGuard.finish();
+              registerDetachedAuxiliaryWork({
+                operation: 'local session title request',
+                settlement: titleSettlement,
+                cancel: () => titleRequestGuard.cancelAndWait(),
+                onError: reportAuxiliaryStopFailure,
+              });
+            }
+
+            // Auxiliary title work no longer delays foreground completion
+            // markers. Its owner independently exposes Stop until settlement.
+            if (feature('UDS_INBOX') && !pipeReturnHadErrorRef.current) {
+              relayPipeMessage({
+                type: 'done',
+                data: '',
+              });
+            }
+            sendBridgeResultRef.current();
+          } catch (error) {
+            completionFailures.push(error);
+          } finally {
+            // Publish the idle controller state only after foreground cleanup
+            // has settled or transferred successful auxiliary work to its
+            // detached owner. The finally keeps a StopConfirmationError from
+            // leaving a stale controller behind.
+            setActiveAbortController(null);
+          }
+
+          if (completionFailures.length === 1) {
+            throw completionFailures[0];
+          }
+          if (completionFailures.length > 1) {
+            throw new StopConfirmationError(
+              'REPL turn cleanup could not confirm all owned work settled',
+              completionFailures,
+            );
+          }
         });
 
         // Auto-restore: if the user interrupted before any meaningful response
@@ -3923,7 +4132,18 @@ export function REPL({
       }
       return true;
     },
-    [onQueryImpl, setAppState, resetLoadingState, queryGuard, mrOnBeforeQuery, mrOnTurnComplete],
+    [
+      onQueryImpl,
+      setAppState,
+      resetLoadingState,
+      queryGuard,
+      mrOnBeforeQuery,
+      completeMoreRightTurn,
+      startMoreRightTurnCompletion,
+      titleRequestGuard,
+      reportAuxiliaryStopFailure,
+      onTurnComplete,
+    ],
   );
 
   // Handle initial message (from CLI args or plan mode exit with context clear)
@@ -4018,7 +4238,7 @@ export function REPL({
           setCursorOffset: () => {},
           clearBuffer: () => {},
           resetHistory: () => {},
-        });
+        }).catch(error => logError(toError(error)));
       } else {
         // Plan messages or complex content (images, etc.) - send directly to model
         // Plan messages use onQuery to preserve planContent metadata for rendering
@@ -4032,7 +4252,7 @@ export function REPL({
           true, // shouldQuery
           [], // additionalAllowedTools
           mainLoopModel,
-        );
+        ).catch(error => logError(toError(error)));
       }
 
       // Reset ref after a delay to allow new initial messages
@@ -4045,7 +4265,7 @@ export function REPL({
       );
     }
 
-    void processInitialMessage(pending);
+    void processInitialMessage(pending).catch(error => logError(toError(error)));
   }, [initialMessage, isLoading, setMessages, setAppState, onQuery, mainLoopModel, tools]);
 
   const onSubmit = useCallback(
@@ -4362,7 +4582,7 @@ export function REPL({
         if (queryRequired) {
           const newAbortController = createAbortController();
           setActiveAbortController(newAbortController);
-          void onQuery([], newAbortController, true, [], mainLoopModel);
+          void onQuery([], newAbortController, true, [], mainLoopModel).catch(error => logError(toError(error)));
         }
         return;
       }
@@ -4848,11 +5068,19 @@ export function REPL({
     // input immediately starts a new inference.
     removeByFilter(cmd => cmd.agentId === undefined && cmd.bridgeOrigin === true);
 
-    const waitForSettlement = (): Promise<void> =>
-      waitForActiveTurnSettlement(() => abortControllerRef.current, queryGuard);
+    const waitForSettlement = (cancellationSignal?: AbortSignal): Promise<void> =>
+      waitForActiveTurnSettlement(() => abortControllerRef.current, queryGuard, cancellationSignal);
 
-    return handleRemoteInterrupt(abortControllerRef.current, waitForSettlement);
-  }, [queryGuard]);
+    const results = await Promise.allSettled([
+      handleRemoteInterrupt(abortControllerRef.current, waitForSettlement),
+      cancelAndWaitForDetachedAuxiliaryWork('remote-interrupt'),
+      titleRequestGuard.cancelAndWait(),
+    ]);
+    const failures = results.flatMap(result => (result.status === 'rejected' ? [result.reason] : []));
+    for (const failure of failures) reportAuxiliaryStopFailure(failure);
+    if (failures.length > 0) return false;
+    return results[0].status === 'fulfilled' && results[0].value;
+  }, [queryGuard, titleRequestGuard, reportAuxiliaryStopFailure]);
 
   const { sendBridgeResult } = useReplBridge(messages, setMessages, interruptBridgeTurn, commands, mainLoopModel);
   sendBridgeResultRef.current = sendBridgeResult;

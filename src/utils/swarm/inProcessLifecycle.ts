@@ -1,4 +1,12 @@
 import { createChildAbortController } from '../abortController.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../abortSettlement.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
+
+const IN_PROCESS_RUNNER_SETTLEMENT_TIMEOUT_MS = 20_000
+const IN_PROCESS_RUNNER_SETTLEMENT_ABORT_GRACE_MS = 2_000
 
 type RunnerSettlement = {
   attached: boolean
@@ -6,6 +14,10 @@ type RunnerSettlement = {
   attachedSignal: Promise<void>
   resolveAttached: () => void
   settled: Promise<void>
+  settlementError?: unknown
+  didSettle: boolean
+  settlementWaiters: number
+  retainUntilConfirmed: boolean
   resolveSettled: () => void
 }
 
@@ -26,6 +38,9 @@ function createRunnerSettlement(): RunnerSettlement {
     attachedSignal,
     resolveAttached,
     settled,
+    didSettle: false,
+    settlementWaiters: 0,
+    retainUntilConfirmed: false,
     resolveSettled,
   }
 }
@@ -46,6 +61,7 @@ export function cancelInProcessTeammateRunnerReservation(taskId: string): void {
   reservation.cancelled = true
   runnerSettlements.delete(taskId)
   reservation.resolveAttached()
+  reservation.didSettle = true
   reservation.resolveSettled()
 }
 
@@ -68,6 +84,7 @@ export function createInProcessWorkAbortController(
 export function registerInProcessTeammateRunner(
   taskId: string,
   runner: Promise<unknown>,
+  shouldRetainAfterSettlement?: () => boolean,
 ): void {
   const existing = runnerSettlements.get(taskId)
   const reservation =
@@ -80,23 +97,45 @@ export function registerInProcessTeammateRunner(
 
   const runnerSettlement = runner.then(
     () => undefined,
-    () => undefined,
+    error => {
+      reservation.settlementError = error
+    },
   )
   void runnerSettlement.finally(() => {
+    reservation.didSettle = true
+    try {
+      if (shouldRetainAfterSettlement?.()) {
+        // The runner is gone but its task is still non-terminal. Preserve the
+        // settlement as proof so TaskStop can finalize this completed runner
+        // instead of reporting that no runner was registered.
+        reservation.retainUntilConfirmed = true
+      }
+    } catch {
+      // Failing to inspect owner state must fail closed. A later Stop can
+      // consume the retained proof; deleting it would create a false negative.
+      reservation.retainUntilConfirmed = true
+    }
     reservation.resolveSettled()
-    if (runnerSettlements.get(taskId) === reservation) {
+    if (
+      runnerSettlements.get(taskId) === reservation &&
+      reservation.settlementWaiters === 0 &&
+      !reservation.retainUntilConfirmed
+    ) {
       runnerSettlements.delete(taskId)
     }
   })
 }
 
 /**
- * Waits until the registered runner has fully exited. Returns false only when
- * no runner was registered (for example, a spawn that failed before start).
+ * Waits until the registered runner has fully exited. Returns false when no
+ * runner attaches or when an attached runner does not settle by the deadline.
+ * A timed-out runner stays registered so a later Stop can retry confirmation.
  */
 export async function waitForInProcessTeammateRunner(
   taskId: string,
   attachTimeoutMs = 1_000,
+  settlementTimeoutMs = IN_PROCESS_RUNNER_SETTLEMENT_TIMEOUT_MS,
+  settlementAbortGraceMs = IN_PROCESS_RUNNER_SETTLEMENT_ABORT_GRACE_MS,
 ): Promise<boolean> {
   const reservation = runnerSettlements.get(taskId)
   if (!reservation) {
@@ -114,17 +153,53 @@ export async function waitForInProcessTeammateRunner(
     if (timer) clearTimeout(timer)
 
     if (!reservation.attached) {
-      reservation.cancelled = true
-      if (runnerSettlements.get(taskId) === reservation) {
-        runnerSettlements.delete(taskId)
-      }
-      reservation.resolveAttached()
-      reservation.resolveSettled()
+      // A delayed start can still attach after this caller's deadline. Keep
+      // the reservation so that late work inherits the already-aborted
+      // lifecycle and a later Stop can confirm its eventual settlement.
+      reservation.retainUntilConfirmed = true
       return false
     }
   }
 
   if (reservation.cancelled) return false
-  await reservation.settled
-  return true
+  reservation.settlementWaiters += 1
+  let confirmed = false
+  try {
+    try {
+      await waitForBoundedSettlement(reservation.settled, {
+        timeoutMs: settlementTimeoutMs,
+        abortGraceMs: settlementAbortGraceMs,
+        operation: `In-process teammate ${taskId} runner settlement`,
+      })
+    } catch (error) {
+      if (
+        error instanceof AbortSettlementTimeoutError &&
+        !reservation.didSettle
+      ) {
+        // Keep the settlement registered. Stop may be retried after the runner
+        // eventually unwinds; timing out must never be treated as termination.
+        reservation.retainUntilConfirmed = true
+        return false
+      }
+      if (!reservation.didSettle) throw error
+    }
+    confirmed = true
+    if (reservation.settlementError instanceof StopConfirmationError) {
+      // The local runner is gone, so there is nothing live to retry. Preserve
+      // the causal failure for the owner to publish as a failed terminal task,
+      // then release this settlement record in finally.
+      throw reservation.settlementError
+    }
+    return true
+  } finally {
+    reservation.settlementWaiters -= 1
+    if (
+      confirmed &&
+      reservation.didSettle &&
+      reservation.settlementWaiters === 0 &&
+      runnerSettlements.get(taskId) === reservation
+    ) {
+      runnerSettlements.delete(taskId)
+    }
+  }
 }

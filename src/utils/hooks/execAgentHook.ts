@@ -26,6 +26,7 @@ import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
 import type { AgentHook } from '../settings/types.js'
 import { jsonStringify } from '../slowOperations.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
   addArgumentsToPrompt,
@@ -106,6 +107,7 @@ export async function execAgentHook(
 
     // Combined signal is just our controller's signal now
     const combinedSignal = hookAbortController.signal
+    const hookAgentId = asAgentId(`hook-agent-${randomUUID()}`)
 
     try {
       // Create StructuredOutput tool with our schema
@@ -140,9 +142,6 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
 
       const model = hook.model ?? getSmallFastModel()
       const MAX_AGENT_TURNS = 50
-
-      // Create unique agentId for this hook agent
-      const hookAgentId = asAgentId(`hook-agent-${randomUUID()}`)
 
       // Create a modified toolUseContext for the agent
       const agentToolUseContext: ToolUseContext = {
@@ -324,7 +323,9 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
     } catch (error) {
       parentTimeoutSignal.removeEventListener('abort', onParentTimeout)
       cleanupCombinedSignal()
+      clearSessionHooks(toolUseContext.setAppState, hookAgentId)
 
+      if (error instanceof StopConfirmationError) throw error
       if (combinedSignal.aborted) {
         return {
           hook,
@@ -334,6 +335,7 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
       throw error
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     const errorMsg = errorMessage(error)
     logForDebugging(`Hooks: Agent hook error: ${errorMsg}`)
     logEvent('tengu_agent_stop_hook_error', {

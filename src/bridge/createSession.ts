@@ -338,14 +338,20 @@ export async function archiveBridgeSession(
 export async function updateBridgeSessionTitle(
   sessionId: string,
   title: string,
-  opts?: { baseUrl?: string; getAccessToken?: () => string | undefined },
+  opts?: {
+    baseUrl?: string
+    getAccessToken?: () => string | undefined
+    signal?: AbortSignal
+  },
 ): Promise<void> {
+  opts?.signal?.throwIfAborted()
   const { getClaudeAIOAuthTokens } = await import('../utils/auth.js')
   const { getOrganizationUUID } = await import('../services/oauth/client.js')
   const { getOauthConfig } = await import('../constants/oauth.js')
   const { getOAuthHeaders } = await import('../utils/teleport/api.js')
   const { default: axios } = await import('axios')
   const { isSelfHostedBridge } = await import('./bridgeConfig.js')
+  opts?.signal?.throwIfAborted()
 
   const accessToken =
     opts?.getAccessToken?.() ?? getClaudeAIOAuthTokens()?.accessToken
@@ -357,6 +363,7 @@ export async function updateBridgeSessionTitle(
   const orgUUID = isSelfHostedBridge()
     ? 'self-hosted'
     : await getOrganizationUUID()
+  opts?.signal?.throwIfAborted()
   if (!orgUUID) {
     logForDebugging('[bridge] No org UUID for session title update')
     return
@@ -379,7 +386,12 @@ export async function updateBridgeSessionTitle(
     const response = await axios.patch(
       url,
       { title },
-      { headers, timeout: 10_000, validateStatus: s => s < 500 },
+      {
+        headers,
+        timeout: 10_000,
+        signal: opts?.signal,
+        validateStatus: s => s < 500,
+      },
     )
 
     if (response.status === 200) {

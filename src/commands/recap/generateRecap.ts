@@ -20,6 +20,7 @@ import {
   createUserMessage,
   getAssistantMessageText,
 } from '../../utils/messages.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 // Matches the official G$9 constant in v2.1.123:
 // "lead with goal + current task, then one next action, ≤40 words, no markdown"
@@ -114,6 +115,7 @@ export async function generateRecap(signal: AbortSignal): Promise<RecapResult> {
 
     return { kind: 'ok', text: text.trim() }
   } catch (err) {
+    if (err instanceof StopConfirmationError) throw err
     if (
       err instanceof APIUserAbortError ||
       signal.aborted ||

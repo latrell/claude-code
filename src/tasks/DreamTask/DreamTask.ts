@@ -9,10 +9,22 @@ import {
 } from '../../services/autoDream/consolidationLock.js'
 import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../../utils/abortSettlement.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { registerTask, updateTaskState } from '../../utils/task/framework.js'
 
 // Keep only the N most recent turns for live display.
 const MAX_TURNS = 30
+const DREAM_STOP_SETTLEMENT_TIMEOUT_MS = 30_000
+const DREAM_STOP_ABORT_GRACE_MS = 2_000
+
+type DreamStopSettlementTiming = {
+  timeoutMs?: number
+  abortGraceMs?: number
+}
 
 // A task is not stopped merely because its AbortController was signalled.  The
 // forked query may still be unwinding an HTTP stream and tool generators. Keep
@@ -21,21 +33,74 @@ const MAX_TURNS = 30
 const activeDreamRuns = new Map<string, Promise<void>>()
 const pendingDreamStops = new Map<string, Promise<void>>()
 
-export function trackDreamTaskRun(taskId: string, run: Promise<unknown>): void {
+export function trackDreamTaskRun(
+  taskId: string,
+  run: Promise<unknown>,
+  setAppState: SetAppState,
+): void {
+  // An ordinary rejection still proves that the local runner exited. The
+  // owner handles that failure, while an in-flight Stop may safely continue
+  // with lock rollback. StopConfirmationError is different: the local runner
+  // has ended specifically because it could not prove its remote work ended.
+  // Publish that as an explicit failed terminal state instead of retaining an
+  // already-rejected promise that every later Stop would retry forever.
   const settled = run.then(
     () => undefined,
-    () => undefined,
+    error => {
+      if (error instanceof StopConfirmationError) {
+        failDreamTaskAfterUnconfirmedStop(taskId, setAppState, error)
+        throw error
+      }
+      return undefined
+    },
   )
   activeDreamRuns.set(taskId, settled)
-  void settled.finally(() => {
+  const clear = (): void => {
     if (activeDreamRuns.get(taskId) === settled) {
       activeDreamRuns.delete(taskId)
     }
-  })
+  }
+  // A waiter that already captured `settled` still receives its rejection;
+  // the registry itself must only contain live/retryable work.
+  void settled.then(clear, clear)
 }
 
-async function waitForDreamTaskRun(taskId: string): Promise<void> {
-  await activeDreamRuns.get(taskId)
+async function waitForDreamStopWork(
+  work: Promise<void>,
+  signal: AbortSignal | undefined,
+  operation: string,
+  timing: DreamStopSettlementTiming,
+): Promise<void> {
+  try {
+    await waitForBoundedSettlement(work, {
+      signal,
+      timeoutMs: timing.timeoutMs ?? DREAM_STOP_SETTLEMENT_TIMEOUT_MS,
+      abortGraceMs: timing.abortGraceMs ?? DREAM_STOP_ABORT_GRACE_MS,
+      operation,
+    })
+  } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
+    const message =
+      error instanceof AbortSettlementTimeoutError
+        ? `${operation} did not settle after cancellation`
+        : `${operation} failed`
+    throw new StopConfirmationError(message, [error])
+  }
+}
+
+async function waitForDreamTaskRun(
+  taskId: string,
+  signal: AbortSignal | undefined,
+  timing: DreamStopSettlementTiming,
+): Promise<void> {
+  const run = activeDreamRuns.get(taskId)
+  if (!run) return
+  await waitForDreamStopWork(
+    run,
+    signal,
+    `Dream task ${taskId} runner settlement`,
+    timing,
+  )
 }
 
 // A single assistant turn from the dream agent, tool uses collapsed to a count.
@@ -65,6 +130,8 @@ export type DreamTaskState = TaskStateBase & {
   abortController?: AbortController
   /** Owner-scoped lease used to release a failed or cancelled consolidation. */
   lockLease?: ConsolidationLockLease
+  /** Failure detail surfaced when remote termination could not be confirmed. */
+  error?: string
 }
 
 export function isDreamTask(task: unknown): task is DreamTaskState {
@@ -166,6 +233,25 @@ export function failDreamTask(taskId: string, setAppState: SetAppState): void {
   })
 }
 
+function failDreamTaskAfterUnconfirmedStop(
+  taskId: string,
+  setAppState: SetAppState,
+  error: StopConfirmationError,
+): void {
+  updateTaskState<DreamTaskState>(taskId, setAppState, task => {
+    if (task.status !== 'running') return task
+    return {
+      ...task,
+      status: 'failed',
+      endTime: Date.now(),
+      notified: true,
+      error: error.message,
+      abortController: undefined,
+      lockLease: undefined,
+    }
+  })
+}
+
 export const DreamTask: Task = {
   name: 'DreamTask',
   type: 'dream',
@@ -186,9 +272,10 @@ export const DreamTask: Task = {
   },
 }
 
-async function stopDreamTask(
+export async function stopDreamTask(
   taskId: string,
   setAppState: SetAppState,
+  settlementTiming: DreamStopSettlementTiming = {},
 ): Promise<void> {
   let lockLease: ConsolidationLockLease | undefined
   let abortController: AbortController | undefined
@@ -199,7 +286,19 @@ async function stopDreamTask(
     return task
   })
   abortController?.abort()
-  await waitForDreamTaskRun(taskId)
+  await waitForDreamTaskRun(taskId, abortController?.signal, settlementTiming)
+
+  // A Stop is not complete while this run still owns the consolidation lock.
+  // Keep the task non-terminal if rollback stalls/fails so the user can retry
+  // instead of hiding incomplete cleanup behind a killed state.
+  if (lockLease !== undefined) {
+    await waitForDreamStopWork(
+      rollbackConsolidationLock(lockLease),
+      abortController?.signal,
+      `Dream task ${taskId} consolidation lock rollback`,
+      settlementTiming,
+    )
+  }
 
   updateTaskState<DreamTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') return task
@@ -211,9 +310,4 @@ async function stopDreamTask(
       abortController: undefined,
     }
   })
-  // Release only this run's lease so the next session can retry. If this was
-  // a forced run, or updateTaskState was a no-op, there is no lease to undo.
-  if (lockLease !== undefined) {
-    await rollbackConsolidationLock(lockLease)
-  }
 }

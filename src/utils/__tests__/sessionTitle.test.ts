@@ -19,6 +19,7 @@ mock.module('bun:bundle', () => ({
 }))
 
 import type { Message } from '../../types/message'
+import { StopConfirmationError } from '../stopConfirmation'
 import {
   buildSessionTitleSystemPrompt,
   createSessionTitleRequestGuard,
@@ -30,6 +31,7 @@ describe('createSessionTitleRequestGuard', () => {
   test('invalidates and aborts a pending request on session reset', () => {
     const guard = createSessionTitleRequestGuard()
     const request = guard.begin('old-session')
+    if (!request) throw new Error('expected title request')
 
     guard.invalidate()
 
@@ -40,6 +42,7 @@ describe('createSessionTitleRequestGuard', () => {
   test('rejects late callbacks after switching sessions', () => {
     const guard = createSessionTitleRequestGuard()
     const request = guard.begin('old-session')
+    if (!request) throw new Error('expected title request')
 
     expect(guard.isCurrent(request, 'new-session')).toBe(false)
   })
@@ -48,10 +51,104 @@ describe('createSessionTitleRequestGuard', () => {
     const guard = createSessionTitleRequestGuard()
     const first = guard.begin('session')
     const second = guard.begin('session')
+    if (!first || !second) throw new Error('expected title requests')
 
     expect(first.signal.aborted).toBe(true)
     expect(guard.isCurrent(first, 'session')).toBe(false)
     expect(guard.isCurrent(second, 'session')).toBe(true)
+  })
+
+  test('fails closed when an aborted title request never settles', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('session')
+    if (!request) throw new Error('expected title request')
+    guard.track(request, new Promise<void>(() => {}))
+
+    await expect(guard.cancelAndWait(5)).rejects.toBeInstanceOf(
+      StopConfirmationError,
+    )
+  })
+
+  test('confirms cancellation after the title request rejects on abort', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('session')
+    if (!request) throw new Error('expected title request')
+    const title = new Promise<void>((_resolve, reject) => {
+      request.signal.addEventListener('abort', () =>
+        reject(new Error('aborted')),
+      )
+    })
+    guard.track(request, title)
+
+    await expect(guard.cancelAndWait(5)).resolves.toBeUndefined()
+  })
+
+  test('aborts and fails closed when title completion misses its deadline', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('session')
+    if (!request) throw new Error('expected title request')
+    guard.track(request, new Promise<void>(() => {}))
+
+    await expect(guard.finish(5, 5)).rejects.toBeInstanceOf(
+      StopConfirmationError,
+    )
+    expect(request.signal.aborted).toBe(true)
+  })
+
+  test('lets Escape interrupt a title request already in turn finalization', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const request = guard.begin('session')
+    if (!request) throw new Error('expected title request')
+    const title = new Promise<void>((_resolve, reject) => {
+      request.signal.addEventListener('abort', () =>
+        reject(new Error('aborted')),
+      )
+    })
+    guard.track(request, title)
+
+    const finalization = guard.finish(1_000)
+    guard.invalidate()
+
+    await expect(finalization).resolves.toBeUndefined()
+    expect(request.signal.aborted).toBe(true)
+  })
+
+  test('does not overlap a pending title request and retries after it settles', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const first = guard.begin('session')
+    if (!first) throw new Error('expected first title request')
+
+    let resolveFirst!: () => void
+    const firstRun = new Promise<void>(resolve => {
+      resolveFirst = resolve
+    })
+    guard.track(first, firstRun)
+
+    expect(guard.begin('session')).toBeUndefined()
+    expect(first.signal.aborted).toBe(true)
+
+    resolveFirst()
+    await firstRun
+    await Promise.resolve()
+
+    expect(guard.begin('session')).toBeDefined()
+  })
+
+  test('permanently suppresses replacement after unconfirmed title Stop', async () => {
+    const guard = createSessionTitleRequestGuard()
+    const first = guard.begin('session')
+    if (!first) throw new Error('expected first title request')
+
+    const failure = Promise.reject(
+      new StopConfirmationError('title request did not confirm Stop'),
+    )
+    guard.track(first, failure)
+    await failure.catch(() => {})
+    await Promise.resolve()
+
+    expect(guard.begin('session')).toBeUndefined()
+    await expect(guard.finish()).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(guard.begin('session')).toBeUndefined()
   })
 })
 

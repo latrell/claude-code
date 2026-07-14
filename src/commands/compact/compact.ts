@@ -27,6 +27,7 @@ import { executePreCompactHooks } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import {
   buildEffectiveSystemPrompt,
   type SystemPrompt,
@@ -125,6 +126,7 @@ export const call: LocalCommandCall = async (args, context) => {
       displayText: buildDisplayText(context, result.userDisplayMessage),
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (abortController.signal.aborted) {
       throw new Error(t('Compaction canceled.'))
     } else if (hasExactErrorMessage(error, ERROR_MESSAGE_NOT_ENOUGH_MESSAGES)) {

@@ -44,12 +44,24 @@ describe('markTaskOutputRetrieved', () => {
     expect(updated.status).toBe('running')
   })
 
-  test('marks a terminal agent retrieved and notified', () => {
+  test('does not consume a terminal agent notification still being assembled', () => {
     const updated = markTaskOutputRetrieved(
       task({ status: 'completed', retrieved: false, notified: false }),
     )
 
     expect(updated.retrieved).toBe(true)
+    expect(updated.notified).toBe(false)
+  })
+
+  test('still consumes terminal notifications for non-agent tasks', () => {
+    const updated = markTaskOutputRetrieved(
+      task({
+        type: 'local_bash',
+        status: 'completed',
+        notified: false,
+      }),
+    )
+
     expect(updated.notified).toBe(true)
   })
 })

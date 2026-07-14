@@ -24,6 +24,7 @@ import { queryHaiku } from '../api/claude.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 const INTENT_SYSTEM_PROMPT = `You are a query normalizer for a skill-search index.
 
@@ -89,7 +90,7 @@ export function clearIntentNormalizeCache(): void {
 /**
  * Normalize a user query so TF-IDF sees English task keywords.
  * Returns `<original> <keywords>` on success, or the original string on any
- * failure path. Never throws.
+ * operational failure path. An unconfirmed Stop is propagated to the owner.
  */
 export async function normalizeQueryIntent(
   query: string,
@@ -145,6 +146,7 @@ async function callHaiku(
     const text = extractResponseText(response?.message?.content)
     return sanitizeKeywords(text)
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     if (parentSignal?.aborted) return ''
     logForDebugging(`[skill-search] intent normalize failed: ${error}`)
     return ''

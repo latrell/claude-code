@@ -119,6 +119,7 @@ import {
   createChildAbortController,
 } from './abortController.js'
 import { isAbortError } from './errors.js'
+import { StopConfirmationError } from './stopConfirmation.js'
 import {
   getFileModificationTimeAsync,
   isFileWithinReadSizeLimit,
@@ -1097,6 +1098,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
     }
     return result
   } catch (e) {
+    if (e instanceof StopConfirmationError) throw e
     const duration = Date.now() - startTime
     // Log only 5% of events to reduce volume
     if (Math.random() < 0.05) {

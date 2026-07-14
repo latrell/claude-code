@@ -7,6 +7,10 @@ import type { AppState } from '../../state/AppState.js'
 import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
 import type { AgentId } from '../../types/ids.js'
+import {
+  AbortSettlementTimeoutError,
+  waitForBoundedSettlement,
+} from '../../utils/abortSettlement.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { registerTask, updateTaskState } from '../../utils/task/framework.js'
@@ -18,6 +22,8 @@ type WorkflowTaskKillHandler = () => Promise<boolean>
  * outside AppState avoids serializing functions while still allowing Task.kill to await settlement.
  */
 const workflowTaskKillHandlers = new Map<string, WorkflowTaskKillHandler>()
+const WORKFLOW_HANDLER_SETTLEMENT_TIMEOUT_MS = 30_000
+const WORKFLOW_HANDLER_ABORT_GRACE_MS = 2_000
 
 export function registerWorkflowTaskKillHandler(
   taskId: string,
@@ -138,9 +144,37 @@ export function failWorkflowTask(
 export async function killWorkflowTask(
   taskId: string,
   setAppState: SetAppState,
+  settlementTiming: {
+    timeoutMs?: number
+    abortGraceMs?: number
+  } = {},
 ): Promise<boolean> {
   const handler = workflowTaskKillHandlers.get(taskId)
-  if (handler) return await handler()
+  if (handler) {
+    let signal: AbortSignal | undefined
+    updateTaskState<LocalWorkflowTaskState>(taskId, setAppState, task => {
+      signal = task.abortController?.signal
+      return task
+    })
+    try {
+      const handled = handler()
+      return await waitForBoundedSettlement(handled, {
+        signal,
+        timeoutMs:
+          settlementTiming.timeoutMs ?? WORKFLOW_HANDLER_SETTLEMENT_TIMEOUT_MS,
+        abortGraceMs:
+          settlementTiming.abortGraceMs ?? WORKFLOW_HANDLER_ABORT_GRACE_MS,
+        operation: `Workflow task ${taskId} kill handler settlement`,
+      })
+    } catch (error) {
+      if (error instanceof StopConfirmationError) throw error
+      const message =
+        error instanceof AbortSettlementTimeoutError
+          ? `Workflow task ${taskId} kill handler did not settle after cancellation`
+          : `Workflow task ${taskId} kill handler failed`
+      throw new StopConfirmationError(message, [error])
+    }
+  }
 
   // A controller proves only that cancellation was requested. Without the
   // workflow runner binding there is no settlement proof, so keep the task

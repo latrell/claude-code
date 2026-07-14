@@ -448,15 +448,19 @@ export type RemoteMessageContent =
  * @param messageContent The user message content (string or content blocks)
  * @param opts.uuid Optional UUID for the event — callers that added a local
  *   UserMessage first should pass its UUID so echo filtering can dedup
+ * @param opts.signal Aborts client-side event ingestion when the manager that
+ *   owns this POST is disconnected. Abort is not remote-stop confirmation.
  * @returns Promise<boolean> True if successful, false otherwise
  */
 export async function sendEventToRemoteSession(
   sessionId: string,
   messageContent: RemoteMessageContent,
-  opts?: { uuid?: string },
+  opts?: { uuid?: string; signal?: AbortSignal },
 ): Promise<boolean> {
   try {
+    if (opts?.signal?.aborted) return false
     const { accessToken, orgUUID } = await prepareApiRequest()
+    if (opts?.signal?.aborted) return false
 
     const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/events`
     const headers = {
@@ -489,6 +493,7 @@ export async function sendEventToRemoteSession(
       headers,
       validateStatus: status => status < 500,
       timeout: 30000,
+      signal: opts?.signal,
     })
 
     if (response.status === 200 || response.status === 201) {

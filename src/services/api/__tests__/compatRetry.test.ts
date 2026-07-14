@@ -12,6 +12,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { APIConnectionError } from 'openai'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import {
   hasExhaustedCompatRetries,
   isCompatConnectionInterruptionError,
@@ -659,6 +660,57 @@ describe('withCompatRetry', () => {
     } catch (error) {
       expect((error as Error).name).toBe('AbortError')
     }
+    expect(callCount).toBe(1)
+  })
+
+  test('请求工厂忽略取消时以 StopConfirmationError 有界失败且不重试', async () => {
+    const controller = new AbortController()
+    let callCount = 0
+    const gen = withCompatRetry(
+      async () => {
+        callCount++
+        return new Promise<string>(() => {})
+      },
+      {
+        maxRetries: 5,
+        signal: controller.signal,
+        provider: 'test',
+        abortSettlementGraceMs: 5,
+      },
+    )
+    const result = gen.next()
+    await Promise.resolve()
+
+    controller.abort('user-cancel')
+
+    await expect(result).rejects.toBeInstanceOf(StopConfirmationError)
+    expect(callCount).toBe(1)
+  })
+
+  test('工厂内惰性首事件忽略取消时保留 StopConfirmationError', async () => {
+    const controller = new AbortController()
+    let callCount = 0
+    async function* neverStarts(): AsyncGenerator<string, void> {
+      await new Promise<void>(() => {})
+    }
+    const gen = withCompatRetry(
+      async () => {
+        callCount++
+        return startStreamEagerly(neverStarts())
+      },
+      {
+        maxRetries: 5,
+        signal: controller.signal,
+        provider: 'test-lazy',
+        abortSettlementGraceMs: 5,
+      },
+    )
+    const result = gen.next()
+    await Promise.resolve()
+
+    controller.abort('user-cancel')
+
+    await expect(result).rejects.toBeInstanceOf(StopConfirmationError)
     expect(callCount).toBe(1)
   })
 

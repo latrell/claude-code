@@ -228,6 +228,13 @@ export type BridgeCoreParams = {
    * onFirstUserMessage (spawn-bridge, PR #21250), which stays fire-once.
    */
   onUserMessage?: (text: string, sessionId: string) => boolean
+  /**
+   * Awaited before any result/archive/transport-close teardown side effects.
+   * REPL callers use this to abort auxiliary requests owned by the bridge.
+   * A callback should report its own bounded cancellation failure and resolve
+   * so auxiliary work cannot permanently prevent the main transport closing.
+   */
+  beforeTeardown?: () => Promise<void>
   /** See InitBridgeOptions.perpetual. */
   perpetual?: boolean
   /**
@@ -311,6 +318,7 @@ export async function initBridgeCore(
     onSetPermissionMode,
     onStateChange,
     onUserMessage,
+    beforeTeardown,
     perpetual,
     initialSSESequenceNum = 0,
   } = params
@@ -1623,6 +1631,10 @@ export async function initBridgeCore(
       )
       return
     }
+    await beforeTeardown?.()
+    // Concurrent cleanup and explicit teardown can both wait above. Re-check
+    // before taking ownership of the transport teardown.
+    if (teardownStarted) return
     teardownStarted = true
     const teardownStart = Date.now()
     logForDebugging(

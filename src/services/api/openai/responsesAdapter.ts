@@ -207,11 +207,21 @@ export function buildResponsesRequest(params: {
 
 async function* parseSSE(
   response: Response,
+  signal: AbortSignal,
 ): AsyncGenerator<Record<string, unknown>, void> {
   if (!response.body) throw new Error('ChatGPT response did not include a body')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const cancelReaderOnAbort = (): void => {
+    // The request signal is passed to fetch(), but also cancel the open SSE
+    // reader explicitly so an abort-ignoring custom transport cannot keep the
+    // server-side Responses request alive while local consumption has stopped.
+    void reader.cancel().catch(() => undefined)
+  }
+
+  if (signal.aborted) cancelReaderOnAbort()
+  else signal.addEventListener('abort', cancelReaderOnAbort, { once: true })
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -236,6 +246,7 @@ async function* parseSSE(
       }
     }
   } finally {
+    signal.removeEventListener('abort', cancelReaderOnAbort)
     // Ensure early generator termination actively closes the HTTP/SSE body.
     // releaseLock() alone leaves a half-open response consuming server work.
     try {
@@ -619,5 +630,5 @@ export async function createChatGPTResponsesStream(params: {
   } catch {
     // Ignore — usage tracking must not break the stream.
   }
-  return parseSSE(response)
+  return parseSSE(response, params.signal)
 }

@@ -12,6 +12,7 @@ import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { sideQuery } from '../sideQuery.js'
 import { jsonStringify } from '../slowOperations.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
 
@@ -236,6 +237,8 @@ Explain this command in context.`
     return null
   } catch (error) {
     const latencyMs = Date.now() - startTime
+
+    if (error instanceof StopConfirmationError) throw error
 
     // Don't log aborted requests as errors
     if (signal.aborted) {

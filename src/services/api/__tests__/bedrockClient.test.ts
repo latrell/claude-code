@@ -11,6 +11,7 @@ type Captured = {
   method: string
   headers: Record<string, string>
   body: string
+  signal: AbortSignal
 }
 
 function makeCaptureFetch(): {
@@ -28,7 +29,13 @@ function makeCaptureFetch(): {
     req.headers.forEach((v, k) => {
       headers[k.toLowerCase()] = v
     })
-    captured = { url: req.url, method: req.method, headers, body }
+    captured = {
+      url: req.url,
+      method: req.method,
+      headers,
+      body,
+      signal: req.signal,
+    }
     const streamBody =
       'event: message_start\ndata: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","content":[],"model":"x","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n'
     return new Response(streamBody, {
@@ -144,5 +151,21 @@ describe('BedrockClient.buildRequest body.anthropic_beta cleanup', () => {
     const body = JSON.parse(c!.body) as Record<string, unknown>
     expect('anthropic_beta' in body).toBe(false)
     expect(c!.headers['anthropic-beta']).toBeUndefined()
+  })
+
+  test('Bedrock SDK propagates the caller AbortSignal to the actual fetch', async () => {
+    const { fetch: captureFetch, get } = makeCaptureFetch()
+    const client = new BedrockClient({ ...BEDROCK_ARGS, fetch: captureFetch })
+    const controller = new AbortController()
+    const stream = await client.beta.messages.create(REQUEST_PARAMS, {
+      signal: controller.signal,
+    })
+    const captured = get()
+
+    expect(captured).not.toBeNull()
+    expect(captured!.signal.aborted).toBe(false)
+    controller.abort('user-cancel')
+    expect(captured!.signal.aborted).toBe(true)
+    stream.controller.abort()
   })
 })

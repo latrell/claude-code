@@ -9,10 +9,18 @@ type SocketHarness = {
   flushQueuedControlRequests: () => void
 }
 
-function makeSocket(): SessionsWebSocket {
-  return new SessionsWebSocket('session-1', 'org-1', () => 'token', {
-    onMessage: () => {},
-  })
+function makeSocket(controlRequestTimeoutMs?: number): SessionsWebSocket {
+  return new SessionsWebSocket(
+    'session-1',
+    'org-1',
+    () => 'token',
+    {
+      onMessage: () => {},
+    },
+    {
+      controlRequestTimeoutMs,
+    },
+  )
 }
 
 describe('SessionsWebSocket control requests', () => {
@@ -73,5 +81,15 @@ describe('SessionsWebSocket control requests', () => {
 
     expect(responsePromise).rejects.toThrow('before control acknowledgement')
     await responsePromise.catch(() => {})
+  })
+
+  test('reliably rejects when the acknowledgement deadline expires', async () => {
+    const socket = makeSocket(10)
+    const harness = socket as unknown as SocketHarness
+    harness.state = 'connecting'
+
+    await expect(
+      socket.sendControlRequest({ subtype: 'interrupt' }),
+    ).rejects.toThrow('Timed out waiting for interrupt acknowledgement')
   })
 })

@@ -23,6 +23,8 @@ import { logForDebugging } from 'src/utils/debug.js'
 import { AbortError, errorMessage } from 'src/utils/errors.js'
 import { disableKeepAlive } from 'src/utils/proxy.js'
 import { sleep } from 'src/utils/sleep.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
+import { waitForProviderAbortSettlement } from './providerCancellation.js'
 
 // ---------------------------------------------------------------------------
 // 常量 — 比 firstParty（DEFAULT_MAX_RETRIES=10）保守，避免在第三方 API 上产生
@@ -422,6 +424,7 @@ export async function* withCompatRetry<T>(
     maxRetries?: number
     signal: AbortSignal
     provider: string
+    abortSettlementGraceMs?: number
   },
 ): AsyncGenerator<SystemAPIErrorMessage, T> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES
@@ -433,9 +436,23 @@ export async function* withCompatRetry<T>(
     }
 
     try {
-      const result = await createStream(options.signal)
+      // The promise returned by the factory may include eager consumption of
+      // a lazy stream's first event. Guard the whole promise so an adapter that
+      // ignores AbortSignal cannot leave retry orchestration pending forever.
+      const result = await waitForProviderAbortSettlement(
+        Promise.resolve().then(() => createStream(options.signal)),
+        options.signal,
+        `${options.provider} stream factory`,
+        options.abortSettlementGraceMs,
+      )
       return result
     } catch (error: unknown) {
+      // A cancellation settlement timeout is stronger than the signal's
+      // generic aborted state. Preserve it so callers cannot claim Stop was
+      // confirmed, and never retry an unconfirmed still-live request.
+      if (error instanceof StopConfirmationError) {
+        throw error
+      }
       // Fetch/SDK implementations do not agree on the error shape produced by
       // AbortSignal (AbortError, APIUserAbortError, or even a socket error).
       // The signal is authoritative: normalize immediately so a user cancel

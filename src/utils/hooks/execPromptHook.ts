@@ -13,6 +13,7 @@ import { createUserMessage, extractTextContent } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
 import type { PromptHook } from '../settings/types.js'
+import { StopConfirmationError } from '../stopConfirmation.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
 
@@ -191,6 +192,7 @@ Your response must be a JSON object matching one of the following schemas:
     } catch (error) {
       cleanupSignal()
 
+      if (error instanceof StopConfirmationError) throw error
       if (combinedSignal.aborted) {
         return {
           hook,
@@ -200,6 +202,7 @@ Your response must be a JSON object matching one of the following schemas:
       throw error
     }
   } catch (error) {
+    if (error instanceof StopConfirmationError) throw error
     const errorMsg = errorMessage(error)
     logForDebugging(`Hooks: Prompt hook error: ${errorMsg}`)
     return {

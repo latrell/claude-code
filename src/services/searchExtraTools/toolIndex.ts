@@ -77,11 +77,15 @@ export function parseToolName(name: string): {
   }
 }
 
-export async function buildToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
+export async function buildToolIndex(
+  tools: Tools,
+  signal?: AbortSignal,
+): Promise<ToolIndexEntry[]> {
   const deferredTools = tools.filter(t => isDeferredTool(t))
 
   const entries: ToolIndexEntry[] = []
   for (const tool of deferredTools) {
+    signal?.throwIfAborted()
     let description = ''
     try {
       description = await tool.prompt({
@@ -96,7 +100,9 @@ export async function buildToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
         tools,
         agents: [],
       })
+      signal?.throwIfAborted()
     } catch {
+      signal?.throwIfAborted()
       description = ''
     }
 
@@ -211,7 +217,11 @@ export function searchTools(
 let cachedIndex: ToolIndexEntry[] | null = null
 let cachedToolNames: string | null = null
 
-export async function getToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
+export async function getToolIndex(
+  tools: Tools,
+  signal?: AbortSignal,
+): Promise<ToolIndexEntry[]> {
+  signal?.throwIfAborted()
   const currentKey = tools
     .map(t => t.name)
     .sort()
@@ -221,7 +231,7 @@ export async function getToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
     return cachedIndex
   }
 
-  cachedIndex = await buildToolIndex(tools)
+  cachedIndex = await buildToolIndex(tools, signal)
   cachedToolNames = currentKey
   return cachedIndex
 }
