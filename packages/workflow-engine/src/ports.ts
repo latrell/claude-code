@@ -68,7 +68,16 @@ export type TaskRegistrar = {
   ): { runId: string; signal: AbortSignal }
   complete(runId: string, summary?: string): void
   fail(runId: string, error: string): void
-  kill(runId: string): void
+  /**
+   * Request cancellation of a run. Core implementations resolve the promise only after the
+   * detached runner has settled and the task has been marked killed.
+   */
+  kill(runId: string): Promise<boolean>
+  /**
+   * Finalize a runner that settled as killed. Kept separate from `kill()` so the runner does not
+   * deadlock by awaiting its own settlement. Optional for legacy adapters.
+   */
+  finishKill?(runId: string): void
   /**
    * Register an agent-level AbortController. Called by the backend when starting an agent, so that service
    * .kill(runId, agentId) can precisely abort a single agent (without affecting other agents in the same run).

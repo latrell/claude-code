@@ -1,11 +1,14 @@
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { logForDebugging } from 'src/utils/debug.js'
+import type { Subprocess } from 'bun'
+import { terminateSSHProcess } from './terminateSSHProcess.js'
 
 const SSH_TIMEOUT_MS = 60_000
 const REMOTE_BIN_DIR = '~/.local/bin'
 const REMOTE_CLI_FILE = 'claude-code-cli.js'
 const REMOTE_WRAPPER = 'claude'
+const POST_TERMINATION_EXIT_WAIT_MS = 1_000
 
 export interface DeployOptions {
   host: string
@@ -13,6 +16,67 @@ export interface DeployOptions {
   remoteArch: string
   localVersion: string
   onProgress?: (msg: string) => void
+}
+
+type SSHProcessTerminator = (proc: Subprocess) => Promise<boolean>
+
+export async function waitForSSHProcessExit(
+  proc: Subprocess,
+  timeoutMs: number,
+  terminateProcess: SSHProcessTerminator = terminateSSHProcess,
+): Promise<number> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let outcome: { type: 'exit'; exitCode: number } | { type: 'timeout' }
+  try {
+    outcome = await Promise.race([
+      proc.exited.then(exitCode => ({ type: 'exit' as const, exitCode })),
+      new Promise<{ type: 'timeout' }>(resolveTimeout => {
+        timer = setTimeout(() => resolveTimeout({ type: 'timeout' }), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
+  if (outcome.type === 'exit') return outcome.exitCode
+
+  let confirmed = false
+  try {
+    confirmed = await terminateProcess(proc)
+  } catch (error) {
+    throw new Error(
+      `SSH process timed out after ${timeoutMs}ms and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (!confirmed) {
+    throw new Error(
+      `SSH process timed out after ${timeoutMs}ms; process-tree termination could not be confirmed`,
+    )
+  }
+
+  // Identity-based tree confirmation is authoritative, but Bun's exited
+  // promise is also part of the local subprocess lifecycle. Do not report the
+  // timeout until both have settled.
+  let exitTimer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      proc.exited,
+      new Promise<never>((_resolve, reject) => {
+        exitTimer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                'SSH process tree terminated but subprocess exit did not settle',
+              ),
+            ),
+          POST_TERMINATION_EXIT_WAIT_MS,
+        )
+      }),
+    ])
+  } finally {
+    if (exitTimer) clearTimeout(exitTimer)
+  }
+  throw new Error(`SSH process timed out after ${timeoutMs}ms`)
 }
 
 async function runSshCommand(
@@ -25,18 +89,12 @@ async function runSshCommand(
     stderr: 'pipe',
   })
 
-  const timer = setTimeout(() => proc.kill(), timeoutMs)
-
-  try {
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-    const exitCode = await proc.exited
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
-  } finally {
-    clearTimeout(timer)
-  }
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    waitForSSHProcessExit(proc, timeoutMs),
+  ])
+  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
 }
 
 function findLocalBinary(): string {
@@ -80,10 +138,11 @@ export async function deployBinary(options: DeployOptions): Promise<string> {
     ['scp', '-o', 'ConnectTimeout=10', localBinary, `${host}:${remotePath}`],
     { stdout: 'pipe', stderr: 'pipe' },
   )
-  const scpTimer = setTimeout(() => scpProc.kill(), SSH_TIMEOUT_MS)
-  const scpStderr = await new Response(scpProc.stderr).text()
-  const scpExit = await scpProc.exited
-  clearTimeout(scpTimer)
+  const [, scpStderr, scpExit] = await Promise.all([
+    new Response(scpProc.stdout).text(),
+    new Response(scpProc.stderr).text(),
+    waitForSSHProcessExit(scpProc, SSH_TIMEOUT_MS),
+  ])
 
   if (scpExit !== 0) {
     throw new Error(`SCP upload failed (exit ${scpExit}): ${scpStderr.trim()}`)

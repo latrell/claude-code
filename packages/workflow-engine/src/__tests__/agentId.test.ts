@@ -17,7 +17,7 @@ function build(results: Map<string, AgentRunResult>) {
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete: () => {},
       fail: () => {},
-      kill: () => {},
+      kill: async () => false,
       pendingAction: () => null,
     },
     journalStore: {

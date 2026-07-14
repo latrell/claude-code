@@ -5,6 +5,14 @@ import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { isProcessRunning } from '../utils/genericProcessUtils.js'
 import { t, tf } from '../i18n/t.js'
 import { jsonParse } from '../utils/slowOperations.js'
+import {
+  isProcessTreeAlive,
+  signalProcessTree,
+  terminateProcessTree,
+  terminateWithEscalation,
+  waitForTermination,
+  type TerminationSignal,
+} from '../utils/processTermination.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
 
@@ -28,14 +36,23 @@ export async function listLiveSessions(): Promise<SessionEntry[]> {
     if (!/^\d+\.json$/.test(file)) continue
     const pid = parseInt(file.slice(0, -5), 10)
 
-    if (!isProcessRunning(pid)) {
-      void unlink(join(dir, file)).catch(() => {})
-      continue
-    }
-
     try {
       const raw = await readFile(join(dir, file), 'utf-8')
       const entry = jsonParse(raw) as SessionEntry
+      if (entry.pid !== pid) {
+        void unlink(join(dir, file)).catch(() => {})
+        continue
+      }
+      const isDetachedTree =
+        resolveSessionEngine(entry) === 'detached' &&
+        process.platform !== 'win32'
+      const alive = isDetachedTree
+        ? isProcessTreeAlive(pid, { isolatedProcessGroup: true })
+        : isProcessRunning(pid)
+      if (!alive) {
+        void unlink(join(dir, file)).catch(() => {})
+        continue
+      }
       sessions.push(entry)
     } catch {
       // Corrupt file — skip
@@ -261,28 +278,73 @@ export async function killHandler(target: string | undefined): Promise<void> {
     }),
   )
 
-  try {
-    process.kill(session.pid, 'SIGTERM')
-  } catch {
-    console.log(t('Session already exited.'))
+  const result = await terminateBackgroundProcess(
+    session.pid,
+    resolveSessionEngine(session) === 'detached',
+  )
+
+  if (!result.stopped) {
+    console.error(t('Session process tree could not be stopped.'))
+    process.exitCode = 1
     return
   }
 
-  await new Promise(resolve => setTimeout(resolve, 2000))
-
-  if (isProcessRunning(session.pid)) {
-    try {
-      process.kill(session.pid, 'SIGKILL')
-      console.log(t('Session force-killed.'))
-    } catch {
-      console.log(t('Session exited during grace period.'))
-    }
-  } else {
-    console.log(t('Session stopped.'))
-  }
+  console.log(
+    result.forced ? t('Session force-killed.') : t('Session stopped.'),
+  )
 
   const pidFile = join(getSessionsDir(), `${session.pid}.json`)
-  void unlink(pidFile).catch(() => {})
+  await unlink(pidFile).catch(() => {})
+}
+
+interface BackgroundTerminationDeps {
+  signalTree: (signal: TerminationSignal) => Promise<void>
+  isAlive: () => boolean
+}
+
+export async function terminateBackgroundProcess(
+  pid: number,
+  isolatedProcessGroup: boolean,
+  graceMs = 2_000,
+  forceWaitMs = 5_000,
+  deps?: BackgroundTerminationDeps,
+): Promise<{ stopped: boolean; forced: boolean }> {
+  const processTreeOptions = {
+    isolatedProcessGroup: isolatedProcessGroup && process.platform !== 'win32',
+  }
+  if (!deps) {
+    let forced = false
+    const stopped = await terminateProcessTree(pid, {
+      ...processTreeOptions,
+      graceMs,
+      forceWaitMs,
+      onSignal: signal => {
+        if (signal === 'SIGKILL') forced = true
+      },
+    })
+    return { stopped, forced }
+  }
+
+  const signalTree =
+    deps.signalTree ??
+    ((signal: TerminationSignal) =>
+      signalProcessTree(pid, signal, processTreeOptions))
+  const isAlive =
+    deps.isAlive ?? (() => isProcessTreeAlive(pid, processTreeOptions))
+  let forced = false
+
+  const stopped = await terminateWithEscalation({
+    signal: async signal => {
+      if (signal === 'SIGKILL') forced = true
+      await signalTree(signal)
+    },
+    waitForExit: timeoutMs =>
+      waitForTermination(() => !isAlive(), timeoutMs, 100),
+    graceMs,
+    forceWaitMs,
+  })
+
+  return { stopped, forced }
 }
 
 /**

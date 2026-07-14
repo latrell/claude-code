@@ -197,8 +197,9 @@ function makeTaskRegistrar(): WorkflowPorts['taskRegistrar'] {
     },
     complete() {},
     fail() {},
-    kill(runId) {
+    async kill(runId) {
       controllers.get(runId)?.abort()
+      return true
     },
     pendingAction() {
       return null

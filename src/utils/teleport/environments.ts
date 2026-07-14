@@ -30,7 +30,10 @@ export type EnvironmentListResponse = {
  * @returns Promise<EnvironmentResource[]> Array of available environments
  * @throws Error if the API request fails or no access token is available
  */
-export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
+export async function fetchEnvironments(
+  signal?: AbortSignal,
+): Promise<EnvironmentResource[]> {
+  signal?.throwIfAborted()
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (!accessToken) {
     throw new Error(
@@ -54,6 +57,7 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
     const response = await axios.get<EnvironmentListResponse>(url, {
       headers,
       timeout: 15000,
+      signal,
     })
 
     if (response.status !== 200) {

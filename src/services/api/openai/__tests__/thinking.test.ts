@@ -361,6 +361,15 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.reasoning_effort).toBe('high')
   })
 
+  test('preserves an exact max reasoning_effort from the transport resolver', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: true,
+      reasoningEffort: 'max',
+    })
+    expect(body.reasoning_effort).toBe('max')
+  })
+
   test('omits reasoning_effort entirely when undefined', () => {
     const body = buildOpenAIRequestBody({
       ...baseParams,

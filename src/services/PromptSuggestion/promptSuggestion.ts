@@ -1,6 +1,7 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import type { AppState } from '../../state/AppState.js'
 import type { Message } from '../../types/message.js'
+import { createChildAbortController } from '../../utils/abortController.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { count } from '../../utils/array.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
@@ -26,7 +27,16 @@ import {
 import { currentLimits } from '../claudeAiLimits.js'
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
-let currentAbortController: AbortController | null = null
+type PromptSuggestionRun = {
+  generation: number
+  parentAbortController: AbortController
+  abortController: AbortController
+  settled: Promise<void>
+}
+
+let promptSuggestionGeneration = 0
+let currentPromptSuggestionRun: PromptSuggestionRun | null = null
+const promptSuggestionRuns = new Set<PromptSuggestionRun>()
 
 export type PromptVariant = 'user_intent' | 'stated_intent'
 
@@ -93,11 +103,57 @@ export function shouldEnablePromptSuggestion(): boolean {
   return enabled
 }
 
-export function abortPromptSuggestion(): void {
-  if (currentAbortController) {
-    currentAbortController.abort()
-    currentAbortController = null
+function abortPromptSuggestionRun(
+  run: PromptSuggestionRun,
+  reason: unknown,
+): void {
+  if (!run.abortController.signal.aborted) {
+    run.abortController.abort(reason)
   }
+}
+
+async function drainPromptSuggestionRun(
+  run: PromptSuggestionRun | null,
+): Promise<void> {
+  if (!run) return
+  await Promise.allSettled([run.settled])
+}
+
+/**
+ * Cancels the latest prompt-suggestion generation and waits until its model
+ * request and any speculation it started have both settled.
+ */
+export async function abortPromptSuggestion(
+  reason: unknown = 'prompt-suggestion-cancelled',
+): Promise<void> {
+  promptSuggestionGeneration++
+  const run = currentPromptSuggestionRun
+  if (!run) return
+  abortPromptSuggestionRun(run, reason)
+  await drainPromptSuggestionRun(run)
+}
+
+/**
+ * Query teardown must only cancel work owned by that exact turn. A newer
+ * suggestion may already belong to another controller by the time an older
+ * query reaches its finally block.
+ */
+export async function cancelPromptSuggestionForParent(
+  parentAbortController: AbortController,
+  reason: unknown = 'prompt-suggestion-parent-cancelled',
+): Promise<void> {
+  const runs = [...promptSuggestionRuns].filter(
+    run => run.parentAbortController === parentAbortController,
+  )
+  if (runs.length === 0) return
+
+  if (
+    currentPromptSuggestionRun?.parentAbortController === parentAbortController
+  ) {
+    promptSuggestionGeneration++
+  }
+  for (const run of runs) abortPromptSuggestionRun(run, reason)
+  await Promise.allSettled(runs.map(run => run.settled))
 }
 
 /**
@@ -181,15 +237,75 @@ export async function tryGenerateSuggestion(
   return { suggestion, promptId, generationRequestId }
 }
 
-export async function executePromptSuggestion(
+export function executePromptSuggestion(
   context: REPLHookContext,
 ): Promise<void> {
-  if (context.querySource !== 'repl_main_thread') return
+  if (context.querySource !== 'repl_main_thread') return Promise.resolve()
 
-  currentAbortController = new AbortController()
-  const abortController = currentAbortController
-  const cacheSafeParams = createCacheSafeParams(context)
+  const generation = ++promptSuggestionGeneration
+  const previousRun = currentPromptSuggestionRun
+  if (previousRun) {
+    abortPromptSuggestionRun(previousRun, 'prompt-suggestion-replaced')
+  }
 
+  const parentAbortController = context.toolUseContext.abortController
+  const abortController = createChildAbortController(parentAbortController)
+
+  const settled = (async (): Promise<void> => {
+    // Let the run record be published before an already-aborted parent takes
+    // the fast path, so parent-specific teardown can still find and drain it.
+    await Promise.resolve()
+    try {
+      await drainPromptSuggestionRun(previousRun)
+      if (
+        generation !== promptSuggestionGeneration ||
+        abortController.signal.aborted
+      ) {
+        return
+      }
+      const cacheSafeParams = createCacheSafeParams(context)
+      await runPromptSuggestion(
+        context,
+        cacheSafeParams,
+        abortController,
+        generation,
+      )
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+        logError(toError(error))
+      }
+    } finally {
+      if (currentPromptSuggestionRun?.generation === generation) {
+        currentPromptSuggestionRun = null
+      }
+      for (const run of promptSuggestionRuns) {
+        if (run.generation === generation) {
+          promptSuggestionRuns.delete(run)
+          break
+        }
+      }
+      if (!abortController.signal.aborted) {
+        abortController.abort('prompt-suggestion-complete')
+      }
+    }
+  })()
+  const run: PromptSuggestionRun = {
+    generation,
+    parentAbortController,
+    abortController,
+    settled,
+  }
+  currentPromptSuggestionRun = run
+  promptSuggestionRuns.add(run)
+  return settled
+}
+
+async function runPromptSuggestion(
+  context: REPLHookContext,
+  cacheSafeParams: CacheSafeParams,
+  abortController: AbortController,
+  generation: number,
+): Promise<void> {
   try {
     const result = await tryGenerateSuggestion(
       abortController,
@@ -198,7 +314,13 @@ export async function executePromptSuggestion(
       cacheSafeParams,
       'cli',
     )
-    if (!result) return
+    if (
+      !result ||
+      abortController.signal.aborted ||
+      generation !== promptSuggestionGeneration
+    ) {
+      return
+    }
 
     context.toolUseContext.setAppState(prev => ({
       ...prev,
@@ -212,12 +334,13 @@ export async function executePromptSuggestion(
     }))
 
     if (isSpeculationEnabled() && result.suggestion) {
-      void startSpeculation(
+      await startSpeculation(
         result.suggestion,
         context,
         context.toolUseContext.setAppState,
         false,
         cacheSafeParams,
+        abortController,
       )
     }
   } catch (error) {
@@ -229,10 +352,6 @@ export async function executePromptSuggestion(
       return
     }
     logError(toError(error))
-  } finally {
-    if (currentAbortController === abortController) {
-      currentAbortController = null
-    }
   }
 }
 

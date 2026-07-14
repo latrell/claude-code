@@ -5,7 +5,13 @@ import { wrappedRender as render } from '@anthropic/ink';
 import { SentryErrorBoundary } from '../../components/SentryErrorBoundary.js';
 import type { RunProgress } from '../progress/store.js';
 import { call as panelCall } from '../panel/panelCall.js';
-import { clampSelected, isRunTerminatedTransition, WorkflowsPanel } from '../panel/WorkflowsPanel.js';
+import {
+  clampSelected,
+  isRunTerminatedTransition,
+  requestWorkflowAgentStop,
+  requestWorkflowStop,
+  WorkflowsPanel,
+} from '../panel/WorkflowsPanel.js';
 import { truncateLabel } from '../panel/AgentList.js';
 import { STATUS_DOT } from '../panel/status.js';
 import { __resetWorkflowServiceForTests, getWorkflowService } from '../service.js';
@@ -194,4 +200,24 @@ test('isRunTerminatedTransition: same runId running → terminal triggers; other
 
   // same run running → running (no change): does not trigger
   expect(isRunTerminatedTransition(running, running)).toBe(false);
+});
+
+test('requestWorkflowStop keeps false and rejected stops visible to the panel', async () => {
+  expect(await requestWorkflowStop(async () => true)).toBeNull();
+  expect(await requestWorkflowStop(async () => false)).toBe('stop failed: workflow termination was not confirmed');
+  expect(
+    await requestWorkflowStop(async () => {
+      throw new Error('state publication failed');
+    }),
+  ).toBe('stop failed: state publication failed');
+});
+
+test('requestWorkflowAgentStop surfaces false and thrown cancellation requests', () => {
+  expect(requestWorkflowAgentStop(() => true)).toBeNull();
+  expect(requestWorkflowAgentStop(() => false)).toBe('stop failed: workflow agent termination was not accepted');
+  expect(
+    requestWorkflowAgentStop(() => {
+      throw new Error('agent abort failed');
+    }),
+  ).toBe('stop failed: agent abort failed');
 });

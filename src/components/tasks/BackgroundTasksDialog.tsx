@@ -24,12 +24,14 @@ import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js';
 import { stopUltraplan } from '../../commands/ultraplan.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
+import { useNotifications } from '../../context/notifications.js';
 import { t, tf } from '../../i18n/t.js';
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { count } from '../../utils/array.js';
+import { errorMessage } from '../../utils/errors.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { AsyncAgentDetailDialog } from './AsyncAgentDetailDialog.js';
 import { BackgroundTask as BackgroundTaskComponent } from './BackgroundTask.js';
@@ -139,8 +141,24 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
   const foregroundedTaskId = useAppState(s => s.foregroundedTaskId);
   const showSpinnerTree = useAppState(s => s.expandedView) === 'teammates';
   const setAppState = useSetAppState();
+  const { addNotification } = useNotifications();
   const killAgentsShortcut = useShortcutDisplay('chat:killAgents', 'Chat', 'ctrl+x ctrl+k');
   const typedTasks = tasks as Record<string, TaskState> | undefined;
+
+  const runStop = (stopping: Promise<unknown>): void => {
+    void stopping.catch(error => {
+      // Stop implementations deliberately leave unconfirmed tasks running so
+      // the user can retry; surface that result instead of an unhandled promise.
+      addNotification({
+        key: 'background-task-stop-failed',
+        text: tf('Could not confirm task stopped: {error}', {
+          error: errorMessage(error),
+        }),
+        priority: 'immediate',
+        timeoutMs: 5000,
+      });
+    });
+  };
 
   // Track if we skipped list view on mount (for back button behavior)
   const skippedListOnMount = useRef(false);
@@ -275,26 +293,26 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
     if (e.key === 'x') {
       e.preventDefault();
       if (currentSelection.type === 'local_bash' && currentSelection.status === 'running') {
-        void killShellTask(currentSelection.id);
+        runStop(killShellTask(currentSelection.id));
       } else if (currentSelection.type === 'local_agent' && currentSelection.status === 'running') {
-        void killAgentTask(currentSelection.id);
+        runStop(killAgentTask(currentSelection.id));
       } else if (currentSelection.type === 'in_process_teammate' && currentSelection.status === 'running') {
-        void killTeammateTask(currentSelection.id);
+        runStop(killTeammateTask(currentSelection.id));
       } else if (
         currentSelection.type === 'local_workflow' &&
         currentSelection.status === 'running' &&
         killWorkflowTask
       ) {
-        killWorkflowTask(currentSelection.id, setAppState);
+        runStop(killWorkflowTask(currentSelection.id, setAppState));
       } else if (currentSelection.type === 'monitor_mcp' && currentSelection.status === 'running' && killMonitorMcp) {
-        killMonitorMcp(currentSelection.id, setAppState);
+        runStop(killMonitorMcp(currentSelection.id, setAppState));
       } else if (currentSelection.type === 'dream' && currentSelection.status === 'running') {
-        void killDreamTask(currentSelection.id);
+        runStop(killDreamTask(currentSelection.id));
       } else if (currentSelection.type === 'remote_agent' && currentSelection.status === 'running') {
         if (currentSelection.task.isUltraplan) {
-          void stopUltraplan(currentSelection.id, currentSelection.task.sessionId, setAppState);
+          runStop(stopUltraplan(currentSelection.id, currentSelection.task.sessionId, setAppState));
         } else {
-          void killRemoteAgentTask(currentSelection.id);
+          runStop(killRemoteAgentTask(currentSelection.id));
         }
       }
     }
@@ -387,7 +405,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <ShellDetailDialog
             shell={task}
             onDone={onDone}
-            onKillShell={() => void killShellTask(task.id)}
+            onKillShell={() => runStop(killShellTask(task.id))}
             onBack={goBackToList}
             key={`shell-${task.id}`}
           />
@@ -397,7 +415,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <AsyncAgentDetailDialog
             agent={task}
             onDone={onDone}
-            onKillAgent={() => void killAgentTask(task.id)}
+            onKillAgent={() => runStop(killAgentTask(task.id))}
             onBack={goBackToList}
             key={`agent-${task.id}`}
           />
@@ -413,8 +431,8 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               task.status !== 'running'
                 ? undefined
                 : task.isUltraplan
-                  ? () => void stopUltraplan(task.id, task.sessionId, setAppState)
-                  : () => void killRemoteAgentTask(task.id)
+                  ? () => runStop(stopUltraplan(task.id, task.sessionId, setAppState))
+                  : () => runStop(killRemoteAgentTask(task.id))
             }
             key={`session-${task.id}`}
           />
@@ -424,7 +442,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <InProcessTeammateDetailDialog
             teammate={task}
             onDone={onDone}
-            onKill={task.status === 'running' ? () => void killTeammateTask(task.id) : undefined}
+            onKill={task.status === 'running' ? () => runStop(killTeammateTask(task.id)) : undefined}
             onBack={goBackToList}
             onForeground={
               task.status === 'running'
@@ -443,7 +461,9 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
         // 否则用户进入后 Esc/←/q 全无效，卡死。照 MonitorMcpDetailDialog 模式：
         // ←/Esc 返回（goBackToList：单任务关闭、多任务回列表），x kill（running）。
         const onKill =
-          task.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task.id, setAppState) : undefined;
+          task.status === 'running' && killWorkflowTask
+            ? () => runStop(killWorkflowTask(task.id, setAppState))
+            : undefined;
         return (
           <Box
             key={`workflow-${task.id}`}
@@ -495,7 +515,9 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <MonitorMcpDetailDialog
             task={task}
             onKill={
-              task.status === 'running' && killMonitorMcp ? () => killMonitorMcp(task.id, setAppState) : undefined
+              task.status === 'running' && killMonitorMcp
+                ? () => runStop(killMonitorMcp(task.id, setAppState))
+                : undefined
             }
             onBack={goBackToList}
             key={`monitor-mcp-${task.id}`}
@@ -511,7 +533,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               })
             }
             onBack={goBackToList}
-            onKill={task.status === 'running' ? () => void killDreamTask(task.id) : undefined}
+            onKill={task.status === 'running' ? () => runStop(killDreamTask(task.id)) : undefined}
             key={`dream-${task.id}`}
           />
         );

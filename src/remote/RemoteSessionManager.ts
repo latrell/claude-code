@@ -96,6 +96,8 @@ export class RemoteSessionManager {
   private websocket: SessionsWebSocket | null = null
   private pendingPermissionRequests: Map<string, SDKControlPermissionRequest> =
     new Map()
+  private pendingCancellation: Promise<boolean> | null = null
+  private pendingSends = new Set<Promise<boolean>>()
 
   constructor(
     private readonly config: RemoteSessionConfig,
@@ -221,15 +223,25 @@ export class RemoteSessionManager {
     content: RemoteMessageContent,
     opts?: { uuid?: string },
   ): Promise<boolean> {
+    // Escape can make the UI look idle before the remote worker has handled
+    // the interrupt. Do not let the next turn overtake that control request.
+    if (this.pendingCancellation) {
+      const cancelled = await this.pendingCancellation
+      if (!cancelled) return false
+    }
+
     logForDebugging(
       `[RemoteSessionManager] Sending message to session ${this.config.sessionId}`,
     )
 
-    const success = await sendEventToRemoteSession(
-      this.config.sessionId,
-      content,
-      opts,
-    )
+    const send = sendEventToRemoteSession(this.config.sessionId, content, opts)
+    this.pendingSends.add(send)
+    let success: boolean
+    try {
+      success = await send
+    } finally {
+      this.pendingSends.delete(send)
+    }
 
     if (!success) {
       logError(
@@ -292,9 +304,61 @@ export class RemoteSessionManager {
   /**
    * Send an interrupt signal to cancel the current request on the remote session
    */
-  cancelSession(): void {
+  async cancelSession(): Promise<boolean> {
+    if (this.pendingCancellation) return this.pendingCancellation
+
+    const cancellation = this.cancelSessionOnce()
+    this.pendingCancellation = cancellation
+    void cancellation.finally(() => {
+      if (this.pendingCancellation === cancellation) {
+        this.pendingCancellation = null
+      }
+    })
+    return cancellation
+  }
+
+  private async cancelSessionOnce(): Promise<boolean> {
     logForDebugging('[RemoteSessionManager] Sending interrupt signal')
-    this.websocket?.sendControlRequest({ subtype: 'interrupt' })
+    if (!this.websocket) {
+      logError(new Error('[RemoteSessionManager] Cannot cancel: no WebSocket'))
+      return false
+    }
+    const requestInterrupt = async (): Promise<boolean> => {
+      try {
+        const response = await this.websocket!.sendControlRequest({
+          subtype: 'interrupt',
+        })
+        if (response.response.subtype === 'success') return true
+        logError(
+          new Error(
+            `[RemoteSessionManager] Interrupt rejected: ${response.response.error}`,
+          ),
+        )
+        return false
+      } catch (error) {
+        logError(
+          error instanceof Error
+            ? error
+            : new Error('[RemoteSessionManager] Interrupt failed'),
+        )
+        return false
+      }
+    }
+
+    const sendsInFlight = [...this.pendingSends]
+    if (sendsInFlight.length > 0) {
+      // HTTP event ingestion and the control WebSocket are independent
+      // transports. An interrupt can otherwise be acknowledged before the
+      // in-flight POST reaches the worker, allowing inference to start after
+      // Stop reported success. Interrupt immediately for responsiveness, then
+      // issue a causal final interrupt after every older POST has settled.
+      const earlyInterrupt = requestInterrupt()
+      await Promise.allSettled(sendsInFlight)
+      await earlyInterrupt
+      return requestInterrupt()
+    }
+
+    return requestInterrupt()
   }
 
   /**

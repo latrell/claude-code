@@ -15,7 +15,7 @@ function mockPorts(): WorkflowPorts {
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete: () => {},
       fail: () => {},
-      kill: () => {},
+      kill: async () => false,
       pendingAction: () => null,
     },
     journalStore: {

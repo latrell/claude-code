@@ -27,6 +27,7 @@ import { registerCleanup } from '../../utils/cleanupRegistry.js';
 import { getSearchExtraToolsOrReadInfo } from '../../utils/collapseReadSearch.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
+import { StopConfirmationError } from '../../utils/stopConfirmation.js';
 import { evictTaskOutput, getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js';
 import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { emitTaskProgress } from '../../utils/task/sdkProgress.js';
@@ -50,6 +51,18 @@ export type AgentProgress = {
   recentActivities?: ToolActivity[];
   summary?: string;
 };
+
+const suppressedAgentNotifications = new Map<string, number>();
+
+/** Temporarily suppress lifecycle notifications during an aggregate Stop. */
+export function suppressAgentNotification(taskId: string): () => void {
+  suppressedAgentNotifications.set(taskId, (suppressedAgentNotifications.get(taskId) ?? 0) + 1);
+  return () => {
+    const remaining = (suppressedAgentNotifications.get(taskId) ?? 1) - 1;
+    if (remaining <= 0) suppressedAgentNotifications.delete(taskId);
+    else suppressedAgentNotifications.set(taskId, remaining);
+  };
+}
 
 const MAX_RECENT_ACTIVITIES = 5;
 
@@ -177,6 +190,159 @@ export type LocalAgentTaskState = TaskStateBase & {
   evictAfter?: number;
 };
 
+type LocalAgentExecutionRecord = {
+  taskId: string;
+  abortController: AbortController;
+  setAppState: SetAppState;
+  attached: boolean;
+  stopRequested: boolean;
+  didSettle: boolean;
+  settled: Promise<void>;
+  resolveSettled: () => void;
+  rejectSettled: (error: unknown) => void;
+};
+
+// A task can have more than one execution generation over its lifetime (for
+// example, a foreground agent that is handed off to a replacement background
+// run). Only the current generation is addressable by TaskStop. Older
+// generations keep their own record through the promise closure that tracks
+// them, so a late foreground finally cannot release the newer background run.
+const localAgentExecutions = new Map<string, LocalAgentExecutionRecord>();
+
+function beginLocalAgentExecution(
+  taskId: string,
+  abortController: AbortController,
+  setAppState: SetAppState,
+): LocalAgentExecutionRecord {
+  const existing = localAgentExecutions.get(taskId);
+  if (existing?.abortController === abortController) {
+    return existing;
+  }
+
+  let resolveSettled!: () => void;
+  let rejectSettled!: (error: unknown) => void;
+  const settled = new Promise<void>((resolve, reject) => {
+    resolveSettled = resolve;
+    rejectSettled = reject;
+  });
+  // The runner can settle without a concurrent TaskStop waiter. Preserve a
+  // rejected state-publication result for Stop without creating an unhandled
+  // rejection solely because nobody was waiting yet.
+  void settled.catch(() => undefined);
+  const record: LocalAgentExecutionRecord = {
+    taskId,
+    abortController,
+    setAppState,
+    attached: false,
+    stopRequested: false,
+    didSettle: false,
+    settled,
+    resolveSettled,
+    rejectSettled,
+  };
+  localAgentExecutions.set(taskId, record);
+  return record;
+}
+
+function getLocalAgentExecution(
+  taskId: string,
+  abortController: AbortController | undefined,
+): LocalAgentExecutionRecord | undefined {
+  const record = localAgentExecutions.get(taskId);
+  return record?.abortController === abortController ? record : undefined;
+}
+
+function finalizeKilledAgentTask(
+  taskId: string,
+  setAppState: SetAppState,
+  expectedAbortController?: AbortController,
+): void {
+  let killed = false;
+  let unregisterCleanup: (() => void) | undefined;
+  updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
+    if (
+      task.status !== 'running' ||
+      (expectedAbortController !== undefined && task.abortController !== expectedAbortController)
+    ) {
+      return task;
+    }
+    killed = true;
+    unregisterCleanup = task.unregisterCleanup;
+    return {
+      ...task,
+      status: 'killed',
+      endTime: Date.now(),
+      evictAfter: task.retain ? undefined : Date.now() + PANEL_GRACE_MS,
+      abortController: undefined,
+      unregisterCleanup: undefined,
+      selectedAgent: undefined,
+    };
+  });
+
+  unregisterCleanup?.();
+  if (killed) {
+    void evictTaskOutput(taskId);
+  }
+}
+
+function settleLocalAgentExecution(record: LocalAgentExecutionRecord): void {
+  if (record.didSettle) {
+    return;
+  }
+  record.didSettle = true;
+
+  try {
+    if (record.stopRequested || record.abortController.signal.aborted) {
+      finalizeKilledAgentTask(record.taskId, record.setAppState, record.abortController);
+    }
+    record.resolveSettled();
+  } catch (error) {
+    // Do not throw from execution.finally: that would replace the agent
+    // runner's original result/error. TaskStop awaits this independent
+    // settlement and receives the publication failure directly.
+    record.rejectSettled(error);
+  } finally {
+    if (localAgentExecutions.get(record.taskId) === record) {
+      localAgentExecutions.delete(record.taskId);
+    }
+  }
+}
+
+/**
+ * Attach the actual agent execution to its task lifecycle. The returned
+ * promise preserves the execution's value/error, while TaskStop waits on the
+ * internal settlement promise that is resolved only after this finally runs.
+ */
+export function trackLocalAgentExecution<T>({
+  taskId,
+  abortController,
+  startExecution,
+  setAppState,
+}: {
+  taskId: string;
+  abortController: AbortController;
+  startExecution: () => Promise<T>;
+  setAppState: SetAppState;
+}): Promise<T | undefined> {
+  const record = beginLocalAgentExecution(taskId, abortController, setAppState);
+  record.attached = true;
+  if (abortController.signal.aborted) {
+    record.stopRequested = true;
+    settleLocalAgentExecution(record);
+    return Promise.resolve(undefined);
+  }
+
+  let execution: Promise<T>;
+  try {
+    execution = startExecution();
+  } catch (error) {
+    settleLocalAgentExecution(record);
+    failAgentTask(taskId, error instanceof Error ? error.message : String(error), setAppState);
+    throw error;
+  }
+  return execution.finally(() => settleLocalAgentExecution(record));
+}
+
 export function isLocalAgentTask(task: unknown): task is LocalAgentTaskState {
   return typeof task === 'object' && task !== null && 'type' in task && task.type === 'local_agent';
 }
@@ -266,6 +432,8 @@ export function enqueueAgentNotification({
   worktreePath?: string;
   worktreeBranch?: string;
 }): void {
+  if (suppressedAgentNotifications.has(taskId)) return;
+
   // Atomically check and set notified flag to prevent duplicate notifications.
   // If the task was already marked as notified (e.g., by TaskStopTool), skip
   // enqueueing to avoid sending redundant messages to the model.
@@ -328,34 +496,68 @@ export const LocalAgentTask: Task = {
   type: 'local_agent',
 
   async kill(taskId, setAppState) {
-    killAsyncAgent(taskId, setAppState);
+    await killAsyncAgent(taskId, setAppState);
   },
 };
 
 /**
  * Kill an agent task. No-op if already killed/completed.
  */
-export function killAsyncAgent(taskId: string, setAppState: SetAppState): void {
-  let killed = false;
+export async function killAsyncAgent(taskId: string, setAppState: SetAppState): Promise<void> {
+  let abortController: AbortController | undefined;
+  let unregisterCleanup: (() => void) | undefined;
   updateTaskState<LocalAgentTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') {
       return task;
     }
-    killed = true;
-    task.abortController?.abort();
-    task.unregisterCleanup?.();
-    return {
-      ...task,
-      status: 'killed',
-      endTime: Date.now(),
-      evictAfter: task.retain ? undefined : Date.now() + PANEL_GRACE_MS,
-      abortController: undefined,
-      unregisterCleanup: undefined,
-      selectedAgent: undefined,
-    };
+    abortController = task.abortController;
+    unregisterCleanup = task.unregisterCleanup;
+    return task;
   });
-  if (killed) {
-    void evictTaskOutput(taskId);
+
+  if (!abortController) {
+    finalizeKilledAgentTask(taskId, setAppState);
+    return;
+  }
+
+  const execution = getLocalAgentExecution(taskId, abortController);
+  if (execution) {
+    execution.stopRequested = true;
+  }
+
+  // Abort is synchronous, so all concurrent executions receive the stop
+  // before this function reaches its first await.
+  abortController.abort();
+  unregisterCleanup?.();
+
+  if (execution?.attached) {
+    await execution.settled;
+  } else if (execution) {
+    // Registration and execution attachment happen in the same JavaScript
+    // turn. An unattached record therefore represents work that never started.
+    settleLocalAgentExecution(execution);
+  } else {
+    // Backward-compatible fallback for restored/test-created task state that
+    // predates execution tracking: there is no live runner to await.
+    finalizeKilledAgentTask(taskId, setAppState, abortController);
+  }
+
+  // The tracked finally normally owns this transition. Keep the idempotent
+  // fallback for a task removed/replaced while its runner was unwinding.
+  finalizeKilledAgentTask(taskId, setAppState, abortController);
+
+  let terminalStatus: LocalAgentTaskState['status'] | undefined;
+  setAppState(prev => {
+    const task = prev.tasks[taskId];
+    if (isLocalAgentTask(task)) {
+      terminalStatus = task.status;
+    }
+    return prev;
+  });
+  if (terminalStatus === 'running' || terminalStatus === 'failed') {
+    throw new StopConfirmationError(
+      `Agent task ${taskId} termination could not be confirmed (status: ${terminalStatus})`,
+    );
   }
 }
 
@@ -363,12 +565,27 @@ export function killAsyncAgent(taskId: string, setAppState: SetAppState): void {
  * Kill all running agent tasks.
  * Used by ESC cancellation in coordinator mode to stop all subagents.
  */
-export function killAllRunningAgentTasks(tasks: Record<string, TaskState>, setAppState: SetAppState): void {
-  for (const [taskId, task] of Object.entries(tasks)) {
-    if (task.type === 'local_agent' && task.status === 'running') {
-      killAsyncAgent(taskId, setAppState);
-    }
+export async function killAllRunningAgentTasks(
+  tasks: Record<string, TaskState>,
+  setAppState: SetAppState,
+  killTask: (taskId: string, setAppState: SetAppState) => Promise<void> = killAsyncAgent,
+): Promise<{
+  succeeded: string[];
+  failures: Array<{ taskId: string; error: unknown }>;
+}> {
+  const runningTaskIds = Object.entries(tasks).flatMap(([taskId, task]) =>
+    task.type === 'local_agent' && task.status === 'running' ? [taskId] : [],
+  );
+  const results = await Promise.allSettled(runningTaskIds.map(taskId => killTask(taskId, setAppState)));
+  const succeeded: string[] = [];
+  const failures: Array<{ taskId: string; error: unknown }> = [];
+  for (let index = 0; index < results.length; index++) {
+    const taskId = runningTaskIds[index]!;
+    const result = results[index]!;
+    if (result.status === 'fulfilled') succeeded.push(taskId);
+    else failures.push({ taskId, error: result.reason });
   }
+  return { succeeded, failures };
 }
 
 /**
@@ -543,6 +760,7 @@ export function registerAsyncAgent({
   const abortController = parentAbortController
     ? createChildAbortController(parentAbortController)
     : createAbortController();
+  beginLocalAgentExecution(agentId, abortController, setAppState);
 
   const taskState: LocalAgentTaskState = {
     ...createTaskStateBase(agentId, 'local_agent', description, toolUseId),
@@ -564,7 +782,7 @@ export function registerAsyncAgent({
 
   // Register cleanup handler
   const unregisterCleanup = registerCleanup(async () => {
-    killAsyncAgent(agentId, setAppState);
+    await killAsyncAgent(agentId, setAppState);
   });
 
   taskState.unregisterCleanup = unregisterCleanup;
@@ -590,6 +808,7 @@ export function registerAgentForeground({
   prompt,
   selectedAgent,
   setAppState,
+  parentAbortController,
   autoBackgroundMs,
   toolUseId,
 }: {
@@ -598,19 +817,24 @@ export function registerAgentForeground({
   prompt: string;
   selectedAgent: AgentDefinition;
   setAppState: SetAppState;
+  parentAbortController: AbortController;
   autoBackgroundMs?: number;
   toolUseId?: string;
 }): {
   taskId: string;
+  abortController: AbortController;
   backgroundSignal: Promise<void>;
   cancelAutoBackground?: () => void;
 } {
   void initTaskOutputAsSymlink(agentId, getAgentTranscriptPath(asAgentId(agentId)));
 
-  const abortController = createAbortController();
+  // Foreground agents must stop with their parent (ESC) and through TaskStop.
+  // The registered task and runAgent both use this exact child controller.
+  const abortController = createChildAbortController(parentAbortController);
+  beginLocalAgentExecution(agentId, abortController, setAppState);
 
   const unregisterCleanup = registerCleanup(async () => {
-    killAsyncAgent(agentId, setAppState);
+    await killAsyncAgent(agentId, setAppState);
   });
 
   const taskState: LocalAgentTaskState = {
@@ -646,25 +870,7 @@ export function registerAgentForeground({
   if (autoBackgroundMs !== undefined && autoBackgroundMs > 0) {
     const timer = setTimeout(
       (setAppState, agentId) => {
-        // Mark task as backgrounded and resolve the signal
-        setAppState(prev => {
-          const prevTask = prev.tasks[agentId];
-          if (!isLocalAgentTask(prevTask) || prevTask.isBackgrounded) {
-            return prev;
-          }
-          return {
-            ...prev,
-            tasks: {
-              ...prev.tasks,
-              [agentId]: { ...prevTask, isBackgrounded: true },
-            },
-          };
-        });
-        const resolver = backgroundSignalResolvers.get(agentId);
-        if (resolver) {
-          resolver();
-          backgroundSignalResolvers.delete(agentId);
-        }
+        transitionAgentToBackground(agentId, setAppState);
       },
       autoBackgroundMs,
       setAppState,
@@ -673,7 +879,59 @@ export function registerAgentForeground({
     cancelAutoBackground = () => clearTimeout(timer);
   }
 
-  return { taskId: agentId, backgroundSignal, cancelAutoBackground };
+  return { taskId: agentId, abortController, backgroundSignal, cancelAutoBackground };
+}
+
+/**
+ * Switch a foreground task to an independently cancellable background task.
+ *
+ * Resolving the background race before aborting the old controller ensures the
+ * AgentTool handoff path wins over the expected AbortError from the foreground
+ * request. The new controller is intentionally not linked to the parent so an
+ * existing background agent continues to survive a later parent ESC.
+ */
+function transitionAgentToBackground(taskId: string, setAppState: SetAppState): boolean {
+  const backgroundAbortController = createAbortController();
+  let foregroundAbortController: AbortController | undefined;
+  let transitioned = false;
+
+  setAppState(prev => {
+    const task = prev.tasks[taskId];
+    if (!isLocalAgentTask(task) || task.status !== 'running' || task.isBackgrounded) {
+      return prev;
+    }
+
+    transitioned = true;
+    foregroundAbortController = task.abortController;
+    return {
+      ...prev,
+      tasks: {
+        ...prev.tasks,
+        [taskId]: {
+          ...task,
+          isBackgrounded: true,
+          abortController: backgroundAbortController,
+        },
+      },
+    };
+  });
+
+  if (!transitioned) {
+    return false;
+  }
+
+  beginLocalAgentExecution(taskId, backgroundAbortController, setAppState);
+
+  const resolver = backgroundSignalResolvers.get(taskId);
+  if (resolver) {
+    resolver();
+    backgroundSignalResolvers.delete(taskId);
+  }
+
+  // Abort only after resolving the race. AgentTool waits for the pending next()
+  // and iterator cleanup before it starts the replacement background run.
+  foregroundAbortController?.abort();
+  return true;
 }
 
 /**
@@ -683,33 +941,11 @@ export function registerAgentForeground({
 export function backgroundAgentTask(taskId: string, getAppState: () => AppState, setAppState: SetAppState): boolean {
   const state = getAppState();
   const task = state.tasks[taskId];
-  if (!isLocalAgentTask(task) || task.isBackgrounded) {
+  if (!isLocalAgentTask(task) || task.status !== 'running' || task.isBackgrounded) {
     return false;
   }
 
-  // Update state to mark as backgrounded
-  setAppState(prev => {
-    const prevTask = prev.tasks[taskId];
-    if (!isLocalAgentTask(prevTask)) {
-      return prev;
-    }
-    return {
-      ...prev,
-      tasks: {
-        ...prev.tasks,
-        [taskId]: { ...prevTask, isBackgrounded: true },
-      },
-    };
-  });
-
-  // Resolve the background signal to interrupt the agent loop
-  const resolver = backgroundSignalResolvers.get(taskId);
-  if (resolver) {
-    resolver();
-    backgroundSignalResolvers.delete(taskId);
-  }
-
-  return true;
+  return transitionAgentToBackground(taskId, setAppState);
 }
 
 /**
@@ -725,6 +961,14 @@ export function unregisterAgentForeground(taskId: string, setAppState: SetAppSta
     const task = prev.tasks[taskId];
     // Only remove if it's a foreground task (not backgrounded)
     if (!isLocalAgentTask(task) || task.isBackgrounded) {
+      return prev;
+    }
+
+    // TaskStop and parent cancellation keep the task visible until the
+    // foreground iterator has actually unwound. Its tracked finally performs
+    // the terminal transition and releases TaskStop.
+    const execution = getLocalAgentExecution(taskId, task.abortController);
+    if (execution && (execution.stopRequested || execution.abortController.signal.aborted)) {
       return prev;
     }
 

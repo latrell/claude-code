@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { apiFetchSession, apiSendControl, apiInterrupt } from '../api/client';
+import { ApiResponseError, apiFetchSession, apiSendControl, apiInterrupt } from '../api/client';
 import type { Session, SessionEvent } from '../types';
 import { isClosedSessionStatus, formatTime, cn } from '../lib/utils';
 import { Info } from 'lucide-react';
@@ -44,6 +44,9 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         onError: err => {
           console.error('[RCSChatAdapter] error:', err);
         },
+        onTurnComplete: () => {
+          setIsLoading(false);
+        },
         onPermissionRequest: permission => {
           setPendingPermissions(prev => {
             if (prev.some(p => p.requestId === permission.requestId)) return prev;
@@ -57,6 +60,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   useEffect(() => {
     adapterRef.current = adapter;
     return () => {
+      if (adapterRef.current === adapter) adapterRef.current = null;
       adapter.disconnect();
     };
   }, [adapter]);
@@ -104,6 +108,12 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         await adapter.sendMessage(text, message.images);
       } catch (err) {
         console.error('Send failed:', err);
+        // An HTTP error response proves the server rejected the event. A
+        // network/parse failure is ambiguous (the event may already be
+        // running remotely), so keep Stop available in that case.
+        if (err instanceof ApiResponseError && adapterRef.current === adapter) {
+          setIsLoading(false);
+        }
       }
     },
     [adapter, closed],
@@ -113,23 +123,11 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   const handleInterrupt = useCallback(async () => {
     try {
       await adapter.interrupt();
+      if (adapterRef.current === adapter) setIsLoading(false);
     } catch (err) {
       console.error('Interrupt failed:', err);
-    } finally {
-      setIsLoading(false);
     }
   }, [adapter]);
-
-  // Mark loading done when last assistant message stops streaming
-  useEffect(() => {
-    if (entries.length === 0) return;
-    const last = entries[entries.length - 1];
-    if (last?.type === 'assistant_message' || last?.type === 'tool_call') {
-      // If the last entry is no longer a streaming tool, consider loading done
-      if (last.type === 'tool_call' && last.toolCall.status === 'running') return;
-      setIsLoading(false);
-    }
-  }, [entries]);
 
   // Permission actions
   const handleApprovePermission = useCallback(

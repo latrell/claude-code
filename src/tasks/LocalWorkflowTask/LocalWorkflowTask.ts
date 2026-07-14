@@ -8,7 +8,28 @@ import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
 import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { registerTask, updateTaskState } from '../../utils/task/framework.js'
+
+type WorkflowTaskKillHandler = () => Promise<boolean>
+
+/**
+ * Runtime-only bridge from the generic task UI to the workflow runner binding. Keeping callbacks
+ * outside AppState avoids serializing functions while still allowing Task.kill to await settlement.
+ */
+const workflowTaskKillHandlers = new Map<string, WorkflowTaskKillHandler>()
+
+export function registerWorkflowTaskKillHandler(
+  taskId: string,
+  handler: WorkflowTaskKillHandler,
+): () => void {
+  workflowTaskKillHandlers.set(taskId, handler)
+  return () => {
+    if (workflowTaskKillHandlers.get(taskId) === handler) {
+      workflowTaskKillHandlers.delete(taskId)
+    }
+  }
+}
 
 export type LocalWorkflowTaskState = TaskStateBase & {
   type: 'local_workflow'
@@ -114,21 +135,38 @@ export function failWorkflowTask(
  * Kill a running workflow task. Called from BackgroundTasksDialog
  * via the feature-gated `killWorkflowTask` binding.
  */
-export function killWorkflowTask(
+export async function killWorkflowTask(
   taskId: string,
   setAppState: SetAppState,
-): void {
+): Promise<boolean> {
+  const handler = workflowTaskKillHandlers.get(taskId)
+  if (handler) return await handler()
+
+  // A controller proves only that cancellation was requested. Without the
+  // workflow runner binding there is no settlement proof, so keep the task
+  // visible/running and report an unconfirmed Stop. Production bindings also
+  // install a dedicated retry handler after a terminal-state publication
+  // failure; that safe, already-settled case therefore never reaches here.
   updateTaskState<LocalWorkflowTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') return task
     task.abortController?.abort()
-    return {
-      ...task,
-      status: 'killed',
-      endTime: Date.now(),
-      notified: true,
-      abortController: undefined,
-    }
+    return task
   })
+  return false
+}
+
+/** Mark the UI task killed after its detached runner has actually settled. */
+export function finishWorkflowTaskKill(
+  taskId: string,
+  setAppState: SetAppState,
+): void {
+  updateTaskState<LocalWorkflowTaskState>(taskId, setAppState, task => ({
+    ...task,
+    status: 'killed',
+    endTime: Date.now(),
+    notified: true,
+    abortController: undefined,
+  }))
 }
 
 /**
@@ -187,12 +225,13 @@ export function retryWorkflowAgent(
  * Kill all running workflow tasks spawned by a given agent.
  * Called from runAgent.ts finally block.
  */
-export function killWorkflowTasksForAgent(
+export async function killWorkflowTasksForAgent(
   agentId: AgentId,
   getAppState: () => AppState,
   setAppState: SetAppState,
-): void {
+): Promise<void> {
   const tasks = getAppState().tasks ?? {}
+  const kills: Array<Promise<{ taskId: string; confirmed: boolean }>> = []
   for (const [taskId, task] of Object.entries(tasks)) {
     if (
       isLocalWorkflowTask(task) &&
@@ -202,8 +241,30 @@ export function killWorkflowTasksForAgent(
       logForDebugging(
         `killWorkflowTasksForAgent: killing orphaned workflow task ${taskId} (agent ${agentId} exiting)`,
       )
-      killWorkflowTask(taskId, setAppState)
+      kills.push(
+        killWorkflowTask(taskId, setAppState).then(confirmed => ({
+          taskId,
+          confirmed,
+        })),
+      )
     }
+  }
+  const results = await Promise.allSettled(kills)
+  const failures = results.flatMap(result => {
+    if (result.status === 'rejected') return [result.reason]
+    return result.value.confirmed
+      ? []
+      : [
+          new Error(
+            `Workflow task ${result.value.taskId} termination was not confirmed`,
+          ),
+        ]
+  })
+  if (failures.length > 0) {
+    throw new StopConfirmationError(
+      `Failed to confirm termination of ${failures.length} workflow task(s) owned by agent ${agentId}`,
+      failures,
+    )
   }
 }
 
@@ -211,6 +272,10 @@ export const LocalWorkflowTask: Task = {
   name: 'LocalWorkflowTask',
   type: 'local_workflow',
   async kill(taskId: string, setAppState: SetAppState) {
-    killWorkflowTask(taskId, setAppState)
+    if (!(await killWorkflowTask(taskId, setAppState))) {
+      throw new StopConfirmationError(
+        `Workflow task ${taskId} termination could not be confirmed`,
+      )
+    }
   },
 }

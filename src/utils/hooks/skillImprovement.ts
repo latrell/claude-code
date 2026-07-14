@@ -16,10 +16,9 @@ import { getSessionId } from '../../bootstrap/state.js'
 import { getAPIProvider } from '../model/providers.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
-import { createAbortController } from '../abortController.js'
 import { count } from '../array.js'
 import { getCwd } from '../cwd.js'
-import { toError } from '../errors.js'
+import { isAbortError, toError } from '../errors.js'
 import { logError } from '../log.js'
 import {
   createUserMessage,
@@ -35,6 +34,7 @@ import {
   createApiQueryHook,
 } from './apiQueryHookHelper.js'
 import { registerPostSamplingHook } from './postSamplingHooks.js'
+import { commitSkillImprovementIfActive } from './skillImprovementApplyLifecycle.js'
 
 export function isSkillImprovementEnabled(): boolean {
   const explicit = process.env.SKILL_IMPROVEMENT_ENABLED
@@ -200,14 +200,16 @@ export function initSkillImprovement(): void {
 }
 
 /**
- * Apply skill improvements by calling a side-channel LLM to rewrite the skill file.
- * Fire-and-forget — does not block the main conversation.
+ * Apply skill improvements by calling a side-channel LLM to rewrite the skill
+ * file. The caller owns the signal so Stop, unmount, and replacement requests
+ * cancel both remote inference and the final filesystem write.
  */
 export async function applySkillImprovement(
   skillName: string,
   updates: SkillUpdate[],
-): Promise<void> {
-  if (!skillName) return
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!skillName || signal.aborted) return false
 
   const { join } = await import('path')
   const fs = await import('fs/promises')
@@ -217,13 +219,19 @@ export async function applySkillImprovement(
 
   let currentContent: string
   try {
-    currentContent = await fs.readFile(filePath, 'utf-8')
-  } catch {
+    currentContent = await fs.readFile(filePath, {
+      encoding: 'utf-8',
+      signal,
+    })
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) return false
     logError(
       new Error(`Failed to read skill file for improvement: ${filePath}`),
     )
-    return
+    return false
   }
+
+  if (signal.aborted) return false
 
   const updateList = updates.map(u => `- ${u.section}: ${u.change}`).join('\n')
 
@@ -237,10 +245,12 @@ export async function applySkillImprovement(
       })
     : null
 
-  const response = await queryModelWithoutStreaming({
-    messages: [
-      createUserMessage({
-        content: `You are editing a skill definition file. Apply the following improvements to the skill.
+  let response
+  try {
+    response = await queryModelWithoutStreaming({
+      messages: [
+        createUserMessage({
+          content: `You are editing a skill definition file. Apply the following improvements to the skill.
 
 <current_skill_file>
 ${currentContent}
@@ -256,30 +266,36 @@ Rules:
 - Preserve the overall format and style
 - Do not remove existing content unless an improvement explicitly replaces it
 - Output the complete updated file inside <updated_file> tags`,
-      }),
-    ],
-    systemPrompt: asSystemPrompt([
-      'You edit skill definition files to incorporate user preferences. Output only the updated file content.',
-    ]),
-    thinkingConfig: { type: 'disabled' as const },
-    tools: [],
-    signal: createAbortController().signal,
-    options: {
-      getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-      model,
-      ...(runtime && { providerRuntimeConfig: runtime }),
-      toolChoice: undefined,
-      isNonInteractiveSession: false,
-      hasAppendSystemPrompt: false,
-      temperatureOverride: 0,
-      agents: [],
-      querySource: 'skill_improvement_apply',
-      mcpTools: [],
-      langfuseTrace,
-    },
-  })
+        }),
+      ],
+      systemPrompt: asSystemPrompt([
+        'You edit skill definition files to incorporate user preferences. Output only the updated file content.',
+      ]),
+      thinkingConfig: { type: 'disabled' as const },
+      tools: [],
+      signal,
+      options: {
+        getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+        model,
+        ...(runtime && { providerRuntimeConfig: runtime }),
+        toolChoice: undefined,
+        isNonInteractiveSession: false,
+        hasAppendSystemPrompt: false,
+        temperatureOverride: 0,
+        agents: [],
+        querySource: 'skill_improvement_apply',
+        mcpTools: [],
+        langfuseTrace,
+      },
+    })
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) return false
+    throw error
+  } finally {
+    endTrace(langfuseTrace)
+  }
 
-  endTrace(langfuseTrace)
+  if (signal.aborted) return false
 
   const responseText = extractTextContent(
     Array.isArray(response.message.content) ? response.message.content : [],
@@ -290,12 +306,18 @@ Rules:
     logError(
       new Error('Skill improvement apply: no updated_file tag in response'),
     )
-    return
+    return false
   }
 
   try {
-    await fs.writeFile(filePath, updatedContent, 'utf-8')
+    return await commitSkillImprovementIfActive(signal, async activeSignal => {
+      await fs.writeFile(filePath, updatedContent, {
+        encoding: 'utf-8',
+        signal: activeSignal,
+      })
+    })
   } catch (e) {
     logError(toError(e))
+    return false
   }
 }

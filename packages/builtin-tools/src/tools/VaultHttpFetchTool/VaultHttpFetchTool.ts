@@ -266,7 +266,7 @@ export const VaultHttpFetchTool = buildTool({
       },
     }
   },
-  async call(input: Input, _context) {
+  async call(input: Input, context) {
     // Defensive: enforce HTTPS at runtime (checkPermissions also enforces).
     if (!isHttps(input.url)) {
       return { data: { error: 'Only https:// URLs allowed' } }
@@ -368,6 +368,7 @@ export const VaultHttpFetchTool = buildTool({
         method: input.method,
         headers,
         data: input.body,
+        signal: context.abortController.signal,
         timeout: REQUEST_TIMEOUT_MS,
         maxContentLength: RESPONSE_BODY_CAP_BYTES,
         // No redirects: a 30x to a different origin would re-send Authorization
@@ -399,6 +400,9 @@ export const VaultHttpFetchTool = buildTool({
         },
       }
     } catch (e) {
+      if (context.abortController.signal.aborted) {
+        throw e
+      }
       return { data: { error: scrubAxiosError(e, forms) } }
     }
   },

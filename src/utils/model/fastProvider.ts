@@ -1,8 +1,9 @@
 import {
   asThinkingEffort,
   getConnectionThinkingEffort,
+  getConnectionThinkingEffortTransport,
 } from '../../services/connections/thinkingEffort.js'
-import type { ThinkingEffort } from '../../services/connections/types.js'
+import { asThinkingEffortTransport } from '../../services/connections/effortTransport.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import { apiProviderToSettingsProviderKey, getSmallFastModel } from './model.js'
@@ -228,6 +229,12 @@ export function getFastProviderRuntimeConfig(
     asThinkingEffort(
       (fastProvider as Record<string, unknown> | undefined)?.['thinkingEffort'],
     ) ?? getConnectionThinkingEffort('fast')
+  const thinkingEffortTransport =
+    asThinkingEffortTransport(
+      (fastProvider as Record<string, unknown> | undefined)?.[
+        'thinkingEffortTransport'
+      ],
+    ) ?? getConnectionThinkingEffortTransport('fast')
 
   return {
     provider,
@@ -236,6 +243,7 @@ export function getFastProviderRuntimeConfig(
     model,
     credentialScope: fastProvider?.credentialScope ?? FAST_CREDENTIAL_SCOPE,
     ...(thinkingEffort && { thinkingEffort }),
+    ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }
 }
 

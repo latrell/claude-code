@@ -71,7 +71,10 @@ const call: LocalCommandCall = async (args, context) => {
 
   const normalizedModel = normalizeModelStringForAPI(arg)
   const resolvedModel = parseUserSpecifiedModel(arg)
-  const { valid, error } = await validateModel(resolvedModel)
+  const { valid, error } = await validateModel(
+    resolvedModel,
+    context.abortController.signal,
+  )
   if (!valid) {
     return {
       type: 'text',

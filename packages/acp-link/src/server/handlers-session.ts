@@ -4,6 +4,7 @@ import type { WSContext } from 'hono/ws'
 import { cancelPendingPermissions } from './acp-client.js'
 import { send, sendJsonRpcError } from './client-send.js'
 import { resolveNewSessionPermissionMode } from './permission-mode.js'
+import { terminateAgentProcess } from './process-lifecycle.js'
 import {
   clients,
   getAgentConfig,
@@ -20,6 +21,49 @@ import {
   JSONRPC_METHOD_NOT_FOUND,
   type ContentBlock,
 } from './types.js'
+
+export const CANCEL_CONFIRM_TIMEOUT_MS = 3_000
+export const CANCEL_SEND_TIMEOUT_MS = 1_000
+
+async function sendCancelWithTimeout(
+  cancel: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      cancel,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Timed out sending cancellation to agent')),
+          timeoutMs,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function waitForPromptToStop(
+  prompt: Promise<void>,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      prompt.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<false>(resolve => {
+        timer = setTimeout(() => resolve(false), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 export async function handleNewSession(
   ws: WSContext,
@@ -333,6 +377,18 @@ export async function handlePrompt(
     return
   }
 
+  if (state.activePrompt) {
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      t('A prompt is already running'),
+    )
+    return
+  }
+
+  let activePrompt: Promise<void> | null = null
   try {
     const firstText = params.content.find(b => b.type === 'text')?.text
     const images = params.content.filter(b => b.type === 'image')
@@ -345,10 +401,16 @@ export async function handlePrompt(
       'sending',
     )
 
-    const result = await state.connection.prompt({
+    const promptRequest = state.connection.prompt({
       sessionId: state.sessionId,
       prompt: params.content as acp.ContentBlock[],
     })
+    activePrompt = promptRequest.then(
+      () => undefined,
+      () => undefined,
+    )
+    state.activePrompt = activePrompt
+    const result = await promptRequest
 
     logPrompt.info({ stopReason: result.stopReason }, 'completed')
     send(ws, 'prompt_complete', result)
@@ -361,6 +423,10 @@ export async function handlePrompt(
       JSONRPC_INTERNAL_ERROR,
       tf('Prompt failed: {msg}', { msg: (error as Error).message }),
     )
+  } finally {
+    if (activePrompt && state.activePrompt === activePrompt) {
+      state.activePrompt = null
+    }
   }
 }
 
@@ -375,12 +441,42 @@ export async function handleCancel(ws: WSContext): Promise<void> {
   logSession.info({ sessionId: state.sessionId }, 'cancel requested')
   cancelPendingPermissions(state)
 
+  const activePrompt = state.activePrompt
+  let cancelError: Error | null = null
   try {
-    await state.connection.cancel({ sessionId: state.sessionId })
+    await sendCancelWithTimeout(
+      state.connection.cancel({ sessionId: state.sessionId }),
+      CANCEL_SEND_TIMEOUT_MS,
+    )
     logSession.info({ sessionId: state.sessionId }, 'cancel sent')
   } catch (error) {
-    logSession.error({ error: (error as Error).message }, 'cancel failed')
+    cancelError = error as Error
+    logSession.error({ error: cancelError.message }, 'cancel failed')
   }
+
+  if (!activePrompt) {
+    if (cancelError) throw cancelError
+    return
+  }
+
+  if (await waitForPromptToStop(activePrompt, CANCEL_CONFIRM_TIMEOUT_MS)) {
+    logSession.info({ sessionId: state.sessionId }, 'cancel confirmed')
+    return
+  }
+
+  logSession.warn(
+    { sessionId: state.sessionId },
+    'cancel was not confirmed; terminating agent process tree',
+  )
+  const stopped = await terminateAgentProcess(state)
+  if (!stopped) {
+    throw new Error(
+      cancelError
+        ? `Cancel failed (${cancelError.message}) and the agent process tree could not be stopped`
+        : 'Agent did not confirm cancellation and its process tree could not be stopped',
+    )
+  }
+  logSession.info('cancel confirmed by agent process exit')
 }
 
 // Reference: Zed's AgentModelSelector.select_model() calls connection.set_session_model()

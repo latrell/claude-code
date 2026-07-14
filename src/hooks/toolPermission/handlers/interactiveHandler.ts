@@ -148,7 +148,18 @@ function handleInteractivePermission(
     channelCallbacks,
   } = params
 
-  const { resolve: resolveOnce, isResolved, claim } = createResolveOnce(resolve)
+  let abortHandler: (() => void) | undefined
+  const finish = (decision: PermissionDecision): void => {
+    if (abortHandler) {
+      ctx.toolUseContext.abortController.signal.removeEventListener(
+        'abort',
+        abortHandler,
+      )
+      abortHandler = undefined
+    }
+    resolve(decision)
+  }
+  const { resolve: resolveOnce, isResolved, claim } = createResolveOnce(finish)
   let userInteracted = false
   let checkmarkTransitionTimer: ReturnType<typeof setTimeout> | undefined
   // Hoisted so onDismissCheckmark (Esc during checkmark window) can also
@@ -329,6 +340,20 @@ function handleInteractivePermission(
   }
 
   ctx.pushToQueue(toolUseConfirm)
+  // Do not rely solely on REPL queue traversal. Sibling-tool failures,
+  // programmatic cancellation, and non-REPL callers can abort the turn while
+  // this permission promise is pending.
+  abortHandler = () => {
+    toolUseConfirm.onAbort()
+    ctx.removeFromQueue()
+  }
+  const permissionSignal = ctx.toolUseContext.abortController.signal
+  permissionSignal.addEventListener('abort', abortHandler, { once: true })
+  if (permissionSignal.aborted) {
+    abortHandler()
+    return
+  }
+
   pipePermissionRequestId = tryRelayPipePermissionRequest(
     toolUseConfirm,
     response => {

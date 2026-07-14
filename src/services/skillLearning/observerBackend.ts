@@ -4,6 +4,7 @@ import type { SkillLearningProjectContext } from './types.js'
 
 export type ObserverBackendContext = {
   project?: SkillLearningProjectContext
+  signal?: AbortSignal
 }
 
 export type ObserverBackendResult =

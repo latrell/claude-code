@@ -55,7 +55,7 @@ describe('monitorState', () => {
   test('setActiveMonitor throws when already active', () => {
     setActiveMonitor(makeState())
     expect(() => setActiveMonitor(makeState({ prNumber: 99 }))).toThrow(
-      /Monitor already active/,
+      /Monitor already active|监控已在运行/,
     )
   })
 

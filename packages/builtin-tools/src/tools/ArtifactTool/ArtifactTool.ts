@@ -1,6 +1,6 @@
 import { stat, readFile } from 'fs/promises'
 import { z } from 'zod/v4'
-import type { ToolResultBlockParam } from 'src/Tool.js'
+import type { ToolResultBlockParam, ToolUseContext } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import {
@@ -110,7 +110,7 @@ export const ArtifactTool = buildTool({
   },
   renderToolResultMessage,
 
-  async call(input: ArtifactInput) {
+  async call(input: ArtifactInput, context?: ToolUseContext) {
     const { file_path, hash, ttl } = input
 
     let size: number
@@ -187,9 +187,13 @@ export const ArtifactTool = buildTool({
         uploadUrl: getUploadUrl(),
         hash,
         ttl,
+        signal: context?.abortController.signal,
       })
       return { data: result }
     } catch (e) {
+      if (context?.abortController.signal.aborted) {
+        throw e
+      }
       const message = e instanceof Error ? e.message : String(e)
       return { data: { id: '', url: '', expiresAt: '', error: message } }
     }

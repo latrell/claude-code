@@ -2,19 +2,31 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 // Must mock queryHaiku before importing the module under test so the ESM
 // import binding picks up the stub.
-const haikuCalls: Array<{ systemPrompt: unknown; userPrompt: string }> = []
-let haikuResponder: (userPrompt: string) => Promise<unknown> = async () => ({
+const haikuCalls: Array<{
+  systemPrompt: unknown
+  userPrompt: string
+  signal: AbortSignal
+}> = []
+let haikuResponder: (
+  userPrompt: string,
+  signal: AbortSignal,
+) => Promise<unknown> = async () => ({
   message: { content: [{ type: 'text', text: 'optimize code performance' }] },
 })
 
 mock.module('../../api/claude.js', () => ({
   queryHaiku: mock(
-    async (args: { systemPrompt: unknown; userPrompt: string }) => {
+    async (args: {
+      systemPrompt: unknown
+      userPrompt: string
+      signal: AbortSignal
+    }) => {
       haikuCalls.push({
         systemPrompt: args.systemPrompt,
         userPrompt: args.userPrompt,
+        signal: args.signal,
       })
-      return haikuResponder(args.userPrompt)
+      return haikuResponder(args.userPrompt, args.signal)
     },
   ),
 }))
@@ -135,6 +147,24 @@ describe('normalizeQueryIntent — CJK path calls Haiku', () => {
 })
 
 describe('normalizeQueryIntent — graceful fallback', () => {
+  test('parent cancellation aborts the Haiku normalization request', async () => {
+    process.env.SKILL_SEARCH_INTENT_ENABLED = '1'
+    const controller = new AbortController()
+    haikuResponder = async (_prompt, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        })
+      })
+
+    const resultPromise = normalizeQueryIntent('优化代码', controller.signal)
+    await Promise.resolve()
+    controller.abort('user-cancel')
+
+    expect(await resultPromise).toBe('优化代码')
+    expect(haikuCalls[0]?.signal.aborted).toBe(true)
+  })
+
   test('empty LLM response falls back to original query', async () => {
     process.env.SKILL_SEARCH_INTENT_ENABLED = '1'
     haikuResponder = async () => ({

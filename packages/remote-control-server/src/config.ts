@@ -22,6 +22,11 @@ export const config = {
     process.env.RCS_WS_KEEPALIVE_INTERVAL || '20',
     10,
   ),
+  /** Maximum time to wait for a worker to acknowledge an interrupt. */
+  interruptAckTimeoutMs: parseInt(
+    process.env.RCS_INTERRUPT_ACK_TIMEOUT_MS || '5000',
+    10,
+  ),
 } as const
 
 export function getBaseUrl(): string {

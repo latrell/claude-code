@@ -59,12 +59,14 @@ export type AgentRunResult =
        * Cause-of-death classification for log aggregation / post-hoc auditing. Optional for backward compatibility with old journals.
        * - no-structured-output: agent finished but finalize content has no StructuredOutput (neither called tools nor produced JSON in text)
        * - runagent-threw: runAgent threw a non-abort error (API failure / context overflow / runtime error)
+       * - agent-aborted: this agent was explicitly cancelled; the workflow itself remains running
        * - worktree-failed: isolation:'worktree' creation failed (fail-closed degradation)
        * - unknown: unclassified (compatible with old backends / third-party adapters)
        */
       reason?:
         | 'no-structured-output'
         | 'runagent-threw'
+        | 'agent-aborted'
         | 'worktree-failed'
         | 'unknown'
       /** Detail (error message / text preview) for logs; not shown to end users. */

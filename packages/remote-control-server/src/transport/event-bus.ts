@@ -11,18 +11,30 @@ export interface SessionEvent {
 }
 
 type Subscriber = (event: SessionEvent) => void
+type CloseSubscriber = () => void
 
 const MAX_EVENTS_PER_BUS = 5000
 
 export class EventBus {
   private subscribers = new Set<Subscriber>()
+  private closeSubscribers = new Set<CloseSubscriber>()
   private events: SessionEvent[] = []
   private seqNum = 0
   private closed = false
 
   subscribe(callback: Subscriber): () => void {
+    if (this.closed) return () => {}
     this.subscribers.add(callback)
     return () => this.subscribers.delete(callback)
+  }
+
+  onClose(callback: CloseSubscriber): () => void {
+    if (this.closed) {
+      callback()
+      return () => {}
+    }
+    this.closeSubscribers.add(callback)
+    return () => this.closeSubscribers.delete(callback)
   }
 
   subscriberCount(): number {
@@ -66,7 +78,16 @@ export class EventBus {
   }
 
   close() {
+    if (this.closed) return
     this.closed = true
+    for (const callback of [...this.closeSubscribers]) {
+      try {
+        callback()
+      } catch (err) {
+        logError('[RC-DEBUG] bus close subscriber error:', err)
+      }
+    }
+    this.closeSubscribers.clear()
     this.subscribers.clear()
   }
 }

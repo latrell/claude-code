@@ -517,19 +517,23 @@ export async function trySessionMemoryCompaction(
   messages: Message[],
   agentId?: AgentId,
   autoCompactThreshold?: number,
+  signal?: AbortSignal,
 ): Promise<CompactionResult | null> {
-  if (!shouldUseSessionMemoryCompaction()) {
+  if (signal?.aborted || !shouldUseSessionMemoryCompaction()) {
     return null
   }
 
   // Initialize config from remote (only fetches once)
   await initSessionMemoryCompactConfig()
+  if (signal?.aborted) return null
 
   // Wait for any in-progress session memory extraction to complete (with timeout)
-  await waitForSessionMemoryExtraction()
+  await waitForSessionMemoryExtraction(signal)
+  if (signal?.aborted) return null
 
   const lastSummarizedMessageId = getLastSummarizedMessageId()
   const sessionMemory = await getSessionMemoryContent()
+  if (signal?.aborted) return null
 
   // No session memory file exists at all
   if (!sessionMemory) {
@@ -543,6 +547,7 @@ export async function trySessionMemoryCompaction(
     logEvent('tengu_sm_compact_empty_template', {})
     return null
   }
+  if (signal?.aborted) return null
 
   try {
     let lastSummarizedIndex: number
@@ -583,9 +588,11 @@ export async function trySessionMemoryCompaction(
       .filter(m => !isCompactBoundaryMessage(m))
 
     // Run session start hooks to restore CLAUDE.md and other context
+    if (signal?.aborted) return null
     const hookResults = await processSessionStartHooks('compact', {
       model: getMainLoopModel(),
     })
+    if (signal?.aborted) return null
 
     // Get transcript path for the summary message
     const transcriptPath = getTranscriptPath()

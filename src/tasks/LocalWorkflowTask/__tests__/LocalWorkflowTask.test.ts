@@ -37,9 +37,15 @@ mock.module('src/utils/task/diskOutput.js', () => ({
 
 // ─── Import after mocks ───
 
-const { registerLocalWorkflowTask, failWorkflowTask } = await import(
-  '../LocalWorkflowTask.js'
-)
+const {
+  LocalWorkflowTask,
+  registerLocalWorkflowTask,
+  failWorkflowTask,
+  finishWorkflowTaskKill,
+  killWorkflowTask,
+  killWorkflowTasksForAgent,
+  registerWorkflowTaskKillHandler,
+} = await import('../LocalWorkflowTask.js')
 
 // ─── Helpers ───
 
@@ -86,5 +92,119 @@ describe('failWorkflowTask', () => {
     const task = getState().tasks[taskId]
     expect(task.status).toBe('failed')
     expect(task.error).toBeUndefined()
+  })
+})
+
+describe('workflow cancellation settlement', () => {
+  test('missing runner binding requests abort but does not claim the workflow stopped', async () => {
+    const { setAppState, getState } = createSetState()
+    const abortController = new AbortController()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'unbound',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      abortController,
+    })
+
+    expect(await killWorkflowTask(taskId, setAppState as any)).toBe(false)
+    expect(abortController.signal.aborted).toBe(true)
+    expect(getState().tasks[taskId].status).toBe('running')
+    await expect(
+      LocalWorkflowTask.kill(taskId, setAppState as any),
+    ).rejects.toThrow('termination could not be confirmed')
+    expect(getState().tasks[taskId].status).toBe('running')
+  })
+
+  test('killWorkflowTask resolves only after the registered runner kill handler settles', async () => {
+    const { setAppState, getState } = createSetState()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'test',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+    })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const detach = registerWorkflowTaskKillHandler(taskId, async () => {
+      await gate
+      finishWorkflowTaskKill(taskId, setAppState as any)
+      return true
+    })
+
+    const killing = killWorkflowTask(taskId, setAppState as any)
+    await Promise.resolve()
+    expect(getState().tasks[taskId].status).toBe('running')
+
+    release()
+    expect(await killing).toBe(true)
+    expect(getState().tasks[taskId].status).toBe('killed')
+    detach()
+  })
+
+  test('owner cleanup filters by agentId and awaits matching workflow settlement', async () => {
+    const { setAppState, getState } = createSetState()
+    const ownerId = 'owner-1' as any
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'owned',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      agentId: ownerId,
+    })
+    const otherTaskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'other',
+      workflowName: 'wf-other',
+      workflowFile: '/tmp/other.ts',
+      agentId: 'owner-2' as any,
+    })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let otherKilled = false
+    const detachOwned = registerWorkflowTaskKillHandler(taskId, async () => {
+      await gate
+      finishWorkflowTaskKill(taskId, setAppState as any)
+      return true
+    })
+    const detachOther = registerWorkflowTaskKillHandler(
+      otherTaskId,
+      async () => {
+        otherKilled = true
+        return true
+      },
+    )
+
+    const cleanup = killWorkflowTasksForAgent(
+      ownerId,
+      getState as any,
+      setAppState as any,
+    )
+    await Promise.resolve()
+    expect(getState().tasks[taskId].status).toBe('running')
+    expect(otherKilled).toBe(false)
+
+    release()
+    await cleanup
+    expect(getState().tasks[taskId].status).toBe('killed')
+    expect(getState().tasks[otherTaskId].status).toBe('running')
+    detachOwned()
+    detachOther()
+  })
+
+  test('owner cleanup rejects when any workflow stop is unconfirmed', async () => {
+    const { setAppState, getState } = createSetState()
+    const ownerId = 'owner-unconfirmed' as any
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'owned',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      agentId: ownerId,
+    })
+
+    await expect(
+      killWorkflowTasksForAgent(ownerId, getState as any, setAppState as any),
+    ).rejects.toThrow('Failed to confirm termination')
+    expect(getState().tasks[taskId].status).toBe('running')
   })
 })

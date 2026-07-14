@@ -270,11 +270,17 @@ export const claudeCodeBackend: AgentAdapter = {
         }
       })
     } catch (e) {
-      // abort (kill workflow / kill agent): must rethrow WorkflowAbortedError after detection,
-      // otherwise hooks.agent will swallow the abort as an ordinary failure into dead, and the workflow won't know it was killed
-      // (the other side of the 'x' kill path being ineffective: the signal did arrive, but the result was disguised as a normal completion).
-      if (agentAbort.signal.aborted || (e as Error)?.name === 'AbortError') {
+      // Parent cancellation terminates the whole workflow. A controller aborted only by killAgent,
+      // however, is a terminal result for this agent and must not cancel its siblings/the workflow.
+      if (ctx.signal.aborted) {
         throw new WorkflowAbortedError()
+      }
+      if (agentAbort.signal.aborted || (e as Error)?.name === 'AbortError') {
+        return {
+          kind: 'dead',
+          reason: 'agent-aborted',
+          detail: 'agent cancelled',
+        }
       }
       const detail = (e as Error).message
       logForDebugging(
@@ -292,6 +298,17 @@ export const claudeCodeBackend: AgentAdapter = {
         const info = worktreeInfo
         worktreeInfo = null
         await cleanupWorkflowWorktree(info, agentDef.agentType)
+      }
+    }
+
+    // Some providers finish their iterator without throwing after abort. Preserve the same parent
+    // versus local-agent distinction in that race.
+    if (ctx.signal.aborted) throw new WorkflowAbortedError()
+    if (agentAbort.signal.aborted) {
+      return {
+        kind: 'dead',
+        reason: 'agent-aborted',
+        detail: 'agent cancelled',
       }
     }
 

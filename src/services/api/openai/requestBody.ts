@@ -6,6 +6,17 @@
 import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
 
+export type OpenAICompatibleChatCompletionRequest = Omit<
+  ChatCompletionCreateParamsStreaming,
+  'reasoning_effort'
+> & {
+  thinking?: { type: string }
+  enable_thinking?: boolean
+  chat_template_kwargs?: { thinking: boolean; enable_thinking: boolean }
+  /** Third-party endpoints may accept extensions beyond the OpenAI SDK union. */
+  reasoning_effort?: string
+}
+
 /**
  * Whether the endpoint/model recognizes the thinking-control request fields
  * (`thinking` / `enable_thinking` / `chat_template_kwargs`), i.e. whether an
@@ -95,17 +106,12 @@ export function buildOpenAIRequestBody(params: {
   maxTokens: number
   temperatureOverride?: number
   /**
-   * OpenAI `reasoning_effort` value ('low' | 'medium' | 'high'). Only sent
-   * when defined — endpoints that do not recognize the field would otherwise
-   * reject the request.
+   * OpenAI-compatible `reasoning_effort` string. The resolver normally emits
+   * low/medium/high, but explicit passthrough profiles may carry endpoint-
+   * specific extensions such as max. Only sent when defined.
    */
   reasoningEffort?: string
-}): ChatCompletionCreateParamsStreaming & {
-  thinking?: { type: string }
-  enable_thinking?: boolean
-  chat_template_kwargs?: { thinking: boolean; enable_thinking: boolean }
-  reasoning_effort?: string
-} {
+}): OpenAICompatibleChatCompletionRequest {
   const {
     model,
     messages,

@@ -361,6 +361,14 @@ Then start a tmux session with: tmux new-session -s claude`
  * @throws If the requested backend type is not available
  */
 export function getBackendByType(type: PaneBackendType): PaneBackend {
+  // WindowsTerminalBackend owns an in-memory paneId -> process identity map.
+  // Reconstructing it for Stop loses that map and makes every killPane call
+  // report "unknown". Reuse the detected instance whenever its type matches;
+  // tmux/iTerm also benefit from preserving any backend-local lifecycle state.
+  if (cachedBackend?.type === type) {
+    return cachedBackend
+  }
+
   switch (type) {
     case 'tmux':
       return createTmuxBackend()

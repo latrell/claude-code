@@ -886,6 +886,20 @@ describe('queryModelOpenAI — stream_events forwarded', () => {
 })
 
 describe('queryModelOpenAI — stream recovery boundary', () => {
+  test('propagates an AbortError when the provider aborts before the caller signal updates', async () => {
+    async function* abortsBeforeSemanticEvent(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      if (false) yield makeMessageStart()
+      throw new DOMException('provider aborted', 'AbortError')
+    }
+
+    expect(
+      runQueryModel([], {}, [abortsBeforeSemanticEvent]),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   test('retries empty adapted stream before semantic output and then succeeds', async () => {
     async function* endsBeforeSemanticEvent(): AsyncGenerator<
       BetaRawMessageStreamEvent,

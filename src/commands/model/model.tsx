@@ -153,6 +153,7 @@ function SetModelAndClose({
   const model = args === 'default' ? null : args;
 
   React.useEffect(() => {
+    const controller = new AbortController();
     async function handleModelChange(): Promise<void> {
       if (model && !isModelAllowed(model)) {
         onDone(
@@ -201,7 +202,8 @@ function SetModelAndClose({
       try {
         // Don't use parseUserSpecifiedModel for non-aliases since it lowercases the input
         // and model names are case-sensitive
-        const { valid, error } = await validateModel(model);
+        const { valid, error } = await validateModel(model, controller.signal);
+        if (controller.signal.aborted) return;
 
         if (valid) {
           setModel(model);
@@ -211,6 +213,7 @@ function SetModelAndClose({
           });
         }
       } catch (error) {
+        if (controller.signal.aborted) return;
         onDone(tf('Failed to validate model: {error}', { error: (error as Error).message }), {
           display: 'system',
         });
@@ -256,6 +259,7 @@ function SetModelAndClose({
     }
 
     void handleModelChange();
+    return () => controller.abort();
   }, [model, onDone, setAppState]);
 
   return null;

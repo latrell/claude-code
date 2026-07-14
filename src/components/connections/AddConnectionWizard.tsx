@@ -11,10 +11,11 @@ import {
   supportsRemoteModelList,
   type RemoteModel,
 } from '../../services/connections/modelCatalog.js';
-import { withContextWindow, withPinnedModel, withThinkingEffort } from '../../services/connections/profile.js';
+import { withContextWindow, withPinnedModel } from '../../services/connections/profile.js';
 import { generateConnectionId, listConnections, upsertConnection } from '../../services/connections/store.js';
-import type { Connection, ConnectionKind, ThinkingEffort, TierModels } from '../../services/connections/types.js';
+import type { Connection, ConnectionKind, TierModels } from '../../services/connections/types.js';
 import { saveCurrentOAuthAccountToSlot } from '../../services/connections/oauthAccounts.js';
+import { useAppState } from '../../state/AppState.js';
 import {
   CHINA_LLM_PROVIDERS,
   resolveChinaProviderBaseURL,
@@ -27,6 +28,7 @@ import { Select } from '../CustomSelect/select.js';
 import { ChatGPTDeviceLogin } from './ChatGPTDeviceLogin.js';
 import { CursorDeviceLogin } from './CursorDeviceLogin.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
+import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
 
 type WizardStep =
   | { step: 'kind' }
@@ -94,19 +96,8 @@ function hasContextStep(kind: ConnectionKind): boolean {
   return kind !== 'anthropic-oauth' && kind !== 'chatgpt-oauth';
 }
 
-const EFFORT_CHOICES: Array<{ value: ThinkingEffort; label: () => string }> = [
-  { value: 'off', label: () => t('Off — disable thinking') },
-  { value: 'low', label: () => t('Low') },
-  { value: 'medium', label: () => t('Medium') },
-  { value: 'high', label: () => t('High') },
-  { value: 'max', label: () => t('Max') },
-];
-
-function isThinkingEffort(value: string): value is ThinkingEffort {
-  return value === 'off' || value === 'low' || value === 'medium' || value === 'high' || value === 'max';
-}
-
 export function AddConnectionWizard({ onCreated, onCancel }: Props): React.ReactNode {
+  const appStateEffort = useAppState(state => state.effortValue);
   const [step, setStep] = useState<WizardStep>({ step: 'kind' });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [remoteModels, setRemoteModels] = useState<RemoteModel[]>([]);
@@ -572,26 +563,14 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       return (
         <Box key="step-profile-effort" flexDirection="column" gap={1}>
           <Text bold>{tf('Thinking effort — {label}', { label: draft.label })}</Text>
-          <Text dimColor>{t('Applied while this connection is active (Default = provider behavior)')}</Text>
-          <Select
-            options={[
-              { label: t('Default (not set)'), value: 'default' },
-              ...EFFORT_CHOICES.map(choice => ({
-                label: choice.label(),
-                value: choice.value as string,
-              })),
-              { label: t('Back'), value: '__back__' },
-            ]}
-            visibleOptionCount={8}
+          <Text dimColor>
+            {t('Configured value → actual request value (environment and /effort overrides take priority)')}
+          </Text>
+          <ThinkingEffortPicker
+            connection={draft}
+            appStateEffort={appStateEffort}
             onCancel={() => setStep({ step: 'profile-model', draft, back })}
-            onChange={value => {
-              if (value === '__back__') {
-                setStep({ step: 'profile-model', draft, back });
-                return;
-              }
-              const next = withThinkingEffort(draft, isThinkingEffort(value) ? value : undefined);
-              afterEffortStep(next, back);
-            }}
+            onChange={next => afterEffortStep(next, back)}
           />
         </Box>
       );

@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { SessionEvent } from './event-bus'
 import { getEventBus } from './event-bus'
 import { toClientPayload } from './client-payload'
+import { registerWorkerTransport } from './worker-transports'
 
 export interface SSEWriter {
   send(event: SessionEvent): void
@@ -49,10 +50,33 @@ export function createSSEWriter(c: Context): SSEWriter {
 /** Create SSE response stream for a session */
 export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
   const bus = getEventBus(sessionId)
+  let cleanup: ((closeController: boolean) => void) | undefined
 
-  const stream = new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder()
+      let cleanedUp = false
+      let keepalive: ReturnType<typeof setInterval> | undefined
+      let unsub = () => {}
+      let unsubBusClose = () => {}
+
+      const onAbort = () => cleanupStream(true)
+      const cleanupStream = (closeController: boolean) => {
+        if (cleanedUp) return
+        cleanedUp = true
+        unsub()
+        unsubBusClose()
+        if (keepalive) clearInterval(keepalive)
+        c.req.raw.signal.removeEventListener('abort', onAbort)
+        if (closeController) {
+          try {
+            controller.close()
+          } catch {
+            // already closed
+          }
+        }
+      }
+      cleanup = cleanupStream
 
       // Send historical events if reconnecting
       if (fromSeqNum > 0) {
@@ -76,7 +100,7 @@ export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
       controller.enqueue(encoder.encode(': keepalive\n\n'))
 
       // Subscribe to new events
-      const unsub = bus.subscribe(event => {
+      unsub = bus.subscribe(event => {
         const data = JSON.stringify({
           type: event.type,
           payload: event.payload,
@@ -93,30 +117,25 @@ export function createSSEStream(c: Context, sessionId: string, fromSeqNum = 0) {
             ),
           )
         } catch {
-          unsub()
+          cleanupStream(false)
         }
       })
 
       // Keepalive interval
-      const keepalive = setInterval(() => {
+      keepalive = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': keepalive\n\n'))
         } catch {
-          clearInterval(keepalive)
-          unsub()
+          cleanupStream(false)
         }
       }, 15000)
 
-      // Cleanup on abort
-      c.req.raw.signal.addEventListener('abort', () => {
-        unsub()
-        clearInterval(keepalive)
-        try {
-          controller.close()
-        } catch {
-          // already closed
-        }
-      })
+      unsubBusClose = bus.onClose(() => cleanupStream(true))
+      c.req.raw.signal.addEventListener('abort', onAbort)
+      if (c.req.raw.signal.aborted) cleanupStream(true)
+    },
+    cancel() {
+      cleanup?.(false)
     },
   })
 
@@ -193,15 +212,43 @@ export function createWorkerEventStream(
   fromSeqNum = 0,
 ) {
   const bus = getEventBus(sessionId)
+  let cleanup: ((closeController: boolean) => void) | undefined
 
-  const stream = new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder()
+      let cleanedUp = false
+      let keepalive: ReturnType<typeof setInterval> | undefined
+      let unsub = () => {}
+      let unsubBusClose = () => {}
+      const unregisterWorkerTransport = registerWorkerTransport(sessionId)
+
+      const onAbort = () => cleanupStream(true)
+      const cleanupStream = (closeController: boolean) => {
+        if (cleanedUp) return
+        cleanedUp = true
+        unsub()
+        unsubBusClose()
+        unregisterWorkerTransport()
+        if (keepalive) clearInterval(keepalive)
+        c.req.raw.signal.removeEventListener('abort', onAbort)
+        if (closeController) {
+          try {
+            controller.close()
+          } catch {
+            // already closed
+          }
+        }
+      }
+      cleanup = cleanupStream
 
       if (fromSeqNum > 0) {
         const missed = bus
           .getEventsSince(fromSeqNum)
-          .filter(event => event.direction === 'outbound')
+          .filter(
+            event =>
+              event.direction === 'outbound' && event.type !== 'interrupt',
+          )
         for (const event of missed) {
           controller.enqueue(encoder.encode(toWorkerClientFrame(event)))
         }
@@ -209,35 +256,31 @@ export function createWorkerEventStream(
 
       controller.enqueue(encoder.encode(': keepalive\n\n'))
 
-      const unsub = bus.subscribe(event => {
+      unsub = bus.subscribe(event => {
         if (event.direction !== 'outbound') {
           return
         }
         try {
           controller.enqueue(encoder.encode(toWorkerClientFrame(event)))
         } catch {
-          unsub()
+          cleanupStream(false)
         }
       })
 
-      const keepalive = setInterval(() => {
+      keepalive = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': keepalive\n\n'))
         } catch {
-          clearInterval(keepalive)
-          unsub()
+          cleanupStream(false)
         }
       }, 15000)
 
-      c.req.raw.signal.addEventListener('abort', () => {
-        unsub()
-        clearInterval(keepalive)
-        try {
-          controller.close()
-        } catch {
-          // already closed
-        }
-      })
+      unsubBusClose = bus.onClose(() => cleanupStream(true))
+      c.req.raw.signal.addEventListener('abort', onAbort)
+      if (c.req.raw.signal.aborted) cleanupStream(true)
+    },
+    cancel() {
+      cleanup?.(false)
     },
   })
 

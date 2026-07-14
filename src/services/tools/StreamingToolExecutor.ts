@@ -426,9 +426,14 @@ export class StreamingToolExecutor {
     tool.promise = promise
 
     // Process more queue when done
-    void promise.finally(() => {
-      void this.processQueue()
-    })
+    void promise.then(
+      () => {
+        void this.processQueue()
+      },
+      () => {
+        void this.processQueue()
+      },
+    )
   }
 
   /**
@@ -482,41 +487,57 @@ export class StreamingToolExecutor {
       return
     }
 
-    while (this.hasUnfinishedTools()) {
-      await this.processQueue()
+    try {
+      while (this.hasUnfinishedTools()) {
+        await this.processQueue()
+
+        for (const result of this.getCompletedResults()) {
+          yield result
+        }
+
+        // If we still have executing tools but nothing completed, wait for any to complete
+        // OR for progress to become available
+        if (
+          this.hasExecutingTools() &&
+          !this.hasCompletedResults() &&
+          !this.hasPendingProgress()
+        ) {
+          const executingPromises = this.tools
+            .filter(t => t.status === 'executing' && t.promise)
+            .map(t => t.promise!)
+
+          // Also wait for progress to become available
+          const progressPromise = new Promise<void>(resolve => {
+            this.progressAvailableResolve = resolve
+          })
+
+          if (executingPromises.length > 0) {
+            await Promise.race([...executingPromises, progressPromise])
+          }
+        }
+      }
 
       for (const result of this.getCompletedResults()) {
         yield result
       }
+    } finally {
+      this.progressAvailableResolve?.()
+      this.progressAvailableResolve = undefined
 
-      // If we still have executing tools but nothing completed, wait for any to complete
-      // OR for progress to become available
-      if (
-        this.hasExecutingTools() &&
-        !this.hasCompletedResults() &&
-        !this.hasPendingProgress()
-      ) {
-        const executingPromises = this.tools
-          .filter(t => t.status === 'executing' && t.promise)
-          .map(t => t.promise!)
-
-        // Also wait for progress to become available
-        const progressPromise = new Promise<void>(resolve => {
-          this.progressAvailableResolve = resolve
-        })
-
-        if (executingPromises.length > 0) {
-          await Promise.race([...executingPromises, progressPromise])
+      // An early consumer return or exception must not leave tools running
+      // without an owner. Normal completion has already yielded every tool.
+      if (this.hasUnfinishedTools() && !this.discarded) {
+        this.siblingAbortController.abort('stream_consumer_cancelled')
+        for (const tool of this.tools) {
+          if (tool.status !== 'yielded') {
+            markToolUseAsComplete(this.toolUseContext, tool.id)
+          }
         }
       }
-    }
 
-    for (const result of this.getCompletedResults()) {
-      yield result
+      endToolBatchSpan(this.turnSpan)
+      this.turnSpan = null
     }
-
-    endToolBatchSpan(this.turnSpan)
-    this.turnSpan = null
   }
 
   /**

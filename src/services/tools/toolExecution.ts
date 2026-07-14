@@ -65,6 +65,7 @@ import {
   AbortError,
   errorMessage,
   getErrnoCode,
+  isAbortError,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
@@ -496,6 +497,24 @@ export async function* runToolUse(
       yield update
     }
   } catch (error) {
+    if (toolUseContext.abortController.signal.aborted || isAbortError(error)) {
+      logEvent('tengu_tool_use_cancelled', {
+        toolName: sanitizeToolNameForAnalytics(tool.name),
+        toolUseID:
+          toolUse.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        isMcp: tool.isMcp ?? false,
+      })
+      const content = createToolResultStopMessage(toolUse.id)
+      content.content = withMemoryCorrectionHint(CANCEL_MESSAGE)
+      yield {
+        message: createUserMessage({
+          content: [content],
+          toolUseResult: CANCEL_MESSAGE,
+          sourceToolAssistantUUID: assistantMessage.uuid,
+        }),
+      }
+      return
+    }
     logError(error)
     const errorMessage = error instanceof Error ? error.message : String(error)
     const toolInfo = tool ? ` (${tool.name})` : ''
@@ -535,7 +554,11 @@ function streamedCheckPermissionsAndCallTool(
   //
   // Ideally the progress reporting and tool call reporting would
   // be via separate mechanisms.
-  const stream = new Stream<MessageUpdateLazy>()
+  const stream = new Stream<MessageUpdateLazy>(() => {
+    if (!toolUseContext.abortController.signal.aborted) {
+      toolUseContext.abortController.abort('stream_consumer_cancelled')
+    }
+  })
   checkPermissionsAndCallTool(
     tool,
     toolUseID,
@@ -726,6 +749,9 @@ async function checkPermissionsAndCallTool(
     parsedInput.data,
     toolUseContext,
   )
+  if (toolUseContext.abortController.signal.aborted) {
+    throw new AbortError('Tool execution was cancelled')
+  }
   if (isValidCall?.result === false) {
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
@@ -902,6 +928,9 @@ async function checkPermissionsAndCallTool(
         return resultingMessages
     }
   }
+  if (toolUseContext.abortController.signal.aborted) {
+    throw new AbortError('Tool execution was cancelled')
+  }
   const preToolHookDurationMs = Date.now() - preToolHookStart
   getStatsStore()?.observe('pre_tool_hook_duration_ms', preToolHookDurationMs)
   if (preToolHookDurationMs >= SLOW_PHASE_LOG_THRESHOLD_MS) {
@@ -969,6 +998,9 @@ async function checkPermissionsAndCallTool(
     assistantMessage,
     toolUseID,
   )
+  if (toolUseContext.abortController.signal.aborted) {
+    throw new AbortError('Tool execution was cancelled')
+  }
   const permissionDecision = resolved.decision
   processedInput = resolved.input
   const permissionDurationMs = Date.now() - permissionStart
@@ -1253,8 +1285,11 @@ async function checkPermissionsAndCallTool(
     //
     // The invoke lambda is shared between the flag-on (wrapper) and flag-off
     // (direct) paths so that post-call processing is never duplicated.
-    const invokeToolCall = () =>
-      tool.call(
+    const invokeToolCall = () => {
+      if (toolUseContext.abortController.signal.aborted) {
+        throw new AbortError('Tool execution was cancelled')
+      }
+      return tool.call(
         callInput,
         {
           ...toolUseContext,
@@ -1270,6 +1305,7 @@ async function checkPermissionsAndCallTool(
           })
         },
       )
+    }
     // Fast-path: skip wrapper entirely when skill-learning is disabled to
     // avoid even the cached-import resolution on the hot path.
     const result = isSkillLearningEnabled()
@@ -1284,6 +1320,9 @@ async function checkPermissionsAndCallTool(
           )
         })()
       : await invokeToolCall()
+    if (toolUseContext.abortController.signal.aborted) {
+      throw new AbortError('Tool execution was cancelled')
+    }
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
 
@@ -1670,6 +1709,10 @@ async function checkPermissionsAndCallTool(
       error: errorMessage(error),
     })
     endToolSpan()
+
+    if (toolUseContext.abortController.signal.aborted || isAbortError(error)) {
+      throw new AbortError('Tool execution was cancelled')
+    }
 
     // Record error observation in Langfuse (no-op if not configured)
     recordToolObservation(toolUseContext.langfuseTrace ?? null, {

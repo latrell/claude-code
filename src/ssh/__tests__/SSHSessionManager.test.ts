@@ -10,9 +10,12 @@ import type { Subprocess } from 'bun'
 function createMockSubprocess(options?: {
   exitCode?: number | null
   stdoutLines?: string[]
+  pid?: number
+  onStdoutCancel?: () => void | Promise<void>
 }): {
   proc: Subprocess
   writeToStdout: (data: string) => void
+  readStdin: () => string
   simulateExit: (code?: number) => void
 } {
   let stdoutController: ReadableStreamDefaultController<Uint8Array>
@@ -28,6 +31,9 @@ function createMockSubprocess(options?: {
           controller.enqueue(encoder.encode(line + '\n'))
         }
       }
+    },
+    cancel() {
+      return options?.onStdoutCancel?.()
     },
   })
 
@@ -55,7 +61,7 @@ function createMockSubprocess(options?: {
     },
     exited,
     kill: mock(() => {}),
-    pid: 12345,
+    pid: options?.pid ?? 12345,
     killed: false,
     signalCode: null,
     ref: () => {},
@@ -67,6 +73,11 @@ function createMockSubprocess(options?: {
     writeToStdout(data: string) {
       const encoder = new TextEncoder()
       stdoutController.enqueue(encoder.encode(data + '\n'))
+    },
+    readStdin() {
+      return new TextDecoder().decode(
+        Uint8Array.from(stdinChunks.flatMap(chunk => [...chunk])),
+      )
     },
     simulateExit(code = 0) {
       exitCode = code
@@ -148,28 +159,92 @@ describe('SSHSessionManagerImpl', () => {
     expect(opts.state.connectedCount).toBe(1)
   })
 
-  test('disconnect() sets disconnected state and kills process', () => {
+  test('disconnect() waits for confirmed process-tree termination', async () => {
     const { proc } = createMockSubprocess()
     const opts = createMockOptions()
-    const manager = new SSHSessionManagerImpl(proc, opts)
+    let resolveTermination!: (confirmed: boolean) => void
+    const terminationSettlement = new Promise<boolean>(resolve => {
+      resolveTermination = resolve
+    })
+    const terminate = mock(() => terminationSettlement)
+    const manager = new SSHSessionManagerImpl(proc, opts, terminate)
 
     manager.connect()
-    manager.disconnect()
+    let settled = false
+    const disconnect = manager.disconnect().then(confirmed => {
+      settled = true
+      return confirmed
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(manager.isConnected()).toBe(false)
-    expect((proc.kill as ReturnType<typeof mock>).mock.calls.length).toBe(1)
+    expect(settled).toBe(false)
+    expect(terminate).toHaveBeenCalledTimes(1)
+    expect(terminate).toHaveBeenCalledWith(proc)
+
+    resolveTermination(true)
+    expect(await disconnect).toBe(true)
+    expect(proc.kill as ReturnType<typeof mock>).not.toHaveBeenCalled()
   })
 
-  test('disconnect() is idempotent', () => {
+  test('concurrent disconnect() calls share one termination attempt', async () => {
     const { proc } = createMockSubprocess()
     const opts = createMockOptions()
-    const manager = new SSHSessionManagerImpl(proc, opts)
+    const terminate = mock(async () => true)
+    const manager = new SSHSessionManagerImpl(proc, opts, terminate)
 
     manager.connect()
-    manager.disconnect()
-    manager.disconnect()
+    const first = manager.disconnect()
+    const second = manager.disconnect()
 
-    expect((proc.kill as ReturnType<typeof mock>).mock.calls.length).toBe(1)
+    expect(first).toBe(second)
+    expect(await first).toBe(true)
+    expect(await manager.disconnect()).toBe(true)
+    expect(terminate).toHaveBeenCalledTimes(1)
+  })
+
+  test('failed termination remains retryable and is not reported as complete', async () => {
+    const { proc } = createMockSubprocess()
+    const opts = createMockOptions()
+    const outcomes = [false, true]
+    const terminate = mock(async () => outcomes.shift() ?? false)
+    const manager = new SSHSessionManagerImpl(proc, opts, terminate)
+
+    manager.connect()
+    expect(await manager.disconnect()).toBe(false)
+    expect(opts.state.errors.at(-1)?.message).toContain('process tree')
+
+    expect(await manager.disconnect()).toBe(true)
+    expect(terminate).toHaveBeenCalledTimes(2)
+  })
+
+  test('disconnect waits for stdout cancellation before confirming', async () => {
+    let releaseCancel!: () => void
+    const cancelSettlement = new Promise<void>(resolve => {
+      releaseCancel = resolve
+    })
+    const { proc } = createMockSubprocess({
+      onStdoutCancel: () => cancelSettlement,
+    })
+    const terminate = mock(async () => true)
+    const manager = new SSHSessionManagerImpl(
+      proc,
+      createMockOptions(),
+      terminate,
+    )
+    manager.connect()
+
+    let settled = false
+    const disconnect = manager.disconnect().then(result => {
+      settled = true
+      return result
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    expect(terminate).toHaveBeenCalledTimes(1)
+
+    releaseCancel()
+    expect(await disconnect).toBe(true)
   })
 
   test('processLine routes SDK messages to onMessage', async () => {
@@ -262,22 +337,70 @@ describe('SSHSessionManagerImpl', () => {
     expect(result).toBe(true)
   })
 
-  test('sendInterrupt writes interrupt control request', () => {
-    const { proc } = createMockSubprocess()
+  test('sendInterrupt waits for the matching acknowledgement', async () => {
+    const { proc, writeToStdout, readStdin } = createMockSubprocess()
     const opts = createMockOptions()
-    const manager = new SSHSessionManagerImpl(proc, opts)
+    const manager = new SSHSessionManagerImpl(proc, opts, async () => true)
 
     manager.connect()
-    manager.sendInterrupt()
+    const interrupt = manager.sendInterrupt()
+    const request = JSON.parse(readStdin().trim()) as {
+      request_id: string
+      request: { subtype: string }
+    }
 
-    const stdin = proc.stdin as unknown as { write: ReturnType<typeof mock> }
-    expect(stdin.write).toBeDefined()
+    expect(request.request.subtype).toBe('interrupt')
+    writeToStdout(
+      JSON.stringify({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: request.request_id,
+          response: {},
+        },
+      }),
+    )
+
+    expect(await interrupt).toBe(true)
+    await manager.disconnect()
+  })
+
+  test('a new message cannot overtake an unacknowledged interrupt', async () => {
+    const { proc, writeToStdout, readStdin } = createMockSubprocess()
+    const manager = new SSHSessionManagerImpl(
+      proc,
+      createMockOptions(),
+      async () => true,
+    )
+    manager.connect()
+
+    const interrupt = manager.sendInterrupt()
+    const request = JSON.parse(readStdin().trim()) as { request_id: string }
+    const nextMessage = manager.sendMessage('next turn')
+    await Promise.resolve()
+    expect(readStdin()).not.toContain('next turn')
+
+    writeToStdout(
+      JSON.stringify({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: request.request_id,
+          response: {},
+        },
+      }),
+    )
+
+    expect(await interrupt).toBe(true)
+    expect(await nextMessage).toBe(true)
+    expect(readStdin()).toContain('next turn')
+    await manager.disconnect()
   })
 
   test('respondToPermissionRequest sends allow response', () => {
     const { proc } = createMockSubprocess()
     const opts = createMockOptions()
-    const manager = new SSHSessionManagerImpl(proc, opts)
+    const manager = new SSHSessionManagerImpl(proc, opts, async () => true)
 
     manager.connect()
     manager.respondToPermissionRequest('req-123', {
@@ -322,15 +445,43 @@ describe('SSHSessionManagerImpl', () => {
       },
       maxReconnectAttempts: 3,
     })
-    const manager = new SSHSessionManagerImpl(proc, opts)
+    const manager = new SSHSessionManagerImpl(proc, opts, async () => true)
 
     manager.connect()
-    manager.disconnect()
+    await manager.disconnect()
 
     await new Promise(r => setTimeout(r, 200))
 
     expect(reconnectCalled).toBe(false)
     expect(opts.state.reconnectingCalls.length).toBe(0)
+  })
+
+  test('disconnect waits for an in-flight reconnect and stops its late process', async () => {
+    const { proc: firstProc, simulateExit } = createMockSubprocess({ pid: 101 })
+    const { proc: lateProc } = createMockSubprocess({ pid: 202 })
+    let resolveReconnect!: (proc: Subprocess) => void
+    const reconnect = mock(
+      () =>
+        new Promise<Subprocess>(resolve => {
+          resolveReconnect = resolve
+        }),
+    )
+    const opts = createMockOptions({ reconnect, maxReconnectAttempts: 1 })
+    const terminate = mock(async () => true)
+    const manager = new SSHSessionManagerImpl(firstProc, opts, terminate)
+    manager.connect()
+    simulateExit(1)
+
+    await new Promise(resolve => setTimeout(resolve, 2_100))
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    const disconnect = manager.disconnect()
+    await Promise.resolve()
+    resolveReconnect(lateProc)
+
+    expect(await disconnect).toBe(true)
+    expect(terminate).toHaveBeenCalledWith(firstProc)
+    expect(terminate).toHaveBeenCalledWith(lateProc)
   })
 
   test('invalid JSON lines are silently skipped', async () => {

@@ -26,6 +26,7 @@ import {
   isFirstPartyAnthropicBaseUrl,
 } from 'src/utils/model/providers.js'
 import type { ProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
+import type { ThinkingEffortTransport } from 'src/services/connections/types.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -739,6 +740,8 @@ export type Options = {
   skipCacheWrite?: boolean
   temperatureOverride?: number
   effortValue?: EffortValue
+  /** OpenAI-compatible Chat Completions effort wire encoding. */
+  thinkingEffortTransport?: ThinkingEffortTransport
   mcpTools: Tools
   hasPendingMcpServers?: boolean
   queryTracking?: QueryChainTracking
@@ -1657,6 +1660,12 @@ async function* queryModel(
     }
   }
 
+  // The SDK receives `signal` when creating the request, but do not rely on
+  // every SDK/provider transport to propagate it from the outer signal to an
+  // already-open response body. Actively abort both the SDK stream controller
+  // and the raw Response body as soon as the turn is cancelled.
+  const releaseStreamOnAbort = (): void => releaseStreamResources()
+
   // Consume pending cache edits ONCE before paramsFromContext is defined.
   // paramsFromContext is called multiple times (logging, retries), so consuming
   // inside it would cause the first call to steal edits from subsequent calls.
@@ -1925,6 +1934,7 @@ async function* queryModel(
   let isFastModeRequest = isFastMode // Keep separate state as it may change if falling back
   let isAdvisorInProgress = false
 
+  signal.addEventListener('abort', releaseStreamOnAbort, { once: true })
   try {
     queryCheckpoint('query_client_creation_start')
     const generator = withRetry(
@@ -2999,6 +3009,7 @@ async function* queryModel(
       return
     }
   } finally {
+    signal.removeEventListener('abort', releaseStreamOnAbort)
     stopSessionActivity('api_call')
     // Must be in the finally block: if the generator is terminated early
     // via .return() (e.g. consumer breaks out of for-await-of, or query.ts

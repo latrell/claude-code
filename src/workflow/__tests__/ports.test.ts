@@ -12,6 +12,7 @@ import { createProgressStoreFromBus } from '../progress/store.js'
 import { getProjectRoot } from '../../bootstrap/state.js'
 import type { SetAppState } from '../../Task.js'
 import type { AppState } from '../../state/AppState.tsx'
+import { killWorkflowTask } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 
 test('buildRegistry registers claude-code as default and resolve hits', () => {
   const reg = buildRegistry()
@@ -64,6 +65,7 @@ test('taskRegistrar.register/complete/kill routes via RunBinding (real setAppSta
       agentId: 'a-1',
       toolUseId: 'tu-1',
       setAppState,
+      abortController: new AbortController(),
     },
     canUseTool: (() => Promise.resolve({ behavior: 'allow' })) as never,
     parentMessage: {} as never,
@@ -80,6 +82,9 @@ test('taskRegistrar.register/complete/kill routes via RunBinding (real setAppSta
   )
   expect(typeof runId).toBe('string')
   expect(signal).toBeInstanceOf(AbortSignal)
+  expect((Object.values(state.tasks)[0] as { agentId?: string }).agentId).toBe(
+    'a-1',
+  )
 
   // complete/fail/kill do not throw (RunBinding hit)
   expect(() => ports.taskRegistrar.complete(runId, 'done')).not.toThrow()
@@ -93,8 +98,86 @@ test('taskRegistrar.register/complete/kill routes via RunBinding (real setAppSta
   ports.taskRegistrar.kill(runId)
 })
 
+test('parent tool abort propagates to run signal and kill settles only on finishKill', async () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const tr = ports.taskRegistrar as Required<typeof ports.taskRegistrar>
+  const state = { tasks: {} } as unknown as AppState
+  const setAppState: SetAppState = f => {
+    Object.assign(state, f(state))
+  }
+  const parentAbort = new AbortController()
+  const hostCtx = ports.hostFactory({
+    context: {
+      agentId: 'a-1',
+      toolUseId: 'tu-1',
+      setAppState,
+      abortController: parentAbort,
+    },
+    canUseTool: (() => Promise.resolve({ behavior: 'allow' })) as never,
+    parentMessage: {} as never,
+  })
+  const { runId, signal } = tr.register(
+    { workflowName: 'wf', toolUseId: 'tu-1' },
+    hostCtx.handle,
+  )
+
+  parentAbort.abort()
+  expect(signal.aborted).toBe(true)
+  expect((Object.values(state.tasks)[0] as { status: string }).status).toBe(
+    'running',
+  )
+
+  const settlement = Promise.resolve(tr.kill(runId))
+  tr.finishKill(runId)
+  expect(await settlement).toBe(true)
+  expect((Object.values(state.tasks)[0] as { status: string }).status).toBe(
+    'killed',
+  )
+})
+
+test('workflow Stop rejects when terminal task state cannot be published and remains retryable', async () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const tr = ports.taskRegistrar as Required<typeof ports.taskRegistrar>
+  const state = { tasks: {} } as unknown as AppState
+  const publicationError = new Error('state publication failed')
+  let failKilledPublication = true
+  const setAppState: SetAppState = f => {
+    const next = f(state)
+    const publishedKilled = Object.values(next.tasks).some(
+      task => task.status === 'killed',
+    )
+    if (failKilledPublication && publishedKilled) throw publicationError
+    Object.assign(state, next)
+  }
+  const hostCtx = ports.hostFactory({
+    context: { agentId: 'a-1', toolUseId: 'tu-1', setAppState },
+    canUseTool: (() => Promise.resolve({ behavior: 'allow' })) as never,
+    parentMessage: {} as never,
+  })
+  const { runId } = tr.register(
+    { workflowName: 'wf', toolUseId: 'tu-1' },
+    hostCtx.handle,
+  )
+  const taskId = Object.keys(state.tasks)[0]!
+
+  const stopping = Promise.resolve(tr.kill(runId))
+  expect(() => tr.finishKill(runId)).toThrow(publicationError)
+  expect(await stopping.catch(error => error)).toBe(publicationError)
+  expect(state.tasks[taskId]?.status).toBe('running')
+
+  // The runner is already settled and the failed task remains visible. A
+  // later TaskStop retries only the terminal state publication.
+  failKilledPublication = false
+  expect(await killWorkflowTask(taskId, setAppState)).toBe(true)
+  expect(state.tasks[taskId]?.status).toBe('killed')
+})
+
 // agent-level kill bridge: register → killAgent precisely aborts; kill(runId) aborts all agents.
-test('taskRegistrar agentAbortControllers: register/killAgent precise abort; kill(runId) batch abort', () => {
+test('taskRegistrar kill aborts agents immediately and resolves after runner settlement', async () => {
   const bus = createProgressBus()
   const store = createProgressStoreFromBus(bus)
   const ports = createWorkflowPorts({ bus, store })
@@ -140,14 +223,23 @@ test('taskRegistrar agentAbortControllers: register/killAgent precise abort; kil
   expect(tr.killAgent('nope', 1)).toBe(false)
 
   // kill(runId) batch aborts remaining agent (ac2)
-  tr.kill(runId)
+  let killSettled = false
+  const killPromise = Promise.resolve(tr.kill(runId)).then(result => {
+    killSettled = true
+    return result
+  })
   expect(ac2.signal.aborted).toBe(true)
+  await Promise.resolve()
+  expect(killSettled).toBe(false)
+
+  tr.finishKill(runId)
+  expect(await killPromise).toBe(true)
 
   // after run terminal state binding is reclaimed: killAgent returns false
   expect(tr.killAgent(runId, 2)).toBe(false)
 })
 
-test('unregisterAgentAbort deletes from Map (backend finally cleanup idempotent)', () => {
+test('unregisterAgentAbort retains cancellation intent across the backend retry gap', () => {
   const bus = createProgressBus()
   const store = createProgressStoreFromBus(bus)
   const ports = createWorkflowPorts({ bus, store })
@@ -173,9 +265,12 @@ test('unregisterAgentAbort deletes from Map (backend finally cleanup idempotent)
   )
   const ac = new AbortController()
   tr.registerAgentAbort(runId, 5, ac)
-  // after unregister killAgent has no target, returns false (does not throw)
+  // Keep the id known after unregister: this may be the gap before hooks retries the backend.
   tr.unregisterAgentAbort(runId, 5)
-  expect(tr.killAgent(runId, 5)).toBe(false)
+  expect(tr.killAgent(runId, 5)).toBe(true)
+  const retryController = new AbortController()
+  tr.registerAgentAbort(runId, 5, retryController)
+  expect(retryController.signal.aborted).toBe(true)
   // repeat unregister idempotent (backend finally does not throw)
   expect(() => tr.unregisterAgentAbort(runId, 5)).not.toThrow()
   // unknown runId safe no-op

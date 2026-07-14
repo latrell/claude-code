@@ -1,5 +1,5 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk';
-import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../../i18n/t.js';
 import { useMainLoopModel } from '../../../../hooks/useMainLoopModel.js';
 import { Box, Byline, Text } from '@anthropic/ink';
@@ -29,9 +29,18 @@ export function GenerateStep(): ReactNode {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsGenerating(false);
+      updateWizardData({ isGenerating: false });
       setError(t('Generation cancelled'));
     }
-  }, []);
+  }, [updateWizardData]);
+
+  useEffect(
+    () => () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    },
+    [],
+  );
 
   // Use Settings context so 'n' key doesn't cancel (allows typing 'n' in prompt input)
   useKeybinding('confirm:no', handleCancelGeneration, {
@@ -88,11 +97,13 @@ export function GenerateStep(): ReactNode {
     });
 
     // Create abort controller for this generation
+    abortControllerRef.current?.abort();
     const controller = createAbortController();
     abortControllerRef.current = controller;
 
     try {
       const generated = await generateAgent(trimmedPrompt, model, [], controller.signal);
+      if (abortControllerRef.current !== controller || controller.signal.aborted) return;
 
       updateWizardData({
         agentType: generated.identifier,
@@ -106,6 +117,7 @@ export function GenerateStep(): ReactNode {
       // Skip directly to ToolsStep (index 6) - matching original flow
       goToStep(6);
     } catch (err) {
+      if (abortControllerRef.current !== controller) return;
       // Don't show error if it was cancelled (already set in escape handler)
       if (err instanceof APIUserAbortError) {
         // User cancelled - no error to show
@@ -114,8 +126,10 @@ export function GenerateStep(): ReactNode {
       }
       updateWizardData({ isGenerating: false });
     } finally {
-      setIsGenerating(false);
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        setIsGenerating(false);
+        abortControllerRef.current = null;
+      }
     }
   };
 

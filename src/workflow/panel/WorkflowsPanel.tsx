@@ -75,6 +75,8 @@ export function WorkflowsPanel({
   // kill secondary confirmation. null = no dialog; 'workflow' = kill the whole run; 'agent' = kill the currently selected agent.
   // When non-null the keyboard enters confirm mode (only y/Enter/n/Esc/q respond).
   const [confirmKill, setConfirmKill] = useState<null | 'agent' | 'workflow'>(null);
+  const [isStoppingWorkflow, setIsStoppingWorkflow] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   // On mount, trigger a single disk scan to hydrate historical runs (the service's internal persistedLoaded flag guards idempotency).
   // Re-mount / re-render does not scan again (guarded by the process-singleton flag). The svc reference is stable (getWorkflowService singleton).
@@ -164,7 +166,8 @@ export function WorkflowsPanel({
       setConfirmKill('agent');
     },
     killWorkflow: () => {
-      if (!focused) return;
+      if (!focused || isStoppingWorkflow) return;
+      setStopError(null);
       setConfirmKill('workflow');
     },
     resumeFocused: () => {
@@ -190,16 +193,25 @@ export function WorkflowsPanel({
     },
     confirmYes: () => {
       if (confirmKill === 'workflow' && focused) {
-        svc.kill(focused.runId);
-        // After killing the entire workflow, immediately return to the main chat: the run_done event -> the store reducer changes the status to
-        // killed -> notifications.ts bridges enqueuePendingNotification, and the main chat shows
-        // `Workflow "<name>" was stopped`. Staying on the panel would instead make the user miss the "stopped" feedback.
         setConfirmKill(null);
-        onDone();
+        setStopError(null);
+        setIsStoppingWorkflow(true);
+        // Return only after the detached runner has settled and emitted its killed terminal state.
+        // This prevents the UI from reporting a stop while an HTTP/SSE request is still active.
+        void requestWorkflowStop(() => svc.kill(focused.runId)).then(error => {
+          setIsStoppingWorkflow(false);
+          if (error) {
+            setStopError(error);
+            return;
+          }
+          onDone();
+        });
         return;
       } else if (confirmKill === 'agent' && focused) {
         const agent = visibleAgents[clampedAgent];
-        if (agent) svc.killAgent(focused.runId, agent.id);
+        if (agent) {
+          setStopError(requestWorkflowAgentStop(() => svc.killAgent(focused.runId, agent.id)));
+        }
       }
       setConfirmKill(null);
     },
@@ -261,11 +273,14 @@ export function WorkflowsPanel({
 
       <Box marginTop={1}>
         <Text color="subtle">
-          {confirmKill !== null
-            ? 'Confirm: y kill · n/Esc cancel'
-            : 'Tab switch run · ←/→ focus · ↑/↓ move · x kill agent · K kill workflow · r resume · q quit'}
+          {isStoppingWorkflow
+            ? 'Stopping workflow…'
+            : confirmKill !== null
+              ? 'Confirm: y kill · n/Esc cancel'
+              : 'Tab switch run · ←/→ focus · ↑/↓ move · x kill agent · K kill workflow · r resume · q quit'}
         </Text>
       </Box>
+      {stopError ? <Text color="error">{stopError}</Text> : null}
 
       {confirmKill !== null ? (
         <Dialog
@@ -287,4 +302,25 @@ export function WorkflowsPanel({
       ) : null}
     </Box>
   );
+}
+
+/**
+ * Normalize the workflow service's boolean/rejection contract for the panel.
+ * A non-null result is rendered inline, keeping the panel open for retry.
+ */
+export async function requestWorkflowStop(stop: () => Promise<boolean>): Promise<string | null> {
+  try {
+    return (await stop()) ? null : 'stop failed: workflow termination was not confirmed';
+  } catch (error) {
+    return `stop failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/** Surface a rejected single-agent cancellation request without closing UI. */
+export function requestWorkflowAgentStop(stop: () => boolean): string | null {
+  try {
+    return stop() ? null : 'stop failed: workflow agent termination was not accepted';
+  } catch (error) {
+    return `stop failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }

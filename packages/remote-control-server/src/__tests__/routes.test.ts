@@ -39,7 +39,13 @@ import {
 } from '../transport/event-bus'
 import { issueToken } from '../auth/token'
 import { publishSessionEvent } from '../services/transport'
+import { archiveSession } from '../services/session'
 import { encodeWebSocketAuthProtocol } from '../auth/middleware'
+import {
+  handleWebSocketMessage,
+  handleWebSocketOpen,
+} from '../transport/ws-handler'
+import { hasActiveWorkerTransport } from '../transport/worker-transports'
 
 // Import route modules
 import v1Sessions from '../routes/v1/sessions'
@@ -91,6 +97,52 @@ const AUTH_HEADERS = {
 function toWebSessionId(sessionId: string): string {
   if (!sessionId.startsWith('cse_')) return sessionId
   return `session_${sessionId.slice('cse_'.length)}`
+}
+
+function connectAcknowledgingWorker(
+  sessionId: string,
+  subtype: 'success' | 'error' = 'success',
+  afterAcknowledgement?: () => void,
+) {
+  const requestIds: string[] = []
+  let closed = false
+  const ws: any = {
+    readyState: 1,
+    send(data: string) {
+      for (const line of data.split('\n').filter(Boolean)) {
+        const message = JSON.parse(line)
+        if (
+          message.type !== 'control_request' ||
+          message.request?.subtype !== 'interrupt'
+        ) {
+          continue
+        }
+        requestIds.push(message.request_id)
+        handleWebSocketMessage(
+          ws,
+          sessionId,
+          `${JSON.stringify({
+            type: 'control_response',
+            response: {
+              subtype,
+              request_id: message.request_id,
+              ...(subtype === 'error' ? { error: 'interrupt rejected' } : {}),
+            },
+          })}\n`,
+        )
+        afterAcknowledgement?.()
+      }
+    },
+    close() {
+      closed = true
+      ws.readyState = 3
+    },
+  }
+  handleWebSocketOpen(ws, sessionId)
+  return {
+    requestIds,
+    wasClosed: () => closed,
+  }
 }
 
 describe('V1 Session Routes', () => {
@@ -198,6 +250,88 @@ describe('V1 Session Routes', () => {
       headers: AUTH_HEADERS,
     })
     expect(archiveRes.status).toBe(200)
+  })
+
+  test('POST /v1/sessions/:id/archive — waits for worker acknowledgement before closing transports', async () => {
+    const createRes = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const { id } = await resJson(createRes)
+    const registerRes = await app.request(
+      `/v1/code/sessions/${id}/worker/register`,
+      { method: 'POST', headers: AUTH_HEADERS },
+    )
+    expect(registerRes.status).toBe(200)
+    const worker = connectAcknowledgingWorker(id)
+
+    const archiveRes = await app.request(`/v1/sessions/${id}/archive`, {
+      method: 'POST',
+      headers: AUTH_HEADERS,
+    })
+
+    expect(archiveRes.status).toBe(200)
+    expect(worker.requestIds).toHaveLength(1)
+    expect(worker.wasClosed()).toBe(true)
+    expect(hasActiveWorkerTransport(id)).toBe(false)
+    expect(getAllEventBuses().has(id)).toBe(false)
+
+    const repeatedArchiveRes = await app.request(`/v1/sessions/${id}/archive`, {
+      method: 'POST',
+      headers: AUTH_HEADERS,
+    })
+    expect(repeatedArchiveRes.status).toBe(200)
+  })
+
+  test('POST /v1/sessions/:id/archive — leaves the session open when the worker rejects interruption', async () => {
+    const createRes = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const { id } = await resJson(createRes)
+    const worker = connectAcknowledgingWorker(id, 'error')
+
+    const archiveRes = await app.request(`/v1/sessions/${id}/archive`, {
+      method: 'POST',
+      headers: AUTH_HEADERS,
+    })
+
+    expect(archiveRes.status).toBe(503)
+    expect((await resJson(archiveRes)).error.reason).toBe('rejected')
+    expect(worker.wasClosed()).toBe(false)
+    expect(getAllEventBuses().has(id)).toBe(true)
+
+    const sessionRes = await app.request(`/v1/sessions/${id}`, {
+      headers: AUTH_HEADERS,
+    })
+    expect((await resJson(sessionRes)).status).toBe('idle')
+  })
+
+  test('POST /v1/sessions/:id/archive — archives an idle session after its worker disconnected', async () => {
+    const createRes = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const { id } = await resJson(createRes)
+    const registerRes = await app.request(
+      `/v1/code/sessions/${id}/worker/register`,
+      { method: 'POST', headers: AUTH_HEADERS },
+    )
+    expect(registerRes.status).toBe(200)
+
+    const archiveRes = await app.request(`/v1/sessions/${id}/archive`, {
+      method: 'POST',
+      headers: AUTH_HEADERS,
+    })
+
+    expect(archiveRes.status).toBe(200)
+    const sessionRes = await app.request(`/v1/sessions/${id}`, {
+      headers: AUTH_HEADERS,
+    })
+    expect((await resJson(sessionRes)).status).toBe('archived')
   })
 
   test('POST /v1/sessions/:id/archive — archives compat code session IDs', async () => {
@@ -1053,6 +1187,7 @@ describe('Web Control Routes', () => {
     )
     expect(controlRes.status).toBe(200)
 
+    connectAcknowledgingWorker(rawSessionId)
     const interruptRes = await app.request(
       `/web/sessions/${compatId}/interrupt?uuid=user-1`,
       {
@@ -1092,6 +1227,7 @@ describe('Web Control Routes', () => {
   })
 
   test('POST /web/sessions/:id/interrupt — interrupts session', async () => {
+    connectAcknowledgingWorker(sessionId)
     const res = await app.request(
       `/web/sessions/${sessionId}/interrupt?uuid=user-1`,
       {
@@ -1100,6 +1236,60 @@ describe('Web Control Routes', () => {
       },
     )
     expect(res.status).toBe(200)
+    const body = await resJson(res)
+    const interruptEvents = getEventBus(sessionId)
+      .getEventsSince(0)
+      .filter(event => event.type === 'interrupt')
+    expect(interruptEvents.map(event => event.direction)).toEqual([
+      'outbound',
+      'inbound',
+    ])
+    expect((interruptEvents[1].payload as any).request_id).toBe(body.request_id)
+  })
+
+  test('POST /web/sessions/:id/interrupt — does not report idle without a live worker', async () => {
+    const stateRes = await app.request(
+      `/v1/code/sessions/${sessionId}/worker/state`,
+      {
+        method: 'PUT',
+        headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'running' }),
+      },
+    )
+    expect(stateRes.status).toBe(200)
+
+    const res = await app.request(
+      `/web/sessions/${sessionId}/interrupt?uuid=user-1`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+
+    expect(res.status).toBe(503)
+    expect((await resJson(res)).error.reason).toBe('worker_unavailable')
+
+    const sessionRes = await app.request(`/v1/sessions/${sessionId}`, {
+      headers: AUTH_HEADERS,
+    })
+    expect((await resJson(sessionRes)).status).toBe('running')
+  })
+
+  test('POST /web/sessions/:id/interrupt — does not resurrect a concurrently archived session', async () => {
+    connectAcknowledgingWorker(sessionId, 'success', () => {
+      archiveSession(sessionId)
+    })
+
+    const res = await app.request(
+      `/web/sessions/${sessionId}/interrupt?uuid=user-1`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    )
+
+    expect(res.status).toBe(409)
+    const sessionRes = await app.request(`/v1/sessions/${sessionId}`, {
+      headers: AUTH_HEADERS,
+    })
+    expect((await resJson(sessionRes)).status).toBe('archived')
   })
 
   test('POST /web/sessions/:id/interrupt — 403 for non-owner', async () => {
@@ -2132,14 +2322,13 @@ describe('V2 Worker Events Routes', () => {
 
     await reader.read() // initial keepalive
 
-    const interruptRes = await app.request(
+    const interruptPromise = app.request(
       `/web/sessions/${id}/interrupt?uuid=user-1`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       },
     )
-    expect(interruptRes.status).toBe(200)
 
     const chunk = await reader.read()
     const frame = new TextDecoder().decode(chunk.value!)
@@ -2147,6 +2336,23 @@ describe('V2 Worker Events Routes', () => {
     expect(frame).toContain('"event_type":"interrupt"')
     expect(frame).toContain('"payload":{"type":"control_request"')
     expect(frame).toContain('"subtype":"interrupt"')
+
+    const dataLine = frame.split('\n').find(line => line.startsWith('data: '))
+    expect(dataLine).toBeTruthy()
+    const envelope = JSON.parse(dataLine!.slice('data: '.length))
+    const requestId = envelope.payload.request_id
+    const ackRes = await app.request(`/v1/code/sessions/${id}/worker/events`, {
+      method: 'POST',
+      headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'control_response',
+        response: { subtype: 'success', request_id: requestId },
+      }),
+    })
+    expect(ackRes.status).toBe(200)
+
+    const interruptRes = await interruptPromise
+    expect(interruptRes.status).toBe(200)
     reader.cancel()
   })
 

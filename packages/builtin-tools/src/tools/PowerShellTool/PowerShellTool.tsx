@@ -1087,7 +1087,10 @@ async function* runPowerShellCommand({
           // and incorrectly returns backgroundedByUser:true. (bugs 020/021)
           continue;
         }
-        shellCommand.kill();
+        const confirmed = await shellCommand.kill();
+        if (!confirmed) {
+          throw new Error('Unable to confirm PowerShell process stopped');
+        }
       }
 
       // Check if this foreground task was backgrounded via backgroundAll() (ctrl+b)

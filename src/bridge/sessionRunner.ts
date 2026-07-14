@@ -4,6 +4,13 @@ import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { createInterface } from 'readline'
 import { t } from '../i18n/t.js'
+import {
+  isProcessTreeAlive,
+  signalProcessTree,
+  terminateWithEscalation,
+  waitForTermination,
+  type TerminationSignal,
+} from '../utils/processTermination.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 import { debugTruncate } from './debugUtils.js'
 import type {
@@ -338,6 +345,9 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
         windowsHide: true,
+        // A dedicated POSIX process group lets cancellation reliably reach
+        // shell/tool descendants even if the CLI process exits first.
+        detached: process.platform !== 'win32',
       })
 
       deps.onDebug(
@@ -347,8 +357,32 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
       const activities: SessionActivity[] = []
       let currentActivity: SessionActivity | null = null
       const lastStderr: string[] = []
+      const processTreeOptions = {
+        isolatedProcessGroup: process.platform !== 'win32',
+      }
+      let closed = false
+      let terminationRequested = false
+      let termSent = false
       let sigkillSent = false
+      let terminationPromise: Promise<boolean> | null = null
       let firstUserMessageSeen = false
+
+      const signalTree = async (signal: TerminationSignal): Promise<void> => {
+        const pid = child.pid
+        if (!pid || !isProcessTreeAlive(pid, processTreeOptions)) return
+        if (signal === 'SIGTERM') {
+          if (termSent) return
+          termSent = true
+        } else {
+          if (sigkillSent) return
+          sigkillSent = true
+        }
+        terminationRequested = true
+        deps.onDebug(
+          `[bridge:session] Sending ${signal} to process tree sessionId=${opts.sessionId} pid=${pid}`,
+        )
+        await signalProcessTree(pid, signal, processTreeOptions)
+      }
 
       // Buffer stderr for error diagnostics
       if (child.stderr) {
@@ -448,13 +482,18 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
 
       const done = new Promise<SessionDoneStatus>(resolve => {
         child.on('close', (code, signal) => {
+          closed = true
           // Close transcript stream on exit
           if (transcriptStream) {
             transcriptStream.end()
             transcriptStream = null
           }
 
-          if (signal === 'SIGTERM' || signal === 'SIGINT') {
+          if (
+            terminationRequested ||
+            signal === 'SIGTERM' ||
+            signal === 'SIGINT'
+          ) {
             deps.onDebug(
               `[bridge:session] sessionId=${opts.sessionId} interrupted signal=${signal} pid=${child.pid}`,
             )
@@ -489,33 +528,29 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
         get currentActivity(): SessionActivity | null {
           return currentActivity
         },
-        kill(): void {
-          if (!child.killed) {
-            deps.onDebug(
-              `[bridge:session] Sending SIGTERM to sessionId=${opts.sessionId} pid=${child.pid}`,
-            )
-            // On Windows, child.kill('SIGTERM') throws; use default signal.
-            if (process.platform === 'win32') {
-              child.kill()
-            } else {
-              child.kill('SIGTERM')
-            }
-          }
-        },
-        forceKill(): void {
-          // Use separate flag because child.killed is set when kill() is called,
-          // not when the process exits. We need to send SIGKILL even after SIGTERM.
-          if (!sigkillSent && child.pid) {
-            sigkillSent = true
-            deps.onDebug(
-              `[bridge:session] Sending SIGKILL to sessionId=${opts.sessionId} pid=${child.pid}`,
-            )
-            if (process.platform === 'win32') {
-              child.kill()
-            } else {
-              child.kill('SIGKILL')
-            }
-          }
+        terminate(graceMs = 5_000, forceWaitMs = 5_000): Promise<boolean> {
+          if (terminationPromise) return terminationPromise
+
+          terminationRequested = true
+          terminationPromise = terminateWithEscalation({
+            signal: signalTree,
+            waitForExit: timeoutMs =>
+              waitForTermination(
+                () =>
+                  closed &&
+                  (!child.pid ||
+                    !isProcessTreeAlive(child.pid, processTreeOptions)),
+                timeoutMs,
+              ),
+            graceMs,
+            forceWaitMs,
+            onSignalError: (signal, error) => {
+              deps.onDebug(
+                `[bridge:session] Failed to send ${signal} to sessionId=${opts.sessionId}: ${String(error)}`,
+              )
+            },
+          })
+          return terminationPromise
         },
         writeStdin(data: string): void {
           if (child.stdin && !child.stdin.destroyed) {

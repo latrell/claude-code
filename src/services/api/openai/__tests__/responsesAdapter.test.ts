@@ -138,6 +138,40 @@ describe('createChatGPTResponsesStream', () => {
     }
   })
 
+  test('cancels the SSE response body when the consumer stops early', async () => {
+    let bodyCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'data: {"type":"response.created","response":{"status":"in_progress"}}\n\n',
+          ),
+        )
+      },
+      cancel() {
+        bodyCancelled = true
+      },
+    })
+    const fetchOverride = (async () =>
+      new Response(body, { status: 200 })) as unknown as typeof fetch
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    expect((await iterator.next()).done).toBe(false)
+    await iterator.return?.()
+
+    expect(bodyCancelled).toBe(true)
+  })
+
   test('preserves HTTP status so transient responses are retryable', async () => {
     for (const status of [408, 409, 429, 500, 503]) {
       const fetchOverride = (async () =>

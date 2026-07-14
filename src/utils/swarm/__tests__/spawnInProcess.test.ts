@@ -4,6 +4,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { getDefaultAppState } from '../../../state/AppStateStore'
 import { readMailbox, writeToMailbox } from '../../teammateMailbox'
+import { registerInProcessTeammateRunner } from '../inProcessLifecycle'
 import {
   killInProcessTeammateByAgentId,
   spawnInProcessTeammate,
@@ -72,8 +73,13 @@ describe('killInProcessTeammateByAgentId', () => {
     expect(messages[0]!.read).toBe(false)
   })
 
-  test('aborts the running teammate and removes it from team context by agent id', () => {
+  test('aborts active work immediately but waits for runner settlement before marking killed', async () => {
     const abortController = new AbortController()
+    const currentWorkAbortController = new AbortController()
+    let settleRunner: (() => void) | undefined
+    const runner = new Promise<void>(resolve => {
+      settleRunner = resolve
+    })
     let state: any = {
       teamContext: {
         teamName: 'alpha',
@@ -96,6 +102,7 @@ describe('killInProcessTeammateByAgentId', () => {
             parentSessionId: 'session',
           },
           abortController,
+          currentWorkAbortController,
           pendingUserMessages: [],
           onIdleCallbacks: [],
           messages: [],
@@ -103,12 +110,24 @@ describe('killInProcessTeammateByAgentId', () => {
       },
     }
 
-    const killed = killInProcessTeammateByAgentId('worker@alpha', updater => {
-      state = updater(state)
-    })
+    registerInProcessTeammateRunner('teammate_task_1', runner)
+    const killPromise = killInProcessTeammateByAgentId(
+      'worker@alpha',
+      updater => {
+        state = updater(state)
+      },
+    )
+
+    expect(abortController.signal.aborted).toBe(true)
+    expect(currentWorkAbortController.signal.aborted).toBe(true)
+    expect(state.tasks.teammate_task_1.status).toBe('running')
+    expect(state.tasks.teammate_task_1.stopRequested).toBe(true)
+    expect(state.teamContext.teammates['worker@alpha']).toBeDefined()
+
+    settleRunner?.()
+    const killed = await killPromise
 
     expect(killed).toBe(true)
-    expect(abortController.signal.aborted).toBe(true)
     expect(state.tasks.teammate_task_1.status).toBe('killed')
     expect(state.teamContext.teammates['worker@alpha']).toBeUndefined()
   })

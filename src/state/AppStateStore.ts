@@ -61,7 +61,7 @@ export type SpeculationState =
   | {
       status: 'active'
       id: string
-      abort: () => void
+      abort: (reason?: unknown) => void
       startTime: number
       messagesRef: { current: Message[] } // Mutable ref - avoids array spreading per message
       writtenPathsRef: { current: Set<string> } // Mutable ref - relative paths written to overlay

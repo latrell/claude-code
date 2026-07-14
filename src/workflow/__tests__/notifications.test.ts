@@ -13,7 +13,7 @@ function makeMockService(runs: RunProgress[]): {
     service: {
       ports: {},
       launch: async () => ({ runId: 'x' }),
-      kill: () => {},
+      kill: async () => false,
       listRuns: () => current,
       getRun: () => undefined,
       subscribe: (fn: () => void) => {

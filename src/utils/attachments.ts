@@ -250,7 +250,10 @@ import {
   isTeamLead,
 } from './teammate.js'
 import { isInProcessTeammate } from './teammateContext.js'
-import { removeTeammateFromTeamFile } from './swarm/teamHelpers.js'
+import {
+  confirmTeammateShutdown,
+  removeTeammateFromTeamFile,
+} from './swarm/teamHelpers.js'
 import { unassignTeammateTasks } from './tasks.js'
 import { getCompanionIntroAttachment } from '../buddy/prompt.js'
 
@@ -790,8 +793,25 @@ export async function getAttachments(
   // This will slow down submissions
   // TODO: Compute attachments as the user types, not here (though we use this
   // function for slash command prompts too)
-  const abortController = createAbortController()
+  // Attachment work belongs to the active turn. Keep the short attachment
+  // timeout, but also propagate Escape/Stop immediately instead of letting
+  // side queries (for example skill-search intent normalization) run until
+  // this standalone timeout expires.
+  const abortController = createChildAbortController(
+    toolUseContext.abortController,
+  )
   const timeoutId = setTimeout(ac => ac.abort(), 1000, abortController)
+  // `using` is lowered to a finally block, so every return/throw clears the
+  // timer. Aborting the child on normal completion also removes its listener
+  // from the parent controller immediately.
+  using _attachmentAbortScope = {
+    [Symbol.dispose]() {
+      clearTimeout(timeoutId)
+      if (!abortController.signal.aborted) {
+        abortController.abort('attachments-complete')
+      }
+    },
+  }
   const context = { ...toolUseContext, abortController }
 
   const isMainThread = !toolUseContext.agentId
@@ -1045,7 +1065,6 @@ export async function getAttachments(
       Promise.all(mainThreadAttachments),
     ])
 
-  clearTimeout(timeoutId)
   // Defensive: a getter leaking [undefined] crashes .map(a => a.type) below.
   return (
     [
@@ -3746,6 +3765,91 @@ async function getTeammateMailboxAttachments(
     )
   }
 
+  // Process shutdown approvals from the complete unread batch, not from the
+  // regular attachment payload (structured protocol messages are intentionally
+  // filtered out of that payload). This is the only handler in -p mode.
+  if (teamLeadStatus && teamName) {
+    const confirmedShutdownApprovals = new Set<string>()
+    const seenShutdownApprovals = new Set<string>()
+    for (const m of [...allUnreadMessages, ...pendingInboxMessages]) {
+      const shutdownApproval = isShutdownApproved(m.text)
+      if (!shutdownApproval) continue
+
+      const approvalIdentity = `${shutdownApproval.from}\0${shutdownApproval.requestId}`
+      if (seenShutdownApprovals.has(approvalIdentity)) continue
+      seenShutdownApprovals.add(approvalIdentity)
+
+      const teammateToRemove = shutdownApproval.from
+      logForDebugging(
+        `[SwarmMailbox] Processing shutdown_approved from ${teammateToRemove}`,
+      )
+
+      const teammateId = appState.teamContext?.teammates
+        ? Object.entries(appState.teamContext.teammates).find(
+            ([, teammate]) => teammate.name === teammateToRemove,
+          )?.[0]
+        : undefined
+      if (!teammateId) continue
+
+      const terminated = await confirmTeammateShutdown(
+        teammateId,
+        toolUseContext.setAppState,
+        shutdownApproval.paneId,
+        shutdownApproval.backendType,
+      )
+      if (!terminated) {
+        logForDebugging(
+          `[SwarmMailbox] Shutdown for ${teammateToRemove} was not confirmed; preserving teammate state`,
+        )
+        continue
+      }
+
+      removeTeammateFromTeamFile(teamName, {
+        agentId: teammateId,
+        name: teammateToRemove,
+      })
+      logForDebugging(
+        `[SwarmMailbox] Removed ${teammateToRemove} from team file`,
+      )
+      await unassignTeammateTasks(
+        teamName,
+        teammateId,
+        teammateToRemove,
+        'shutdown',
+      )
+      toolUseContext.setAppState(prev => {
+        if (!prev.teamContext?.teammates) return prev
+        if (!(teammateId in prev.teamContext.teammates)) return prev
+        const { [teammateId]: _, ...remainingTeammates } =
+          prev.teamContext.teammates
+        return {
+          ...prev,
+          teamContext: {
+            ...prev.teamContext,
+            teammates: remainingTeammates,
+          },
+        }
+      })
+      confirmedShutdownApprovals.add(approvalIdentity)
+    }
+
+    if (confirmedShutdownApprovals.size > 0) {
+      await markMessagesAsReadByPredicate(
+        agentName,
+        message => {
+          const approval = isShutdownApproved(message.text)
+          return Boolean(
+            approval &&
+              confirmedShutdownApprovals.has(
+                `${approval.from}\0${approval.requestId}`,
+              ),
+          )
+        },
+        teamName,
+      )
+    }
+  }
+
   if (allMessages.length === 0) {
     logForDebugging(`[SwarmMailbox] No messages to deliver, returning empty`)
     return []
@@ -3775,62 +3879,6 @@ async function getTeammateMailboxAttachments(
     logForDebugging(
       `[MailboxBridge] marked ${unreadMessages.length} non-structured message(s) as read for agent="${agentName}" team="${teamName || 'default'}"`,
     )
-  }
-
-  // Process shutdown_approved messages - remove teammates from team file
-  // This mirrors what useInboxPoller does in interactive mode (lines 546-606)
-  // In -p mode, useInboxPoller doesn't run, so we must handle this here
-  if (teamLeadStatus && teamName) {
-    for (const m of allMessages) {
-      const shutdownApproval = isShutdownApproved(m.text)
-      if (shutdownApproval) {
-        const teammateToRemove = shutdownApproval.from
-        logForDebugging(
-          `[SwarmMailbox] Processing shutdown_approved from ${teammateToRemove}`,
-        )
-
-        // Find the teammate ID by name
-        const teammateId = appState.teamContext?.teammates
-          ? Object.entries(appState.teamContext.teammates).find(
-              ([, t]) => t.name === teammateToRemove,
-            )?.[0]
-          : undefined
-
-        if (teammateId) {
-          // Remove from team file
-          removeTeammateFromTeamFile(teamName, {
-            agentId: teammateId,
-            name: teammateToRemove,
-          })
-          logForDebugging(
-            `[SwarmMailbox] Removed ${teammateToRemove} from team file`,
-          )
-
-          // Unassign tasks owned by this teammate
-          await unassignTeammateTasks(
-            teamName,
-            teammateId,
-            teammateToRemove,
-            'shutdown',
-          )
-
-          // Remove from teamContext in AppState
-          toolUseContext.setAppState(prev => {
-            if (!prev.teamContext?.teammates) return prev
-            if (!(teammateId in prev.teamContext.teammates)) return prev
-            const { [teammateId]: _, ...remainingTeammates } =
-              prev.teamContext.teammates
-            return {
-              ...prev,
-              teamContext: {
-                ...prev.teamContext,
-                teammates: remainingTeammates,
-              },
-            }
-          })
-        }
-      }
-    }
   }
 
   // Mark AppState inbox messages as processed LAST, after attachment is built

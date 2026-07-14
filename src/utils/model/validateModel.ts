@@ -8,6 +8,7 @@ import {
   APIError,
   APIConnectionError,
   AuthenticationError,
+  APIUserAbortError,
 } from '@anthropic-ai/sdk'
 import { getModelStrings } from './modelStrings.js'
 
@@ -19,7 +20,9 @@ const validModelCache = new Map<string, boolean>()
  */
 export async function validateModel(
   model: string,
+  signal?: AbortSignal,
 ): Promise<{ valid: boolean; error?: string }> {
+  signal?.throwIfAborted()
   const normalizedModel = model.trim()
 
   // Empty model is invalid
@@ -58,6 +61,7 @@ export async function validateModel(
       max_tokens: 1,
       maxRetries: 0,
       querySource: 'model_validation',
+      signal,
       messages: [
         {
           role: 'user',
@@ -71,11 +75,19 @@ export async function validateModel(
         },
       ],
     })
+    signal?.throwIfAborted()
 
     // If we got here, the model is valid
     validModelCache.set(normalizedModel, true)
     return { valid: true }
   } catch (error) {
+    if (
+      signal?.aborted ||
+      error instanceof APIUserAbortError ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      throw error
+    }
     return handleValidationError(error, normalizedModel)
   }
 }

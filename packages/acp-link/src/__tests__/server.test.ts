@@ -315,6 +315,7 @@ describe('JSON-RPC 2.0 routing (audit §8.1-8.5)', () => {
     options: {
       connection?: unknown
       sessionId?: string | null
+      activePrompt?: Promise<void> | null
     } = {},
   ) {
     const ws = makeTestWs(sent)
@@ -322,6 +323,7 @@ describe('JSON-RPC 2.0 routing (audit §8.1-8.5)', () => {
     const unregister = __testing.registerClient(ws, {
       connection: options.connection,
       sessionId: options.sessionId ?? null,
+      activePrompt: options.activePrompt,
       jsonRpc: true,
     })
     return { ws, unregister }
@@ -394,6 +396,81 @@ describe('JSON-RPC 2.0 routing (audit §8.1-8.5)', () => {
       })
       // The cancel was forwarded to the ACP cancel path.
       expect(cancel).toHaveBeenCalled()
+    } finally {
+      unregister()
+      delete process.env.ACP_LINK_TEST_INTERNALS
+    }
+  })
+
+  test('does not acknowledge cancellation until the active prompt has stopped', async () => {
+    const sent: unknown[] = []
+    let finishPrompt: (() => void) | undefined
+    const activePrompt = new Promise<void>(resolve => {
+      finishPrompt = resolve
+    })
+    const cancel = mock(async () => {})
+    const { ws, unregister } = setupJsonRpcClient(sent, {
+      connection: { cancel },
+      sessionId: 'sess-1',
+      activePrompt,
+    })
+    try {
+      let settled = false
+      const cancellation = __testing
+        .dispatchJsonRpcMessage(ws, {
+          jsonrpc: '2.0',
+          id: 'cancel-confirmed',
+          method: '$/cancel_request',
+          params: { id: 'prompt-1' },
+        })
+        .then(() => {
+          settled = true
+        })
+
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      expect(sent).not.toContainEqual({
+        jsonrpc: '2.0',
+        id: 'cancel-confirmed',
+        result: null,
+      })
+
+      finishPrompt?.()
+      await cancellation
+      expect(sent).toContainEqual({
+        jsonrpc: '2.0',
+        id: 'cancel-confirmed',
+        result: null,
+      })
+    } finally {
+      unregister()
+      delete process.env.ACP_LINK_TEST_INTERNALS
+    }
+  })
+
+  test('does not report cancellation success when forwarding fails', async () => {
+    const sent: unknown[] = []
+    const cancel = mock(async () => {
+      throw new Error('agent unavailable')
+    })
+    const { ws, unregister } = setupJsonRpcClient(sent, {
+      connection: { cancel },
+      sessionId: 'sess-1',
+    })
+    try {
+      await expect(
+        __testing.dispatchJsonRpcMessage(ws, {
+          jsonrpc: '2.0',
+          id: 'cancel-failed',
+          method: '$/cancel_request',
+          params: { id: 'prompt-1' },
+        }),
+      ).rejects.toThrow('agent unavailable')
+      expect(sent).not.toContainEqual({
+        jsonrpc: '2.0',
+        id: 'cancel-failed',
+        result: null,
+      })
     } finally {
       unregister()
       delete process.env.ACP_LINK_TEST_INTERNALS

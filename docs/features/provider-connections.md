@@ -6,7 +6,7 @@ Feature flag：`PROVIDER_CONNECTIONS`（dev/build 默认启用）。
 
 ## 核心概念
 
-**连接（Connection）= 命名档案**：提供者类型 + 端点 + 一份账号凭据 + **固定模型（`model`）** + **思考强度（`thinkingEffort`：off/low/medium/high/max）** + **上下文窗口（`contextWindow`，tokens 单值）**。
+**连接（Connection）= 命名档案**：提供者类型 + 端点 + 一份账号凭据 + **固定模型（`model`）** + **思考强度（`thinkingEffort`：off/low/medium/high/max）** + **OpenAI 兼容传输策略（`thinkingEffortTransport`）** + **上下文窗口（`contextWindow`，tokens 单值）**。
 
 - 同一提供者可以保存多个连接（多账号），**同一份凭据也可以建多个连接**（多档案）：例如用同一个 DeepSeek key 建 `deepseek1`（deepseek-v4-pro、1M 上下文、max 思考）和 `deepseek2`（deepseek-v4-flash、low 思考），之后 `/provider deepseek1`、`/subagent-provider deepseek2`、`/fast-provider deepseek2` 一键切换完整档案。
 - **四个 agent 槽位（AgentSlot）**：`main`（主 agent）、`subagent`（AgentTool 子 agent）、`fast`（小快模型/HAIKU 内部调用：会话标题、通知总结、工具用途摘要、bash 前缀分析、auto mode、会话搜索、away summary 等）、`sonnet`（内部 SONNET 档调用：memdir 记忆检索、穷鬼模式 auto-mode 分类器降级）。fast/sonnet 槽位未配置时，对应档位调用跟随主 agent 连接——在第三方连接下这意味着实际打到连接的固定主模型（贵且慢），在 Anthropic 兼容中转下则直发 `claude-haiku-4-5` / 默认 Sonnet 模型（中转无该通道时 503），配置对应槽位即可把这些调用路由到独立档案。
@@ -57,13 +57,13 @@ ccb connect
 - 列表展示所有连接，行内附带档案摘要（`模型 · effort 强度 · ctx 窗口`），标记全局默认（主/子 agent/fast/sonnet）与本会话使用中的连接。
 - **添加连接向导**：选择类型/预设 → 填凭据（或 OAuth 登录）→ **档案三步**：
   1. **模型**：列出该连接可用模型（静态目录 + 远程实时拉取），支持手动输入任意模型 id（自定义端点目录可能为空）；OAuth 类连接（Claude / ChatGPT）可选"Default"走 provider 默认。
-  2. **思考强度**：off/low/medium/high/max + "默认（不设置）"。Cursor 连接跳过此步（effort 编码在模型 id 里）。
+  2. **思考强度**：off/low/medium/high/max + "默认（不设置）"。每项显示配置值对应的实际请求值；OpenAI 兼容连接提供 `Max — 兼容（reasoning_effort=high）` 与 `Max — 原样（reasoning_effort=max）` 两项。Cursor 连接跳过此步（effort 编码在模型 id 里）。
   3. **上下文窗口**：可跳过的输入（支持 `200000` / `128K` / `1M`）；远程目录已上报该模型窗口时自动预填，回车即确认。OAuth 类连接（窗口由 provider 决定）跳过此步。
   三步均可 Esc 返回上一步。
 - **连接操作菜单**：
   - 本会话使用 / 设为全局默认（主 agent、子 agent、fast/HAIKU 调用与 SONNET 档调用各自独立）——**直接按档案激活，不再强制选模型**。仅当 key 型第三方连接（openai-compat / gemini / grok）还没有固定模型时，先引导补选（选中即落盘到 `Connection.model` 后激活）。
   - **更换固定模型…** —— 模型选择器（静态目录 + 远程拉取 + 自定义输入），选中 `updateConnectionModel` 落盘；若该连接正在会话/全局的主或子 agent 槽位使用，自动重新部署刷新。
-  - **思考强度…** —— 五档 + 默认，写回连接并按需重新部署。
+  - **思考强度…** —— 五档 + 默认，展示“配置值 → 实际请求值”；当前 `/effort` 或 `CLAUDE_CODE_EFFORT_LEVEL` 覆盖连接值时会就地提示。写回连接后按需重新部署。
   - **上下文窗口…** —— 直接编辑连接级 `contextWindow` 单值（留空清除）。
   - **复制连接…** —— 输入新名称（预填 `<label> 2`），复制凭据与档案字段（model / thinkingEffort / contextWindow 可再改）生成新连接。这是"同一凭据、多套档案"（deepseek1/deepseek2）场景的核心入口。
   - 编辑（名称/凭据）、删除。
@@ -97,7 +97,16 @@ ccb connect
 
 ## 思考强度
 
-连接档案的 `thinkingEffort`（off/low/medium/high/max）在连接激活期间生效，已接线到各协议请求层（`getConnectionThinkingEffort()` 按槽位解析：会话分配 > 全局默认分配）。`off` 对 OpenAI 兼容层写 `OPENAI_ENABLE_THINKING=0` 硬关闭。
+连接档案区分**期望强度**和**实际请求值**：`thinkingEffort`（off/low/medium/high/max）保存用户期望，UI 显示它经过当前协议映射后的 wire 值。运行时按槽位解析（会话分配 > 全局默认分配），并遵循 `CLAUDE_CODE_EFFORT_LEVEL` > 当前会话 `/effort` > 连接档案 > 模型默认的优先级。`off` 对 OpenAI 兼容层写 `OPENAI_ENABLE_THINKING=0` 硬关闭。
+
+OpenAI Chat Completions 连接还可保存 `thinkingEffortTransport`：
+
+- `compatible`（缺省、推荐）：只发送标准的 `low/medium/high`，其中 `xhigh/max → high`。旧连接没有该字段时按 compatible 解释，行为不变。
+- `passthrough`（UI 中的“原样传输”）：`low/medium/high/xhigh/max` 原样发送。仅在中转站和下游模型明确支持扩展值时使用，否则端点可能返回参数错误。
+
+例如，`thinkingEffort=max` 的旧连接显示并发送 `max → high`；选择“Max — 原样”后保存 `thinkingEffortTransport=passthrough`，显示并发送 `max → max`。CCB 不根据 `deepseek` 等模型名称自动启用原样模式，因为同一模型前面的中转层可能拒绝、改写或忽略非标准值。
+
+`chatgpt-oauth` 使用 ChatGPT Responses API，由已知模型能力目录决定 `max/xhigh` 的实际值，不使用这个 Chat Completions 开关。通过 Base URL/API Key 配置的 ChatGPT 中转站属于 `openai-compat`，应根据中转站及其下游模型文档选择兼容或原样模式。
 
 ## 激活（部署式）语义
 
@@ -109,7 +118,7 @@ ccb connect
   - `anthropic-api` → `settings.env`（`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 等）
   - `anthropic-oauth` → secure storage 活跃槽位切换 + 清除 `settings.env` 中的自定义端点残留
   - `chatgpt-oauth` → 连接的 scope 凭据文件拷贝到默认文件 + `OPENAI_AUTH_MODE=chatgpt`
-  - 子 agent 槽位 → `settings.subagentProvider`（含 model + thinkingEffort）+ `providerModels.<key>.subagentModel`（复用现有 `getSubagentProviderRuntimeConfig()` 管线）
+  - 子 agent 槽位 → `settings.subagentProvider`（含 model + thinkingEffort + thinkingEffortTransport）+ `providerModels.<key>.subagentModel`（复用现有 `getSubagentProviderRuntimeConfig()` 管线）
   - fast 槽位 → `settings.fastProvider` + `providerModels.<key>.fastModel`（`getFastProviderRuntimeConfig()` 管线）
   - sonnet 槽位 → `settings.sonnetProvider` + `providerModels.<key>.sonnetModel`（`getSonnetProviderRuntimeConfig()` 管线）
 

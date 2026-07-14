@@ -17,6 +17,7 @@ import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 const RECONNECT_DELAY_MS = 2000
 const MAX_RECONNECT_ATTEMPTS = 5
 const PING_INTERVAL_MS = 30000
+const CONTROL_REQUEST_TIMEOUT_MS = 10000
 
 /**
  * Maximum retries for 4001 (session not found). During compaction the
@@ -54,6 +55,16 @@ function isSessionsMessage(value: unknown): value is SessionsMessage {
   return typeof value.type === 'string'
 }
 
+function isControlResponse(value: unknown): value is SDKControlResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'type' in value &&
+    value.type === 'control_response' &&
+    'response' in value
+  )
+}
+
 export type SessionsWebSocketCallbacks = {
   onMessage: (message: SessionsMessage) => void
   onClose?: () => void
@@ -86,6 +97,16 @@ export class SessionsWebSocket {
   private sessionNotFoundRetries = 0
   private pingInterval: NodeJS.Timeout | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
+  private pendingControlRequests = new Map<
+    string,
+    {
+      resolve: (response: SDKControlResponse) => void
+      reject: (error: Error) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  >()
+  private queuedControlRequests = new Map<string, string>()
+  private connectionGeneration = 0
 
   constructor(
     private readonly sessionId: string,
@@ -98,11 +119,12 @@ export class SessionsWebSocket {
    * Connect to the sessions WebSocket endpoint
    */
   async connect(): Promise<void> {
-    if (this.state === 'connecting') {
-      logForDebugging('[SessionsWebSocket] Already connecting')
+    if (this.state === 'connecting' || this.state === 'connected') {
+      logForDebugging('[SessionsWebSocket] Already connected or connecting')
       return
     }
 
+    const generation = ++this.connectionGeneration
     this.state = 'connecting'
 
     const baseUrl = getOauthConfig().BASE_API_URL.replace('http', 'ws')
@@ -128,23 +150,22 @@ export class SessionsWebSocket {
       this.ws = ws
 
       ws.addEventListener('open', () => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging(
           '[SessionsWebSocket] Connection opened, authenticated via headers',
         )
-        this.state = 'connected'
-        this.reconnectAttempts = 0
-        this.sessionNotFoundRetries = 0
-        this.startPingInterval()
-        this.callbacks.onConnected?.()
+        this.handleConnected()
       })
 
       ws.addEventListener('message', (event: MessageEvent) => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         const data =
           typeof event.data === 'string' ? event.data : String(event.data)
         this.handleMessage(data)
       })
 
       ws.addEventListener('error', () => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         const err = new Error('[SessionsWebSocket] WebSocket error')
         logError(err)
         this.callbacks.onError?.(err)
@@ -152,6 +173,7 @@ export class SessionsWebSocket {
 
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       ws.addEventListener('close', (event: CloseEvent) => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${event.code} reason=${event.reason}`,
         )
@@ -159,10 +181,17 @@ export class SessionsWebSocket {
       })
 
       ws.addEventListener('pong', () => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging('[SessionsWebSocket] Pong received')
       })
     } else {
       const { default: WS } = await import('ws')
+      if (
+        this.connectionGeneration !== generation ||
+        this.state !== 'connecting'
+      ) {
+        return
+      }
       const ws = new WS(url, {
         headers,
         agent: getWebSocketProxyAgent(url),
@@ -171,27 +200,27 @@ export class SessionsWebSocket {
       this.ws = ws
 
       ws.on('open', () => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging(
           '[SessionsWebSocket] Connection opened, authenticated via headers',
         )
         // Auth is handled via headers, so we're immediately connected
-        this.state = 'connected'
-        this.reconnectAttempts = 0
-        this.sessionNotFoundRetries = 0
-        this.startPingInterval()
-        this.callbacks.onConnected?.()
+        this.handleConnected()
       })
 
       ws.on('message', (data: Buffer) => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         this.handleMessage(data.toString())
       })
 
       ws.on('error', (err: Error) => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logError(new Error(`[SessionsWebSocket] Error: ${err.message}`))
         this.callbacks.onError?.(err)
       })
 
       ws.on('close', (code: number, reason: Buffer) => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${code} reason=${reason.toString()}`,
         )
@@ -199,6 +228,7 @@ export class SessionsWebSocket {
       })
 
       ws.on('pong', () => {
+        if (this.ws !== ws || this.connectionGeneration !== generation) return
         logForDebugging('[SessionsWebSocket] Pong received')
       })
     }
@@ -213,6 +243,9 @@ export class SessionsWebSocket {
 
       // Forward SDK messages to callback
       if (isSessionsMessage(message)) {
+        if (isControlResponse(message)) {
+          this.resolveControlRequest(message)
+        }
         this.callbacks.onMessage(message)
       } else {
         logForDebugging(
@@ -248,6 +281,9 @@ export class SessionsWebSocket {
       logForDebugging(
         `[SessionsWebSocket] Permanent close code ${closeCode}, not reconnecting`,
       )
+      this.rejectPendingControlRequests(
+        new Error(`Session WebSocket closed permanently (${closeCode})`),
+      )
       this.callbacks.onClose?.()
       return
     }
@@ -260,6 +296,9 @@ export class SessionsWebSocket {
       if (this.sessionNotFoundRetries > MAX_SESSION_NOT_FOUND_RETRIES) {
         logForDebugging(
           `[SessionsWebSocket] 4001 retry budget exhausted (${MAX_SESSION_NOT_FOUND_RETRIES}), not reconnecting`,
+        )
+        this.rejectPendingControlRequests(
+          new Error('Session WebSocket reconnect budget exhausted'),
         )
         this.callbacks.onClose?.()
         return
@@ -283,8 +322,22 @@ export class SessionsWebSocket {
       )
     } else {
       logForDebugging('[SessionsWebSocket] Not reconnecting')
+      this.rejectPendingControlRequests(
+        new Error(
+          'Session WebSocket disconnected before control acknowledgement',
+        ),
+      )
       this.callbacks.onClose?.()
     }
+  }
+
+  private handleConnected(): void {
+    this.state = 'connected'
+    this.reconnectAttempts = 0
+    this.sessionNotFoundRetries = 0
+    this.startPingInterval()
+    this.flushQueuedControlRequests()
+    this.callbacks.onConnected?.()
   }
 
   private scheduleReconnect(delay: number, label: string): void {
@@ -338,22 +391,81 @@ export class SessionsWebSocket {
   /**
    * Send a control request to the session (e.g., interrupt)
    */
-  sendControlRequest(request: SDKControlRequestInner): void {
-    if (!this.ws || this.state !== 'connected') {
-      logError(new Error('[SessionsWebSocket] Cannot send: not connected'))
-      return
-    }
-
+  sendControlRequest(
+    request: SDKControlRequestInner,
+  ): Promise<SDKControlResponse> {
+    const requestId = randomUUID()
     const controlRequest: SDKControlRequest = {
       type: 'control_request',
-      request_id: randomUUID(),
+      request_id: requestId,
       request,
     }
+    const serialized = jsonStringify(controlRequest)
 
     logForDebugging(
       `[SessionsWebSocket] Sending control request: ${request.subtype}`,
     )
-    this.ws.send(jsonStringify(controlRequest))
+    return new Promise<SDKControlResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingControlRequests.delete(requestId)
+        this.queuedControlRequests.delete(requestId)
+        reject(
+          new Error(`Timed out waiting for ${request.subtype} acknowledgement`),
+        )
+      }, CONTROL_REQUEST_TIMEOUT_MS)
+      timer.unref?.()
+      this.pendingControlRequests.set(requestId, { resolve, reject, timer })
+      // Keep the serialized request until acknowledgement. If the socket
+      // drops after send() but before the response, reconnect will replay the
+      // same idempotent request_id instead of guessing whether it arrived.
+      this.queuedControlRequests.set(requestId, serialized)
+
+      if (this.ws && this.state === 'connected') {
+        this.sendQueuedControlRequest(requestId, serialized)
+      }
+    })
+  }
+
+  private sendQueuedControlRequest(
+    requestId: string,
+    serialized: string,
+  ): void {
+    if (!this.ws || this.state !== 'connected') {
+      this.queuedControlRequests.set(requestId, serialized)
+      return
+    }
+    try {
+      this.ws.send(serialized)
+    } catch (error) {
+      // A close event normally follows a failed send and schedules reconnect.
+      // Keep the request queued; its timeout remains the final bound.
+      logError(error instanceof Error ? error : new Error(errorMessage(error)))
+    }
+  }
+
+  private flushQueuedControlRequests(): void {
+    for (const [requestId, serialized] of this.queuedControlRequests) {
+      this.sendQueuedControlRequest(requestId, serialized)
+    }
+  }
+
+  private resolveControlRequest(response: SDKControlResponse): void {
+    const requestId = response.response.request_id
+    const pending = this.pendingControlRequests.get(requestId)
+    if (!pending) return
+    clearTimeout(pending.timer)
+    this.pendingControlRequests.delete(requestId)
+    this.queuedControlRequests.delete(requestId)
+    pending.resolve(response)
+  }
+
+  private rejectPendingControlRequests(error: Error): void {
+    for (const pending of this.pendingControlRequests.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(error)
+    }
+    this.pendingControlRequests.clear()
+    this.queuedControlRequests.clear()
   }
 
   /**
@@ -368,8 +480,12 @@ export class SessionsWebSocket {
    */
   close(): void {
     logForDebugging('[SessionsWebSocket] Closing connection')
+    ++this.connectionGeneration
     this.state = 'closed'
     this.stopPingInterval()
+    this.rejectPendingControlRequests(
+      new Error('Session WebSocket closed before control acknowledgement'),
+    )
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)

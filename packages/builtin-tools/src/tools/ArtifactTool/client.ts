@@ -12,6 +12,7 @@ export type UploadParams = {
   uploadUrl: string
   hash?: string
   ttl?: 7 | 30
+  signal?: AbortSignal
 }
 
 export async function uploadArtifact(
@@ -28,6 +29,7 @@ export async function uploadArtifact(
       'Content-Type': 'text/html',
     },
     body: params.html,
+    signal: params.signal,
   })
 
   // Deno Deploy proxy flattens upstream status to 200; the Worker embeds the

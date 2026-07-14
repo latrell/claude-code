@@ -109,6 +109,14 @@ export class RCSChatAdapter {
   private onStatusChange?: (status: string) => void
   private onError?: (error: string) => void
   private onPermissionRequest?: (permission: PendingPermission) => void
+  private onTurnComplete?: () => void
+  private lifecycleEpoch = 0
+  private disconnected = false
+  // More than one caller can enqueue a user event before the previous POST
+  // settles. Keep every in-flight request so Stop can close the race against
+  // all older events, not just whichever promise was assigned last.
+  private pendingSends = new Set<Promise<void>>()
+  private pendingInterrupt: Promise<void> | null = null
 
   constructor(
     sessionId: string,
@@ -117,6 +125,8 @@ export class RCSChatAdapter {
       onStatusChange?: (status: string) => void
       onError?: (error: string) => void
       onPermissionRequest?: (permission: PendingPermission) => void
+      /** Called only for a terminal turn event or confirmed interrupt. */
+      onTurnComplete?: () => void
     },
   ) {
     this.sessionId = sessionId
@@ -124,23 +134,30 @@ export class RCSChatAdapter {
     this.onStatusChange = options?.onStatusChange
     this.onError = options?.onError
     this.onPermissionRequest = options?.onPermissionRequest
+    this.onTurnComplete = options?.onTurnComplete
   }
 
   /** 初始化：绑定会话、加载历史、连接 SSE */
   async init(): Promise<void> {
+    const lifecycleEpoch = ++this.lifecycleEpoch
+    this.disconnected = false
     try {
       await apiBind(this.sessionId)
     } catch {
       // may already be bound
     }
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
 
-    await this.loadHistory()
-    this.connectSSE()
+    await this.loadHistory(lifecycleEpoch)
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
+    this.connectSSE(lifecycleEpoch)
   }
 
   /** 加载历史事件并转为 ThreadEntry */
-  async loadHistory(): Promise<void> {
+  async loadHistory(lifecycleEpoch = this.lifecycleEpoch): Promise<void> {
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
     const { events } = await apiFetchSessionHistory(this.sessionId)
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
     if (!events || events.length === 0) return
 
     const historyEntries: ThreadEntry[] = []
@@ -243,13 +260,18 @@ export class RCSChatAdapter {
   }
 
   /** 连接 SSE 事件流 */
-  connectSSE(): void {
+  connectSSE(lifecycleEpoch = this.lifecycleEpoch): void {
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
     sseBus.connect(this.sessionId)
-    this.unsub = sseBus.onEvent(event => this.handleEvent(event))
+    this.unsub = sseBus.onEvent(event => {
+      if (this.isLifecycleCurrent(lifecycleEpoch)) this.handleEvent(event)
+    })
   }
 
   /** 断开 SSE */
   disconnect(): void {
+    this.disconnected = true
+    this.lifecycleEpoch++
     if (this.unsub) {
       this.unsub()
       this.unsub = null
@@ -259,6 +281,7 @@ export class RCSChatAdapter {
 
   /** 处理 SSE 事件 */
   handleEvent(event: SessionEvent): void {
+    if (this.disconnected) return
     const type = event.type
     const payload = event.payload || ({} as EventPayload)
 
@@ -434,6 +457,13 @@ export class RCSChatAdapter {
       case 'session_status': {
         if (typeof payload.status === 'string') {
           this.onStatusChange?.(payload.status)
+          if (
+            payload.status === 'idle' ||
+            payload.status === 'archived' ||
+            payload.status === 'inactive'
+          ) {
+            this.onTurnComplete?.()
+          }
         }
         break
       }
@@ -444,13 +474,27 @@ export class RCSChatAdapter {
           payload.message || payload.content || 'Unknown error',
         )
         this.onError?.(errorMsg)
+        this.onTurnComplete?.()
+        break
+      }
+
+      // ---- 回合完成 ----
+      case 'result':
+      case 'result_success': {
+        this.onTurnComplete?.()
+        break
+      }
+
+      // ---- 中断确认 ----
+      case 'interrupt': {
+        // Outbound events are cancellation requests. Only the inbound event is
+        // emitted after the worker returns the matching control_response.
+        if (event.direction !== 'outbound') this.onTurnComplete?.()
         break
       }
 
       // ---- 忽略的事件类型 ----
       case 'partial_assistant':
-      case 'result':
-      case 'result_success':
       case 'control_response':
       case 'permission_response':
       case 'system':
@@ -464,6 +508,10 @@ export class RCSChatAdapter {
   /** 发送用户消息 */
   async sendMessage(text: string, images?: UserMessageImage[]): Promise<void> {
     if (!text.trim() && (!images || images.length === 0)) return
+    const lifecycleEpoch = this.lifecycleEpoch
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
+    if (this.pendingInterrupt) await this.pendingInterrupt
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
 
     // Add user message to entries
     const userEntry: UserMessageEntry = {
@@ -475,12 +523,18 @@ export class RCSChatAdapter {
     this.setEntries(prev => [...prev, userEntry])
 
     // Send to backend
-    await apiSendEvent(this.sessionId, {
+    const send = apiSendEvent(this.sessionId, {
       type: 'user',
       uuid: generateMessageUuid(),
       content: text,
       message: { content: text },
     })
+    this.pendingSends.add(send)
+    try {
+      await send
+    } finally {
+      this.pendingSends.delete(send)
+    }
   }
 
   /** 响应权限请求 */
@@ -489,12 +543,14 @@ export class RCSChatAdapter {
     approved: boolean,
     extra?: Record<string, unknown>,
   ): Promise<void> {
+    const lifecycleEpoch = this.lifecycleEpoch
     await apiSendControl(this.sessionId, {
       type: 'permission_response',
       approved,
       request_id: requestId,
       ...extra,
     })
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
 
     // Update tool call status
     this.setEntries(prev =>
@@ -516,7 +572,32 @@ export class RCSChatAdapter {
 
   /** 中断当前操作 */
   async interrupt(): Promise<void> {
-    // Mark running tools as canceled
+    if (this.pendingInterrupt) return this.pendingInterrupt
+    const interrupt = this.interruptOnce(this.lifecycleEpoch)
+    this.pendingInterrupt = interrupt
+    try {
+      await interrupt
+    } finally {
+      if (this.pendingInterrupt === interrupt) this.pendingInterrupt = null
+    }
+  }
+
+  private async interruptOnce(lifecycleEpoch: number): Promise<void> {
+    const sendsInFlight = [...this.pendingSends]
+    if (sendsInFlight.length > 0) {
+      // Event ingestion and interruption are separate HTTP requests. Send an
+      // early interrupt, then a final one after the older user-event request
+      // has settled so a late POST cannot start inference after Stop succeeds.
+      const earlyInterrupt = apiInterrupt(this.sessionId)
+      await Promise.allSettled([...sendsInFlight, earlyInterrupt])
+      await apiInterrupt(this.sessionId)
+    } else {
+      await apiInterrupt(this.sessionId)
+    }
+    if (!this.isLifecycleCurrent(lifecycleEpoch)) return
+
+    // Only mark tools canceled after the server receives the worker's
+    // matching interrupt acknowledgement.
     this.setEntries(prev =>
       prev.map(entry => {
         if (entry.type !== 'tool_call') return entry
@@ -535,7 +616,9 @@ export class RCSChatAdapter {
         }
       }),
     )
+  }
 
-    await apiInterrupt(this.sessionId)
+  private isLifecycleCurrent(lifecycleEpoch: number): boolean {
+    return !this.disconnected && this.lifecycleEpoch === lifecycleEpoch
   }
 }

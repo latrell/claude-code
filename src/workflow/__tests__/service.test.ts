@@ -125,10 +125,11 @@ function fakePorts(
       fail: (runId: string, error?: string) => {
         calls.push({ kind: 'fail', runId, error })
       },
-      kill: (runId: string) => {
+      kill: async (runId: string) => {
         killed.push(runId)
         calls.push({ kind: 'kill', runId })
         bindings.get(runId)?.abort.abort()
+        return true
       },
       registerAgentAbort: (
         runId: string,
@@ -264,8 +265,30 @@ test('kill goes through taskRegistrar.kill', async () => {
     stubTUC,
     stubCanUseTool,
   )
-  svc.kill(runId)
+  await svc.kill(runId)
   expect(killed).toContain(runId)
+})
+
+test('kill waits for taskRegistrar runner settlement', async () => {
+  __resetWorkflowServiceForTests()
+  const { ports, store } = fakePorts()
+  let release!: () => void
+  ports.taskRegistrar.kill = () =>
+    new Promise<boolean>(resolve => {
+      release = () => resolve(true)
+    })
+  const svc = makeService(ports, store)
+  let settled = false
+  const stopping = svc.kill('run-pending').then(result => {
+    settled = true
+    return result
+  })
+
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  release()
+  expect(await stopping).toBe(true)
+  expect(settled).toBe(true)
 })
 
 test('killAgent goes through taskRegistrar.killAgent: precisely aborts a single agent', async () => {

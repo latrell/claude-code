@@ -138,6 +138,28 @@ describe('EventBus', () => {
     })
   })
 
+  describe('onClose', () => {
+    test('notifies close subscribers once', () => {
+      let closeCount = 0
+      bus.onClose(() => closeCount++)
+
+      bus.close()
+      bus.close()
+
+      expect(closeCount).toBe(1)
+    })
+
+    test('unsubscribe prevents close notification', () => {
+      let closeCount = 0
+      const unsubscribe = bus.onClose(() => closeCount++)
+      unsubscribe()
+
+      bus.close()
+
+      expect(closeCount).toBe(0)
+    })
+  })
+
   describe('getEventsSince', () => {
     test('returns events after given seqNum', () => {
       bus.publish({

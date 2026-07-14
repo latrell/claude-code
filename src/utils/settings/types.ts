@@ -51,6 +51,14 @@ export const ProviderLoginConfigSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Credential/token namespace for scoped provider auth'),
+      thinkingEffort: z
+        .enum(['off', 'low', 'medium', 'high', 'max'])
+        .optional()
+        .describe('Thinking effort pinned by the scoped connection profile'),
+      thinkingEffortTransport: z
+        .enum(['compatible', 'passthrough'])
+        .optional()
+        .describe('OpenAI-compatible reasoning_effort wire encoding'),
     })
     .passthrough(),
 )

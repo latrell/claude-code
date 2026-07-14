@@ -1,7 +1,8 @@
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
-import { toError } from '../errors.js'
+import { createChildAbortController } from '../abortController.js'
+import { isAbortError, toError } from '../errors.js'
 import { logError } from '../log.js'
 import type { SystemPrompt } from '../systemPromptType.js'
 
@@ -60,11 +61,91 @@ export async function executePostSamplingHooks(
   }
 
   for (const hook of postSamplingHooks) {
+    if (toolUseContext.abortController.signal.aborted) return
     try {
       await hook(context)
     } catch (error) {
+      if (
+        toolUseContext.abortController.signal.aborted ||
+        isAbortError(error)
+      ) {
+        return
+      }
       // Log but don't fail on hook errors
       logError(toError(error))
+    }
+  }
+}
+
+/**
+ * Owns every post-sampling hook started by one query turn.
+ *
+ * Hooks still overlap subsequent tool/model work, preserving the existing
+ * latency behaviour, but the turn cannot finish while one of its hooks is
+ * still running. The child controller also gives generator teardown an
+ * explicit way to cancel hook work even when the caller closes the generator
+ * without first aborting the main turn controller.
+ */
+export class PostSamplingHookLifecycle {
+  private readonly abortController: AbortController
+  private readonly pending = new Set<Promise<void>>()
+  private finalized = false
+  private finishPromise: Promise<void> | undefined
+
+  constructor(parentAbortController: AbortController) {
+    this.abortController = createChildAbortController(parentAbortController)
+  }
+
+  schedule(
+    messages: Message[],
+    systemPrompt: SystemPrompt,
+    userContext: { [k: string]: string },
+    systemContext: { [k: string]: string },
+    toolUseContext: ToolUseContext,
+    querySource?: QuerySource,
+  ): void {
+    if (this.finalized || this.abortController.signal.aborted) return
+
+    const promise = executePostSamplingHooks(
+      messages,
+      systemPrompt,
+      userContext,
+      systemContext,
+      {
+        ...toolUseContext,
+        abortController: this.abortController,
+      },
+      querySource,
+    )
+    this.pending.add(promise)
+
+    // Use both branches instead of Promise.prototype.finally(): an ignored
+    // promise returned by finally would reject when the hook promise rejects.
+    void promise.then(
+      () => this.pending.delete(promise),
+      () => this.pending.delete(promise),
+    )
+  }
+
+  finish(options?: { abort?: boolean; reason?: unknown }): Promise<void> {
+    if (options?.abort && !this.abortController.signal.aborted) {
+      this.abortController.abort(options.reason)
+    }
+
+    if (!this.finishPromise) {
+      this.finalized = true
+      this.finishPromise = this.drain()
+    }
+    return this.finishPromise
+  }
+
+  private async drain(): Promise<void> {
+    await Promise.allSettled([...this.pending])
+
+    // Remove the child controller's listener from the parent after normal
+    // completion as well as cancellation.
+    if (!this.abortController.signal.aborted) {
+      this.abortController.abort('post-sampling-hooks-complete')
     }
   }
 }

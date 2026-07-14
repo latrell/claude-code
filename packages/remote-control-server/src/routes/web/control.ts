@@ -9,6 +9,7 @@ import {
 } from '../../services/session'
 import { publishSessionEvent } from '../../services/transport'
 import { getEventBus } from '../../transport/event-bus'
+import { requestSessionInterrupt } from '../../services/session-interrupt'
 
 const app = new Hono()
 
@@ -117,14 +118,43 @@ app.post('/sessions/:id/interrupt', uuidAuth, async c => {
   }
   const { sessionId } = ownership
 
+  const interrupt = await requestSessionInterrupt(sessionId)
+  if (!interrupt.ok) {
+    logError(
+      `[RCS] Interrupt not acknowledged for session=${sessionId}: ${interrupt.reason}`,
+    )
+    return c.json(
+      {
+        error: {
+          type: 'interrupt_not_acknowledged',
+          reason: interrupt.reason,
+          message: interrupt.message,
+        },
+      },
+      503,
+    )
+  }
+
+  const currentSession = getSession(sessionId)
+  if (!currentSession || isSessionClosedStatus(currentSession.status)) {
+    return c.json(
+      closedSessionResponse(
+        currentSession
+          ? `Session is ${currentSession.status}`
+          : 'Session no longer exists',
+      ),
+      409,
+    )
+  }
+
+  updateSessionStatus(sessionId, 'idle')
   publishSessionEvent(
     sessionId,
     'interrupt',
-    { action: 'interrupt' },
-    'outbound',
+    { action: 'interrupt', request_id: interrupt.requestId },
+    'inbound',
   )
-  updateSessionStatus(sessionId, 'idle')
-  return c.json({ status: 'ok' }, 200)
+  return c.json({ status: 'ok', request_id: interrupt.requestId }, 200)
 })
 
 export default app

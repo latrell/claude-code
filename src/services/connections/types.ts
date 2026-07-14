@@ -66,6 +66,19 @@ export const ThinkingEffortSchema = z.enum([
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>
 
 /**
+ * How extended effort values are encoded for OpenAI-compatible Chat
+ * Completions endpoints. `compatible` preserves the standard low/medium/high
+ * wire values; `passthrough` sends extensions such as max unchanged.
+ */
+export const ThinkingEffortTransportSchema = z.enum([
+  'compatible',
+  'passthrough',
+])
+export type ThinkingEffortTransport = z.infer<
+  typeof ThinkingEffortTransportSchema
+>
+
+/**
  * A "connection" = a named profile: provider kind + endpoint + one account's
  * credentials + a pinned model (+ thinking effort + context window).
  * Multiple connections may share the same kind (multi-account) or even the
@@ -108,6 +121,12 @@ export const ConnectionSchema = z.object({
   model: z.string().optional(),
   /** Thinking effort applied while this connection is active. */
   thinkingEffort: ThinkingEffortSchema.optional(),
+  /**
+   * OpenAI-compatible wire encoding for extended effort values. Missing is
+   * intentionally equivalent to `compatible` so existing profiles keep their
+   * previous max -> high behavior.
+   */
+  thinkingEffortTransport: ThinkingEffortTransportSchema.optional(),
   /**
    * Context window (tokens) for the pinned `model`. Synced by
    * updateConnectionModel() and the lazy migration in store.ts; read first

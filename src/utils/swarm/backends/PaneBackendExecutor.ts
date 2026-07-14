@@ -209,13 +209,16 @@ export class PaneBackendExecutor implements TeammateExecutor {
       if (!this.cleanupRegistered) {
         this.cleanupRegistered = true
         registerCleanup(async () => {
-          for (const [id, info] of this.spawnedTeammates) {
+          for (const [id, info] of [...this.spawnedTeammates]) {
             logForDebugging(
               `[PaneBackendExecutor] Cleanup: killing pane for ${id}`,
             )
-            await this.backend.killPane(info.paneId, !info.insideTmux)
+            const killed = await this.backend.killPane(
+              info.paneId,
+              !info.insideTmux,
+            )
+            if (killed) this.spawnedTeammates.delete(id)
           }
-          this.spawnedTeammates.clear()
         })
       }
 

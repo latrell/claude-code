@@ -222,6 +222,7 @@ describe('fast provider config', () => {
       env: { OPENAI_API_KEY: 'conn-key', OPENAI_BASE_URL: 'https://conn.test' },
       model: 'deepseek-v4-flash',
       thinkingEffort: 'off',
+      thinkingEffortTransport: 'passthrough',
       credentialScope: FAST_CREDENTIAL_SCOPE,
     })
     try {
@@ -232,6 +233,7 @@ describe('fast provider config', () => {
       expect(config?.env?.OPENAI_BASE_URL).toBe('https://conn.test')
       expect(config?.env?.OPENAI_MODEL).toBe('deepseek-v4-flash')
       expect(config?.thinkingEffort).toBe('off')
+      expect(config?.thinkingEffortTransport).toBe('passthrough')
     } finally {
       setFastProviderConfigOverride(undefined)
     }

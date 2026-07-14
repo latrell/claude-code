@@ -28,6 +28,8 @@ export type DirectConnectCallbacks = {
   onError?: (error: Error) => void
 }
 
+const INTERRUPT_ACK_TIMEOUT_MS = 10_000
+
 function isStdoutMessage(value: unknown): value is StdoutMessage {
   return (
     typeof value === 'object' &&
@@ -41,6 +43,14 @@ export class DirectConnectSessionManager {
   private ws: WebSocket | null = null
   private config: DirectConnectConfig
   private callbacks: DirectConnectCallbacks
+  private pendingInterrupt: Promise<boolean> | null = null
+  private pendingInterrupts = new Map<
+    string,
+    {
+      resolve: (confirmed: boolean) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  >()
 
   constructor(config: DirectConnectConfig, callbacks: DirectConnectCallbacks) {
     this.config = config
@@ -78,6 +88,11 @@ export class DirectConnectSessionManager {
         }
         const parsed = raw
 
+        if (parsed.type === 'control_response') {
+          this.handleControlResponse(raw)
+          continue
+        }
+
         // Handle control requests (permission requests)
         if (parsed.type === 'control_request') {
           if (parsed.request.subtype === 'can_use_tool') {
@@ -101,7 +116,6 @@ export class DirectConnectSessionManager {
 
         // Forward SDK messages (assistant, result, system, etc.)
         if (
-          parsed.type !== 'control_response' &&
           parsed.type !== 'keep_alive' &&
           parsed.type !== 'control_cancel_request' &&
           parsed.type !== 'streamlined_text' &&
@@ -114,15 +128,22 @@ export class DirectConnectSessionManager {
     })
 
     this.ws.addEventListener('close', () => {
+      this.rejectPendingInterrupts()
       this.callbacks.onDisconnected?.()
     })
 
     this.ws.addEventListener('error', () => {
+      this.rejectPendingInterrupts()
       this.callbacks.onError?.(new Error('WebSocket connection error'))
     })
   }
 
-  sendMessage(content: RemoteMessageContent): boolean {
+  async sendMessage(content: RemoteMessageContent): Promise<boolean> {
+    if (this.pendingInterrupt) {
+      const confirmed = await this.pendingInterrupt
+      if (!confirmed) return false
+    }
+
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false
     }
@@ -169,20 +190,78 @@ export class DirectConnectSessionManager {
   /**
    * Send an interrupt signal to cancel the current request
    */
-  sendInterrupt(): void {
+  sendInterrupt(): Promise<boolean> {
+    if (this.pendingInterrupt) return this.pendingInterrupt
+    const pending = this.sendInterruptOnce()
+    this.pendingInterrupt = pending
+    void pending.then(
+      () => {
+        if (this.pendingInterrupt === pending) this.pendingInterrupt = null
+      },
+      () => {
+        if (this.pendingInterrupt === pending) this.pendingInterrupt = null
+      },
+    )
+    return pending
+  }
+
+  private sendInterruptOnce(): Promise<boolean> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return
+      return Promise.resolve(false)
     }
 
+    const requestId = crypto.randomUUID()
     // Must match SDKControlRequest format expected by StructuredIO
     const request = jsonStringify({
       type: 'control_request',
-      request_id: crypto.randomUUID(),
+      request_id: requestId,
       request: {
         subtype: 'interrupt',
       },
     })
-    this.ws.send(request)
+
+    return new Promise<boolean>(resolve => {
+      const timer = setTimeout(() => {
+        this.pendingInterrupts.delete(requestId)
+        resolve(false)
+      }, INTERRUPT_ACK_TIMEOUT_MS)
+      this.pendingInterrupts.set(requestId, { resolve, timer })
+      try {
+        this.ws?.send(request)
+      } catch {
+        clearTimeout(timer)
+        this.pendingInterrupts.delete(requestId)
+        resolve(false)
+      }
+    })
+  }
+
+  private handleControlResponse(value: unknown): void {
+    if (typeof value !== 'object' || value === null || !('response' in value)) {
+      return
+    }
+    const response = value.response
+    if (
+      typeof response !== 'object' ||
+      response === null ||
+      !('request_id' in response) ||
+      typeof response.request_id !== 'string'
+    ) {
+      return
+    }
+    const pending = this.pendingInterrupts.get(response.request_id)
+    if (!pending) return
+    this.pendingInterrupts.delete(response.request_id)
+    clearTimeout(pending.timer)
+    pending.resolve('subtype' in response && response.subtype === 'success')
+  }
+
+  private rejectPendingInterrupts(): void {
+    for (const pending of this.pendingInterrupts.values()) {
+      clearTimeout(pending.timer)
+      pending.resolve(false)
+    }
+    this.pendingInterrupts.clear()
   }
 
   private sendErrorResponse(requestId: string, error: string): void {
@@ -201,6 +280,7 @@ export class DirectConnectSessionManager {
   }
 
   disconnect(): void {
+    this.rejectPendingInterrupts()
     if (this.ws) {
       this.ws.close()
       this.ws = null

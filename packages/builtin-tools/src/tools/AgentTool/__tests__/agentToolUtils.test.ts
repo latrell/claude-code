@@ -7,6 +7,7 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 // corrupting the module cache for other test files in the same Bun process.
 
 const noop = () => {}
+let summaryStopImpl: () => Promise<void> = async () => {}
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
@@ -18,7 +19,7 @@ mock.module('src/constants/tools.js', () => ({
 }))
 
 mock.module('src/services/AgentSummary/agentSummary.js', () => ({
-  startAgentSummarization: noop,
+  startAgentSummarization: () => ({ stop: () => summaryStopImpl() }),
 }))
 
 mock.module('src/services/analytics/index.js', () => ({
@@ -46,7 +47,8 @@ mock.module('src/utils/messages.ts', () => ({
       ?.filter?.((b: any) => b.type === 'text')
       ?.map?.((b: any) => b.text)
       ?.join('') ?? '',
-  getLastAssistantMessage: () => null,
+  getLastAssistantMessage: (messages: any[]) =>
+    messages.findLast(message => message.type === 'assistant'),
   SYNTHETIC_MESSAGES: new Set(),
   INTERRUPT_MESSAGE: '',
   INTERRUPT_MESSAGE_FOR_TOOL_USE: '',
@@ -153,7 +155,16 @@ mock.module('src/tools/AgentTool/AgentTool.tsx', () => ({
   default: {},
 }))
 
-const { countToolUses, getLastToolUseName } = await import('../agentToolUtils')
+const { countToolUses, getLastToolUseName, runAsyncAgentLifecycle } =
+  await import('../agentToolUtils')
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>(resolvePromise => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
 
 function makeAssistantMessage(content: any[]): any {
   return { type: 'assistant', message: { content } }
@@ -235,5 +246,57 @@ describe('getLastToolUseName', () => {
   test('handles message with null content', () => {
     const msg = { type: 'assistant', message: { content: null } } as any
     expect(getLastToolUseName(msg)).toBeUndefined()
+  })
+})
+
+describe('runAsyncAgentLifecycle', () => {
+  test('waits for summary settlement before completing the agent lifecycle', async () => {
+    const stopStarted = deferred()
+    const stopSettlement = deferred()
+    summaryStopImpl = () => {
+      stopStarted.resolve()
+      return stopSettlement.promise
+    }
+
+    const lifecycle = runAsyncAgentLifecycle({
+      taskId: 'agent-1',
+      abortController: new AbortController(),
+      makeStream: async function* (onCacheSafeParams) {
+        onCacheSafeParams?.({} as any)
+        yield makeAssistantMessage([{ type: 'text', text: 'done' }])
+      },
+      metadata: {
+        prompt: 'test',
+        resolvedAgentModel: 'test-model',
+        isBuiltInAgent: false,
+        startTime: Date.now(),
+        agentType: 'test',
+        isAsync: true,
+      },
+      description: 'test agent',
+      toolUseContext: {
+        options: { tools: [] },
+        toolUseId: 'tool-use-1',
+        getAppState: () => ({ toolPermissionContext: {} }),
+      } as any,
+      rootSetAppState: noop as any,
+      agentIdForCleanup: 'agent-1',
+      enableSummarization: true,
+      getWorktreeResult: async () => ({}),
+    })
+
+    await stopStarted.promise
+    let lifecycleSettled = false
+    void lifecycle.then(() => {
+      lifecycleSettled = true
+    })
+    await Promise.resolve()
+    expect(lifecycleSettled).toBe(false)
+
+    stopSettlement.resolve()
+    await lifecycle
+    expect(lifecycleSettled).toBe(true)
+
+    summaryStopImpl = async () => {}
   })
 })

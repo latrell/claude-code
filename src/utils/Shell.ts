@@ -346,7 +346,8 @@ export async function exec(
       stdio: usePipeMode
         ? ['pipe', 'pipe', 'pipe']
         : ['pipe', outputHandle?.fd, outputHandle?.fd],
-      // Don't pass the signal - we'll handle termination ourselves with tree-kill
+      // Don't pass the signal - ShellCommand owns process-tree termination and
+      // confirmation so cancellation cannot resolve on signal delivery alone.
       detached: provider.detached,
       // Prevent visible console window on Windows (no-op on other platforms)
       windowsHide: true,
@@ -358,6 +359,8 @@ export async function exec(
       commandTimeout,
       taskOutput,
       shouldAutoBackground,
+      undefined,
+      provider.detached && process.platform !== 'win32',
     )
 
     // Close our copy of the fd — the child has its own dup.

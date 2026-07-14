@@ -20,7 +20,7 @@
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from 'src/utils/debug.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { AbortError, errorMessage } from 'src/utils/errors.js'
 import { disableKeepAlive } from 'src/utils/proxy.js'
 import { sleep } from 'src/utils/sleep.js'
 
@@ -429,13 +429,21 @@ export async function* withCompatRetry<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (options.signal.aborted) {
-      throw new Error('Request was aborted.')
+      throw new AbortError('Request was aborted.')
     }
 
     try {
       const result = await createStream(options.signal)
       return result
     } catch (error: unknown) {
+      // Fetch/SDK implementations do not agree on the error shape produced by
+      // AbortSignal (AbortError, APIUserAbortError, or even a socket error).
+      // The signal is authoritative: normalize immediately so a user cancel
+      // can never be logged, surfaced as an API error, or retried.
+      if (options.signal.aborted) {
+        throw new AbortError('Request was aborted.')
+      }
+
       lastError = error
 
       const retryable = isRetryableCompatError(error)
@@ -478,7 +486,7 @@ export async function* withCompatRetry<T>(
       )
 
       await sleep(delayMs, options.signal, {
-        abortError: () => new Error('Request was aborted.'),
+        abortError: () => new AbortError('Request was aborted.'),
       })
     }
   }

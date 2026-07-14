@@ -44,7 +44,10 @@ function makeCtx(
     systemPrompt: [] as any,
     userContext: {},
     systemContext: {},
-    toolUseContext: { agentId: undefined } as any,
+    toolUseContext: {
+      agentId: undefined,
+      abortController: new AbortController(),
+    } as any,
   }
 }
 

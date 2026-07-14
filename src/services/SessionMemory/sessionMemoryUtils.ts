@@ -83,12 +83,35 @@ export function markExtractionCompleted(): void {
 }
 
 /**
+ * Runs an extraction while keeping the shared in-progress marker accurate.
+ * The marker must be cleared even when cancellation or another failure rejects
+ * the extraction; otherwise auto-compaction can spend 15 seconds waiting on a
+ * stale extraction before every retry.
+ */
+export async function withSessionMemoryExtraction<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  markExtractionStarted()
+  try {
+    return await operation()
+  } finally {
+    markExtractionCompleted()
+  }
+}
+
+/**
  * Wait for any in-progress session memory extraction to complete (with 15s timeout)
  * Returns immediately if no extraction is in progress or if extraction is stale (>1min old).
  */
-export async function waitForSessionMemoryExtraction(): Promise<void> {
+export async function waitForSessionMemoryExtraction(
+  signal?: AbortSignal,
+): Promise<void> {
   const startTime = Date.now()
   while (extractionStartedAt) {
+    if (signal?.aborted) {
+      return
+    }
+
     const extractionAge = Date.now() - extractionStartedAt
     if (extractionAge > EXTRACTION_STALE_THRESHOLD_MS) {
       // Extraction is stale, don't wait
@@ -100,7 +123,9 @@ export async function waitForSessionMemoryExtraction(): Promise<void> {
       return
     }
 
-    await sleep(1000)
+    // The turn signal makes Escape release this wait immediately instead of
+    // leaving query cancellation blocked behind the one-second polling delay.
+    await sleep(1000, signal)
   }
 }
 

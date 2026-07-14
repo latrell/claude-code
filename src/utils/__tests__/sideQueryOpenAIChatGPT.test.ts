@@ -433,7 +433,14 @@ describe('sideQuery OpenAI-compatible thinking control', () => {
     },
   })
 
-  const classifierQuery = (model: string, thinking?: false) =>
+  const classifierQuery = (
+    model: string,
+    thinking?: false,
+    runtimeOverrides: {
+      thinkingEffort?: 'off' | 'low' | 'medium' | 'high' | 'max'
+      thinkingEffortTransport?: 'compatible' | 'passthrough'
+    } = {},
+  ) =>
     sideQuery({
       model,
       system: 'classify the action',
@@ -442,7 +449,7 @@ describe('sideQuery OpenAI-compatible thinking control', () => {
       tool_choice: { type: 'tool', name: 'classify_yolo_action' },
       ...(thinking === false && { thinking }),
       querySource: 'auto_mode',
-      providerRuntimeConfig: runtimeFor(model),
+      providerRuntimeConfig: { ...runtimeFor(model), ...runtimeOverrides },
     })
 
   test('thinking:false sends all three disable formats for DeepSeek models', async () => {
@@ -480,6 +487,24 @@ describe('sideQuery OpenAI-compatible thinking control', () => {
     expect(Object.keys(capturedBody!)).not.toContain('thinking')
     expect(Object.keys(capturedBody!)).not.toContain('enable_thinking')
     expect(Object.keys(capturedBody!)).not.toContain('chat_template_kwargs')
+  })
+
+  test('compatible max sends reasoning_effort=high', async () => {
+    await classifierQuery('deepseek-v4-flash', undefined, {
+      thinkingEffort: 'max',
+      thinkingEffortTransport: 'compatible',
+    })
+
+    expect(capturedBody?.reasoning_effort).toBe('high')
+  })
+
+  test('passthrough max sends reasoning_effort=max', async () => {
+    await classifierQuery('deepseek-v4-flash', undefined, {
+      thinkingEffort: 'max',
+      thinkingEffortTransport: 'passthrough',
+    })
+
+    expect(capturedBody?.reasoning_effort).toBe('max')
   })
 })
 

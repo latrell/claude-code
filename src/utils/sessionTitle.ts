@@ -18,6 +18,7 @@ import { logEvent } from '../services/analytics/index.js'
 import { queryHaiku } from '../services/api/claude.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
+import { isAbortError } from './errors.js'
 import { findFirstJsonObject, safeParseJSON } from './json.js'
 import { getPreferredLanguage } from './language.js'
 import { lazySchema } from './lazySchema.js'
@@ -237,6 +238,8 @@ export async function generateSessionTitle(
 
     return title
   } catch (error) {
+    if (signal.aborted || isAbortError(error)) return null
+
     logForDebugging(`generateSessionTitle failed: ${error}`, {
       level: 'error',
     })

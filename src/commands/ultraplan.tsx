@@ -218,8 +218,8 @@ export async function stopUltraplan(
   sessionId: string,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): Promise<void> {
-  // RemoteAgentTask.kill archives the session (with .catch) — no separate
-  // archive call needed here.
+  // RemoteAgentTask.kill waits for the session archive acknowledgement, so no
+  // separate archive call is needed here.
   await RemoteAgentTask.kill(taskId, setAppState);
   setAppState(prev =>
     prev.ultraplanSessionUrl || prev.ultraplanPendingChoice || prev.ultraplanLaunching

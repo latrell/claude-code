@@ -10,6 +10,7 @@ import {
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
+import { SdkRunLifecycle } from 'src/cli/sdkRunLifecycle.js'
 import {
   type Command,
   formatDescriptionWithSource,
@@ -146,7 +147,10 @@ import {
   outputSchema as permissionToolOutputSchema,
   permissionPromptToolResultToPermissionDecision,
 } from 'src/utils/permissions/PermissionPromptToolResultSchema.js'
-import { createAbortController } from 'src/utils/abortController.js'
+import {
+  createAbortController,
+  createChildAbortController,
+} from 'src/utils/abortController.js'
 import { createCombinedAbortSignal } from 'src/utils/combinedAbortSignal.js'
 import { generateSessionTitle } from 'src/utils/sessionTitle.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
@@ -349,10 +353,14 @@ import {
 } from '../utils/teammate.js'
 import {
   readUnreadMessages,
-  markMessagesAsRead,
+  markMessagesAsReadByPredicate,
   isShutdownApproved,
+  type TeammateMessage,
 } from '../utils/teammateMailbox.js'
-import { removeTeammateFromTeamFile } from '../utils/swarm/teamHelpers.js'
+import {
+  confirmTeammateShutdown,
+  removeTeammateFromTeamFile,
+} from '../utils/swarm/teamHelpers.js'
 import { unassignTeammateTasks } from '../utils/tasks.js'
 import { getRunningTasks } from '../utils/task/framework.js'
 import { isBackgroundTask } from '../tasks/types.js'
@@ -374,6 +382,10 @@ const proactiveModule =
     : null
 const cronSchedulerModule =
   require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js')
+
+function mailboxMessageIdentity(message: TeammateMessage): string {
+  return `${message.from}\0${message.timestamp}\0${message.text}`
+}
 const cronJitterConfigModule =
   require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js')
 const cronGate =
@@ -1915,11 +1927,28 @@ function runHeadlessStreaming(
     }
   })
 
-  const run = async () => {
-    if (running) {
-      return
-    }
+  const runLifecycle = new SdkRunLifecycle()
 
+  async function run(): Promise<void> {
+    if (running) return
+    let generation = runLifecycle.tryStart()
+    while (!generation) {
+      await runLifecycle.waitUntilRunnable()
+      // Several queued callers may have waited on the same cancellation gate.
+      // Only the first one to resume owns the next generation.
+      if (running) return
+      generation = runLifecycle.tryStart()
+    }
+    try {
+      await executeRun(generation.abortController)
+    } finally {
+      generation.settle()
+    }
+  }
+
+  async function executeRun(
+    runAbortController: AbortController,
+  ): Promise<void> {
     running = true
     runPhase = undefined
     notifySessionStateChanged('running')
@@ -2192,7 +2221,11 @@ function runHeadlessStreaming(
             }
           }
 
-          abortController = createAbortController()
+          // A control interrupt may arrive while this run is still in
+          // pre-query setup, before the per-turn controller exists. Linking it
+          // to the generation controller preserves that cancellation latch so
+          // the eventual ask() cannot start a live HTTP request afterward.
+          abortController = createChildAbortController(runAbortController)
           const turnStartTime = feature('FILE_PERSISTENCE')
             ? Date.now()
             : undefined
@@ -2647,11 +2680,8 @@ function runHeadlessStreaming(
               `[print.ts] Team-lead found ${unread.length} unread messages`,
             )
 
-            // Mark as read immediately to avoid duplicate processing
-            await markMessagesAsRead(
-              agentName,
-              refreshedState.teamContext?.teamName,
-            )
+            const currentBatch = new Set(unread.map(mailboxMessageIdentity))
+            const deferredMessages = new Set<string>()
 
             // Process shutdown_approved messages - remove teammates from team file
             // This mirrors what useInboxPoller does in interactive mode (lines 546-606)
@@ -2672,6 +2702,20 @@ function runHeadlessStreaming(
                   : undefined
 
                 if (teammateId) {
+                  const terminated = await confirmTeammateShutdown(
+                    teammateId,
+                    setAppState,
+                    shutdownApproval.paneId,
+                    shutdownApproval.backendType,
+                  )
+                  if (!terminated) {
+                    logForDebugging(
+                      `[print.ts] Shutdown for ${teammateToRemove} was not confirmed; preserving teammate state`,
+                    )
+                    deferredMessages.add(mailboxMessageIdentity(m))
+                    continue
+                  }
+
                   // Remove from team file
                   removeTeammateFromTeamFile(teamName, {
                     agentId: teammateId,
@@ -2707,8 +2751,30 @@ function runHeadlessStreaming(
               }
             }
 
+            // Acknowledge only messages from this read batch whose handling
+            // succeeded. Failed shutdown approvals must remain unread so a
+            // later poll can retry after the runner/pane actually settles.
+            await markMessagesAsReadByPredicate(
+              agentName,
+              message => {
+                const identity = mailboxMessageIdentity(message)
+                return (
+                  currentBatch.has(identity) && !deferredMessages.has(identity)
+                )
+              },
+              refreshedState.teamContext?.teamName,
+            )
+
+            const deliverableUnread = unread.filter(
+              message => !deferredMessages.has(mailboxMessageIdentity(message)),
+            )
+            if (deliverableUnread.length === 0) {
+              await sleep(POLL_INTERVAL_MS)
+              continue
+            }
+
             // Format messages same as useInboxPoller
-            const formatted = unread
+            const formatted = deliverableUnread
               .map(
                 (m: { from: string; text: string; color?: string }) =>
                   `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${m.color ? ` color="${m.color}"` : ''}>\n${m.text}\n</${TEAMMATE_MESSAGE_TAG}>`,
@@ -2978,6 +3044,18 @@ function runHeadlessStreaming(
   // Track active OAuth flows per server so we can abort a previous flow
   // when a new mcp_authenticate request arrives for the same server.
   const activeOAuthFlows = new Map<string, AbortController>()
+  // Side questions are detached from the main query controller, but they are
+  // still owned by this SDK session. Interrupt/end_session must abort their
+  // HTTP streams too, rather than merely dropping the eventual response.
+  const activeSideQuestions = new Map<
+    string,
+    { controller: AbortController; settled: Promise<void> }
+  >()
+  const abortActiveSideQuestions = async (): Promise<void> => {
+    const active = [...activeSideQuestions.values()]
+    for (const { controller } of active) controller.abort()
+    await Promise.allSettled(active.map(({ settled }) => settled))
+  }
   // Track manual callback URL submit functions for active OAuth flows.
   // Used when localhost is not reachable (e.g., browser-based IDEs).
   const oauthCallbackSubmitters = new Map<
@@ -3037,36 +3115,50 @@ function runHeadlessStreaming(
         // claude_authenticate, etc. so accessing their properties narrows to `never`.
         const req = msg.request as Record<string, unknown>
         if (msg.request.subtype === 'interrupt') {
+          const cancellation = runLifecycle.beginCancellation('interrupt')
           // Track escapes for attribution (ant-only feature)
-          if (feature('COMMIT_ATTRIBUTION')) {
-            setAppState(prev => ({
-              ...prev,
-              attribution: {
-                ...prev.attribution,
-                escapeCount: prev.attribution.escapeCount + 1,
-              },
-            }))
+          try {
+            if (feature('COMMIT_ATTRIBUTION')) {
+              setAppState(prev => ({
+                ...prev,
+                attribution: {
+                  ...prev.attribution,
+                  escapeCount: prev.attribution.escapeCount + 1,
+                },
+              }))
+            }
+            abortController?.abort('interrupt')
+            suggestionState.abortController?.abort()
+            suggestionState.abortController = null
+            suggestionState.lastEmitted = null
+            suggestionState.pendingSuggestion = null
+            await Promise.all([
+              abortActiveSideQuestions(),
+              cancellation.settled,
+            ])
+            sendControlResponseSuccess(msg)
+          } finally {
+            cancellation.releaseAfterAcknowledgement()
           }
-          if (abortController) {
-            abortController.abort()
-          }
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
-          suggestionState.lastEmitted = null
-          suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(msg)
         } else if (req.subtype === 'end_session') {
-          logForDebugging(
-            `[print.ts] end_session received, reason=${req.reason ?? 'unspecified'}`,
-          )
-          if (abortController) {
-            abortController.abort()
+          const cancellation = runLifecycle.beginCancellation('end_session')
+          try {
+            logForDebugging(
+              `[print.ts] end_session received, reason=${req.reason ?? 'unspecified'}`,
+            )
+            abortController?.abort('end_session')
+            suggestionState.abortController?.abort()
+            suggestionState.abortController = null
+            suggestionState.lastEmitted = null
+            suggestionState.pendingSuggestion = null
+            await Promise.all([
+              abortActiveSideQuestions(),
+              cancellation.settled,
+            ])
+            sendControlResponseSuccess(msg)
+          } finally {
+            cancellation.releaseAfterAcknowledgement()
           }
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
-          suggestionState.lastEmitted = null
-          suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(msg)
           break // exits for-await → falls through to inputClosed=true drain below
         } else if (msg.request.subtype === 'initialize') {
           // SDK MCP server names from the initialize message
@@ -4051,7 +4143,8 @@ function runHeadlessStreaming(
           // coordinator mode or memory-mechanics extras — acceptable, the
           // alternative is the side question failing entirely.
           const question = req.question as string
-          void (async () => {
+          const sideQuestionController = createAbortController()
+          const sideQuestionRun = (async (): Promise<void> => {
             try {
               const saved = getLastCacheSafeParams()
               const cacheSafeParams = saved
@@ -4088,12 +4181,26 @@ function runHeadlessStreaming(
               const result = await runSideQuestion({
                 question,
                 cacheSafeParams,
+                abortController: sideQuestionController,
               })
+              sideQuestionController.signal.throwIfAborted()
               sendControlResponseSuccess(msg, { response: result.response })
             } catch (e) {
               sendControlResponseError(msg, errorMessage(e))
+            } finally {
+              if (
+                activeSideQuestions.get(msg.request_id)?.controller ===
+                sideQuestionController
+              ) {
+                activeSideQuestions.delete(msg.request_id)
+              }
             }
           })()
+          activeSideQuestions.set(msg.request_id, {
+            controller: sideQuestionController,
+            settled: sideQuestionRun,
+          })
+          void sideQuestionRun
         } else if (
           (feature('PROACTIVE') || feature('KAIROS')) &&
           (msg.request as { subtype: string }).subtype === 'set_proactive'
@@ -4147,6 +4254,7 @@ function runHeadlessStreaming(
                       mode: 'prompt' as const,
                       uuid,
                       skipSlashCommands: true,
+                      bridgeOrigin: true,
                     })
                     void run()
                   },
@@ -4156,8 +4264,35 @@ function runHeadlessStreaming(
                     // permission requests from the SDK consumer.
                     structuredIO.injectControlResponse(response)
                   },
-                  onInterrupt() {
-                    abortController?.abort()
+                  async onInterrupt() {
+                    // Establish the gate before removing queued Remote Control
+                    // inputs. Abort listeners and queue callbacks are
+                    // synchronous, so this prevents either path from opening a
+                    // replacement generation before the response is queued.
+                    const cancellation =
+                      runLifecycle.beginCancellation('remote-interrupt')
+                    try {
+                      dequeueAllMatching(
+                        cmd =>
+                          cmd.agentId === undefined &&
+                          cmd.bridgeOrigin === true,
+                      )
+                      abortController?.abort('remote-interrupt')
+                      suggestionState.abortController?.abort('remote-interrupt')
+                      suggestionState.abortController = null
+                      await Promise.all([
+                        abortActiveSideQuestions(),
+                        cancellation.settled,
+                      ])
+                      return {
+                        confirmed: true,
+                        afterAcknowledgement:
+                          cancellation.releaseAfterAcknowledgement,
+                      }
+                    } catch (error) {
+                      cancellation.releaseAfterAcknowledgement()
+                      throw error
+                    }
                   },
                   onSetModel(model) {
                     const resolved =
@@ -4351,6 +4486,7 @@ function runHeadlessStreaming(
       }
       void run()
     }
+    await abortActiveSideQuestions()
     inputClosed = true
     cronScheduler?.stop()
     if (!running) {

@@ -641,6 +641,27 @@ describe('withCompatRetry', () => {
     expect(callCount).toBe(1)
   })
 
+  test('请求工厂因同一 signal 取消而失败时不重试或 yield 进度', async () => {
+    const controller = new AbortController()
+    let callCount = 0
+    const gen = withCompatRetry(
+      async () => {
+        callCount++
+        controller.abort('user-cancel')
+        throw new TypeError('terminated')
+      },
+      { maxRetries: 5, signal: controller.signal, provider: 'test' },
+    )
+
+    try {
+      await gen.next()
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as Error).name).toBe('AbortError')
+    }
+    expect(callCount).toBe(1)
+  })
+
   test('maxRetries=0 时失败立即抛出', async () => {
     const signal = new AbortController().signal
     let callCount = 0

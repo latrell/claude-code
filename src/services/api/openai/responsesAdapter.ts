@@ -236,6 +236,13 @@ async function* parseSSE(
       }
     }
   } finally {
+    // Ensure early generator termination actively closes the HTTP/SSE body.
+    // releaseLock() alone leaves a half-open response consuming server work.
+    try {
+      await reader.cancel()
+    } catch {
+      // The AbortSignal may already have closed or errored the stream.
+    }
     reader.releaseLock()
   }
 }

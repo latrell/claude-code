@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { z } from 'zod/v4'
 import { getSessionCreatedTeams } from '../../bootstrap/state.js'
+import { isTerminalTaskStatus, type SetAppState } from '../../Task.js'
 import { logForDebugging } from '../debug.js'
 import { getTeamsDir } from '../envUtils.js'
 import { errorMessage, getErrnoCode } from '../errors.js'
@@ -13,8 +14,147 @@ import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { getTasksDir, notifyTasksUpdated } from '../tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../teammate.js'
-import { type BackendType, isPaneBackend } from './backends/types.js'
+import {
+  type BackendType,
+  isPaneBackend,
+  type PaneBackendType,
+} from './backends/types.js'
 import { TEAM_LEAD_NAME } from './constants.js'
+import { waitForInProcessTeammateRunner } from './inProcessLifecycle.js'
+
+/**
+ * Stop a teammate and confirm its execution has actually settled before the
+ * caller removes membership/task state. Shutdown approval is only intent; it
+ * is not itself proof that the runner or pane has exited.
+ */
+export async function confirmTeammateShutdown(
+  agentId: string,
+  setAppState: SetAppState,
+  paneId?: string,
+  backendType?: string,
+  stopPane: (
+    paneId: string,
+    backendType: PaneBackendType,
+  ) => Promise<boolean> = stopTeammatePane,
+): Promise<boolean> {
+  let inProcessTaskId: string | undefined
+  let inProcessTerminal = false
+  const mayBeInProcess =
+    backendType === 'in-process' || (!paneId && !backendType)
+  if (mayBeInProcess) {
+    setAppState(prev => {
+      for (const [taskId, task] of Object.entries(prev.tasks)) {
+        if (
+          task.type === 'in_process_teammate' &&
+          task.identity.agentId === agentId
+        ) {
+          inProcessTaskId = taskId
+          inProcessTerminal = isTerminalTaskStatus(task.status)
+          if (task.status === 'running') {
+            const stopReason = new Error(
+              `In-process teammate ${taskId} approved shutdown`,
+            )
+            task.currentWorkAbortController?.abort(stopReason)
+            task.abortController?.abort(stopReason)
+            if (!task.stopRequested) {
+              return {
+                ...prev,
+                tasks: {
+                  ...prev.tasks,
+                  [taskId]: {
+                    ...task,
+                    stopRequested: true,
+                  },
+                },
+              }
+            }
+            break
+          }
+        }
+      }
+      return prev
+    })
+  }
+
+  if (inProcessTaskId) {
+    if (inProcessTerminal) return true
+    try {
+      // A controller being aborted is only a stop request. Without a
+      // registered runner settlement there is no proof that execution has
+      // unwound, so preserve membership/task state and allow a later retry.
+      const runnerSettled =
+        await waitForInProcessTeammateRunner(inProcessTaskId)
+      if (!runnerSettled) {
+        // The runner may have settled just before its lifecycle entry was
+        // observed. A terminal task is independent proof of settlement; a
+        // still-running task is not.
+        let settledWithoutRegistration = false
+        setAppState(prev => {
+          const task = prev.tasks[inProcessTaskId!]
+          settledWithoutRegistration = Boolean(
+            task && isTerminalTaskStatus(task.status),
+          )
+          return prev
+        })
+        return settledWithoutRegistration
+      }
+
+      const { finalizeKilledInProcessTeammate } = await import(
+        './spawnInProcess.js'
+      )
+      if (await finalizeKilledInProcessTeammate(inProcessTaskId, setAppState)) {
+        return true
+      }
+
+      // Concurrent confirmations share the same runner settlement. The first
+      // caller may already have finalized the task, which is still a confirmed
+      // shutdown for every waiter.
+      let alreadyTerminal = false
+      setAppState(prev => {
+        const task = prev.tasks[inProcessTaskId!]
+        alreadyTerminal = Boolean(task && isTerminalTaskStatus(task.status))
+        return prev
+      })
+      return alreadyTerminal
+    } catch (error) {
+      logForDebugging(
+        `confirmTeammateShutdown failed for ${agentId}: ${errorMessage(error)}`,
+      )
+      return false
+    }
+  }
+
+  if (
+    !paneId ||
+    (backendType !== 'tmux' &&
+      backendType !== 'iterm2' &&
+      backendType !== 'windows-terminal')
+  ) {
+    return false
+  }
+
+  try {
+    return await stopPane(paneId, backendType)
+  } catch (error) {
+    logForDebugging(
+      `confirmTeammateShutdown failed for ${agentId}: ${errorMessage(error)}`,
+    )
+    return false
+  }
+}
+
+async function stopTeammatePane(
+  paneId: string,
+  backendType: PaneBackendType,
+): Promise<boolean> {
+  const [{ ensureBackendsRegistered, getBackendByType }, { isInsideTmux }] =
+    await Promise.all([
+      import('./backends/registry.js'),
+      import('./backends/detection.js'),
+    ])
+  await ensureBackendsRegistered()
+  return getBackendByType(backendType).killPane(paneId, !(await isInsideTmux()))
+}
 
 export const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -584,9 +724,28 @@ export async function cleanupSessionTeams(): Promise<void> {
   // deleting directories alone would orphan them in open tmux/iTerm2 panes.
   // (TeamDeleteTool's path doesn't need this — by then teammates have
   // gracefully exited and useInboxPoller has already closed their panes.)
-  await Promise.allSettled(teams.map(name => killOrphanedTeammatePanes(name)))
-  await Promise.allSettled(teams.map(name => cleanupTeamDirectories(name)))
-  sessionCreatedTeams.clear()
+  const killResults = await Promise.allSettled(
+    teams.map(async name => ({
+      name,
+      killed: await killOrphanedTeammatePanes(name),
+    })),
+  )
+  const safeToRemove = killResults.flatMap(result =>
+    result.status === 'fulfilled' && result.value.killed
+      ? [result.value.name]
+      : [],
+  )
+  const cleanupResults = await Promise.allSettled(
+    safeToRemove.map(async name => {
+      await cleanupTeamDirectories(name)
+      return name
+    }),
+  )
+  for (const result of cleanupResults) {
+    if (result.status === 'fulfilled') {
+      sessionCreatedTeams.delete(result.value)
+    }
+  }
 }
 
 /**
@@ -595,9 +754,9 @@ export async function cleanupSessionTeams(): Promise<void> {
  * Dynamic imports avoid adding registry/detection to this module's static
  * dep graph — this only runs at shutdown, so the import cost is irrelevant.
  */
-async function killOrphanedTeammatePanes(teamName: string): Promise<void> {
+async function killOrphanedTeammatePanes(teamName: string): Promise<boolean> {
   const teamFile = readTeamFile(teamName)
-  if (!teamFile) return
+  if (!teamFile) return true
 
   const paneMembers = teamFile.members.filter(
     m =>
@@ -606,7 +765,7 @@ async function killOrphanedTeammatePanes(teamName: string): Promise<void> {
       m.backendType &&
       isPaneBackend(m.backendType),
   )
-  if (paneMembers.length === 0) return
+  if (paneMembers.length === 0) return true
 
   const [{ ensureBackendsRegistered, getBackendByType }, { isInsideTmux }] =
     await Promise.all([
@@ -616,11 +775,11 @@ async function killOrphanedTeammatePanes(teamName: string): Promise<void> {
   await ensureBackendsRegistered()
   const useExternalSession = !(await isInsideTmux())
 
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     paneMembers.map(async m => {
       // filter above guarantees these; narrow for the type system
       if (!m.tmuxPaneId || !m.backendType || !isPaneBackend(m.backendType)) {
-        return
+        return false
       }
       const ok = await getBackendByType(m.backendType).killPane(
         m.tmuxPaneId,
@@ -629,7 +788,11 @@ async function killOrphanedTeammatePanes(teamName: string): Promise<void> {
       logForDebugging(
         `cleanupSessionTeams: killPane ${m.name} (${m.backendType} ${m.tmuxPaneId}) → ${ok}`,
       )
+      return ok
     }),
+  )
+  return results.every(
+    result => result.status === 'fulfilled' && result.value !== false,
   )
 }
 

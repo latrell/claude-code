@@ -6,7 +6,11 @@ import {
   isExpiredErrorType,
   isSuppressible403,
 } from './bridgeApi.js'
-import type { BridgeConfig, BridgeApiClient } from './types.js'
+import type {
+  BridgeConfig,
+  BridgeApiClient,
+  BridgeInterruptHandler,
+} from './types.js'
 import { t } from '../i18n/t.js'
 import { logForDebugging } from '../utils/debug.js'
 import { rcLog } from './rcDebugLog.js'
@@ -191,7 +195,7 @@ export type BridgeCoreParams = {
   previouslyFlushedUUIDs?: Set<string>
   onInboundMessage?: (msg: SDKMessage) => void
   onPermissionResponse?: (response: SDKControlResponse) => void
-  onInterrupt?: () => void
+  onInterrupt?: BridgeInterruptHandler
   onSetModel?: (model: string | undefined) => void
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
   /**
@@ -1226,15 +1230,21 @@ export async function initBridgeCore(
       // Closure adapter over the shared handleServerControlRequest —
       // captures transport/currentSessionId so the transport.setOnData
       // callback below doesn't need to thread them through.
-      const onServerControlRequest = (request: SDKControlRequest): void =>
-        handleServerControlRequest(request, {
+      const onServerControlRequest = (request: SDKControlRequest): void => {
+        void handleServerControlRequest(request, {
           transport,
           sessionId: currentSessionId,
           onInterrupt,
           onSetModel,
           onSetMaxThinkingTokens,
           onSetPermissionMode,
+        }).catch(error => {
+          logForDebugging(
+            `[bridge:repl] Failed to respond to control_request: ${errorMessage(error)}`,
+            { level: 'error' },
+          )
         })
+      }
 
       let initialFlushDone = false
 

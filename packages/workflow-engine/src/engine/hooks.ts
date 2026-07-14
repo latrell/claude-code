@@ -52,7 +52,18 @@ export function makeHooks(
     } as ProgressEvent)
   }
 
+  const throwIfAborted = (error?: unknown): void => {
+    if (
+      ctx.signal.aborted ||
+      error instanceof WorkflowAbortedError ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      throw new WorkflowAbortedError()
+    }
+  }
+
   const agent: WorkflowHooks['agent'] = async (prompt, opts = {}) => {
+    throwIfAborted()
     const r = ctx.resources
     if (r.agentCountBox.value >= MAX_TOTAL_AGENTS) {
       throw new WorkflowError(
@@ -87,6 +98,7 @@ export function makeHooks(
       ctx.journalInvalidated = true
       ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
       await ctx.ports.journalStore.truncate(ctx.runId)
+      throwIfAborted()
     }
 
     let release: () => void
@@ -157,10 +169,16 @@ export function makeHooks(
       // resolve is outside the try: configuration errors (e.g. AdapterNotFoundError) propagate directly without retry —
       // this is a workflow configuration problem, not a transient backend failure; retrying is meaningless and would mask the bug.
       const adapter = registry ? registry.resolve(params) : null
-      const invokeBackend = (): Promise<AgentRunResult> =>
-        adapter
+      const invokeBackend = async (): Promise<AgentRunResult> => {
+        throwIfAborted()
+        const backendResult = await (adapter
           ? adapter.run(params, adapterCtx!)
-          : ctx.ports.agentRunner.runAgentToResult(params, ctx.host)
+          : ctx.ports.agentRunner.runAgentToResult(params, ctx.host))
+        // A backend may settle normally at the same time the parent signal is aborted. The parent
+        // signal is authoritative: do not turn that race into a successful workflow completion.
+        throwIfAborted()
+        return backendResult
+      }
 
       // Auto-retry once on failure: dead (terminal API error after retries) or a non-abort throw
       // both get one retry chance; WorkflowAbortedError (kill) is not retried — it is the user's intent.
@@ -173,7 +191,7 @@ export function makeHooks(
       let result: AgentRunResult
       try {
         result = await invokeBackend()
-        if (result.kind === 'dead') {
+        if (result.kind === 'dead' && result.reason !== 'agent-aborted') {
           const detailStr =
             typeof result.detail === 'string' ? result.detail : ''
           ctx.ports.logger.warn?.(
@@ -185,7 +203,7 @@ export function makeHooks(
           result = await invokeBackend()
         }
       } catch (e) {
-        if (e instanceof WorkflowAbortedError) throw e
+        throwIfAborted(e)
         const eMsg = e instanceof Error ? e.message : String(e)
         ctx.ports.logger.warn?.(
           `agent "${label ?? `#${agentId}`}" threw (${eMsg}); retrying once`,
@@ -193,7 +211,7 @@ export function makeHooks(
         try {
           result = await invokeBackend()
         } catch (e2) {
-          if (e2 instanceof WorkflowAbortedError) throw e2
+          throwIfAborted(e2)
           // Retry still threw: degrade to dead (keep the workflow going; hooks.agent returns null)
           result = {
             kind: 'dead',
@@ -202,6 +220,7 @@ export function makeHooks(
           }
         }
       }
+      throwIfAborted()
       if (result.kind === 'ok') {
         ctx.resources.budget.addOutputTokens(result.usage.outputTokens)
       }
@@ -213,6 +232,7 @@ export function makeHooks(
       ctx.journal.push(entry)
       ctx.journalIndex++
       await ctx.ports.journalStore.append(ctx.runId, entry)
+      throwIfAborted()
       return resultToOutput(result)
     } finally {
       release()
@@ -220,6 +240,7 @@ export function makeHooks(
   }
 
   const parallel: WorkflowHooks['parallel'] = async thunks => {
+    throwIfAborted()
     if (thunks.length > MAX_ITEMS_PER_CALL) {
       throw new WorkflowError(
         `parallel exceeds the per-call items cap (${MAX_ITEMS_PER_CALL})`,
@@ -228,8 +249,11 @@ export function makeHooks(
     return Promise.all(
       thunks.map(async (t, i) => {
         try {
-          return await t()
+          const value = await t()
+          throwIfAborted()
+          return value
         } catch (e) {
+          throwIfAborted(e)
           // The "null on error" contract is unchanged, but it should log — otherwise the workflow author cannot locate why an agent failed
           ctx.ports.logger.warn?.(
             `parallel thunk #${i} failed: ${(e as Error).message}`,
@@ -246,6 +270,7 @@ export function makeHooks(
       (prev: unknown, item: T, index: number) => Promise<unknown>
     >
   ): Promise<Array<R | null>> => {
+    throwIfAborted()
     if (items.length > MAX_ITEMS_PER_CALL) {
       throw new WorkflowError(
         `pipeline exceeds the per-call items cap (${MAX_ITEMS_PER_CALL})`,
@@ -256,10 +281,13 @@ export function makeHooks(
         try {
           let prev: unknown = item
           for (const stage of stages) {
+            throwIfAborted()
             prev = await stage(prev, item, index)
+            throwIfAborted()
           }
           return prev as R
         } catch (e) {
+          throwIfAborted(e)
           ctx.ports.logger.warn?.(
             `pipeline item #${index} failed: ${(e as Error).message}`,
           )
@@ -282,6 +310,7 @@ export function makeHooks(
   }
 
   const workflow: WorkflowHooks['workflow'] = async (nameOrRef, args) => {
+    throwIfAborted()
     if (ctx.resources.depth >= 1) {
       throw new WorkflowError('workflow() nesting allows only one level')
     }
@@ -289,7 +318,9 @@ export function makeHooks(
       typeof nameOrRef === 'string'
         ? { name: nameOrRef }
         : { scriptPath: nameOrRef.scriptPath }
-    return runSubWorkflow({ ...sub, args })
+    const result = await runSubWorkflow({ ...sub, args })
+    throwIfAborted()
+    return result
   }
 
   return { agent, parallel, pipeline, phase, log, workflow }

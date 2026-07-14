@@ -91,6 +91,14 @@ export async function* streamGeminiGenerateContent(params: {
       }
     }
   } finally {
+    // Closing an async generator does not necessarily abort fetch's body.
+    // Cancel the reader explicitly so an Esc/consumer return closes the SSE
+    // transport instead of merely stopping local iteration.
+    try {
+      await reader.cancel()
+    } catch {
+      // The signal may already have errored/closed the reader.
+    }
     reader.releaseLock()
   }
 }

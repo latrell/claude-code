@@ -4,12 +4,14 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 // pollution by other tests that call setGlobalDispatcher (proxy agents make
 // localhost fetches return 500 in the full-suite run).
 const realFetch = globalThis.fetch
+let lastFetchSignal: AbortSignal | null | undefined
 
 beforeAll(() => {
   globalThis.fetch = (async (
     input: string | URL | Request,
-    _init?: RequestInit,
+    init?: RequestInit,
   ) => {
+    lastFetchSignal = init?.signal
     const url = typeof input === 'string' ? input : input.toString()
     if (url === 'not-a-url' || !url.startsWith('http')) {
       throw new TypeError('Failed to fetch')
@@ -65,6 +67,17 @@ describe('WebBrowserTool', () => {
     expect(result.data.url).toContain('example.com')
     expect(result.data.content).toContain('Example Domain')
   }, 15000)
+
+  test('passes the tool abort signal to fetch', async () => {
+    const { WebBrowserTool } = await import('../WebBrowserTool.js')
+    const abortController = new AbortController()
+
+    await WebBrowserTool.call({ url: 'https://example.com' }, {
+      abortController,
+    } as unknown as NonNullable<Parameters<typeof WebBrowserTool.call>[1]>)
+
+    expect(lastFetchSignal).toBe(abortController.signal)
+  })
 
   test('screenshot returns text snapshot', async () => {
     const { WebBrowserTool } = await import('../WebBrowserTool.js')

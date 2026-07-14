@@ -29,6 +29,7 @@ import { errorMessage } from '../utils/errors.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import type { ReplBridgeTransport } from './replBridgeTransport.js'
+import type { BridgeInterruptHandler } from './types.js'
 import {
   BASH_INPUT_TAG,
   CHANNEL_MESSAGE_TAG,
@@ -313,7 +314,11 @@ export type ServerControlRequestHandlers = {
    * proper error instead of "action succeeded but nothing happened locally".
    */
   outboundOnly?: boolean
-  onInterrupt?: () => void
+  /**
+   * Abort the active turn and resolve only after its query/tool/network
+   * lifecycle has settled. Returning false rejects the control request.
+   */
+  onInterrupt?: BridgeInterruptHandler
   onSetModel?: (model: string | undefined) => void
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
   onSetPermissionMode?: (
@@ -334,10 +339,10 @@ const OUTBOUND_ONLY_ERROR = t(
  * Previously a closure inside initBridgeCore's onWorkReceived; now takes
  * collaborators as params so both cores can use it.
  */
-export function handleServerControlRequest(
+export async function handleServerControlRequest(
   request: SDKControlRequest,
   handlers: ServerControlRequestHandlers,
-): void {
+): Promise<void> {
   const {
     transport,
     sessionId,
@@ -355,6 +360,7 @@ export function handleServerControlRequest(
   }
 
   let response: SDKControlResponse
+  let afterInterruptAcknowledgement: (() => void) | undefined
 
   // Outbound-only: reply error for mutable requests so claude.ai doesn't show
   // false success. initialize must still succeed (server kills the connection
@@ -376,7 +382,7 @@ export function handleServerControlRequest(
       },
     }
     const event = { ...response, session_id: sessionId }
-    void transport.write(event)
+    await transport.write(event)
     logForDebugging(
       `[bridge:repl] Rejected ${req.subtype} (outbound-only) request_id=${request.request_id}`,
     )
@@ -460,16 +466,54 @@ export function handleServerControlRequest(
       break
     }
 
-    case 'interrupt':
-      onInterrupt?.()
-      response = {
-        type: 'control_response',
-        response: {
-          subtype: 'success',
-          request_id: request.request_id,
-        },
+    case 'interrupt': {
+      if (!onInterrupt) {
+        response = {
+          type: 'control_response',
+          response: {
+            subtype: 'error',
+            request_id: request.request_id,
+            error: 'Interrupt is not supported in this context',
+          },
+        }
+        break
+      }
+
+      try {
+        const result = await onInterrupt()
+        const confirmed =
+          typeof result === 'boolean' ? result : result.confirmed
+        if (typeof result !== 'boolean') {
+          afterInterruptAcknowledgement = result.afterAcknowledgement
+        }
+        response = !confirmed
+          ? {
+              type: 'control_response',
+              response: {
+                subtype: 'error',
+                request_id: request.request_id,
+                error: 'Active turn cancellation could not be confirmed',
+              },
+            }
+          : {
+              type: 'control_response',
+              response: {
+                subtype: 'success',
+                request_id: request.request_id,
+              },
+            }
+      } catch (error) {
+        response = {
+          type: 'control_response',
+          response: {
+            subtype: 'error',
+            request_id: request.request_id,
+            error: `Active turn cancellation failed: ${errorMessage(error)}`,
+          },
+        }
       }
       break
+    }
 
     default:
       // Unknown subtype — respond with error so the server doesn't
@@ -485,7 +529,11 @@ export function handleServerControlRequest(
   }
 
   const event = { ...response, session_id: sessionId }
-  void transport.write(event)
+  try {
+    await transport.write(event)
+  } finally {
+    afterInterruptAcknowledgement?.()
+  }
   rcLog(
     `control_response: subtype=${req.subtype}` +
       ` request_id=${request.request_id}` +

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FeedbackSurveyResponse } from '../components/FeedbackSurvey/utils.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -9,8 +9,11 @@ import { useAppState, useSetAppState } from '../state/AppState.js'
 import type { Message } from '../types/message.js'
 import type { SkillUpdate } from '../utils/hooks/skillImprovement.js'
 import { applySkillImprovement } from '../utils/hooks/skillImprovement.js'
+import { SkillImprovementApplyLifecycle } from '../utils/hooks/skillImprovementApplyLifecycle.js'
 import { createSystemMessage } from '../utils/messages.js'
 import { tf } from '../i18n/t.js'
+import { isAbortError, toError } from '../utils/errors.js'
+import { logError } from '../utils/log.js'
 
 type SkillImprovementSuggestion = {
   skillName: string
@@ -21,14 +24,34 @@ type SetMessages = (fn: (prev: Message[]) => Message[]) => void
 
 export function useSkillImprovementSurvey(setMessages: SetMessages): {
   isOpen: boolean
+  isApplying: boolean
   suggestion: SkillImprovementSuggestion | null
   handleSelect: (selected: FeedbackSurveyResponse) => void
+  cancelPending: () => void
 } {
   const suggestion = useAppState(s => s.skillImprovement.suggestion)
   const setAppState = useSetAppState()
   const [isOpen, setIsOpen] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
   const lastSuggestionRef = useRef(suggestion)
   const loggedAppearanceRef = useRef(false)
+  const mountedRef = useRef(true)
+  const applyLifecycleRef = useRef<SkillImprovementApplyLifecycle | null>(null)
+  if (!applyLifecycleRef.current) {
+    applyLifecycleRef.current = new SkillImprovementApplyLifecycle()
+  }
+
+  const cancelPending = useCallback(() => {
+    applyLifecycleRef.current?.cancel()
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      applyLifecycleRef.current?.cancel()
+    }
+  }, [])
 
   // Track the suggestion for display even after clearing AppState
   if (suggestion) {
@@ -71,8 +94,16 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
       })
 
       if (applied) {
-        void applySkillImprovement(current.skillName, current.updates).then(
-          () => {
+        const lifecycle = applyLifecycleRef.current!
+        const controller = lifecycle.start()
+        setIsApplying(true)
+        void applySkillImprovement(
+          current.skillName,
+          current.updates,
+          controller.signal,
+        )
+          .then(updated => {
+            if (!updated || !lifecycle.isCurrent(controller)) return
             setMessages(prev => [
               ...prev,
               createSystemMessage(
@@ -82,8 +113,19 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
                 'suggestion',
               ),
             ])
-          },
-        )
+          })
+          .catch(error => {
+            if (!controller.signal.aborted && !isAbortError(error)) {
+              logError(toError(error))
+            }
+          })
+          .finally(() => {
+            if (lifecycle.settle(controller) && mountedRef.current) {
+              setIsApplying(false)
+            }
+          })
+      } else {
+        cancelPending()
       }
 
       // Close and clear
@@ -97,12 +139,14 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
         }
       })
     },
-    [setAppState, setMessages],
+    [cancelPending, setAppState, setMessages],
   )
 
   return {
     isOpen,
+    isApplying,
     suggestion: lastSuggestionRef.current,
     handleSelect,
+    cancelPending,
   }
 }

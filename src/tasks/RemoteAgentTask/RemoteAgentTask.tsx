@@ -37,7 +37,7 @@ import { jsonStringify } from '../../utils/slowOperations.js';
 import { appendTaskOutput, evictTaskOutput, getTaskOutputPath, initTaskOutput } from '../../utils/task/diskOutput.js';
 import { registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { fetchSession } from '../../utils/teleport/api.js';
-import { archiveRemoteSession, pollRemoteSessionEvents } from '../../utils/teleport.js';
+import { pollRemoteSessionEvents, stopRemoteSession } from '../../utils/teleport.js';
 import type { TodoList } from '../../utils/todo/types.js';
 import type { UltraplanPhase } from '../../utils/ultraplan/ccrSession.js';
 
@@ -144,6 +144,21 @@ export type RemoteTaskContentExtractor = (log: SDKMessage[]) => string | null;
 
 const contentExtractors = new Map<RemoteTaskType, RemoteTaskContentExtractor>();
 
+// An explicit TaskStop must own the terminal transition while its archive
+// request is in flight. Otherwise the poller can observe "archived" first and
+// publish a misleading completed notification. The promise is shared so two
+// concurrent stop callers do not issue duplicate archive requests.
+type PendingRemoteTaskStop = {
+  sessionId: string;
+  promise: Promise<boolean>;
+};
+
+const pendingRemoteTaskStops = new Map<string, PendingRemoteTaskStop>();
+
+function hasPendingRemoteTaskStop(taskId: string, sessionId: string): boolean {
+  return pendingRemoteTaskStops.get(taskId)?.sessionId === sessionId;
+}
+
 /**
  * Register a content extractor for a remote task type. Called once per
  * completion in the generic completion branches (archived, completionChecker,
@@ -227,10 +242,12 @@ export type RemoteAgentPreconditionResult =
  */
 export async function checkRemoteAgentEligibility({
   skipBundle = false,
+  signal,
 }: {
   skipBundle?: boolean;
+  signal?: AbortSignal;
 } = {}): Promise<RemoteAgentPreconditionResult> {
-  const errors = await checkBackgroundRemoteSessionEligibility({ skipBundle });
+  const errors = await checkBackgroundRemoteSessionEligibility({ skipBundle, signal });
   if (errors.length > 0) {
     return { eligible: false, errors };
   }
@@ -587,6 +604,7 @@ export function registerRemoteAgentTask(options: {
   taskId: string;
   sessionId: string;
   cleanup: () => void;
+  stop: () => Promise<void>;
 } {
   const {
     remoteTaskType,
@@ -652,6 +670,7 @@ export function registerRemoteAgentTask(options: {
     taskId,
     sessionId: session.id,
     cleanup: stopPolling,
+    stop: () => RemoteAgentTask.kill(taskId, context.setAppState),
   };
 }
 
@@ -753,13 +772,21 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       const task = appState.tasks?.[taskId] as RemoteAgentTaskState | undefined;
       if (!task || task.status !== 'running') {
         // Task was killed externally (TaskStopTool) or already terminal.
-        // Session left alive so the claude.ai URL stays valid — the run_hunt.sh
-        // post_stage() calls land as assistant events there, and the user may
-        // want to revisit them after closing the terminal. TTL reaps it.
+        return;
+      }
+
+      if (hasPendingRemoteTaskStop(taskId, task.sessionId)) {
+        setTimeout(poll, POLL_INTERVAL_MS);
         return;
       }
 
       const response = await pollRemoteSessionEvents(task.sessionId, lastEventId);
+      // TaskStop may have started while the events request was in flight. Let
+      // the stop path publish the stopped transition after archive succeeds.
+      if (hasPendingRemoteTaskStop(taskId, task.sessionId)) {
+        setTimeout(poll, POLL_INTERVAL_MS);
+        return;
+      }
       lastEventId = response.lastEventId;
       const logGrew = response.newEvents.length > 0;
       if (logGrew) {
@@ -1088,7 +1115,10 @@ export const RemoteAgentTask: Task = {
     let toolUseId: string | undefined;
     let description: string | undefined;
     let sessionId: string | undefined;
-    let killed = false;
+
+    // Keep the task running locally until the worker has acknowledged an
+    // interrupt and the session is archived. Archive alone only blocks future
+    // writes; it does not prove an in-flight inference stopped.
     updateTaskState<RemoteAgentTaskState>(taskId, setAppState, task => {
       if (task.status !== 'running') {
         return task;
@@ -1096,33 +1126,63 @@ export const RemoteAgentTask: Task = {
       toolUseId = task.toolUseId;
       description = task.description;
       sessionId = task.sessionId;
-      killed = true;
-      return {
-        ...task,
-        status: 'killed',
-        notified: true,
-        endTime: Date.now(),
-      };
+      return task;
     });
 
-    // Close the task_started bookend for SDK consumers. The poll loop's
-    // early-return when status!=='running' won't emit a notification.
-    if (killed) {
-      emitTaskTerminatedSdk(taskId, 'stopped', {
-        toolUseId,
-        summary: description,
-      });
-      // Archive the remote session so it stops consuming cloud resources.
-      if (sessionId) {
-        void archiveRemoteSession(sessionId).catch(e =>
-          logForDebugging(`RemoteAgentTask archive failed: ${String(e)}`),
-        );
-      }
+    if (!sessionId) {
+      throw new Error(`Remote task ${taskId} is no longer running`);
     }
 
-    void evictTaskOutput(taskId);
-    void removeRemoteAgentMetadata(taskId);
-    logForDebugging(`RemoteAgentTask ${taskId} killed, archiving session ${sessionId ?? 'unknown'}`);
+    const pendingStop = pendingRemoteTaskStops.get(taskId);
+    const existingStop = pendingStop?.sessionId === sessionId ? pendingStop.promise : undefined;
+    const stopPromise = existingStop ?? stopRemoteSession(sessionId);
+    if (!existingStop) {
+      pendingRemoteTaskStops.set(taskId, { sessionId, promise: stopPromise });
+    }
+
+    try {
+      const stopped = await stopPromise;
+      if (!stopped) {
+        throw new Error(
+          `Failed to stop remote task ${taskId}: session ${sessionId} did not acknowledge interrupt and archive`,
+        );
+      }
+
+      let killedTask: RemoteAgentTaskState | undefined;
+      updateTaskState<RemoteAgentTaskState>(taskId, setAppState, task => {
+        // Do not clobber a completion that raced with the archive request, or a
+        // replacement task that happens to reuse the same local ID.
+        if (task.status !== 'running' || task.sessionId !== sessionId) {
+          return task;
+        }
+        killedTask = {
+          ...task,
+          status: 'killed',
+          notified: true,
+          endTime: Date.now(),
+        };
+        return killedTask;
+      });
+
+      // Close the task_started bookend for SDK consumers. The poll loop's
+      // early-return when status!=='running' won't emit a notification.
+      if (killedTask) {
+        emitTaskTerminatedSdk(taskId, 'stopped', {
+          toolUseId,
+          summary: description,
+        });
+        runCompletionHook(taskId, killedTask);
+        await Promise.allSettled([evictTaskOutput(taskId), removeRemoteAgentMetadata(taskId)]);
+        logForDebugging(
+          `RemoteAgentTask ${taskId} killed after remote interrupt acknowledgement, archived session ${sessionId}`,
+        );
+      }
+    } finally {
+      const currentStop = pendingRemoteTaskStops.get(taskId);
+      if (!existingStop && currentStop?.sessionId === sessionId && currentStop.promise === stopPromise) {
+        pendingRemoteTaskStops.delete(taskId);
+      }
+    }
   },
 };
 

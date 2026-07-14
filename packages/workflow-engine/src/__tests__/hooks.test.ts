@@ -56,7 +56,7 @@ function buildCtx(overrides: CtxOverrides = {}): {
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete: () => {},
       fail: () => {},
-      kill: () => {},
+      kill: async () => false,
       pendingAction: () => overrides.pending ?? null,
       ...(overrides.registerAgentAbort
         ? { registerAgentAbort: overrides.registerAgentAbort }
@@ -199,6 +199,47 @@ test('agent throw WorkflowAbortedError → no retry, rethrow directly (kill does
   expect(calls).toBe(1)
 })
 
+test('agent throw AbortError → normalized cancellation with no retry', async () => {
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      const error = new Error('request aborted')
+      error.name = 'AbortError'
+      throw error
+    },
+  })
+  await expect(hooks.agent('p')).rejects.toBeInstanceOf(WorkflowAbortedError)
+  expect(calls).toBe(1)
+})
+
+test('agent-local aborted result is terminal for that agent and is not retried', async () => {
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return { kind: 'dead', reason: 'agent-aborted' }
+    },
+  })
+  expect(await hooks.agent('p')).toBeNull()
+  expect(calls).toBe(1)
+})
+
+test('parent abort after first backend result prevents retry', async () => {
+  const controller = new AbortController()
+  let calls = 0
+  const { hooks } = buildCtx({
+    signal: controller.signal,
+    runner: async () => {
+      calls++
+      controller.abort()
+      return { kind: 'dead' }
+    },
+  })
+  await expect(hooks.agent('p')).rejects.toBeInstanceOf(WorkflowAbortedError)
+  expect(calls).toBe(1)
+})
+
 test('agent ok → no retry (calls=1, saves a backend round-trip)', async () => {
   let calls = 0
   const { hooks } = buildCtx({
@@ -242,7 +283,7 @@ test('agent journal hit does not call runner', async () => {
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete: () => {},
       fail: () => {},
-      kill: () => {},
+      kill: async () => false,
       pendingAction: () => null,
     },
     journalStore: {
@@ -312,6 +353,17 @@ test('parallel single item throws → logger.warn records the failure reason', a
   expect(warns[0]).toMatch(/boom-x/)
 })
 
+test('parallel rethrows workflow cancellation instead of converting it to null', async () => {
+  const { hooks } = buildCtx()
+  await expect(
+    hooks.parallel([
+      async () => {
+        throw new WorkflowAbortedError()
+      },
+    ]),
+  ).rejects.toBeInstanceOf(WorkflowAbortedError)
+})
+
 test('pipeline chains stage by stage, stage throws → null', async () => {
   const { hooks } = buildCtx()
   const out = await hooks.pipeline(
@@ -326,6 +378,17 @@ test('pipeline chains stage by stage, stage throws → null', async () => {
     m => Promise.resolve(m),
   )
   expect(out2).toEqual([null])
+})
+
+test('pipeline rethrows AbortError instead of converting it to null', async () => {
+  const { hooks } = buildCtx()
+  await expect(
+    hooks.pipeline([1], async () => {
+      const error = new Error('request aborted')
+      error.name = 'AbortError'
+      throw error
+    }),
+  ).rejects.toBeInstanceOf(WorkflowAbortedError)
 })
 
 test('pipeline stage throws → logger.warn records the failure reason', async () => {

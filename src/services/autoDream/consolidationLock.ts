@@ -1,10 +1,12 @@
-// Lock file whose mtime IS lastConsolidatedAt. Body is the holder's PID.
+// Lock file whose mtime IS lastConsolidatedAt. New-format bodies include a
+// unique owner token as well as the holder PID. Legacy PID-only bodies remain
+// readable for upgrades from older versions.
 //
 // Lives inside the memory dir (getAutoMemPath) so it keys on git-root
 // like memory does, and so it's writable even when the memory path comes
 // from an env/settings override whose parent may not be.
 
-import { mkdir, readFile, stat, unlink, utimes, writeFile } from 'fs/promises'
+import { mkdir, readFile, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { getAutoMemPath } from '../../memdir/paths.js'
@@ -12,8 +14,10 @@ import { logForDebugging } from '../../utils/debug.js'
 import { isProcessRunning } from '../../utils/genericProcessUtils.js'
 import { listCandidates } from '../../utils/listSessionsImpl.js'
 import { getProjectDir } from '../../utils/sessionStorage.js'
+import { randomUUID } from '../../utils/crypto.js'
 
 const LOCK_FILE = '.consolidate-lock'
+const LOCK_VERSION = 1
 
 // Stale past this even if the PID is live (PID reuse guard).
 const HOLDER_STALE_MS = 60 * 60 * 1000
@@ -22,45 +26,130 @@ function lockPath(): string {
   return join(getAutoMemPath(), LOCK_FILE)
 }
 
-/**
- * mtime of the lock file = lastConsolidatedAt. 0 if absent.
- * Per-turn cost: one stat.
- */
-export async function readLastConsolidatedAt(): Promise<number> {
+export type ConsolidationLockLease = Readonly<{
+  priorMtime: number
+  ownerToken: string
+}>
+
+type LockRecord = {
+  version: typeof LOCK_VERSION
+  pid: number
+  ownerToken: string
+  priorMtime: number
+}
+
+type LockSnapshot = {
+  mtimeMs: number
+  effectiveMtimeMs: number
+  holderPid: number | undefined
+  ownerToken: string | undefined
+  rolledBack: boolean
+}
+
+function rollbackPath(ownerToken: string): string {
+  return join(getAutoMemPath(), `${LOCK_FILE}.rollback-${ownerToken}`)
+}
+
+function parseLockRecord(raw: string): {
+  holderPid: number | undefined
+  ownerToken: string | undefined
+  priorMtime: number | undefined
+} {
   try {
-    const s = await stat(lockPath())
-    return s.mtimeMs
+    const candidate = JSON.parse(raw) as Record<string, unknown>
+    if (
+      candidate.version === LOCK_VERSION &&
+      typeof candidate.pid === 'number' &&
+      Number.isSafeInteger(candidate.pid) &&
+      candidate.pid > 0 &&
+      typeof candidate.ownerToken === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(candidate.ownerToken) &&
+      typeof candidate.priorMtime === 'number' &&
+      Number.isFinite(candidate.priorMtime) &&
+      candidate.priorMtime >= 0
+    ) {
+      return {
+        holderPid: candidate.pid,
+        ownerToken: candidate.ownerToken,
+        priorMtime: candidate.priorMtime,
+      }
+    }
   } catch {
-    return 0
+    // Fall through to the legacy PID-only representation.
+  }
+
+  const legacyPid = parseInt(raw.trim(), 10)
+  return {
+    holderPid: Number.isFinite(legacyPid) ? legacyPid : undefined,
+    ownerToken: undefined,
+    priorMtime: undefined,
+  }
+}
+
+async function markerExists(ownerToken: string): Promise<boolean> {
+  try {
+    await stat(rollbackPath(ownerToken))
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function readLockSnapshot(): Promise<LockSnapshot | null> {
+  try {
+    const path = lockPath()
+    const [s, raw] = await Promise.all([stat(path), readFile(path, 'utf8')])
+    const parsed = parseLockRecord(raw)
+    const rolledBack = parsed.ownerToken
+      ? await markerExists(parsed.ownerToken)
+      : false
+    return {
+      mtimeMs: s.mtimeMs,
+      effectiveMtimeMs:
+        rolledBack && parsed.priorMtime !== undefined
+          ? parsed.priorMtime
+          : s.mtimeMs,
+      holderPid: parsed.holderPid,
+      ownerToken: parsed.ownerToken,
+      rolledBack,
+    }
+  } catch {
+    return null
   }
 }
 
 /**
- * Acquire: write PID → mtime = now. Returns the pre-acquire mtime
- * (for rollback), or null if blocked / lost a race.
+ * Effective lock timestamp = lastConsolidatedAt. 0 if absent. A rollback
+ * marker makes the current owner's pre-acquire timestamp effective again.
+ */
+export async function readLastConsolidatedAt(): Promise<number> {
+  return (await readLockSnapshot())?.effectiveMtimeMs ?? 0
+}
+
+/**
+ * Acquire: write PID + owner token → mtime = now. Returns an owner-scoped
+ * lease containing the pre-acquire mtime, or null if blocked / lost a race.
  *
  *   Success → do nothing. mtime stays at now.
- *   Failure → rollbackConsolidationLock(priorMtime) rewinds mtime.
+ *   Failure → rollbackConsolidationLock(lease) publishes a token-scoped
+ *             rollback marker. It never mutates a later owner's lock.
  *   Crash   → mtime stuck, dead PID → next process reclaims.
  */
-export async function tryAcquireConsolidationLock(): Promise<number | null> {
+export async function tryAcquireConsolidationLock(): Promise<ConsolidationLockLease | null> {
   const path = lockPath()
+  const snapshot = await readLockSnapshot()
 
-  let mtimeMs: number | undefined
-  let holderPid: number | undefined
-  try {
-    const [s, raw] = await Promise.all([stat(path), readFile(path, 'utf8')])
-    mtimeMs = s.mtimeMs
-    const parsed = parseInt(raw.trim(), 10)
-    holderPid = Number.isFinite(parsed) ? parsed : undefined
-  } catch {
-    // ENOENT — no prior lock.
-  }
-
-  if (mtimeMs !== undefined && Date.now() - mtimeMs < HOLDER_STALE_MS) {
-    if (holderPid !== undefined && isProcessRunning(holderPid)) {
+  if (
+    snapshot !== null &&
+    !snapshot.rolledBack &&
+    Date.now() - snapshot.mtimeMs < HOLDER_STALE_MS
+  ) {
+    if (
+      snapshot.holderPid !== undefined &&
+      isProcessRunning(snapshot.holderPid)
+    ) {
       logForDebugging(
-        `[autoDream] lock held by live PID ${holderPid} (mtime ${Math.round((Date.now() - mtimeMs) / 1000)}s ago)`,
+        `[autoDream] lock held by live PID ${snapshot.holderPid} (mtime ${Math.round((Date.now() - snapshot.mtimeMs) / 1000)}s ago)`,
       )
       return null
     }
@@ -69,37 +158,56 @@ export async function tryAcquireConsolidationLock(): Promise<number | null> {
 
   // Memory dir may not exist yet.
   await mkdir(getAutoMemPath(), { recursive: true })
-  await writeFile(path, String(process.pid))
+  const lease: ConsolidationLockLease = {
+    priorMtime: snapshot?.effectiveMtimeMs ?? 0,
+    ownerToken: randomUUID(),
+  }
+  const record: LockRecord = {
+    version: LOCK_VERSION,
+    pid: process.pid,
+    ownerToken: lease.ownerToken,
+    priorMtime: lease.priorMtime,
+  }
+  await writeFile(path, JSON.stringify(record))
 
-  // Two reclaimers both write → last wins the PID. Loser bails on re-read.
+  // Two reclaimers both write → last wins the token. Loser bails on re-read.
   let verify: string
   try {
     verify = await readFile(path, 'utf8')
   } catch {
     return null
   }
-  if (parseInt(verify.trim(), 10) !== process.pid) return null
+  if (parseLockRecord(verify).ownerToken !== lease.ownerToken) return null
 
-  return mtimeMs ?? 0
+  // The previous owner's rollback marker is no longer consulted after our
+  // token is installed. Remove the usual marker to avoid unbounded buildup;
+  // a genuinely late old rollback may recreate it, but remains harmless.
+  if (snapshot?.rolledBack && snapshot.ownerToken) {
+    try {
+      await unlink(rollbackPath(snapshot.ownerToken))
+    } catch {
+      // Best-effort garbage collection only.
+    }
+  }
+
+  return lease
 }
 
 /**
- * Rewind mtime to pre-acquire after a failed fork. Clears the PID body —
- * otherwise our still-running process would look like it's holding.
- * priorMtime 0 → unlink (restore no-file).
+ * Release a failed acquisition by publishing an owner-scoped marker. Readers
+ * only honor the marker whose token is in the current lock record, so even a
+ * delayed or duplicate rollback from an old task cannot delete, rewind, or
+ * otherwise release a lock that has since been reclaimed by a new owner.
  */
 export async function rollbackConsolidationLock(
-  priorMtime: number,
+  lease: ConsolidationLockLease,
 ): Promise<void> {
-  const path = lockPath()
   try {
-    if (priorMtime === 0) {
-      await unlink(path)
-      return
-    }
-    await writeFile(path, '')
-    const t = priorMtime / 1000 // utimes wants seconds
-    await utimes(path, t, t)
+    await mkdir(getAutoMemPath(), { recursive: true })
+    await writeFile(
+      rollbackPath(lease.ownerToken),
+      JSON.stringify({ priorMtime: lease.priorMtime }),
+    )
   } catch (e: unknown) {
     logForDebugging(
       `[autoDream] rollback failed: ${(e as Error).message} — next trigger delayed to minHours`,

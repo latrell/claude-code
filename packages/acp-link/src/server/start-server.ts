@@ -12,10 +12,9 @@ import {
   isJsonRpc2Message,
 } from '../ws-message.js'
 import { authTokensEqual, extractWebSocketAuthToken } from '../ws-auth.js'
-import { cancelPendingPermissions } from './acp-client.js'
 import { sendJsonRpcError } from './client-send.js'
 import { dispatchClientMessage, dispatchJsonRpcMessage } from './dispatch.js'
-import { handleDisconnect } from './handlers-agent.js'
+import { disconnectAgent, terminateAgentProcess } from './process-lifecycle.js'
 import { decodeClientMessage } from './payload-decode.js'
 import {
   HEARTBEAT_INTERVAL_MS,
@@ -74,6 +73,15 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const relayWs = createRelayWs()
     const relayState = createClientState()
     clients.set(relayWs, relayState)
+
+    rcsUpstream.setDisconnectHandler(async () => {
+      const stopped = await disconnectAgent(relayState)
+      if (!stopped) {
+        throw new Error(
+          'Failed to stop the ACP agent after RCS upstream disconnected',
+        )
+      }
+    })
 
     rcsUpstream.setMessageHandler(async msg => {
       try {
@@ -178,11 +186,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
         onClose(_event, ws) {
           logWs.info('client disconnected')
           const state = clients.get(ws)
-          if (state) {
-            cancelPendingPermissions(state)
+          if (!state) return
+
+          const cleanup = async () => {
+            const stopped = await disconnectAgent(state)
+            if (stopped) {
+              clients.delete(ws)
+              return
+            }
+            logWs.error(
+              { pid: state.process?.pid },
+              'disconnected client agent is still running; retrying cleanup',
+            )
+            setTimeout(() => void cleanup(), 1_000)
           }
-          handleDisconnect(ws)
-          clients.delete(ws)
+          void cleanup()
         },
       }
     }),
@@ -205,7 +223,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   injectWebSocket(server)
 
   // Heartbeat: periodically ping all connected clients
-  setInterval(() => {
+  const heartbeatTimer = setInterval(() => {
     for (const [ws, state] of clients) {
       // Skip virtual relay connections (no raw socket, always alive)
       if (!ws.raw && state.isAlive) continue
@@ -281,13 +299,59 @@ export async function startServer(config: ServerConfig): Promise<void> {
     'started',
   )
 
-  // Graceful shutdown — close RCS upstream
+  // Graceful shutdown — stop every detached agent tree before exiting.
+  let shuttingDown = false
   const shutdown = async () => {
+    if (shuttingDown) return
+    shuttingDown = true
+
+    clearInterval(heartbeatTimer)
+
+    // Stop accepting work before taking the process snapshot. WebSocket
+    // termination triggers the same confirmed cleanup used for disconnects.
+    const serverClosed = new Promise<boolean>(resolve => {
+      const timeout = setTimeout(() => resolve(false), 2_000)
+      server.close(() => {
+        clearTimeout(timeout)
+        resolve(true)
+      })
+    })
+    for (const ws of clients.keys()) {
+      const raw = ws.raw as RawWebSocket | null
+      raw?.terminate()
+    }
+
+    let upstreamError: Error | null = null
     const upstream = getRcsUpstream()
     if (upstream) {
-      await upstream.close()
+      try {
+        await upstream.close()
+      } catch (error) {
+        upstreamError = error as Error
+        logServer.error(
+          { error: upstreamError.message },
+          'failed to confirm RCS upstream close',
+        )
+      }
     }
-    process.exit(0)
+
+    const states = Array.from(new Set(clients.values()))
+    const stopResults = await Promise.all(
+      states.map(state => terminateAgentProcess(state)),
+    )
+    if (stopResults.some(stopped => !stopped)) {
+      logServer.error('shutdown aborted: an agent process tree is still alive')
+      process.exitCode = 1
+      shuttingDown = false
+      return
+    }
+
+    const listenerClosed = await serverClosed
+    if (!listenerClosed) {
+      logServer.error('timed out closing ACP listener')
+    }
+    clients.clear()
+    process.exit(upstreamError || !listenerClosed ? 1 : 0)
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)

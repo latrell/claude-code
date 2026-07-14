@@ -273,8 +273,19 @@ function render() {
 async function stopInstance(id) {
   var btn = listEl.querySelector('[data-action="stop"][data-id="' + id + '"]');
   if (btn) btn.disabled = true;
-  await fetch('/api/instances/' + id + '/stop', { method: 'POST' });
-  await fetchInstances();
+  try {
+    var response = await fetch('/api/instances/' + id + '/stop', { method: 'POST' });
+    if (!response.ok) {
+      var body = await response.json().catch(function() { return {}; });
+      throw new Error(body.error || 'Failed to stop instance');
+    }
+  } catch (error) {
+    alert(error instanceof Error ? error.message : String(error));
+  } finally {
+    await fetchInstances();
+    var current = listEl.querySelector('[data-action="stop"][data-id="' + id + '"]');
+    if (current) current.disabled = false;
+  }
 }
 
 async function deleteInstance(id) {

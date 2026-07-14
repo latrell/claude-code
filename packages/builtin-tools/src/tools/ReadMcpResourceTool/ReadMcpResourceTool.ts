@@ -73,7 +73,7 @@ export const ReadMcpResourceTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema()
   },
-  async call(input, { options: { mcpClients } }) {
+  async call(input, { options: { mcpClients }, abortController }) {
     const { server: serverName, uri } = input
 
     const client = mcpClients.find(client => client.name === serverName)
@@ -103,6 +103,7 @@ export const ReadMcpResourceTool = buildTool({
         params: { uri },
       },
       ReadResourceResultSchema,
+      { signal: abortController.signal },
     )) as ReadResourceResult
 
     // Intercept any blob fields: decode, write raw bytes to disk with a

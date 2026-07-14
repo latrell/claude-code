@@ -1,5 +1,5 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
-import { getUuid } from '../api/client'
+import { apiInterrupt, getUuid } from '../api/client'
 import { generateMessageUuid } from './utils'
 import type { SessionEvent, EventPayload } from '../types'
 
@@ -110,9 +110,14 @@ export class RCSTransport implements ChatTransport<UIMessage> {
       return new ReadableStream({ start: c => c.close() })
     }
 
-    // POST user message to the RCS backend
+    abortSignal?.throwIfAborted()
+
+    // POST user message to the RCS backend. Do not bind this request directly
+    // to the UI AbortSignal: cancelling the POST can race after server receipt,
+    // making it impossible to know whether inference started. Instead issue an
+    // early interrupt and a causal final interrupt after the POST settles.
     const uuid = getUuid()
-    const response = await fetch(
+    const sendPromise = fetch(
       `/web/sessions/${this.sessionId}/events?uuid=${encodeURIComponent(uuid)}`,
       {
         method: 'POST',
@@ -123,9 +128,33 @@ export class RCSTransport implements ChatTransport<UIMessage> {
           content: text,
           message: { content: text },
         }),
-        signal: abortSignal,
       },
     )
+    let pendingInterrupt: Promise<void> | null = null
+    const interruptAfterSend = (): Promise<void> => {
+      if (pendingInterrupt) return pendingInterrupt
+      pendingInterrupt = (async () => {
+        const earlyInterrupt = apiInterrupt(this.sessionId)
+        await Promise.allSettled([sendPromise, earlyInterrupt])
+        await apiInterrupt(this.sessionId)
+      })()
+      return pendingInterrupt
+    }
+    const onSendAbort = (): void => {
+      void interruptAfterSend()
+    }
+    abortSignal?.addEventListener('abort', onSendAbort, { once: true })
+
+    let response: Response
+    try {
+      response = await sendPromise
+      if (abortSignal?.aborted) {
+        await interruptAfterSend()
+        abortSignal.throwIfAborted()
+      }
+    } finally {
+      abortSignal?.removeEventListener('abort', onSendAbort)
+    }
 
     if (!response.ok) {
       const data = await response
@@ -140,6 +169,8 @@ export class RCSTransport implements ChatTransport<UIMessage> {
       start: controller => {
         let textId = `text-${Date.now()}`
         let started = false
+        let closed = false
+        let onAbort: (() => void) | undefined
 
         const ensureStarted = () => {
           if (!started) {
@@ -202,6 +233,7 @@ export class RCSTransport implements ChatTransport<UIMessage> {
               // Finish after assistant message
               ensureStarted()
               controller.enqueue({ type: 'finish', finishReason: 'stop' })
+              closed = true
               controller.close()
               cleanup()
               break
@@ -275,6 +307,7 @@ export class RCSTransport implements ChatTransport<UIMessage> {
                 ) {
                   ensureStarted()
                   controller.enqueue({ type: 'finish', finishReason: 'stop' })
+                  closed = true
                   controller.close()
                   cleanup()
                 }
@@ -292,6 +325,7 @@ export class RCSTransport implements ChatTransport<UIMessage> {
                 ),
               })
               controller.enqueue({ type: 'finish', finishReason: 'error' })
+              closed = true
               controller.close()
               cleanup()
               break
@@ -299,11 +333,16 @@ export class RCSTransport implements ChatTransport<UIMessage> {
 
             // ---- Interrupt ----
             case 'interrupt': {
+              // Outbound interrupt events are delivery requests, not proof that
+              // the worker acted on them. The server emits an inbound interrupt
+              // only after receiving the matching control_response.
+              if (event.direction === 'outbound') return
               ensureStarted()
               controller.enqueue({
                 type: 'abort',
                 reason: 'Session interrupted',
               })
+              closed = true
               controller.close()
               cleanup()
               break
@@ -330,19 +369,36 @@ export class RCSTransport implements ChatTransport<UIMessage> {
             this.unsub()
             this.unsub = null
           }
+          if (onAbort) {
+            abortSignal?.removeEventListener('abort', onAbort)
+            onAbort = undefined
+          }
         }
 
         this.unsub = sseBus.onEvent(handler)
 
         // Handle abort
         if (abortSignal) {
-          const onAbort = () => {
-            controller.enqueue({ type: 'abort', reason: 'Aborted' })
-            controller.close()
-            cleanup()
+          onAbort = () => {
+            void apiInterrupt(this.sessionId).then(
+              () => {
+                if (closed) return
+                controller.enqueue({ type: 'abort', reason: 'Aborted' })
+                closed = true
+                controller.close()
+                cleanup()
+              },
+              error => {
+                if (closed) return
+                closed = true
+                controller.error(error)
+                cleanup()
+              },
+            )
             abortSignal.removeEventListener('abort', onAbort)
           }
           abortSignal.addEventListener('abort', onAbort)
+          if (abortSignal.aborted) onAbort()
         }
       },
     })

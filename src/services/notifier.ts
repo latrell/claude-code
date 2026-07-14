@@ -159,6 +159,7 @@ export function formatNotificationTimestamp(date: Date = new Date()): string {
 export async function sendMeowPush(
   title: string,
   message: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const nickname = getGlobalConfig().meowNotifNickname?.trim()
   if (!nickname) {
@@ -166,6 +167,10 @@ export async function sendMeowPush(
   }
 
   const messageWithTimestamp = `${message.trimEnd()}\n\n${formatNotificationTimestamp()}`
+  const timeoutSignal = AbortSignal.timeout(10_000)
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal
 
   try {
     const res = await fetch(
@@ -174,7 +179,7 @@ export async function sendMeowPush(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, msg: messageWithTimestamp }),
-        signal: AbortSignal.timeout(10_000),
+        signal: requestSignal,
       },
     )
     if (!res.ok) {
@@ -186,7 +191,10 @@ export async function sendMeowPush(
       data?: unknown
     } | null
     return body?.data === true
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error
+    }
     return false
   }
 }

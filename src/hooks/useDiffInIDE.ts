@@ -290,6 +290,7 @@ async function showDiffInIDE(
         tab_name: tabName,
       },
       ideClient,
+      toolUseContext.abortController.signal,
     )
 
     // Convert the raw RPC result to a ToolCallResponse format

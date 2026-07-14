@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInterval } from 'usehooks-ts';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
+import { useNotifications } from '../../context/notifications.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- raw j/k/arrow dialog navigation
 import { Box, Text, useInput, stringWidth } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -13,6 +14,7 @@ import { getEmptyToolPermissionContext } from '../../Tool.js';
 import { AGENT_COLOR_TO_THEME_COLOR } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
+import { errorMessage } from '../../utils/errors.js';
 import { truncateToWidth } from '../../utils/format.js';
 import { modelDisplayString } from '../../utils/model/model.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
@@ -25,8 +27,9 @@ import {
 import { jsonStringify } from '../../utils/slowOperations.js';
 import { IT2_COMMAND, isInsideTmuxSync } from '../../utils/swarm/backends/detection.js';
 import { ensureBackendsRegistered, getBackendByType, getCachedBackend } from '../../utils/swarm/backends/registry.js';
-import { isPaneBackend, type PaneBackendType } from '../../utils/swarm/backends/types.js';
+import { isPaneBackend, type BackendType, type PaneBackendType } from '../../utils/swarm/backends/types.js';
 import { getSwarmSocketName, TMUX_COMMAND } from '../../utils/swarm/constants.js';
+import { killInProcessTeammateByAgentId } from '../../utils/swarm/spawnInProcess.js';
 import { removeMemberFromTeam, setMemberMode, setMultipleMemberModes } from '../../utils/swarm/teamHelpers.js';
 import { listTasks, type Task, unassignTeammateTasks } from '../../utils/tasks.js';
 import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/teamDiscovery.js';
@@ -38,6 +41,7 @@ import {
 import { Dialog } from '@anthropic/ink';
 import ThemedText from '../design-system/ThemedText.js';
 import { T } from '../../i18n/TText.js';
+import { runConfirmedTermination } from './confirmedTermination.js';
 
 type Props = {
   initialTeams?: TeamSummary[];
@@ -57,6 +61,18 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
 
   // initialTeams is derived from teamContext in PromptInput (no filesystem I/O)
   const setAppState = useSetAppState();
+  const { addNotification } = useNotifications();
+
+  const notifyStopFailure = (error?: unknown): void => {
+    addNotification({
+      key: 'teammate-stop-failed',
+      text: error
+        ? `Could not confirm teammate stopped: ${errorMessage(error)}`
+        : 'Could not confirm teammate stopped; it remains tracked and can be retried.',
+      priority: 'immediate',
+      timeoutMs: 5000,
+    });
+  };
 
   // Initialize dialogLevel with first team name if available
   const firstTeamName = initialTeams?.[0]?.name ?? '';
@@ -155,30 +171,40 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
       if (dialogLevel.type === 'teammateList' && teammateStatuses[selectedIndex]) {
         void killTeammate(
           teammateStatuses[selectedIndex].tmuxPaneId,
-          teammateStatuses[selectedIndex].backendType && isPaneBackend(teammateStatuses[selectedIndex].backendType)
-            ? teammateStatuses[selectedIndex].backendType
-            : undefined,
+          teammateStatuses[selectedIndex].backendType,
           dialogLevel.teamName,
           teammateStatuses[selectedIndex].agentId,
           teammateStatuses[selectedIndex].name,
           setAppState,
-        ).then(() => {
-          setRefreshKey(k => k + 1);
-          // Adjust selection if needed
-          setSelectedIndex(prev => Math.max(0, Math.min(prev, teammateStatuses.length - 2)));
-        });
+        )
+          .then(terminated => {
+            if (!terminated) {
+              notifyStopFailure();
+              return;
+            }
+            setRefreshKey(k => k + 1);
+            // Adjust selection if needed
+            setSelectedIndex(prev => Math.max(0, Math.min(prev, teammateStatuses.length - 2)));
+          })
+          .catch(notifyStopFailure);
       } else if (dialogLevel.type === 'teammateDetail' && currentTeammate) {
         void killTeammate(
           currentTeammate.tmuxPaneId,
-          currentTeammate.backendType && isPaneBackend(currentTeammate.backendType)
-            ? currentTeammate.backendType
-            : undefined,
+          currentTeammate.backendType,
           dialogLevel.teamName,
           currentTeammate.agentId,
           currentTeammate.name,
           setAppState,
-        );
-        goBackToList();
+        )
+          .then(terminated => {
+            if (!terminated) {
+              notifyStopFailure();
+              return;
+            }
+            setRefreshKey(k => k + 1);
+            goBackToList();
+          })
+          .catch(notifyStopFailure);
       }
       return;
     }
@@ -249,19 +275,17 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
       if (idleTeammates.length > 0) {
         void Promise.all(
           idleTeammates.map(t =>
-            killTeammate(
-              t.tmuxPaneId,
-              t.backendType && isPaneBackend(t.backendType) ? t.backendType : undefined,
-              dialogLevel.teamName,
-              t.agentId,
-              t.name,
-              setAppState,
-            ),
+            killTeammate(t.tmuxPaneId, t.backendType, dialogLevel.teamName, t.agentId, t.name, setAppState),
           ),
-        ).then(() => {
-          setRefreshKey(k => k + 1);
-          setSelectedIndex(prev => Math.max(0, Math.min(prev, teammateStatuses.length - idleTeammates.length - 1)));
-        });
+        )
+          .then(results => {
+            const terminatedCount = results.filter(Boolean).length;
+            if (terminatedCount < results.length) notifyStopFailure();
+            if (terminatedCount === 0) return;
+            setRefreshKey(k => k + 1);
+            setSelectedIndex(prev => Math.max(0, Math.min(prev, teammateStatuses.length - terminatedCount - 1)));
+          })
+          .catch(notifyStopFailure);
       }
       return;
     }
@@ -459,66 +483,75 @@ function TeammateDetailView({ teammate, teamName, onCancel }: TeammateDetailView
 
 async function killTeammate(
   paneId: string,
-  backendType: PaneBackendType | undefined,
+  backendType: BackendType | undefined,
   teamName: string,
   teammateId: string,
   teammateName: string,
   setAppState: (f: (prev: AppState) => AppState) => void,
-): Promise<void> {
+): Promise<boolean> {
   // Kill the pane using the backend that created it (handles -s / -L flags correctly).
-  // Wrapped in try/catch so cleanup (removeMemberFromTeam, unassignTeammateTasks,
-  // setAppState) always runs — matches useInboxPoller.ts error isolation.
-  if (backendType) {
-    try {
-      // Use ensureBackendsRegistered (not detectAndGetBackend) — this process may
-      // be a teammate that never ran detection, but we only need class imports
-      // here, not subprocess probes that could throw in a different environment.
-      await ensureBackendsRegistered();
-      await getBackendByType(backendType).killPane(paneId, !isInsideTmuxSync());
-    } catch (error) {
-      logForDebugging(`[TeamsDialog] Failed to kill pane ${paneId}: ${error}`);
-    }
-  } else {
-    // backendType undefined: old team files predating this field, or in-process.
-    // Old tmux-file case is a migration gap — the pane is orphaned. In-process
-    // teammates have no pane to kill, so this is correct for them.
-    logForDebugging(`[TeamsDialog] Skipping pane kill for ${paneId}: no backendType recorded`);
-  }
-  // Remove from team config file
-  removeMemberFromTeam(teamName, paneId);
+  // Cleanup is intentionally conditional: a failed/unknown Stop must leave
+  // the teammate visible and must not emit a false "terminated" event.
+  return runConfirmedTermination({
+    stop: async () => {
+      if (backendType === 'in-process') {
+        return killInProcessTeammateByAgentId(teammateId, setAppState);
+      }
+      if (backendType && isPaneBackend(backendType)) {
+        // Use ensureBackendsRegistered (not detectAndGetBackend) — this process may
+        // be a teammate that never ran detection, but we only need class imports
+        // here, not subprocess probes that could throw in a different environment.
+        await ensureBackendsRegistered();
+        return getBackendByType(backendType).killPane(paneId, !isInsideTmuxSync());
+      }
 
-  // Unassign tasks and build notification message
-  const { notificationMessage } = await unassignTeammateTasks(teamName, teammateId, teammateName, 'terminated');
+      // Old team files without backendType cannot be stopped safely: paneId
+      // alone does not identify the owning terminal backend.
+      logForDebugging(`[TeamsDialog] Cannot confirm pane kill for ${paneId}: no backendType recorded`);
+      return false;
+    },
+    afterConfirmed: async () => {
+      removeMemberFromTeam(teamName, paneId);
 
-  // Update AppState to keep status line in sync and notify the lead
-  setAppState(prev => {
-    if (!prev.teamContext?.teammates) return prev;
-    if (!(teammateId in prev.teamContext.teammates)) return prev;
-    const { [teammateId]: _, ...remainingTeammates } = prev.teamContext.teammates;
-    return {
-      ...prev,
-      teamContext: {
-        ...prev.teamContext,
-        teammates: remainingTeammates,
-      },
-      inbox: {
-        messages: [
-          ...prev.inbox.messages,
-          {
-            id: randomUUID(),
-            from: 'system',
-            text: jsonStringify({
-              type: 'teammate_terminated',
-              message: notificationMessage,
-            }),
-            timestamp: new Date().toISOString(),
-            status: 'pending' as const,
+      const { notificationMessage } = await unassignTeammateTasks(teamName, teammateId, teammateName, 'terminated');
+
+      // Update AppState to keep status line in sync and notify the lead.
+      setAppState(prev => {
+        if (!prev.teamContext?.teammates) return prev;
+        if (!(teammateId in prev.teamContext.teammates)) return prev;
+        const { [teammateId]: _, ...remainingTeammates } = prev.teamContext.teammates;
+        return {
+          ...prev,
+          teamContext: {
+            ...prev.teamContext,
+            teammates: remainingTeammates,
           },
-        ],
-      },
-    };
+          inbox: {
+            messages: [
+              ...prev.inbox.messages,
+              {
+                id: randomUUID(),
+                from: 'system',
+                text: jsonStringify({
+                  type: 'teammate_terminated',
+                  message: notificationMessage,
+                }),
+                timestamp: new Date().toISOString(),
+                status: 'pending' as const,
+              },
+            ],
+          },
+        };
+      });
+      logForDebugging(`[TeamsDialog] Removed ${teammateId} from teamContext`);
+    },
+    onUnconfirmed: () => {
+      logForDebugging(`[TeamsDialog] Stop was not confirmed for ${teammateId} (${paneId}); retaining teammate state`);
+    },
+    onStopError: error => {
+      logForDebugging(`[TeamsDialog] Failed to kill teammate ${teammateId} (${paneId}): ${error}`);
+    },
   });
-  logForDebugging(`[TeamsDialog] Removed ${teammateId} from teamContext`);
 }
 
 async function viewTeammateOutput(paneId: string, backendType: PaneBackendType | undefined): Promise<void> {

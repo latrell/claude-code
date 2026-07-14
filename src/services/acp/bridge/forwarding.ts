@@ -390,6 +390,13 @@ export async function forwardSessionUpdates(
       return { stopReason: 'cancelled', usage: accumulatedUsage }
     }
     throw err
+  } finally {
+    // Promise.race does not cancel the losing next() call. Request iterator
+    // closure so QueryEngine can release the model stream and its tool loop
+    // after an ACP interrupt. Do not await here: a third-party async generator
+    // may be blocked in a non-cooperative await, and cancellation itself must
+    // remain responsive.
+    void sdkMessages.return().catch(() => {})
   }
 
   return { stopReason, usage: accumulatedUsage }

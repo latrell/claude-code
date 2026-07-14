@@ -1,4 +1,5 @@
 import type { AcpInstance, InstanceSummary, LogEntry } from './types.js'
+import { terminateProcessTree } from '../process-tree.js'
 
 function log(tag: string, msg: string) {
   const ts = new Date().toISOString()
@@ -6,12 +7,12 @@ function log(tag: string, msg: string) {
 }
 
 const MAX_LOG_LINES = 2000
-const SHUTDOWN_TIMEOUT_MS = 5000
-
 export class ProcessManager {
   private instances = new Map<string, AcpInstance>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private processes = new Map<string, any>()
+  private stopping = new Map<string, Promise<boolean>>()
+  private stopRequested = new Set<string>()
 
   create(group: string, command: string): AcpInstance {
     const id = crypto.randomUUID()
@@ -34,6 +35,9 @@ export class ProcessManager {
       stdout: 'pipe',
       stderr: 'pipe',
       env: { ...Bun.env, ACP_CHILD: '1' },
+      // On POSIX this makes the wrapper a process-group leader, allowing Stop
+      // to terminate the agent and every subprocess it launched.
+      detached: process.platform !== 'win32',
     })
 
     instance.pid = proc.pid
@@ -47,11 +51,29 @@ export class ProcessManager {
     this.pipeStream(proc.stdout, id, 'stdout')
     this.pipeStream(proc.stderr, id, 'stderr')
 
-    proc.exited.then(code => {
-      instance.status = code === 0 ? 'stopped' : 'failed'
+    proc.exited.then(async code => {
+      const existingStop = this.stopping.get(id)
+      const treeStopped = existingStop
+        ? await existingStop
+        : await terminateProcessTree({
+            pid: proc.pid,
+            isExited: () => proc.exitCode !== null,
+            kill: signal => proc.kill(signal),
+          })
+      instance.status =
+        treeStopped && (this.stopRequested.has(id) || code === 0)
+          ? 'stopped'
+          : 'failed'
       instance.exitCode = code
       instance.pid = undefined
       this.processes.delete(id)
+      this.stopRequested.delete(id)
+      if (!treeStopped) {
+        log(
+          'manager',
+          `instance ${id.slice(0, 8)} exited but descendants remain alive`,
+        )
+      }
       log(
         'manager',
         `instance ${id.slice(0, 8)} ${instance.status} exit=${code}`,
@@ -62,17 +84,42 @@ export class ProcessManager {
     return instance
   }
 
-  stop(id: string): boolean {
+  async stop(id: string): Promise<boolean> {
+    const inFlight = this.stopping.get(id)
+    if (inFlight) return inFlight
+
     const proc = this.processes.get(id)
-    if (!proc) return false
-    const inst = this.instances.get(id)
-    log('manager', `stopping instance ${id.slice(0, 8)} pid=${proc.pid}`)
-    proc.kill('SIGTERM')
-    // Immediately mark as stopped to prevent stale state
-    if (inst) {
-      inst.status = 'stopped'
+    if (!proc) {
+      const instance = this.instances.get(id)
+      return instance !== undefined && instance.status !== 'running'
     }
-    return true
+    log('manager', `stopping instance ${id.slice(0, 8)} pid=${proc.pid}`)
+    this.stopRequested.add(id)
+
+    const stopping = terminateProcessTree({
+      pid: proc.pid,
+      isExited: () => proc.exitCode !== null,
+      kill: signal => proc.kill(signal),
+    })
+      .then(stopped => {
+        if (!stopped) {
+          this.stopRequested.delete(id)
+          log(
+            'manager',
+            `failed to confirm stop for ${id.slice(0, 8)} pid=${proc.pid}`,
+          )
+        } else {
+          const instance = this.instances.get(id)
+          if (instance) instance.status = 'stopped'
+        }
+        return stopped
+      })
+      .finally(() => {
+        this.stopping.delete(id)
+      })
+
+    this.stopping.set(id, stopping)
+    return stopping
   }
 
   remove(id: string): boolean {
@@ -105,32 +152,12 @@ export class ProcessManager {
     if (running.length === 0) return
 
     log('manager', `shutting down ${running.length} running instance(s)...`)
-    for (const [id, proc] of running) {
-      try {
-        proc.kill('SIGTERM')
-        log('manager', `sent SIGTERM to ${id.slice(0, 8)} pid=${proc.pid}`)
-      } catch {
-        // already dead
-      }
+    const results = await Promise.all(running.map(([id]) => this.stop(id)))
+    const failed = results.filter(stopped => !stopped).length
+    if (failed > 0) {
+      throw new Error(`failed to stop ${failed} ACP instance(s)`)
     }
-
-    const timeout = new Promise<void>(resolve =>
-      setTimeout(resolve, SHUTDOWN_TIMEOUT_MS),
-    )
-    await Promise.race([
-      Promise.all(running.map(([, proc]) => proc.exited.catch(() => {}))),
-      timeout,
-    ])
-
-    for (const [id, proc] of running) {
-      try {
-        proc.kill('SIGKILL')
-        log('manager', `sent SIGKILL to ${id.slice(0, 8)}`)
-      } catch {
-        // already dead
-      }
-    }
-    log('manager', 'all instances shut down')
+    log('manager', 'all instances confirmed shut down')
   }
 
   private parseCommand(command: string): string[] {

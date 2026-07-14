@@ -54,7 +54,7 @@ describe('Stream', () => {
     expect(promise).rejects.toThrow('boom')
   })
 
-  test('error() after done — hasError is set but next returns done:true (isDone checked first)', async () => {
+  test('error() after done is ignored', async () => {
     const stream = new Stream<number>()
     stream[Symbol.asyncIterator]()
     stream.done()
@@ -63,15 +63,20 @@ describe('Stream', () => {
     expect(await stream.next()).toEqual({ done: true, value: undefined })
   })
 
-  test('enqueue after done — queue is checked before isDone, value is consumed', async () => {
+  test('enqueue after done is ignored', async () => {
     const stream = new Stream<number>()
     stream[Symbol.asyncIterator]()
     stream.done()
     stream.enqueue(1)
-    // next() checks queue.length > 0 first, so enqueued value is returned
-    expect(await stream.next()).toEqual({ done: false, value: 1 })
-    // After draining queue, done takes effect
     expect(await stream.next()).toEqual({ done: true, value: undefined })
+  })
+
+  test('an error followed by done still rejects a later reader', async () => {
+    const stream = new Stream<number>()
+    stream[Symbol.asyncIterator]()
+    stream.error(new Error('boom'))
+    stream.done()
+    expect(stream.next()).rejects.toThrow('boom')
   })
 
   test('return() marks stream as done and calls returned callback', async () => {
@@ -94,12 +99,48 @@ describe('Stream', () => {
     expect(result).toEqual({ done: true, value: undefined })
   })
 
+  test('return() resolves a pending reader and ignores later values', async () => {
+    const stream = new Stream<number>()
+    stream[Symbol.asyncIterator]()
+    const pending = stream.next()
+    await stream.return()
+    stream.enqueue(1)
+    expect(await pending).toEqual({ done: true, value: undefined })
+    expect(await stream.next()).toEqual({ done: true, value: undefined })
+  })
+
+  test('return() calls its cancellation callback only once', async () => {
+    let calls = 0
+    const stream = new Stream<number>(() => {
+      calls++
+    })
+    stream[Symbol.asyncIterator]()
+    await stream.return()
+    await stream.return()
+    expect(calls).toBe(1)
+  })
+
+  test('iterator cleanup after a producer error does not signal consumer cancellation', async () => {
+    let calls = 0
+    const stream = new Stream<number>(() => {
+      calls++
+    })
+    const iteration = (async () => {
+      for await (const _value of stream) {
+        // The producer fails before yielding a value.
+      }
+    })()
+    stream.error(new Error('producer failed'))
+
+    expect(iteration).rejects.toThrow('producer failed')
+    await iteration.catch(() => {})
+    expect(calls).toBe(0)
+  })
+
   test('Symbol.asyncIterator throws on second call', () => {
     const stream = new Stream<number>()
     stream[Symbol.asyncIterator]()
-    expect(() => stream[Symbol.asyncIterator]()).toThrow(
-      'Stream can only be iterated once',
-    )
+    expect(() => stream[Symbol.asyncIterator]()).toThrow()
   })
 
   test('for-await-of iteration drains queued values then ends', async () => {

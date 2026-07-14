@@ -7,6 +7,7 @@ import type {
   ObserverBackend,
   ObserverBackendContext,
 } from './observerBackend.js'
+import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 import {
   INSTINCT_DOMAINS,
   type InstinctDomain,
@@ -26,8 +27,8 @@ import {
  * - Reuses `queryHaiku` (goes through the full Claude Code API stack:
  *   OAuth, beta headers, providers, VCR in tests). No new auth code.
  * - Caps input to the tail of the observation buffer so the prompt stays
- *   small and predictable, and runs under a 10-second abort signal so a
- *   slow Haiku round-trip never blocks the REPL turn end.
+ *   small and predictable, and combines the configured timeout with the
+ *   owning turn's abort signal so Esc cancels the Haiku round-trip too.
  * - On ANY failure (abort, parse error, empty output) returns `[]` —
  *   the backend is opt-in via `SKILL_LEARNING_OBSERVER_BACKEND=llm` and
  *   must never destabilise skill-learning when the API is unavailable.
@@ -88,14 +89,16 @@ async function analyseWithHaiku(
 
   const capped = observations.slice(-MAX_OBSERVATIONS_PER_CALL)
   const userPrompt = buildUserPrompt(capped)
-  const signal = makeTimeoutSignal(getSkillLearningConfig().llm.timeoutMs)
+  const combinedSignal = createCombinedAbortSignal(ctx?.signal, {
+    timeoutMs: getSkillLearningConfig().llm.timeoutMs,
+  })
 
   let responseText: string
   try {
     const response = await queryHaiku({
       systemPrompt: asSystemPrompt([LLM_OBSERVER_SYSTEM_PROMPT]),
       userPrompt,
-      signal,
+      signal: combinedSignal.signal,
       options: {
         querySource: 'skill_learning_observer',
         enablePromptCaching: true,
@@ -109,6 +112,7 @@ async function analyseWithHaiku(
     consecutiveFailures = 0
     responseText = extractResponseText(response.message?.content)
   } catch {
+    if (ctx?.signal?.aborted) return []
     // Haiku failure (timeout / rate limit / bad response) — increment failure
     // counter and potentially open the circuit breaker.
     consecutiveFailures++
@@ -117,6 +121,8 @@ async function analyseWithHaiku(
         Date.now() + getSkillLearningConfig().llm.circuitCooldownMs
     }
     return runHeuristicFallback(observations, ctx)
+  } finally {
+    combinedSignal.cleanup()
   }
 
   const parsed = parseInstinctCandidates(responseText, ctx, capped)
@@ -294,8 +300,4 @@ function evidenceField(value: unknown): string[] {
     if (entries.length === 3) break
   }
   return entries
-}
-
-function makeTimeoutSignal(ms: number): AbortSignal {
-  return AbortSignal.timeout(ms)
 }

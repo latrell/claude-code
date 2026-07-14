@@ -42,6 +42,7 @@ import type {
 } from 'src/types/message.js'
 import { createAttachmentMessage } from 'src/utils/attachments.js'
 import { AbortError } from 'src/utils/errors.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import { getDisplayPath } from 'src/utils/file.js'
 import {
   cloneFileStateCache,
@@ -207,6 +208,7 @@ async function initializeAgentMcpServers(
   // Only clean up newly created clients (inline definitions), not shared/referenced ones
   // Shared clients (referenced by string name) are memoized and used by the parent context
   const cleanup = async () => {
+    const failures: unknown[] = []
     for (const client of newlyCreatedClients) {
       if (client.type === 'connected') {
         try {
@@ -216,8 +218,15 @@ async function initializeAgentMcpServers(
             `[Agent: ${agentDefinition.agentType}] Error cleaning up MCP server '${client.name}': ${error}`,
             { level: 'warn' },
           )
+          failures.push(error)
         }
       }
+    }
+    if (failures.length > 0) {
+      throw new StopConfirmationError(
+        `Failed to confirm cleanup of ${failures.length} MCP server(s) owned by agent ${agentDefinition.agentType}`,
+        failures,
+      )
     }
   }
 
@@ -787,6 +796,9 @@ export async function* runAgent({
     agentToolUseContext.langfuseTrace = subTrace
   }
 
+  let runError: unknown
+  let didRunError = false
+  let cleanupError: StopConfirmationError | undefined
   try {
     for await (const message of query({
       messages: initialMessages,
@@ -856,11 +868,35 @@ export async function* runAgent({
     if (isBuiltInAgent(agentDefinition) && agentDefinition.callback) {
       agentDefinition.callback()
     }
+  } catch (error) {
+    didRunError = true
+    runError = error
   } finally {
     // End Langfuse sub-agent trace (no-op if not configured)
     endTrace(subTrace)
+    const stopFailures: unknown[] = []
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    if (feature('WORKFLOW_SCRIPTS')) {
+      const workflowMod =
+        require('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js')
+      // A subagent owns any workflow it spawned. Abort those runners and wait for their terminal
+      // callbacks before releasing the owner, otherwise their HTTP/SSE streams become orphans.
+      try {
+        await workflowMod.killWorkflowTasksForAgent(
+          agentId,
+          toolUseContext.getAppState,
+          rootSetAppState,
+        )
+      } catch (error) {
+        stopFailures.push(error)
+      }
+    }
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
-    await mcpCleanup()
+    try {
+      await mcpCleanup()
+    } catch (error) {
+      stopFailures.push(error)
+    }
     // Clean up agent's session hooks
     if (agentDefinition.hooks) {
       clearSessionHooks(rootSetAppState, agentId)
@@ -889,19 +925,38 @@ export async function* runAgent({
     // Kill any background bash tasks this agent spawned. Without this, a
     // `run_in_background` shell loop (e.g. test fixture fake-logs.sh) outlives
     // the agent as a PPID=1 zombie once the main session eventually exits.
-    killShellTasksForAgent(agentId, toolUseContext.getAppState, rootSetAppState)
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    if (feature('MONITOR_TOOL')) {
-      const mcpMod =
-        require('src/tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('src/tasks/MonitorMcpTask/MonitorMcpTask.js')
-      mcpMod.killMonitorMcpTasksForAgent(
+    try {
+      await killShellTasksForAgent(
         agentId,
         toolUseContext.getAppState,
         rootSetAppState,
       )
+    } catch (error) {
+      stopFailures.push(error)
+    }
+    if (feature('MONITOR_TOOL')) {
+      const mcpMod =
+        require('src/tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('src/tasks/MonitorMcpTask/MonitorMcpTask.js')
+      try {
+        await mcpMod.killMonitorMcpTasksForAgent(
+          agentId,
+          toolUseContext.getAppState,
+          rootSetAppState,
+        )
+      } catch (error) {
+        stopFailures.push(error)
+      }
     }
     /* eslint-enable @typescript-eslint/no-require-imports */
+    if (stopFailures.length > 0) {
+      cleanupError = new StopConfirmationError(
+        `Agent ${agentId} cleanup could not confirm all owned executions stopped`,
+        didRunError ? [runError, ...stopFailures] : stopFailures,
+      )
+    }
   }
+  if (cleanupError) throw cleanupError
+  if (didRunError) throw runError
 }
 
 async function getAgentSystemPrompt(

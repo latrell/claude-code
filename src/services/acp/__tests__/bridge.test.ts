@@ -1099,6 +1099,34 @@ describe('forwardSessionUpdates', () => {
     expect(abortListeners).toBe(0)
   })
 
+  test('requests generator closure when abort wins a pending next', async () => {
+    const ac = new AbortController()
+    let returnCalls = 0
+    const stream = {
+      next: () => new Promise<IteratorResult<SDKMessage, void>>(() => {}),
+      return: () => {
+        returnCalls++
+        return Promise.resolve({ done: true, value: undefined } as const)
+      },
+      throw: () => Promise.resolve({ done: true, value: undefined } as const),
+      [Symbol.asyncIterator]() {
+        return this
+      },
+    } as unknown as AsyncGenerator<SDKMessage, void, unknown>
+
+    const resultPromise = forwardSessionUpdates(
+      's1',
+      stream,
+      makeConn(),
+      ac.signal,
+      {},
+    )
+    ac.abort()
+
+    expect((await resultPromise).stopReason).toBe('cancelled')
+    expect(returnCalls).toBe(1)
+  })
+
   test('forwards assistant text message as agent_message_chunk', async () => {
     const conn = makeConn()
     const msgs: SDKMessage[] = [

@@ -19,6 +19,8 @@ import {
   isInProcessTeammateTask,
 } from '../tasks/InProcessTeammateTask/types.js'
 import { isBackgroundTask } from '../tasks/types.js'
+import { useNotifications } from '../context/notifications.js'
+import { errorMessage } from '../utils/errors.js'
 
 // Step teammate selection by delta, wrapping across leader(-1)..teammates(0..n-1)..hide(n).
 // First step from a collapsed tree expands it and parks on leader.
@@ -74,6 +76,7 @@ export function useBackgroundTaskNavigation(options?: {
   const selectedIPAgentIndex = useAppState(s => s.selectedIPAgentIndex)
   const pipeIpc = useAppState(s => s.pipeIpc)
   const setAppState = useSetAppState()
+  const { addNotification } = useNotifications()
 
   // Filter to running teammates and sort alphabetically to match TeammateSpinnerTree display
   const teammateTasks = getRunningTeammatesSorted(tasks)
@@ -243,7 +246,16 @@ export function useBackgroundTaskNavigation(options?: {
       e.preventDefault()
       const selected = getSelectedTeammate()
       if (selected && selected.task.status === 'running') {
-        void InProcessTeammateTask.kill(selected.taskId, setAppState)
+        void InProcessTeammateTask.kill(selected.taskId, setAppState).catch(
+          error => {
+            addNotification({
+              key: 'teammate-stop-failed',
+              text: `Could not confirm teammate stopped: ${errorMessage(error)}`,
+              priority: 'immediate',
+              timeoutMs: 5000,
+            })
+          },
+        )
       }
       return
     }

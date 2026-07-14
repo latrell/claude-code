@@ -65,7 +65,7 @@ function BtwSideQuestion({ question, context, onDone }: BtwComponentProps): Reac
     async function fetchResponse(): Promise<void> {
       try {
         const cacheSafeParams = await buildCacheSafeParams(context);
-        const result = await runSideQuestion({ question, cacheSafeParams });
+        const result = await runSideQuestion({ question, cacheSafeParams, abortController });
 
         if (!abortController.signal.aborted) {
           if (result.response) {

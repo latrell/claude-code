@@ -86,6 +86,12 @@ export function stateMock() {
     // Various getters (add as needed)
     getIsNonInteractiveSession: () => false,
     getSdkAgentProgressSummariesEnabled: () => false,
+    getModelStrings: () => null,
+    setModelStrings: noop,
+    resetModelStringsForTestingOnly: noop,
+    getSessionTrustAccepted: () => true,
+    setSessionTrustAccepted: noop,
     addSlowOperation: noop,
+    waitForScrollIdle: () => Promise.resolve(),
   }
 }

@@ -18,7 +18,7 @@ import { createChildAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage, toError } from '../../utils/errors.js'
 import {
   type FileStateCache,
   mergeFileStateCaches,
@@ -58,6 +58,16 @@ import {
 const MAX_SPECULATION_TURNS = 20
 const MAX_SPECULATION_MESSAGES = 100
 
+type SpeculationRun = {
+  generation: number
+  id: string
+  abortController: AbortController
+  settled: Promise<void>
+}
+
+let speculationGeneration = 0
+let currentSpeculationRun: SpeculationRun | null = null
+
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit'])
 const SAFE_READ_ONLY_TOOLS = new Set([
   'Read',
@@ -74,6 +84,14 @@ function safeRemoveOverlay(overlayPath: string): void {
     overlayPath,
     { recursive: true, force: true, maxRetries: 3, retryDelay: 100 },
     () => {},
+  )
+}
+
+function shouldPreserveOverlayAfterAbort(signal: AbortSignal): boolean {
+  return (
+    signal.reason === 'speculation-accepted' ||
+    signal.reason === 'speculation-boundary' ||
+    signal.reason === 'speculation-message-limit'
   )
 }
 
@@ -312,10 +330,13 @@ function createSpeculationFeedbackMessage(
 
 function updateActiveSpeculationState(
   setAppState: SetAppState,
+  id: string,
   updater: (state: ActiveSpeculationState) => Partial<ActiveSpeculationState>,
 ): void {
   setAppState(prev => {
-    if (prev.speculation.status !== 'active') return prev
+    if (prev.speculation.status !== 'active' || prev.speculation.id !== id) {
+      return prev
+    }
     const current = prev.speculation as ActiveSpeculationState
     const updates = updater(current)
     // Check if any values actually changed to avoid unnecessary re-renders
@@ -330,9 +351,11 @@ function updateActiveSpeculationState(
   })
 }
 
-function resetSpeculationState(setAppState: SetAppState): void {
+function resetSpeculationState(setAppState: SetAppState, id: string): void {
   setAppState(prev => {
-    if (prev.speculation.status === 'idle') return prev
+    if (prev.speculation.status !== 'active' || prev.speculation.id !== id) {
+      return prev
+    }
     return { ...prev, speculation: IDLE_SPECULATION_STATE }
   })
 }
@@ -346,6 +369,7 @@ export function isSpeculationEnabled(): boolean {
 }
 
 async function generatePipelinedSuggestion(
+  id: string,
   context: REPLHookContext,
   suggestionText: string,
   speculatedMessages: Message[],
@@ -387,7 +411,7 @@ async function generatePipelinedSuggestion(
     logForDebugging(
       `[Speculation] Pipelined suggestion: "${suggestion!.slice(0, 50)}..."`,
     )
-    updateActiveSpeculationState(setAppState, () => ({
+    updateActiveSpeculationState(setAppState, id, () => ({
       pipelinedSuggestion: {
         text: suggestion!,
         promptId,
@@ -402,26 +426,89 @@ async function generatePipelinedSuggestion(
   }
 }
 
-export async function startSpeculation(
+export function startSpeculation(
   suggestionText: string,
   context: REPLHookContext,
   setAppState: (f: (prev: AppState) => AppState) => void,
   isPipelined = false,
   cacheSafeParams?: CacheSafeParams,
+  ownerAbortController: AbortController = context.toolUseContext
+    .abortController,
 ): Promise<void> {
-  if (!isSpeculationEnabled()) return
+  if (!isSpeculationEnabled()) return Promise.resolve()
 
-  // Abort any existing speculation before starting a new one
-  abortSpeculation(setAppState)
+  const generation = ++speculationGeneration
+  const previousRun = currentSpeculationRun
+  if (previousRun) {
+    if (!previousRun.abortController.signal.aborted) {
+      previousRun.abortController.abort('speculation-replaced')
+    }
+    abortSpeculationState(setAppState, previousRun.id)
+  }
 
   const id = randomUUID().slice(0, 8)
+  const abortController = createChildAbortController(ownerAbortController)
 
-  const abortController = createChildAbortController(
-    context.toolUseContext.abortController,
-  )
+  const settled = (async (): Promise<void> => {
+    // Publish currentSpeculationRun before an already-aborted owner can take
+    // the fast path and settle this operation.
+    await Promise.resolve()
+    try {
+      if (previousRun) {
+        await Promise.allSettled([previousRun.settled])
+      }
+      if (
+        generation !== speculationGeneration ||
+        abortController.signal.aborted
+      ) {
+        return
+      }
+      await runSpeculation(
+        id,
+        generation,
+        abortController,
+        suggestionText,
+        context,
+        setAppState,
+        isPipelined,
+        cacheSafeParams,
+      )
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+        logError(toError(error))
+      }
+    } finally {
+      if (
+        currentSpeculationRun?.generation === generation &&
+        currentSpeculationRun.id === id
+      ) {
+        currentSpeculationRun = null
+      }
+      if (!abortController.signal.aborted) {
+        abortController.abort('speculation-complete')
+      }
+    }
+  })()
 
-  if (abortController.signal.aborted) return
+  currentSpeculationRun = {
+    generation,
+    id,
+    abortController,
+    settled,
+  }
+  return settled
+}
 
+async function runSpeculation(
+  id: string,
+  generation: number,
+  abortController: AbortController,
+  suggestionText: string,
+  context: REPLHookContext,
+  setAppState: (f: (prev: AppState) => AppState) => void,
+  isPipelined: boolean,
+  cacheSafeParams?: CacheSafeParams,
+): Promise<void> {
   const startTime = Date.now()
   const messagesRef = { current: [] as Message[] }
   const writtenPathsRef = { current: new Set<string>() }
@@ -435,6 +522,11 @@ export async function startSpeculation(
     return
   }
 
+  if (generation !== speculationGeneration || abortController.signal.aborted) {
+    safeRemoveOverlay(overlayPath)
+    return
+  }
+
   const contextRef = { current: context }
 
   setAppState(prev => ({
@@ -442,7 +534,7 @@ export async function startSpeculation(
     speculation: {
       status: 'active',
       id,
-      abort: () => abortController.abort(),
+      abort: reason => abortController.abort(reason),
       startTime,
       messagesRef,
       writtenPathsRef,
@@ -481,7 +573,7 @@ export async function startSpeculation(
             const editPath = (
               'file_path' in input ? input.file_path : undefined
             ) as string | undefined
-            updateActiveSpeculationState(setAppState, () => ({
+            updateActiveSpeculationState(setAppState, id, () => ({
               boundary: {
                 type: 'edit',
                 toolName: tool.name,
@@ -489,7 +581,7 @@ export async function startSpeculation(
                 completedAt: Date.now(),
               },
             }))
-            abortController.abort()
+            abortController.abort('speculation-boundary')
             return denySpeculation(
               'Speculation paused: file edit requires permission',
               'speculation_edit_boundary',
@@ -590,10 +682,10 @@ export async function startSpeculation(
             logForDebugging(
               `[Speculation] Stopping at bash: ${command.slice(0, 50) || 'missing command'}`,
             )
-            updateActiveSpeculationState(setAppState, () => ({
+            updateActiveSpeculationState(setAppState, id, () => ({
               boundary: { type: 'bash', command, completedAt: Date.now() },
             }))
-            abortController.abort()
+            abortController.abort('speculation-boundary')
             return denySpeculation(
               'Speculation paused: bash boundary',
               'speculation_bash_boundary',
@@ -619,7 +711,7 @@ export async function startSpeculation(
             ('command' in input && input.command) ||
             '',
         ).slice(0, 200)
-        updateActiveSpeculationState(setAppState, () => ({
+        updateActiveSpeculationState(setAppState, id, () => ({
           boundary: {
             type: 'denied_tool',
             toolName: tool.name,
@@ -627,7 +719,7 @@ export async function startSpeculation(
             completedAt: Date.now(),
           },
         }))
-        abortController.abort()
+        abortController.abort('speculation-boundary')
         return denySpeculation(
           `Tool ${tool.name} not allowed during speculation`,
           'speculation_unknown_tool',
@@ -641,7 +733,7 @@ export async function startSpeculation(
         if (msg.type === 'assistant' || msg.type === 'user') {
           messagesRef.current.push(msg)
           if (messagesRef.current.length >= MAX_SPECULATION_MESSAGES) {
-            abortController.abort()
+            abortController.abort('speculation-message-limit')
           }
           if (isUserMessageWithArrayContent(msg)) {
             const newTools = count(
@@ -649,7 +741,7 @@ export async function startSpeculation(
               b => b.type === 'tool_result' && !b.is_error,
             )
             if (newTools > 0) {
-              updateActiveSpeculationState(setAppState, prev => ({
+              updateActiveSpeculationState(setAppState, id, prev => ({
                 toolUseCount: prev.toolUseCount + newTools,
               }))
             }
@@ -658,9 +750,15 @@ export async function startSpeculation(
       },
     })
 
-    if (abortController.signal.aborted) return
+    if (abortController.signal.aborted) {
+      if (!shouldPreserveOverlayAfterAbort(abortController.signal)) {
+        safeRemoveOverlay(overlayPath)
+        resetSpeculationState(setAppState, id)
+      }
+      return
+    }
 
-    updateActiveSpeculationState(setAppState, () => ({
+    updateActiveSpeculationState(setAppState, id, () => ({
       boundary: {
         type: 'complete' as const,
         completedAt: Date.now(),
@@ -673,7 +771,8 @@ export async function startSpeculation(
     )
 
     // Pipeline: generate the next suggestion while we wait for the user to accept
-    void generatePipelinedSuggestion(
+    await generatePipelinedSuggestion(
+      id,
       contextRef.current,
       suggestionText,
       messagesRef.current,
@@ -684,8 +783,10 @@ export async function startSpeculation(
     abortController.abort()
 
     if (error instanceof Error && error.name === 'AbortError') {
-      safeRemoveOverlay(overlayPath)
-      resetSpeculationState(setAppState)
+      if (!shouldPreserveOverlayAfterAbort(abortController.signal)) {
+        safeRemoveOverlay(overlayPath)
+        resetSpeculationState(setAppState, id)
+      }
       return
     }
 
@@ -713,7 +814,7 @@ export async function startSpeculation(
       },
     )
 
-    resetSpeculationState(setAppState)
+    resetSpeculationState(setAppState, id)
   }
 }
 
@@ -737,7 +838,7 @@ export async function acceptSpeculation(
   const overlayPath = getOverlayPath(id)
   const acceptedAt = Date.now()
 
-  abort()
+  abort('speculation-accepted')
 
   if (cleanMessageCount > 0) {
     await copyOverlayToMain(overlayPath, writtenPathsRef.current, getCwdState())
@@ -751,7 +852,10 @@ export async function acceptSpeculation(
 
   setAppState(prev => {
     // Refine with latest React state if speculation is still active
-    if (prev.speculation.status === 'active' && prev.speculation.boundary) {
+    if (prev.speculation.status !== 'active' || prev.speculation.id !== id) {
+      return prev
+    }
+    if (prev.speculation.boundary) {
       boundary = prev.speculation.boundary
       const endTime = Math.min(acceptedAt, boundary.completedAt ?? Infinity)
       timeSavedMs = endTime - startTime
@@ -802,9 +906,17 @@ export async function acceptSpeculation(
   return { messages, boundary, timeSavedMs }
 }
 
-export function abortSpeculation(setAppState: SetAppState): void {
+function abortSpeculationState(
+  setAppState: SetAppState,
+  expectedId?: string,
+): void {
   setAppState(prev => {
-    if (prev.speculation.status !== 'active') return prev
+    if (
+      prev.speculation.status !== 'active' ||
+      (expectedId !== undefined && prev.speculation.id !== expectedId)
+    ) {
+      return prev
+    }
 
     const {
       id,
@@ -833,6 +945,26 @@ export function abortSpeculation(setAppState: SetAppState): void {
 
     return { ...prev, speculation: IDLE_SPECULATION_STATE }
   })
+}
+
+export function abortSpeculation(setAppState: SetAppState): void {
+  speculationGeneration++
+  const run = currentSpeculationRun
+  if (run && !run.abortController.signal.aborted) {
+    run.abortController.abort('speculation-cancelled')
+  }
+  abortSpeculationState(setAppState)
+}
+
+/** Abort the current speculation and wait for its agent and pipeline to stop. */
+export async function abortSpeculationAndWait(
+  setAppState: SetAppState,
+): Promise<void> {
+  const run = currentSpeculationRun
+  abortSpeculation(setAppState)
+  if (run) {
+    await Promise.allSettled([run.settled])
+  }
 }
 
 export async function handleSpeculationAccept(
@@ -987,7 +1119,7 @@ export async function handleSpeculationAccept(
       },
     )
     safeRemoveOverlay(getOverlayPath(speculationState.id))
-    resetSpeculationState(setAppState)
+    resetSpeculationState(setAppState, speculationState.id)
     // Query required so user's message is processed normally (without speculated work)
     return { queryRequired: true }
   }

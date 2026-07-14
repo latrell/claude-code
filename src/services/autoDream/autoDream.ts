@@ -41,9 +41,11 @@ import {
   listSessionsTouchedSince,
   tryAcquireConsolidationLock,
   rollbackConsolidationLock,
+  type ConsolidationLockLease,
 } from './consolidationLock.js'
 import {
   registerDreamTask,
+  trackDreamTaskRun,
   addDreamTurn,
   completeDreamTask,
   failDreamTask,
@@ -172,22 +174,22 @@ export function initAutoDream(): void {
     }
 
     // --- Lock ---
-    // Under force, skip acquire entirely — use the existing mtime so
-    // kill's rollback is a no-op (rewinds to where it already is).
-    // The lock file stays untouched; next non-force turn sees it as-is.
-    let priorMtime: number | null
+    // Under force, skip acquire entirely. With no lease, Stop/failure leaves
+    // the existing lock untouched and the next non-force turn sees it as-is.
+    let lockLease: ConsolidationLockLease | undefined
     if (force) {
-      priorMtime = lastAt
+      lockLease = undefined
     } else {
       try {
-        priorMtime = await tryAcquireConsolidationLock()
+        const acquired = await tryAcquireConsolidationLock()
+        if (acquired === null) return
+        lockLease = acquired
       } catch (e: unknown) {
         logForDebugging(
           `[autoDream] lock acquire failed: ${(e as Error).message}`,
         )
         return
       }
-      if (priorMtime === null) return
     }
 
     logForDebugging(
@@ -204,7 +206,7 @@ export function initAutoDream(): void {
     const abortController = new AbortController()
     const taskId = registerDreamTask(setAppState, {
       sessionsReviewing: sessionIds.length,
-      priorMtime,
+      lockLease,
       abortController,
     })
 
@@ -222,7 +224,7 @@ Sessions since last consolidation (${sessionIds.length}):
 ${sessionIds.map(id => `- ${id}`).join('\n')}`
       const prompt = buildConsolidationPrompt(memoryRoot, transcriptDir, extra)
 
-      const result = await runForkedAgent({
+      const runPromise = runForkedAgent({
         promptMessages: [createUserMessage({ content: prompt })],
         cacheSafeParams: createCacheSafeParams(context),
         canUseTool: createAutoMemCanUseTool(memoryRoot),
@@ -233,6 +235,12 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
         overrides: { abortController },
         onMessage: makeDreamProgressWatcher(taskId, setAppState),
       })
+      trackDreamTaskRun(taskId, runPromise)
+      const result = await runPromise
+
+      // The stream can resolve normally while an abort races with its final
+      // event. Never publish completion after Stop has been requested.
+      if (abortController.signal.aborted) return
 
       completeDreamTask(taskId, setAppState)
       // Inline completion summary in the main transcript (same surface as
@@ -269,7 +277,9 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
       logEvent('tengu_auto_dream_failed', {})
       failDreamTask(taskId, setAppState)
       // Rewind mtime so time-gate passes again. Scan throttle is the backoff.
-      await rollbackConsolidationLock(priorMtime)
+      if (lockLease) {
+        await rollbackConsolidationLock(lockLease)
+      }
     }
   }
 }

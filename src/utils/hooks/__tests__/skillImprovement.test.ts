@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { isSkillImprovementEnabled } from '../skillImprovement.js'
+import {
+  applySkillImprovement,
+  isSkillImprovementEnabled,
+} from '../skillImprovement.js'
 
 const originalEnv = { ...process.env }
 
@@ -22,5 +25,24 @@ describe('skillImprovement', () => {
     process.env.SKILL_IMPROVEMENT_ENABLED = '0'
 
     expect(isSkillImprovementEnabled()).toBe(false)
+  })
+
+  test('a pre-cancelled apply never starts work', async () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(
+      await applySkillImprovement(
+        'should-not-be-read',
+        [
+          {
+            section: 'test',
+            change: 'must not be written',
+            reason: 'request was cancelled',
+          },
+        ],
+        controller.signal,
+      ),
+    ).toBe(false)
   })
 })

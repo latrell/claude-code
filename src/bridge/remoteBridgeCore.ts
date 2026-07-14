@@ -66,6 +66,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import type { ReplBridgeHandle, BridgeState } from './replBridge.js'
+import type { BridgeInterruptHandler } from './types.js'
 import type { Message } from '../types/message.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type {
@@ -129,7 +130,7 @@ export type EnvLessBridgeParams = {
    */
   onUserMessage?: (text: string, sessionId: string) => boolean
   onPermissionResponse?: (response: SDKControlResponse) => void
-  onInterrupt?: () => void
+  onInterrupt?: BridgeInterruptHandler
   onSetModel?: (model: string | undefined) => void
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
   onSetPermissionMode?: (
@@ -471,8 +472,8 @@ export async function initEnvLessBridgeCore(
               onPermissionResponse(res)
             }
           : undefined,
-        req =>
-          handleServerControlRequest(req, {
+        req => {
+          void handleServerControlRequest(req, {
             transport,
             sessionId,
             onInterrupt,
@@ -480,7 +481,13 @@ export async function initEnvLessBridgeCore(
             onSetMaxThinkingTokens,
             onSetPermissionMode,
             outboundOnly,
-          }),
+          }).catch(error => {
+            logForDebugging(
+              `[remote-bridge] Failed to respond to control_request: ${errorMessage(error)}`,
+              { level: 'error' },
+            )
+          })
+        },
       )
     })
 

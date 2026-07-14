@@ -117,6 +117,8 @@ function isInsideSkillLearningStorage(cwd: string): boolean {
 export async function runSkillLearningPostSampling(
   context: REPLHookContext,
 ): Promise<void> {
+  const signal = context.toolUseContext.abortController?.signal
+  if (signal?.aborted) return
   if (!isSkillLearningEnabled()) return
   // Self-filter layers in order: env escape hatch, entrypoint (only main REPL
   // thread — `startsWith` covers 'repl_main_thread:outputStyle:<name>'), sub-
@@ -141,12 +143,14 @@ export async function runSkillLearningPostSampling(
     context.messages,
     project,
   )) {
+    if (signal?.aborted) return
     observations.push(await appendObservation(observation, options))
   }
 
   // Additionally pull tool-hook observations that arrived since the last
   // consumption watermark — deterministic records with precise outcomes.
   const all = await readObservations(options)
+  if (signal?.aborted) return
   const fresh = all.filter(
     o =>
       o.source === 'tool-hook' &&
@@ -177,7 +181,10 @@ export async function runSkillLearningPostSampling(
   if (shouldCallLLM) {
     llmCallsThisSession++
     lastLlmCallTimestamp = now
-    candidates = await analyzeWithActiveBackend(observations, { project })
+    candidates = await analyzeWithActiveBackend(observations, {
+      project,
+      signal,
+    })
   } else {
     // Fall back to the heuristic backend without consuming an LLM call.
     const { heuristicObserverBackend } = await import('./sessionObserver.js')
@@ -185,10 +192,14 @@ export async function runSkillLearningPostSampling(
     candidates = Array.isArray(result) ? result : await result
   }
 
+  if (signal?.aborted) return
+
   for (const candidate of candidates) {
+    if (signal?.aborted) return
     await upsertInstinct(createInstinct(candidate), options)
   }
 
+  if (signal?.aborted) return
   await autoEvolveLearnedSkills(options)
 }
 

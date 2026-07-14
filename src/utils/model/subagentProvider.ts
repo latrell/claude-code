@@ -1,8 +1,13 @@
 import {
   asThinkingEffort,
   getConnectionThinkingEffort,
+  getConnectionThinkingEffortTransport,
 } from '../../services/connections/thinkingEffort.js'
-import type { ThinkingEffort } from '../../services/connections/types.js'
+import { asThinkingEffortTransport } from '../../services/connections/effortTransport.js'
+import type {
+  ThinkingEffort,
+  ThinkingEffortTransport,
+} from '../../services/connections/types.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import { apiProviderToSettingsProviderKey } from './model.js'
@@ -18,6 +23,8 @@ export type ProviderRuntimeConfig = {
   credentialScope?: string
   /** Thinking effort pinned by the subagent connection profile. */
   thinkingEffort?: ThinkingEffort
+  /** OpenAI-compatible wire encoding pinned by the scoped connection. */
+  thinkingEffortTransport?: ThinkingEffortTransport
 }
 
 // Process-level CLI override for --subagent-provider (not persisted to settings)
@@ -251,6 +258,12 @@ export function getSubagentProviderRuntimeConfig(
         'thinkingEffort'
       ],
     ) ?? getConnectionThinkingEffort('subagent')
+  const thinkingEffortTransport =
+    asThinkingEffortTransport(
+      (subagentProvider as Record<string, unknown> | undefined)?.[
+        'thinkingEffortTransport'
+      ],
+    ) ?? getConnectionThinkingEffortTransport('subagent')
 
   return {
     provider,
@@ -260,5 +273,6 @@ export function getSubagentProviderRuntimeConfig(
     credentialScope:
       subagentProvider?.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
     ...(thinkingEffort && { thinkingEffort }),
+    ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }
 }

@@ -1,10 +1,32 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  handleServerControlRequest,
   shouldReportRunningForMessage,
   shouldReportRunningForMessages,
 } from '../bridgeMessaging.js'
 import { createUserMessage } from '../../utils/messages.js'
+import type {
+  SDKControlRequest,
+  StdoutMessage,
+} from '../../entrypoints/sdk/controlTypes.js'
+import type { ReplBridgeTransport } from '../replBridgeTransport.js'
+
+function interruptRequest(requestId = 'interrupt-1'): SDKControlRequest {
+  return {
+    type: 'control_request',
+    request_id: requestId,
+    request: { subtype: 'interrupt' },
+  }
+}
+
+function recordingTransport(writes: unknown[]): ReplBridgeTransport {
+  return {
+    write: async (message: StdoutMessage) => {
+      writes.push(message)
+    },
+  } as unknown as ReplBridgeTransport
+}
 
 describe('bridge running-state classification', () => {
   test('treats real user prompts as turn-starting work', () => {
@@ -92,5 +114,104 @@ describe('bridge running-state classification', () => {
         }),
       ]),
     ).toBe(true)
+  })
+})
+
+describe('bridge interrupt acknowledgements', () => {
+  test('waits for active-turn settlement before writing success', async () => {
+    let settle = (): void => {}
+    const settled = new Promise<void>(resolve => {
+      settle = resolve
+    })
+    const writes: unknown[] = []
+
+    const response = handleServerControlRequest(interruptRequest(), {
+      transport: recordingTransport(writes),
+      sessionId: 'session-1',
+      onInterrupt: async () => {
+        await settled
+        return true
+      },
+    })
+
+    await Promise.resolve()
+    expect(writes).toHaveLength(0)
+    settle()
+    await response
+
+    expect(writes).toHaveLength(1)
+    expect(
+      (writes[0] as { response: { subtype: string } }).response.subtype,
+    ).toBe('success')
+  })
+
+  test('releases the cancellation gate only after the response write settles', async () => {
+    let finishWrite = (): void => {}
+    const writeBlocked = new Promise<void>(resolve => {
+      finishWrite = resolve
+    })
+    const events: string[] = []
+    const transport = {
+      write: async (_message: StdoutMessage) => {
+        events.push('write-started')
+        await writeBlocked
+        events.push('write-settled')
+      },
+    } as unknown as ReplBridgeTransport
+
+    const response = handleServerControlRequest(interruptRequest('ordered'), {
+      transport,
+      sessionId: 'session-1',
+      onInterrupt: async () => ({
+        confirmed: true,
+        afterAcknowledgement: () => events.push('gate-released'),
+      }),
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(events).toEqual(['write-started'])
+
+    finishWrite()
+    await response
+    expect(events).toEqual(['write-started', 'write-settled', 'gate-released'])
+  })
+
+  test('returns an error when interrupt handling is unavailable', async () => {
+    const writes: unknown[] = []
+
+    await handleServerControlRequest(interruptRequest('missing'), {
+      transport: recordingTransport(writes),
+      sessionId: 'session-1',
+    })
+
+    const response = (
+      writes[0] as {
+        response: { subtype: string; request_id: string; error: string }
+      }
+    ).response
+    expect(response.subtype).toBe('error')
+    expect(response.request_id).toBe('missing')
+    expect(response.error).toContain('not supported')
+  })
+
+  test('returns an error when settlement fails', async () => {
+    const writes: unknown[] = []
+
+    await handleServerControlRequest(interruptRequest('failed'), {
+      transport: recordingTransport(writes),
+      sessionId: 'session-1',
+      onInterrupt: async () => {
+        throw new Error('still running')
+      },
+    })
+
+    const response = (
+      writes[0] as {
+        response: { subtype: string; error: string }
+      }
+    ).response
+    expect(response.subtype).toBe('error')
+    expect(response.error).toContain('still running')
   })
 })

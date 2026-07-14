@@ -11,7 +11,7 @@
  *   idle → dispatching  (reserve)
  *   dispatching → running  (tryStart)
  *   idle → running  (tryStart, for direct user submissions)
- *   running → idle  (end / forceEnd)
+ *   running → idle  (end / finalize / forceEnd)
  *   dispatching → idle  (cancelReservation, when processQueueIfReady fails)
  *
  * `isActive` returns true for both dispatching and running, preventing
@@ -26,8 +26,10 @@
  */
 import { createSignal } from './signal.js'
 
+export type QueryGuardStatus = 'idle' | 'dispatching' | 'running'
+
 export class QueryGuard {
-  private _status: 'idle' | 'dispatching' | 'running' = 'idle'
+  private _status: QueryGuardStatus = 'idle'
   private _generation = 0
   private _changed = createSignal()
 
@@ -80,8 +82,51 @@ export class QueryGuard {
   }
 
   /**
+   * Run asynchronous turn-finalization while retaining ownership of the
+   * guard, then transition to idle even if cleanup throws. Keeping the guard
+   * active prevents a queued turn from starting while stale cleanup can still
+   * clear shared state such as the current AbortController.
+   */
+  async finalize(
+    generation: number,
+    cleanup: () => void | Promise<void>,
+  ): Promise<boolean> {
+    if (this._generation !== generation || this._status !== 'running') {
+      return false
+    }
+
+    try {
+      await cleanup()
+      return true
+    } finally {
+      this.end(generation)
+    }
+  }
+
+  /**
+   * Resolve when preprocessing leaves the dispatching phase, capturing
+   * whether it started a query or returned directly. This is primarily useful
+   * for cancellation cleanup that must not guess whether onQuery will own the
+   * eventual turn-complete callback.
+   */
+  waitForDispatchSettlement(): Promise<'idle' | 'running'> {
+    if (this._status !== 'dispatching') {
+      return Promise.resolve(this._status === 'running' ? 'running' : 'idle')
+    }
+
+    return new Promise(resolve => {
+      const unsubscribe = this.subscribe(() => {
+        if (this._status === 'dispatching') return
+        const settledStatus = this._status === 'running' ? 'running' : 'idle'
+        unsubscribe()
+        resolve(settledStatus)
+      })
+    })
+  }
+
+  /**
    * Force-end the current query regardless of generation.
-   * Used by onCancel where any running query should be terminated.
+   * Retained for callers that explicitly abandon lifecycle cleanup.
    * Increments generation so stale finally blocks from the cancelled
    * query's promise rejection will see a mismatch and skip cleanup.
    */
@@ -102,6 +147,10 @@ export class QueryGuard {
 
   get generation(): number {
     return this._generation
+  }
+
+  get status(): QueryGuardStatus {
+    return this._status
   }
 
   // --

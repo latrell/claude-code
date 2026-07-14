@@ -1,6 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+import { z } from 'zod/v4'
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js'
-import type { ToolUseContext } from '../../../Tool.js'
+import type { Tool, ToolUseContext } from '../../../Tool.js'
+import { createAssistantMessage } from '../../../utils/messages.js'
 
 function makeMinimalContext(): ToolUseContext {
   const abortController = new AbortController()
@@ -125,5 +127,97 @@ describe('StreamingToolExecutor.discard()', () => {
     expect(internals.tools).toHaveLength(0)
     expect(internals.progressAvailableResolve).toBeUndefined()
     expect(internals.turnSpan).toBeNull()
+  })
+})
+
+describe('StreamingToolExecutor cancellation checkpoints', () => {
+  test('does not call a tool when cancellation happens during async validation', async () => {
+    const context = makeMinimalContext()
+    const call = mock(async () => ({ data: 'should not run' }))
+    const inputSchema = z.object({ value: z.string() })
+    const validateInput = mock(
+      async (
+        _input: z.infer<typeof inputSchema>,
+        toolContext: ToolUseContext,
+      ) => {
+        toolContext.abortController.abort('user-cancel')
+        return { result: true as const }
+      },
+    )
+    const tool = {
+      name: 'CancellationCheckpointTest',
+      inputSchema,
+      maxResultSizeChars: 1000,
+      isConcurrencySafe: () => true,
+      isEnabled: () => true,
+      isReadOnly: () => true,
+      validateInput,
+      call,
+    } as unknown as Tool
+    context.options.tools = [tool]
+    const executor = new StreamingToolExecutor(
+      [tool],
+      () => Promise.resolve({ behavior: 'allow', updatedInput: {} }),
+      context,
+    )
+    executor.addTool(
+      {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: tool.name,
+        input: { value: 'test' },
+        caller: { type: 'direct' },
+      },
+      createAssistantMessage({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tool-1',
+            name: tool.name,
+            input: { value: 'test' },
+          },
+        ],
+      }),
+    )
+
+    const results = []
+    for await (const result of executor.getRemainingResults()) {
+      results.push(result)
+    }
+
+    expect(call).not.toHaveBeenCalled()
+    expect(validateInput).toHaveBeenCalledTimes(1)
+    expect(context.abortController.signal.aborted).toBe(true)
+    expect(results).toHaveLength(1)
+  })
+
+  test('aborts orphaned tools when the remaining-results consumer returns early', async () => {
+    const context = makeMinimalContext()
+    const executor = new StreamingToolExecutor([], () => true as any, context)
+    const internals = executor as unknown as {
+      tools: Array<Record<string, unknown>>
+      siblingAbortController: AbortController
+    }
+    internals.tools.push({
+      id: 'tool-pending',
+      block: {
+        type: 'tool_use',
+        id: 'tool-pending',
+        name: 'PendingTool',
+        input: {},
+        caller: { type: 'direct' },
+      },
+      assistantMessage: createAssistantMessage({ content: [] }),
+      status: 'executing',
+      isConcurrencySafe: true,
+      promise: new Promise<void>(() => {}),
+      pendingProgress: [createAssistantMessage({ content: 'progress' })],
+    })
+    const iterator = executor.getRemainingResults()
+
+    expect((await iterator.next()).done).toBe(false)
+    await iterator.return()
+
+    expect(internals.siblingAbortController.signal.aborted).toBe(true)
   })
 })

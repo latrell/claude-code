@@ -25,12 +25,12 @@ import {
 import { removeOAuthAccountSlot } from '../../services/connections/oauthAccounts.js';
 import {
   connectionProfileSummary,
+  connectionEffortSummary,
   connectionDisplayName,
   connectionRequiresPinnedModel,
   duplicateConnection,
   withContextWindow,
   withPinnedModel,
-  withThinkingEffort,
 } from '../../services/connections/profile.js';
 import {
   _invalidateConnectionsCache,
@@ -41,14 +41,16 @@ import {
   updateConnectionModel,
   upsertConnection,
 } from '../../services/connections/store.js';
-import type { AgentSlot, Connection, ConnectionKind, ThinkingEffort } from '../../services/connections/types.js';
+import type { AgentSlot, Connection, ConnectionKind } from '../../services/connections/types.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { removeCursorOAuth } from '../../services/api/cursor/cursorOAuth.js';
+import { useAppState } from '../../state/AppState.js';
 import { t, tf } from '../../i18n/t.js';
 import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
 import { AddConnectionWizard } from './AddConnectionWizard.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
+import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
 
 export type ActivationScope = 'session' | 'global';
 
@@ -185,29 +187,8 @@ function needsContextWindowPrompt(connection: Connection): boolean {
   return getModelContextWindowForConnection(connection, model) === undefined;
 }
 
-const EFFORT_VALUES: ThinkingEffort[] = ['off', 'low', 'medium', 'high', 'max'];
-
-function effortLabel(effort: ThinkingEffort): string {
-  switch (effort) {
-    case 'off':
-      return t('Off — disable thinking');
-    case 'low':
-      return t('Low');
-    case 'medium':
-      return t('Medium');
-    case 'high':
-      return t('High');
-    case 'max':
-      return t('Max');
-    default: {
-      const _exhaustive: never = effort;
-      void _exhaustive;
-      return String(effort);
-    }
-  }
-}
-
 export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: Props): React.ReactNode {
+  const appStateEffort = useAppState(state => state.effortValue);
   const [view, setView] = useState<View>({ mode: 'list' });
   const [refreshTick, setRefreshTick] = useState(0);
   const [remoteModels, setRemoteModels] = useState<RemoteModel[]>([]);
@@ -527,7 +508,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                       {
                         label: t('Thinking effort…'),
                         value: 'effort',
-                        description: connection.thinkingEffort,
+                        description: connection.thinkingEffort ? connectionEffortSummary(connection) : undefined,
                       },
                     ]
                   : []),
@@ -758,8 +739,8 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
           setView({ mode: 'list' });
           return null;
         }
-        const apply = (effort: ThinkingEffort | undefined) => {
-          upsertConnection(withThinkingEffort(connection, effort));
+        const apply = (next: Connection) => {
+          upsertConnection(next);
           refresh();
           void redeployIfActive(connection.id);
           setView({ mode: 'menu', connectionId: connection.id });
@@ -767,30 +748,14 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         return (
           <Box flexDirection="column" gap={1}>
             <Text bold>{tf('Thinking effort — {label}', { label: connectionDisplayName(connection) })}</Text>
-            <Text dimColor>{t('Applied while this connection is active (Default = provider behavior)')}</Text>
-            <Select
-              options={[
-                {
-                  label: t('Default (not set)'),
-                  value: 'default',
-                  description: connection.thinkingEffort === undefined ? t('current') : undefined,
-                },
-                ...EFFORT_VALUES.map(effort => ({
-                  label: effortLabel(effort),
-                  value: effort as string,
-                  description: connection.thinkingEffort === effort ? t('current') : undefined,
-                })),
-                { label: t('Back'), value: '__back__' },
-              ]}
-              visibleOptionCount={8}
+            <Text dimColor>
+              {t('Configured value → actual request value (environment and /effort overrides take priority)')}
+            </Text>
+            <ThinkingEffortPicker
+              connection={connection}
+              appStateEffort={appStateEffort}
               onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
-              onChange={value => {
-                if (value === '__back__') {
-                  setView({ mode: 'menu', connectionId: connection.id });
-                  return;
-                }
-                apply(value === 'default' ? undefined : (value as ThinkingEffort));
-              }}
+              onChange={apply}
             />
           </Box>
         );

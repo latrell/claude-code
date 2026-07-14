@@ -50,13 +50,18 @@ export type SideQuestionResult = {
  * Shares the parent's prompt cache — no thinking override, no cache write.
  * All tools are blocked and we cap at 1 turn.
  */
-export async function runSideQuestion({
-  question,
-  cacheSafeParams,
-}: {
-  question: string
-  cacheSafeParams: CacheSafeParams
-}): Promise<SideQuestionResult> {
+export async function runSideQuestion(
+  {
+    question,
+    cacheSafeParams,
+    abortController,
+  }: {
+    question: string
+    cacheSafeParams: CacheSafeParams
+    abortController?: AbortController
+  },
+  runAgent: typeof runForkedAgent = runForkedAgent,
+): Promise<SideQuestionResult> {
   // Wrap the question with instructions to answer without tools
   const wrappedQuestion = `<system-reminder>This is a side question from the user. You must answer this question directly in a single response.
 
@@ -77,7 +82,7 @@ Simply answer the question with the information you have.</system-reminder>
 
 ${question}`
 
-  const agentResult = await runForkedAgent({
+  const agentResult = await runAgent({
     promptMessages: [createUserMessage({ content: wrappedQuestion })],
     // Do NOT override thinkingConfig — thinking is part of the API cache key,
     // and diverging from the main thread's config busts the prompt cache.
@@ -93,6 +98,7 @@ ${question}`
     maxTurns: 1, // Single turn only - no tool use loops
     // No future request shares this suffix; skip writing cache entries.
     skipCacheWrite: true,
+    overrides: abortController ? { abortController } : undefined,
   })
 
   return {

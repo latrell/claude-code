@@ -24,8 +24,10 @@ import type { AppState } from '../../state/AppState.js'
 import { isInProcessTeammateTask } from '../../tasks/InProcessTeammateTask/types.js'
 import {
   isLocalAgentTask,
+  LocalAgentTask,
   type LocalAgentTaskState,
 } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
+import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
 import { isLocalShellTask } from '../../tasks/LocalShellTask/guards.js'
 import { asAgentId } from '../../types/ids.js'
 import type { Message } from '../../types/message.js'
@@ -35,7 +37,6 @@ import {
   executeSessionEndHooks,
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
 import { clearAllPlanSlugs } from '../../utils/plans.js'
 import { setCwd } from '../../utils/Shell.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
@@ -51,6 +52,10 @@ import {
 } from '../../utils/task/diskOutput.js'
 import { getCurrentWorktreeSession } from '../../utils/worktree.js'
 import { clearSessionCaches } from './caches.js'
+import {
+  isForegroundTaskForClear,
+  stopForegroundTasksBeforeClear,
+} from './stopForegroundTasks.js'
 
 function notifyRemoteConversationCleared(): void {
   const handle = getReplBridgeHandle()
@@ -120,8 +125,7 @@ export async function clearConversation({
   // LocalMainSessionTask.ts startBackgroundSession.
   const preservedAgentIds = new Set<string>()
   const preservedLocalAgents: LocalAgentTaskState[] = []
-  const shouldKillTask = (task: AppState['tasks'][string]): boolean =>
-    'isBackgrounded' in task && task.isBackgrounded === false
+  const shouldKillTask = isForegroundTaskForClear
   if (getAppState) {
     for (const task of Object.values(getAppState().tasks)) {
       if (shouldKillTask(task)) continue
@@ -132,6 +136,34 @@ export async function clearConversation({
         preservedAgentIds.add(task.identity.agentId)
       }
     }
+  }
+
+  // A clear is also a Stop operation for foreground tasks. Do not erase their
+  // tracking or output until the task implementation has confirmed that its
+  // complete runner/process tree has settled.
+  let stoppedForegroundTaskIds = new Set<string>()
+  if (setAppState) {
+    if (!getAppState) {
+      throw new Error(
+        'Cannot safely clear foreground tasks without getAppState',
+      )
+    }
+    stoppedForegroundTaskIds = await stopForegroundTasksBeforeClear({
+      getAppState,
+      stopTask: async (taskId, task) => {
+        if (isLocalShellTask(task)) {
+          await LocalShellTask.kill(taskId, setAppState)
+          return
+        }
+        if (isLocalAgentTask(task)) {
+          await LocalAgentTask.kill(taskId, setAppState)
+          return
+        }
+        throw new Error(
+          `Unsupported foreground task type while clearing conversation: ${task.type}`,
+        )
+      },
+    })
   }
 
   setMessages(() => [])
@@ -171,33 +203,13 @@ export async function clearConversation({
   // Clean out necessary items from App State
   if (setAppState) {
     setAppState(prev => {
-      // Partition tasks using the same predicate computed above:
-      // kill+remove foreground tasks, preserve everything else.
+      // Remove only the foreground snapshot whose Stop calls were confirmed.
+      // A task created while /clear was waiting is not part of this operation.
       const nextTasks: AppState['tasks'] = {}
       for (const [taskId, task] of Object.entries(prev.tasks)) {
-        if (!shouldKillTask(task)) {
+        if (!stoppedForegroundTaskIds.has(taskId)) {
           nextTasks[taskId] = task
           continue
-        }
-        // Foreground task: kill it and drop from state
-        try {
-          if (task.status === 'running') {
-            if (isLocalShellTask(task)) {
-              task.shellCommand?.kill()
-              task.shellCommand?.cleanup()
-              if (task.cleanupTimeoutId) {
-                clearTimeout(task.cleanupTimeoutId)
-              }
-            }
-            if ('abortController' in task) {
-              task.abortController?.abort()
-            }
-            if ('unregisterCleanup' in task) {
-              task.unregisterCleanup?.()
-            }
-          }
-        } catch (error) {
-          logError(error)
         }
         void evictTaskOutput(taskId)
       }

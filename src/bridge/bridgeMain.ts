@@ -37,6 +37,10 @@ import { createTokenRefreshScheduler } from './jwtUtils.js'
 import { getPollIntervalConfig } from './pollConfig.js'
 import { toCompatSessionId, toInfraSessionId } from './sessionIdCompat.js'
 import { createSessionSpawner, safeFilenameId } from './sessionRunner.js'
+import {
+  terminateSessionHandles,
+  terminateTimedOutSession,
+} from './sessionTermination.js'
 import { getTrustedDeviceToken } from './trustedDevice.js'
 import {
   BRIDGE_LOGIN_ERROR,
@@ -82,6 +86,8 @@ const DEFAULT_BACKOFF: BackoffConfig = {
 
 /** Status update interval for the live display (ms). */
 const STATUS_UPDATE_INTERVAL_MS = 1_000
+const SESSION_TIMEOUT_TERMINATION_GRACE_MS = 5_000
+const FORCE_KILL_CONFIRMATION_MS = 5_000
 const SPAWN_SESSIONS_DEFAULT = 32
 
 /**
@@ -1198,15 +1204,20 @@ export async function runBridgeLoop(
           const timeoutMs =
             config.sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS
           if (timeoutMs > 0) {
-            const timer = setTimeout(
-              onSessionTimeout,
-              timeoutMs,
-              sessionId,
-              timeoutMs,
-              logger,
-              timedOutSessions,
-              handle,
-            )
+            const timer = setTimeout(() => {
+              void onSessionTimeout(
+                sessionId,
+                timeoutMs,
+                logger,
+                timedOutSessions,
+                handle,
+                () => api.stopWork(environmentId, work.id, true),
+              ).catch(error => {
+                logger.logError(
+                  `Failed to terminate timed-out session ${sessionId}: ${errorMessage(error)}`,
+                )
+              })
+            }, timeoutMs)
             sessionTimers.set(sessionId, timer)
           }
 
@@ -1454,43 +1465,52 @@ export async function runBridgeLoop(
   const compatIdSnapshot = new Map(sessionCompatIds)
 
   if (activeSessions.size > 0) {
+    // Snapshot before signalling. onSessionDone mutates activeSessions as
+    // children close, so using the live map here could skip confirmation.
+    const shutdownSessions = [...activeSessions.entries()]
     logForDebugging(
-      `[bridge:shutdown] Shutting down ${activeSessions.size} active session(s)`,
+      `[bridge:shutdown] Shutting down ${shutdownSessions.length} active session(s)`,
     )
     logger.logStatus(
-      `Shutting down ${activeSessions.size} active session(s)\u2026`,
+      `Shutting down ${shutdownSessions.length} active session(s)\u2026`,
     )
 
     // Snapshot work IDs before killing — onSessionDone clears the maps when
     // each child exits, so we need a copy for the stopWork calls below.
     const shutdownWorkIds = new Map(sessionWorkIds)
 
-    for (const [sessionId, handle] of activeSessions.entries()) {
-      logForDebugging(
-        `[bridge:shutdown] Sending SIGTERM to sessionId=${sessionId}`,
-      )
-      handle.kill()
-    }
-
-    const timeout = new AbortController()
-    await Promise.race([
-      Promise.allSettled([...activeSessions.values()].map(h => h.done)),
-      sleep(backoffConfig.shutdownGraceMs ?? 30_000, timeout.signal),
-    ])
-    timeout.abort()
-
-    // SIGKILL any processes that didn't respond to SIGTERM within the grace window
-    for (const [sid, handle] of activeSessions.entries()) {
-      logForDebugging(`[bridge:shutdown] Force-killing stuck sessionId=${sid}`)
-      handle.forceKill()
-    }
-
-    // Clear any remaining session timeout and refresh timers
+    // Disarm watchdogs before termination. Otherwise a timeout can race this
+    // shutdown and reclassify an intentional interrupt as a session failure.
     for (const timer of sessionTimers.values()) {
       clearTimeout(timer)
     }
     sessionTimers.clear()
     tokenRefresh?.cancelAll()
+
+    // Cancel server-side work immediately, in parallel with local TERM grace.
+    // Waiting for the child first can leave remote inference running for 30s.
+    const remoteStopPromise = Promise.allSettled(
+      [...shutdownWorkIds.entries()].map(([sessionId, workId]) =>
+        api
+          .stopWork(environmentId, workId, true)
+          .catch(err =>
+            logger.logVerbose(
+              `Failed to stop work ${workId} for session ${sessionId}: ${errorMessage(err)}`,
+            ),
+          ),
+      ),
+    )
+
+    const failedTerminations = await terminateSessionHandles(
+      shutdownSessions,
+      backoffConfig.shutdownGraceMs ?? 30_000,
+      FORCE_KILL_CONFIRMATION_MS,
+    )
+    for (const sessionId of failedTerminations) {
+      logger.logError(
+        `Session ${sessionId} process tree did not exit after SIGKILL`,
+      )
+    }
 
     // Clean up any remaining worktrees from active sessions.
     // Snapshot and clear the map first so onSessionDone (which may fire
@@ -1514,18 +1534,7 @@ export async function runBridgeLoop(
       )
     }
 
-    // Stop all active work items so the server knows they're done
-    await Promise.allSettled(
-      [...shutdownWorkIds.entries()].map(([sessionId, workId]) => {
-        return api
-          .stopWork(environmentId, workId, true)
-          .catch(err =>
-            logger.logVerbose(
-              `Failed to stop work ${workId} for session ${sessionId}: ${errorMessage(err)}`,
-            ),
-          )
-      }),
-    )
+    await remoteStopPromise
   }
 
   // Ensure all in-flight cleanup (stopWork, worktree removal) from
@@ -1698,13 +1707,14 @@ async function stopWorkWithRetry(
   }
 }
 
-function onSessionTimeout(
+async function onSessionTimeout(
   sessionId: string,
   timeoutMs: number,
   logger: BridgeLogger,
   timedOutSessions: Set<string>,
   handle: SessionHandle,
-): void {
+  stopRemoteWork: () => Promise<void>,
+): Promise<void> {
   logForDebugging(
     `[bridge:session] sessionId=${sessionId} timed out after ${formatDuration(timeoutMs)}`,
   )
@@ -1716,7 +1726,24 @@ function onSessionTimeout(
     `Session timed out after ${formatDuration(timeoutMs)}`,
   )
   timedOutSessions.add(sessionId)
-  handle.kill()
+  // Tell the server to stop immediately while the local process tree drains.
+  // This prevents the remote model from continuing during TERM grace.
+  const result = await terminateTimedOutSession(
+    handle,
+    stopRemoteWork,
+    SESSION_TIMEOUT_TERMINATION_GRACE_MS,
+    FORCE_KILL_CONFIRMATION_MS,
+  )
+  if (!result.localStopped) {
+    logger.logError(
+      `Timed-out session ${sessionId} process tree did not exit after SIGKILL`,
+    )
+  }
+  if (!result.remoteStopped) {
+    logger.logError(
+      `Failed to stop remote work for timed-out session ${sessionId}`,
+    )
+  }
 }
 
 export type ParsedArgs = {

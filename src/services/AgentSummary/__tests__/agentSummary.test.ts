@@ -22,11 +22,23 @@ const transcriptMessages = [
 
 type ForkCall = {
   cacheSafeParams: CacheSafeParams
+  overrides?: { abortController?: AbortController }
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(resolvePromise => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
 }
 
 describe('startAgentSummarization', () => {
   let scheduled: (() => void | Promise<void>) | undefined
-  let handle: { stop: () => void } | undefined
+  let handle: { stop: () => Promise<void> } | undefined
   let forkCalls: ForkCall[]
   let updateCalls: Array<{ taskId: string; summary: string }>
   let transcriptMessagesForTest: Message[]
@@ -35,10 +47,11 @@ describe('startAgentSummarization', () => {
   let clearedHandles: unknown[]
   let scheduledCount: number
   let lastTimerHandle: unknown
+  let parentAbortController: AbortController
 
   function startTestSummarization(
     dependencies: AgentSummaryDependencies = {},
-  ): { stop: () => void } {
+  ): { stop: () => Promise<void> } {
     return startAgentSummarization(
       'task-1',
       asAgentId('a0000000000000000'),
@@ -47,6 +60,7 @@ describe('startAgentSummarization', () => {
           { type: 'user', message: { content: 'stale' }, uuid: 'old' },
         ],
         model: 'claude-test',
+        toolUseContext: { abortController: parentAbortController },
       } as unknown as CacheSafeParams,
       () => undefined,
       {
@@ -107,6 +121,7 @@ describe('startAgentSummarization', () => {
     clearedHandles = []
     scheduledCount = 0
     lastTimerHandle = undefined
+    parentAbortController = new AbortController()
   })
 
   function expectDebugLogContaining(fragment: string): void {
@@ -218,13 +233,178 @@ describe('startAgentSummarization', () => {
     expect(lastTimerHandle).not.toBe(initialTimerHandle)
   })
 
-  test('stop clears the pending summary timer', () => {
+  test('stop clears the pending summary timer', async () => {
     handle = startTestSummarization()
     const pendingHandle = lastTimerHandle
 
-    handle.stop()
+    await handle.stop()
 
     expectDebugLogContaining('[AgentSummary] Stopping summarization for task-1')
     expect(clearedHandles).toEqual([pendingHandle])
+  })
+
+  test('in-flight stop aborts and waits for the summary run to settle', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    let summarySignal: AbortSignal | undefined
+    handle = startTestSummarization({
+      runForkedAgent: async args => {
+        summarySignal = args.overrides?.abortController?.signal
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+
+    const stopPromise = handle.stop()
+    let stopSettled = false
+    void stopPromise.then(() => {
+      stopSettled = true
+    })
+    await Promise.resolve()
+
+    expect(summarySignal?.aborted).toBe(true)
+    expect(stopSettled).toBe(false)
+
+    forkResult.resolve({ messages: [] } as unknown as ForkedAgentResult)
+    await stopPromise
+    await runPromise
+
+    expect(stopSettled).toBe(true)
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
+  })
+
+  test('parent agent abort immediately reaches an in-flight summary request', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    let summarySignal: AbortSignal | undefined
+    handle = startTestSummarization({
+      runForkedAgent: async args => {
+        summarySignal = args.overrides?.abortController?.signal
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+    parentAbortController.abort('parent stopped')
+
+    expect(summarySignal?.aborted).toBe(true)
+    expect(summarySignal?.reason).toBe('parent stopped')
+
+    const stopPromise = handle.stop()
+    forkResult.resolve({ messages: [] } as unknown as ForkedAgentResult)
+    await Promise.all([stopPromise, runPromise])
+    expect(scheduledCount).toBe(1)
+  })
+
+  test('parent abort suppresses a late result from an abort-ignoring summary adapter', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    handle = startTestSummarization({
+      runForkedAgent: async () => {
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+    parentAbortController.abort('parent stopped')
+    forkResult.resolve({
+      messages: [
+        {
+          type: 'assistant',
+          message: {
+            content: [{ type: 'text', text: 'late summary' }],
+          },
+        },
+      ],
+    } as unknown as ForkedAgentResult)
+    await runPromise
+
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
+    await handle.stop()
+  })
+
+  test('stop before the first timer prevents a stale callback from starting', async () => {
+    handle = startTestSummarization()
+    const staleTimerCallback = scheduled
+
+    await handle.stop()
+    await staleTimerCallback!()
+
+    expect(forkCalls).toEqual([])
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
+  })
+
+  test('stop between timer dispatch and run start waits without launching work', async () => {
+    handle = startTestSummarization()
+
+    const timerRun = Promise.resolve(scheduled!())
+    const stopPromise = handle.stop()
+    await Promise.all([timerRun, stopPromise])
+
+    expect(forkCalls).toEqual([])
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
+  })
+
+  test('concurrent stop calls share the same settlement promise', async () => {
+    const forkResult = deferred<ForkedAgentResult>()
+    const forkStarted = deferred<void>()
+    handle = startTestSummarization({
+      runForkedAgent: async () => {
+        forkStarted.resolve()
+        return forkResult.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await forkStarted.promise
+    const firstStop = handle.stop()
+    const secondStop = handle.stop()
+
+    expect(secondStop).toBe(firstStop)
+    forkResult.resolve({ messages: [] } as unknown as ForkedAgentResult)
+    await Promise.all([firstStop, secondStop, runPromise])
+    expect(
+      debugLogs.filter(message =>
+        message.includes('[AgentSummary] Stopping summarization for task-1'),
+      ),
+    ).toHaveLength(1)
+  })
+
+  test('stop during transcript loading suppresses a late summary update', async () => {
+    const transcript = deferred<{
+      messages: Message[]
+      contentReplacements: never[]
+    }>()
+    const transcriptStarted = deferred<void>()
+    handle = startTestSummarization({
+      getAgentTranscript: async () => {
+        transcriptStarted.resolve()
+        return transcript.promise
+      },
+    })
+
+    const runPromise = Promise.resolve(scheduled!())
+    await transcriptStarted.promise
+    const stopPromise = handle.stop()
+    transcript.resolve({
+      messages: transcriptMessagesForTest,
+      contentReplacements: [],
+    })
+    await Promise.all([stopPromise, runPromise])
+
+    expect(forkCalls).toEqual([])
+    expect(updateCalls).toEqual([])
+    expect(scheduledCount).toBe(1)
   })
 })

@@ -205,7 +205,7 @@ test('runAgent throws → dead', async () => {
 // .abortController, and recognize AbortError as abort (throw WorkflowAbortedError, not swallow as dead).
 // Also verify registerAgentAbort injection so service.kill(runId, agentId) can precisely abort a single agent.
 
-test('ctx.signal pre-abort → backend bridge: override.abortController.signal.aborted=true', async () => {
+test('ctx.signal pre-abort → backend bridge aborts controller and rejects whole workflow', async () => {
   // use capturedOverride to expose the agentAbort created by backend (the override.abortController received by mock)
   let capturedController: AbortController | undefined
   mock.module(
@@ -226,14 +226,16 @@ test('ctx.signal pre-abort → backend bridge: override.abortController.signal.a
   parentAbort.abort()
   // mock does not throw → backend takes the normal return path; but the bridge `if (ctx.signal.aborted) agentAbort.abort()`
   // has already triggered synchronously, capturedController.signal.aborted must be true (root cause of kill bridge)
-  await claudeCodeBackend.run(
-    { prompt: 'pre-aborted' },
-    { ...ctx(), signal: parentAbort.signal },
-  )
+  await expect(
+    claudeCodeBackend.run(
+      { prompt: 'pre-aborted' },
+      { ...ctx(), signal: parentAbort.signal },
+    ),
+  ).rejects.toBeInstanceOf(WorkflowAbortedError)
   expect(capturedController?.signal.aborted).toBe(true)
 })
 
-test('runAgent throws AbortError → backend throws WorkflowAbortedError (not swallowed as dead)', async () => {
+test('runAgent throws AbortError without parent abort → agent-local cancellation', async () => {
   mock.module(
     '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
     () => ({
@@ -245,9 +247,12 @@ test('runAgent throws AbortError → backend throws WorkflowAbortedError (not sw
       },
     }),
   )
-  await expect(
-    claudeCodeBackend.run({ prompt: 'abort' }, ctx()),
-  ).rejects.toBeInstanceOf(WorkflowAbortedError)
+  const result = await claudeCodeBackend.run({ prompt: 'abort' }, ctx())
+  expect(result).toEqual({
+    kind: 'dead',
+    reason: 'agent-aborted',
+    detail: 'agent cancelled',
+  })
 })
 
 test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number), controller from bridge', async () => {

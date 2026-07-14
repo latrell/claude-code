@@ -34,7 +34,7 @@ type UseSSHSessionResult = {
   isRemoteMode: boolean
   sendMessage: (content: RemoteMessageContent) => Promise<boolean>
   cancelRequest: () => void
-  disconnect: () => void
+  disconnect: () => Promise<boolean>
 }
 
 type UseSSHSessionProps = {
@@ -209,9 +209,22 @@ export function useSSHSession({
 
     return () => {
       logForDebugging('[useSSHSession] cleanup')
-      manager.disconnect()
-      session.proxy.stop()
-      managerRef.current = null
+      if (managerRef.current === manager) managerRef.current = null
+      void manager
+        .disconnect()
+        .then(confirmed => {
+          if (!confirmed) {
+            logForDebugging(
+              '[useSSHSession] cleanup could not confirm SSH process termination',
+            )
+          }
+        })
+        .catch(error => {
+          logForDebugging(
+            `[useSSHSession] cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+        .finally(() => session.proxy.stop())
     }
   }, [session, setMessages, setIsLoading, setToolUseConfirmQueue])
 
@@ -226,15 +239,48 @@ export function useSSHSession({
   )
 
   const cancelRequest = useCallback(() => {
-    managerRef.current?.sendInterrupt()
-    setIsLoading(false)
+    setIsLoading(true)
+    const manager = managerRef.current
+    if (!manager) {
+      process.stderr.write(
+        '\nRemote request could not be confirmed as stopped.\n',
+      )
+      return
+    }
+    void manager.sendInterrupt().then(confirmed => {
+      if (managerRef.current !== manager) return
+      if (confirmed) {
+        setIsLoading(false)
+      } else {
+        process.stderr.write(
+          '\nRemote request could not be confirmed as stopped.\n',
+        )
+      }
+    })
   }, [setIsLoading])
 
-  const disconnect = useCallback(() => {
-    managerRef.current?.disconnect()
-    managerRef.current = null
+  const disconnect = useCallback(async (): Promise<boolean> => {
+    const manager = managerRef.current
+    if (!manager) return true
     isConnectedRef.current = false
-  }, [])
+    try {
+      const confirmed = await manager.disconnect()
+      if (!confirmed) {
+        process.stderr.write(
+          '\nSSH disconnect could not confirm local process-tree termination.\n',
+        )
+        return false
+      }
+      if (managerRef.current === manager) managerRef.current = null
+      session?.proxy.stop()
+      return true
+    } catch (error) {
+      logForDebugging(
+        `[useSSHSession] disconnect failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return false
+    }
+  }, [session])
 
   return useMemo(
     () => ({ isRemoteMode, sendMessage, cancelRequest, disconnect }),

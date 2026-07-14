@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createWorkflowTool } from '../tool/WorkflowTool.js'
+import { WorkflowAbortedError } from '../engine/errors.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
 import type { AgentRunParams, AgentRunResult, ProgressEvent } from '../types.js'
 
@@ -29,7 +30,10 @@ function mockPorts(
       }),
       complete: id => void runStatus.set(id, 'completed'),
       fail: id => void runStatus.set(id, 'failed'),
-      kill: id => void runStatus.set(id, 'killed'),
+      kill: async id => {
+        runStatus.set(id, 'killed')
+        return true
+      },
       pendingAction: () => null,
     },
     journalStore: {
@@ -270,7 +274,7 @@ test('name does not exist → returns error (does not enter background)', async 
   }
 })
 
-test('workflow aborted → onFinish routes to kill', async () => {
+test('workflow pre-aborted after registration → cancels before detached launch', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
   try {
     const runStatus = new Map<string, string>()
@@ -288,7 +292,10 @@ test('workflow aborted → onFinish routes to kill', async () => {
         register: () => ({ runId: 'run-x', signal: ac.signal }),
         complete: id => void runStatus.set(id, 'completed'),
         fail: id => void runStatus.set(id, 'failed'),
-        kill: id => void runStatus.set(id, 'killed'),
+        kill: async id => {
+          runStatus.set(id, 'killed')
+          return true
+        },
         pendingAction: () => null,
       },
       journalStore: {
@@ -306,16 +313,41 @@ test('workflow aborted → onFinish routes to kill', async () => {
     }
     ac.abort()
     const tool = createWorkflowTool(ports)
-    await tool.call(
-      { script: `return agent('x')` },
-      undefined,
-      undefined,
-      undefined,
-    )
-    await new Promise(r => {
-      setTimeout(r, 50)
-    })
+    await expect(
+      tool.call(
+        { script: `return agent('x')` },
+        undefined,
+        undefined,
+        undefined,
+      ),
+    ).rejects.toBeInstanceOf(WorkflowAbortedError)
     expect(runStatus.get('run-x')).toBe('killed')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('permission gate abort prevents source resolution and task registration', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    let registrations = 0
+    const originalRegister = ports.taskRegistrar.register
+    ports.taskRegistrar.register = (opts, host) => {
+      registrations++
+      return originalRegister(opts, host)
+    }
+    ports.permissionGate.isAborted = () => true
+
+    await expect(
+      createWorkflowTool(ports).call(
+        { script: 'return 1' },
+        undefined,
+        undefined,
+        undefined,
+      ),
+    ).rejects.toBeInstanceOf(WorkflowAbortedError)
+    expect(registrations).toBe(0)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -340,7 +372,7 @@ test('args defensively parses when a JSON-stringified object (backward compatibl
         }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: {
@@ -397,7 +429,7 @@ test('args keeps original value for non-legal JSON string without throwing', asy
         }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: {

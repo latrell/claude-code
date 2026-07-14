@@ -73,12 +73,12 @@ import { getPollIntervalConfig } from './pollConfig.js'
 import type { BridgeState, ReplBridgeHandle } from './replBridge.js'
 import { initBridgeCore } from './replBridge.js'
 import { setCseShimGate } from './sessionIdCompat.js'
-import type { BridgeWorkerType } from './types.js'
+import type { BridgeInterruptHandler, BridgeWorkerType } from './types.js'
 
 export type InitBridgeOptions = {
   onInboundMessage?: (msg: SDKMessage) => void | Promise<void>
   onPermissionResponse?: (response: SDKControlResponse) => void
-  onInterrupt?: () => void
+  onInterrupt?: BridgeInterruptHandler
   onSetModel?: (model: string | undefined) => void
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
   onSetPermissionMode?: (

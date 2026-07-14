@@ -8,6 +8,17 @@ import { generateMessageUuid } from '../lib/utils'
 
 const BASE = ''
 
+/** A server response that explicitly rejected the request before acceptance. */
+export class ApiResponseError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiResponseError'
+    this.status = status
+  }
+}
+
 export function getUuid(): string {
   let uuid = localStorage.getItem('rcs_uuid')
   if (!uuid) {
@@ -32,6 +43,19 @@ export function getActiveApiToken(): string | null {
   return _activeToken
 }
 
+function getErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object') return fallback
+  const error = (data as Record<string, unknown>).error
+  if (typeof error === 'string' && error) return error
+  if (!error || typeof error !== 'object') return fallback
+  const details = error as Record<string, unknown>
+  if (typeof details.message === 'string' && details.message) {
+    return details.message
+  }
+  if (typeof details.type === 'string' && details.type) return details.type
+  return fallback
+}
+
 async function api<T>(
   method: string,
   path: string,
@@ -50,11 +74,22 @@ async function api<T>(
   if (body !== undefined) opts.body = JSON.stringify(body)
 
   const res = await fetch(url, opts)
-  const data = await res.json()
   if (!res.ok) {
-    const err = data.error || { type: 'unknown', message: res.statusText }
-    throw new Error(err.message || err.type)
+    let data: unknown
+    try {
+      data = await res.json()
+    } catch {
+      // A non-2xx status is already an unambiguous rejection. Its body may be
+      // empty or HTML, so parsing must not hide the status classification.
+    }
+    throw new ApiResponseError(
+      res.status,
+      getErrorMessage(data, res.statusText || `HTTP ${res.status}`),
+    )
   }
+  // A malformed 2xx body stays ambiguous: the server may have accepted and
+  // started the event before its response became unreadable.
+  const data = await res.json()
   return data as T
 }
 

@@ -117,7 +117,11 @@ Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifE
     // Follow the user's configured notification channel: MeoW takes over
     // delivery entirely when selected in /config.
     if (isMeowChannelConfigured()) {
-      const sent = await sendMeowPush(input.title, input.body)
+      const sent = await sendMeowPush(
+        input.title,
+        input.body,
+        context.abortController.signal,
+      )
       logForDebugging(
         `[PushNotification] MeoW delivery ${sent ? 'succeeded' : 'failed'}: ${input.title}`,
       )
@@ -163,6 +167,7 @@ Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifE
                   'Content-Type': 'application/json',
                   'anthropic-version': '2023-06-01',
                 },
+                signal: context.abortController.signal,
                 timeout: 10_000,
                 validateStatus: (s: number) => s < 500,
               },
@@ -178,6 +183,9 @@ Respects user notification settings (taskCompleteNotifEnabled, inputNeededNotifE
             )
           }
         } catch (e) {
+          if (context.abortController.signal.aborted) {
+            throw e
+          }
           logForDebugging(`[PushNotification] bridge delivery error: ${e}`)
         }
       }

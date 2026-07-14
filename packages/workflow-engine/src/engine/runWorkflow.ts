@@ -33,6 +33,16 @@ export async function runWorkflow(
 ): Promise<WorkflowRunResult> {
   const { ports } = opts
 
+  if (opts.signal.aborted) {
+    const result: WorkflowRunResult = { status: 'killed' }
+    ports.progressEmitter.emit({
+      type: 'run_done',
+      runId: opts.runId,
+      ...result,
+    })
+    return result
+  }
+
   let parsed: ParsedScript
   try {
     parsed = parseScript(opts.script)
@@ -58,6 +68,15 @@ export async function runWorkflow(
     await ports.journalStore.truncate(opts.runId)
     journalInvalidated = true
   }
+  if (opts.signal.aborted) {
+    const result: WorkflowRunResult = { status: 'killed' }
+    ports.progressEmitter.emit({
+      type: 'run_done',
+      runId: opts.runId,
+      ...result,
+    })
+    return result
+  }
 
   const ctx = createEngineContext({
     ports,
@@ -81,7 +100,9 @@ export async function runWorkflow(
 
   // Sub-workflow executor: reuses the same ctx (sharing journal/concurrency/budget/counters), temporarily +1 depth
   const runSubWorkflow: SubWorkflowRunner = async sub => {
+    if (opts.signal.aborted) throw new WorkflowAbortedError()
     const script = await resolveSubScript(sub, opts.cwd)
+    if (opts.signal.aborted) throw new WorkflowAbortedError()
     let subParsed: ParsedScript
     try {
       subParsed = parseScript(script)
@@ -94,7 +115,13 @@ export async function runWorkflow(
     ctx.resources.depth += 1
     try {
       const subHooks = makeHooks(ctx, runSubWorkflow)
-      return await subParsed.execute(subHooks, sub.args, ctx.resources.budget)
+      const returnValue = await subParsed.execute(
+        subHooks,
+        sub.args,
+        ctx.resources.budget,
+      )
+      if (opts.signal.aborted) throw new WorkflowAbortedError()
+      return returnValue
     } finally {
       ctx.resources.depth = prevDepth
     }
@@ -121,9 +148,15 @@ export async function runWorkflow(
       opts.args,
       ctx.resources.budget,
     )
-    result = { status: 'completed', returnValue }
+    result = opts.signal.aborted
+      ? { status: 'killed' }
+      : { status: 'completed', returnValue }
   } catch (e) {
-    if (e instanceof WorkflowAbortedError) {
+    if (
+      opts.signal.aborted ||
+      e instanceof WorkflowAbortedError ||
+      (e instanceof Error && e.name === 'AbortError')
+    ) {
       result = { status: 'killed' }
     } else {
       result = { status: 'failed', error: (e as Error).message }

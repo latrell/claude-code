@@ -29,6 +29,7 @@ const fetchMock = {
   lastOpts: {} as RequestInit,
   response: { ok: true, status: 200, statusText: 'OK' },
   responseData: {} as any,
+  responseJsonError: null as Error | null,
 }
 
 beforeEach(() => {
@@ -36,6 +37,7 @@ beforeEach(() => {
   fetchMock.lastOpts = {}
   fetchMock.response = { ok: true, status: 200, statusText: 'OK' }
   fetchMock.responseData = {}
+  fetchMock.responseJsonError = null
   client.setActiveApiToken(null)
 })
 
@@ -46,7 +48,10 @@ beforeEach(() => {
     ok: fetchMock.response.ok,
     status: fetchMock.response.status,
     statusText: fetchMock.response.statusText,
-    json: async () => fetchMock.responseData,
+    json: async () => {
+      if (fetchMock.responseJsonError) throw fetchMock.responseJsonError
+      return fetchMock.responseData
+    },
   } as Response
 }
 
@@ -173,6 +178,32 @@ describe('api functions', () => {
     await expect(client.apiFetchSessions()).rejects.toThrow(
       'Internal Server Error',
     )
+  })
+
+  test('classifies a non-JSON HTTP error as an explicit rejection', async () => {
+    store['rcs_uuid'] = 'test-uuid'
+    fetchMock.response = {
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+    }
+    fetchMock.responseJsonError = new SyntaxError('Unexpected token <')
+
+    const error = await client.apiFetchSessions().catch(value => value)
+    expect(error).toBeInstanceOf(client.ApiResponseError)
+    expect((error as InstanceType<typeof client.ApiResponseError>).status).toBe(
+      503,
+    )
+    expect((error as Error).message).toBe('Service Unavailable')
+  })
+
+  test('keeps a malformed 2xx response distinct from explicit rejection', async () => {
+    store['rcs_uuid'] = 'test-uuid'
+    fetchMock.responseJsonError = new SyntaxError('Unexpected end of JSON')
+
+    const error = await client.apiFetchSessions().catch(value => value)
+    expect(error).toBeInstanceOf(SyntaxError)
+    expect(error).not.toBeInstanceOf(client.ApiResponseError)
   })
 })
 

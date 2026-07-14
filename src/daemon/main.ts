@@ -2,6 +2,7 @@ import { type ChildProcess } from 'child_process'
 import { resolve } from 'path'
 import { t, tf } from '../i18n/t.js'
 import { buildCliLaunch, spawnCli } from '../utils/cliLaunch.js'
+import { terminateProcessTree } from '../utils/processTermination.js'
 import {
   writeDaemonState,
   removeDaemonState,
@@ -22,6 +23,8 @@ const BACKOFF_INITIAL_MS = 2_000
 const BACKOFF_CAP_MS = 120_000
 const BACKOFF_MULTIPLIER = 2
 const MAX_RAPID_FAILURES = 5 // Park worker after this many fast crashes
+const WORKER_SHUTDOWN_GRACE_MS = 30_000
+const WORKER_FORCE_KILL_WAIT_MS = 5_000
 
 interface WorkerState {
   kind: string
@@ -262,21 +265,23 @@ async function runSupervisor(args: string[]): Promise<void> {
   })
 
   const controller = new AbortController()
+  let shutdownChildren: ChildProcess[] = []
 
   // Graceful shutdown
   const shutdown = () => {
+    if (controller.signal.aborted) return
     console.log(t('[daemon] supervisor shutting down...'))
-    controller.abort()
-    removeDaemonState()
+    // Capture before aborting: worker exit handlers clear worker.process.
+    shutdownChildren = workers.flatMap(worker =>
+      worker.process ? [worker.process] : [],
+    )
     for (const w of workers) {
       if (w.restartTimer) {
         clearTimeout(w.restartTimer)
         w.restartTimer = null
       }
-      if (w.process && !w.process.killed) {
-        w.process.kill('SIGTERM')
-      }
     }
+    controller.abort()
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
@@ -297,38 +302,41 @@ async function runSupervisor(args: string[]): Promise<void> {
     controller.signal.addEventListener('abort', () => resolve(), { once: true })
   })
 
-  // Wait for all workers to exit
-  await Promise.all(
-    workers
-      .filter(w => w.process && w.process.exitCode === null)
-      .map(
-        w =>
-          new Promise<void>(resolve => {
-            if (!w.process || w.process.exitCode !== null) {
-              resolve()
-              return
-            }
-            let killTimer: ReturnType<typeof setTimeout> | null = null
-            w.process.on('exit', () => {
-              if (killTimer) {
-                clearTimeout(killTimer)
-                killTimer = null
-              }
-              resolve()
-            })
-            // Force kill after grace period
-            killTimer = setTimeout(() => {
-              if (w.process && w.process.exitCode === null) {
-                w.process.kill('SIGKILL')
-              }
-              resolve()
-            }, 30_000)
-            killTimer.unref?.()
-          }),
-      ),
+  // Stop complete worker process trees and do not report success until their
+  // exits are confirmed. Each worker can own bridge session/tool descendants.
+  const terminationResults = await Promise.all(
+    shutdownChildren.map(child => terminateWorkerProcess(child)),
   )
+  const allWorkersStopped = terminationResults.every(stopped => stopped)
 
+  if (!allWorkersStopped) {
+    console.error(t('[daemon] a worker process tree could not be stopped'))
+    process.exitCode = 1
+    // Keep the state file and never print "stopped" without confirmation.
+    return
+  }
+
+  process.off('SIGTERM', shutdown)
+  process.off('SIGINT', shutdown)
+  removeDaemonState()
   console.log(t('[daemon] supervisor stopped'))
+}
+
+async function terminateWorkerProcess(child: ChildProcess): Promise<boolean> {
+  const pid = child.pid
+  if (!pid) return child.exitCode !== null || child.signalCode !== null
+
+  // Workers can own nested process groups, so a root exit event is not tree
+  // proof. Snapshot descendant identities and confirm every original member.
+  return terminateProcessTree(pid, {
+    graceMs: WORKER_SHUTDOWN_GRACE_MS,
+    forceWaitMs: WORKER_FORCE_KILL_WAIT_MS,
+    onSignalError: (signal, error) => {
+      console.error(
+        `[daemon] failed to send ${signal} to worker PID ${pid}: ${String(error)}`,
+      )
+    },
+  })
 }
 
 /**
@@ -363,6 +371,9 @@ function spawnWorker(
   const child = spawnCli(launch, {
     cwd: dir,
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Isolate the worker in a POSIX process group. Bridge sessions use their
+    // own groups and are terminated by the worker before its exit is reported.
+    detached: process.platform !== 'win32',
   })
 
   worker.process = child

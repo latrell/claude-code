@@ -19,6 +19,7 @@ import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { isAbortError } from '../../../utils/errors.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {
   convertMessagesToLangfuse,
@@ -241,6 +242,9 @@ export async function* queryModelCursor(
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
     })
   } catch (error) {
+    if (signal.aborted) return
+    if (isAbortError(error)) throw error
+
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Cursor] Error: ${msg}`, { level: 'error' })
 

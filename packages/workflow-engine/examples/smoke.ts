@@ -195,7 +195,9 @@ function makePorts(runsDir: string): WorkflowPorts {
       }),
       complete() {},
       fail() {},
-      kill() {},
+      async kill() {
+        return false
+      },
       pendingAction: () => null,
     },
     journalStore: createFileJournalStore(runsDir),

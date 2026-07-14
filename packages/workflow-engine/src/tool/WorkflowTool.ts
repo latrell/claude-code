@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { z } from 'zod/v4'
 import { WORKFLOW_DIR_NAME, WORKFLOW_TOOL_NAME } from '../constants.js'
 import { resolveNamedWorkflow } from '../engine/namedWorkflows.js'
+import { WorkflowAbortedError } from '../engine/errors.js'
 import { runWorkflow } from '../engine/runWorkflow.js'
 import { parseScript } from '../engine/script.js'
 import { containsPath, sanitizeWorkflowName } from '../engine/paths.js'
@@ -83,6 +84,17 @@ export function createWorkflowTool(
 
     async call(input, context, canUseTool, parentMessage) {
       const host = ports.hostFactory({ context, canUseTool, parentMessage })
+      const throwIfAborted = (signal?: AbortSignal, error?: unknown): void => {
+        if (
+          ports.permissionGate.isAborted(host.handle) ||
+          signal?.aborted ||
+          error instanceof WorkflowAbortedError ||
+          (error instanceof Error && error.name === 'AbortError')
+        ) {
+          throw new WorkflowAbortedError()
+        }
+      }
+      throwIfAborted()
 
       // Resolve the script source
       let script: string
@@ -92,13 +104,16 @@ export function createWorkflowTool(
         script = resolved.script
         workflowFile = resolved.workflowFile
       } catch (e) {
+        throwIfAborted(undefined, e)
         return { data: { output: `Error: ${(e as Error).message}` } }
       }
+      throwIfAborted()
 
       // Quick validation (meta + syntax): on failure return an error to the model directly, do not enter the background
       try {
         parseScript(script)
       } catch (e) {
+        throwIfAborted(undefined, e)
         return {
           data: {
             output: `Error: script validation failed: ${(e as Error).message}`,
@@ -117,6 +132,17 @@ export function createWorkflowTool(
         },
         host.handle,
       )
+      const cancelBeforeLaunch = async (): Promise<never> => {
+        const settlement = ports.taskRegistrar.kill(runId)
+        // There is no runner yet to produce its own terminal callback. Finalize explicitly after
+        // requesting abort, then await the same settlement contract as normal kills.
+        ports.taskRegistrar.finishKill?.(runId)
+        await settlement
+        throw new WorkflowAbortedError()
+      }
+      if (ports.permissionGate.isAborted(host.handle) || signal.aborted) {
+        return await cancelBeforeLaunch()
+      }
 
       // Inline entry: persist the script to the run directory and return a reusable path (the
       // inline -> persist -> edit -> resubmit-as-scriptPath iteration loop promised by the ultracode skill).
@@ -133,6 +159,9 @@ export function createWorkflowTool(
             `inline script persist failed: ${(e as Error).message}`,
           )
         }
+      }
+      if (ports.permissionGate.isAborted(host.handle) || signal.aborted) {
+        return await cancelBeforeLaunch()
       }
 
       // Detached execution
@@ -195,7 +224,11 @@ function onFinish(
   } else if (result.status === 'failed') {
     ports.taskRegistrar.fail(runId, result.error ?? 'workflow failed')
   } else {
-    ports.taskRegistrar.kill(runId)
+    if (ports.taskRegistrar.finishKill) {
+      ports.taskRegistrar.finishKill(runId)
+    } else {
+      void ports.taskRegistrar.kill(runId)
+    }
   }
 }
 

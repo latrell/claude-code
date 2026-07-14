@@ -1,9 +1,9 @@
 import type { ChildProcess } from 'child_process'
 import { stat } from 'fs/promises'
 import type { Readable } from 'stream'
-import treeKill from 'tree-kill'
 import { generateTaskId } from '../Task.js'
 import { formatDuration } from './format.js'
+import { terminateProcessTree } from './processTermination.js'
 import {
   MAX_TASK_OUTPUT_BYTES,
   MAX_TASK_OUTPUT_BYTES_DISPLAY,
@@ -32,7 +32,8 @@ export type ExecResult = {
 export type ShellCommand = {
   background: (backgroundTaskId: string) => boolean
   result: Promise<ExecResult>
-  kill: () => void
+  /** Resolves true only after the child process has actually exited. */
+  kill: () => Promise<boolean>
   status: 'running' | 'backgrounded' | 'completed' | 'killed'
   /**
    * Cleans up stream resources (event listeners).
@@ -47,11 +48,11 @@ export type ShellCommand = {
 }
 
 const SIGKILL = 137
-const SIGTERM = 143
 
 // Background tasks write stdout/stderr directly to a file fd (no JS involvement),
 // so a stuck append loop can fill the disk. Poll file size and kill when exceeded.
 const SIZE_WATCHDOG_INTERVAL_MS = 5_000
+const KILL_CONFIRM_TIMEOUT_MS = 5_000
 
 function prependStderr(prefix: string, stderr: string): string {
   return stderr ? `${prefix} ${stderr}` : prefix
@@ -120,6 +121,7 @@ class ShellCommandImpl implements ShellCommand {
   #timeoutId: NodeJS.Timeout | null = null
   #sizeWatchdog: NodeJS.Timeout | null = null
   #killedForSize = false
+  #timedOut = false
   #maxOutputBytes: number
   #abortSignal: AbortSignal
   #onTimeoutCallback:
@@ -130,13 +132,23 @@ class ShellCommandImpl implements ShellCommand {
   #resultResolver: ((result: ExecResult) => void) | null = null
   #exitCodeResolver: ((code: number) => void) | null = null
   #boundAbortHandler: (() => void) | null = null
+  #killPromise: Promise<boolean> | null = null
+  #killResolver: ((confirmed: boolean) => void) | null = null
+  #killRequested = false
+  #killConfirmed = false
+  #killAttempt: Promise<boolean> | null = null
+  #isolatedProcessGroup: boolean
   readonly taskOutput: TaskOutput
 
   static #handleTimeout(self: ShellCommandImpl): void {
     if (self.#shouldAutoBackground && self.#onTimeoutCallback) {
       self.#onTimeoutCallback(self.background.bind(self))
     } else {
-      self.#doKill(SIGTERM)
+      self.#timedOut = true
+      // A foreground timeout is a terminal cancellation. Use a forceful tree
+      // signal so an ignored SIGTERM cannot keep tools running after the UI
+      // has reported a timeout.
+      void self.#doKill(SIGKILL)
     }
   }
 
@@ -152,12 +164,14 @@ class ShellCommandImpl implements ShellCommand {
     taskOutput: TaskOutput,
     shouldAutoBackground = false,
     maxOutputBytes = MAX_TASK_OUTPUT_BYTES,
+    isolatedProcessGroup = false,
   ) {
     this.#childProcess = childProcess
     this.#abortSignal = abortSignal
     this.#timeout = timeout
     this.#shouldAutoBackground = shouldAutoBackground
     this.#maxOutputBytes = maxOutputBytes
+    this.#isolatedProcessGroup = isolatedProcessGroup
     this.taskOutput = taskOutput
 
     // In file mode (bash commands), both stdout and stderr go to the
@@ -189,7 +203,7 @@ class ShellCommandImpl implements ShellCommand {
     if (this.#abortSignal.reason === 'interrupt') {
       return
     }
-    this.kill()
+    void this.kill()
   }
 
   #exitHandler(code: number | null, signal: NodeJS.Signals | null): void {
@@ -203,7 +217,18 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   #errorHandler(): void {
+    // A spawn error means no process tree was created. If Stop raced the
+    // error, there is therefore nothing left to terminate.
+    if (this.#killRequested) this.#confirmKill(true)
     this.#resolveExitCode(1)
+  }
+
+  #confirmKill(confirmed: boolean): void {
+    if (confirmed) this.#killConfirmed = true
+    if (!this.#killResolver) return
+    const resolve = this.#killResolver
+    this.#killResolver = null
+    resolve(confirmed)
   }
 
   #resolveExitCode(code: number): void {
@@ -237,6 +262,7 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   #startSizeWatchdog(): void {
+    if (this.#sizeWatchdog) return
     this.#sizeWatchdog = setInterval(() => {
       void stat(this.taskOutput.path).then(
         s => {
@@ -249,7 +275,17 @@ class ShellCommandImpl implements ShellCommand {
           ) {
             this.#killedForSize = true
             this.#clearSizeWatchdog()
-            this.#doKill(SIGKILL)
+            void this.#doKill(SIGKILL).then(confirmed => {
+              if (!confirmed) {
+                this.#killedForSize = false
+                // A failed signal/confirmation is retryable. Keep protecting
+                // a still-running background task instead of silently
+                // disabling the output limit forever.
+                if (this.#status === 'backgrounded') {
+                  this.#startSizeWatchdog()
+                }
+              }
+            })
           }
         },
         () => {
@@ -290,16 +326,19 @@ class ShellCommandImpl implements ShellCommand {
 
   async #handleExit(code: number): Promise<void> {
     this.#cleanupListeners()
-    if (this.#status === 'running' || this.#status === 'backgrounded') {
-      this.#status = 'completed'
-    }
+    const attemptConfirmed =
+      this.#killRequested && this.#killAttempt
+        ? await this.#killAttempt
+        : this.#killConfirmed
+    const killConfirmed = this.#killConfirmed || attemptConfirmed
+    if (this.#killRequested && !killConfirmed) this.#killedForSize = false
 
     const stdout = await this.taskOutput.getStdout()
     const result: ExecResult = {
       code,
       stdout,
       stderr: this.taskOutput.getStderr(),
-      interrupted: code === SIGKILL,
+      interrupted: this.#killRequested || code === SIGKILL,
       backgroundTaskId: this.#backgroundTaskId,
     }
 
@@ -320,11 +359,24 @@ class ShellCommandImpl implements ShellCommand {
         `Background command killed: output file exceeded ${MAX_TASK_OUTPUT_BYTES_DISPLAY}`,
         result.stderr,
       )
-    } else if (code === SIGTERM) {
+    } else if (this.#timedOut) {
       result.stderr = prependStderr(
         `Command timed out after ${formatDuration(this.#timeout)}`,
         result.stderr,
       )
+    }
+
+    // Publish a terminal status only after output capture is complete. A
+    // TaskStop caller may clean up TaskOutput immediately after kill() settles.
+    if (this.#killRequested && killConfirmed) {
+      this.#status = 'killed'
+    } else if (!this.#killRequested) {
+      this.#status = 'completed'
+    } else if (
+      this.#status === 'backgrounded' &&
+      this.taskOutput.stdoutToFile
+    ) {
+      this.#startSizeWatchdog()
     }
 
     const resultResolver = this.#resultResolver
@@ -334,20 +386,64 @@ class ShellCommandImpl implements ShellCommand {
     }
   }
 
-  #doKill(code?: number): void {
-    this.#status = 'killed'
-    if (this.#childProcess.pid) {
-      treeKill(this.#childProcess.pid, 'SIGKILL')
+  #doKill(code: number = SIGKILL): Promise<boolean> {
+    if (this.#status === 'completed' || this.#status === 'killed') {
+      return Promise.resolve(true)
     }
-    this.#resolveExitCode(code ?? SIGKILL)
+    if (
+      !this.#killRequested &&
+      (this.#childProcess.exitCode !== null ||
+        this.#childProcess.signalCode !== null)
+    )
+      return this.result.then(() => true)
+    if (this.#killConfirmed) return this.result.then(() => true)
+    if (this.#killPromise) return this.#killPromise
+
+    this.#killRequested = true
+    const attempt = new Promise<boolean>(resolve => {
+      this.#killResolver = resolve
+    })
+    this.#killAttempt = attempt
+    let trackedAttempt: Promise<boolean>
+    trackedAttempt = attempt.then(async confirmed => {
+      if (confirmed) await this.result
+      // A failed confirmation is retryable. The child may still be alive, so
+      // a later Stop must be allowed to signal it again rather than inheriting
+      // a permanently-false cached promise.
+      if (!confirmed && this.#killPromise === trackedAttempt) {
+        this.#killPromise = null
+      }
+      return confirmed
+    })
+    this.#killPromise = trackedAttempt
+
+    const pid = this.#childProcess.pid
+    if (!pid) {
+      this.#confirmKill(false)
+      this.#resolveExitCode(code)
+      return trackedAttempt
+    }
+
+    void terminateProcessTree(pid, {
+      isolatedProcessGroup: this.#isolatedProcessGroup,
+      // Shell Stop is force-oriented. Give TERM a zero-length grace check,
+      // then force-kill every identity-snapshotted survivor and wait for proof.
+      graceMs: 0,
+      forceWaitMs: KILL_CONFIRM_TIMEOUT_MS,
+    }).then(
+      confirmed => this.#confirmKill(confirmed),
+      () => this.#confirmKill(false),
+    )
+
+    return trackedAttempt
   }
 
-  kill(): void {
-    this.#doKill()
+  kill(): Promise<boolean> {
+    return this.#doKill()
   }
 
   background(taskId: string): boolean {
-    if (this.#status === 'running') {
+    if (this.#status === 'running' && !this.#killRequested) {
       this.#backgroundTaskId = taskId
       this.#status = 'backgrounded'
       this.#cleanupListeners()
@@ -366,6 +462,10 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   cleanup(): void {
+    // A timed-out kill confirmation means the child is still live. Preserve
+    // listeners and process references so its eventual exit can settle the
+    // result and a subsequent Stop can retry termination.
+    if (this.#status !== 'completed' && this.#status !== 'killed') return
     this.#stdoutWrapper?.cleanup()
     this.#stderrWrapper?.cleanup()
     this.taskOutput.clear()
@@ -391,6 +491,7 @@ export function wrapSpawn(
   taskOutput: TaskOutput,
   shouldAutoBackground = false,
   maxOutputBytes = MAX_TASK_OUTPUT_BYTES,
+  isolatedProcessGroup = false,
 ): ShellCommand {
   return new ShellCommandImpl(
     childProcess,
@@ -399,6 +500,7 @@ export function wrapSpawn(
     taskOutput,
     shouldAutoBackground,
     maxOutputBytes,
+    isolatedProcessGroup,
   )
 }
 
@@ -429,7 +531,9 @@ class AbortedShellCommand implements ShellCommand {
     return false
   }
 
-  kill(): void {}
+  async kill(): Promise<boolean> {
+    return true
+  }
 
   cleanup(): void {}
 }
@@ -459,7 +563,9 @@ export function createFailedCommand(preSpawnError: string): ShellCommand {
     background(): boolean {
       return false
     },
-    kill(): void {},
+    async kill(): Promise<boolean> {
+      return true
+    },
     cleanup(): void {},
   }
 }

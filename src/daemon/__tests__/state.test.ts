@@ -50,6 +50,7 @@ const {
   readDaemonState,
   removeDaemonState,
   queryDaemonStatus,
+  stopDaemonByPid,
 } = await import('../state.js')
 
 // ─── tests ─────────────────────────────────────────────────────────────────
@@ -181,5 +182,69 @@ describe('queryDaemonStatus', () => {
     const result = queryDaemonStatus('stale-test')
     expect(result.status).toBe('stale')
     expect(existsSync(getDaemonStateFilePath('stale-test'))).toBe(false)
+  })
+})
+
+describe('stopDaemonByPid', () => {
+  const writeStopState = (name: string): void => {
+    writeDaemonState(
+      {
+        pid: 424242,
+        cwd: '/',
+        startedAt: '',
+        workerKinds: [],
+        lastStatus: 'running',
+      },
+      name,
+    )
+  }
+
+  test('keeps state and reports failure while the PID survives SIGKILL', async () => {
+    writeStopState('unstoppable')
+    const signals: string[] = []
+
+    const stopped = await stopDaemonByPid('unstoppable', 0, 0, {
+      isAlive: () => true,
+      signalTree: async (_pid, signal) => {
+        signals.push(signal)
+      },
+    })
+
+    expect(stopped).toBe(false)
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL'])
+    expect(existsSync(getDaemonStateFilePath('unstoppable'))).toBe(true)
+  })
+
+  test('removes state only after force-exit confirmation', async () => {
+    writeStopState('force-stop')
+    let alive = true
+
+    const stopped = await stopDaemonByPid('force-stop', 0, 0, {
+      isAlive: () => alive,
+      signalTree: async (_pid, signal) => {
+        if (signal === 'SIGKILL') alive = false
+      },
+    })
+
+    expect(stopped).toBe(true)
+    expect(existsSync(getDaemonStateFilePath('force-stop'))).toBe(false)
+  })
+
+  test('does not send SIGKILL after graceful exit is confirmed', async () => {
+    writeStopState('graceful-stop')
+    let alive = true
+    const signals: string[] = []
+
+    const stopped = await stopDaemonByPid('graceful-stop', 0, 0, {
+      isAlive: () => alive,
+      signalTree: async (_pid, signal) => {
+        signals.push(signal)
+        alive = false
+      },
+    })
+
+    expect(stopped).toBe(true)
+    expect(signals).toEqual(['SIGTERM'])
+    expect(existsSync(getDaemonStateFilePath('graceful-stop'))).toBe(false)
   })
 })

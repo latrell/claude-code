@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto'
 import type { QuerySource } from '../../constants/querySource.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'
 import type { Message } from '../../types/message.js'
-import { createAbortController } from '../../utils/abortController.js'
+import { createChildAbortController } from '../../utils/abortController.js'
 import { logError } from '../../utils/log.js'
-import { toError } from '../errors.js'
+import { isAbortError, toError } from '../errors.js'
 import { extractTextContent } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import { getFastModelAndRuntime } from '../model/fastProvider.js'
@@ -59,9 +59,10 @@ export function createApiQueryHook<TResult>(
   config: ApiQueryHookConfig<TResult>,
 ) {
   return async (context: ApiQueryHookContext): Promise<void> => {
+    let requestAbortController: AbortController | undefined
     try {
       const shouldRun = await config.shouldRun(context)
-      if (!shouldRun) {
+      if (!shouldRun || context.toolUseContext.abortController.signal.aborted) {
         return
       }
 
@@ -89,13 +90,20 @@ export function createApiQueryHook<TResult>(
       const fast =
         model === getSmallFastModel() ? getFastModelAndRuntime() : undefined
 
+      // Post-sampling requests belong to the turn that spawned them. A fresh,
+      // detached controller allowed these side queries to keep consuming
+      // remote inference after the user pressed Esc on the parent turn.
+      requestAbortController = createChildAbortController(
+        context.toolUseContext.abortController,
+      )
+
       // Make API call
       const response = await queryModelWithoutStreaming({
         messages,
         systemPrompt,
         thinkingConfig: { type: 'disabled' as const },
         tools,
-        signal: createAbortController().signal,
+        signal: requestAbortController.signal,
         options: {
           getToolPermissionContext: async () => {
             const appState = context.toolUseContext.getAppState()
@@ -117,6 +125,8 @@ export function createApiQueryHook<TResult>(
         },
       })
 
+      if (requestAbortController.signal.aborted) return
+
       // Parse response
       const content = extractTextContent(
         Array.isArray(response.message.content) ? response.message.content : [],
@@ -124,6 +134,7 @@ export function createApiQueryHook<TResult>(
 
       try {
         const result = config.parseResponse(content, context)
+        if (requestAbortController.signal.aborted) return
         config.logResult(
           {
             type: 'success',
@@ -136,6 +147,7 @@ export function createApiQueryHook<TResult>(
           context,
         )
       } catch (error) {
+        if (requestAbortController.signal.aborted) return
         config.logResult(
           {
             type: 'error',
@@ -147,7 +159,19 @@ export function createApiQueryHook<TResult>(
         )
       }
     } catch (error) {
+      if (
+        context.toolUseContext.abortController.signal.aborted ||
+        isAbortError(error)
+      ) {
+        return
+      }
       logError(toError(error))
+    } finally {
+      // Normal completion must detach this request controller from the
+      // turn-owned post-sampling controller as well.
+      if (requestAbortController && !requestAbortController.signal.aborted) {
+        requestAbortController.abort('post-sampling-api-query-complete')
+      }
     }
   }
 }

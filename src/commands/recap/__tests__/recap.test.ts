@@ -23,6 +23,7 @@ mock.module('src/utils/debug.ts', () => ({
 mock.module('src/utils/settings/settings.js', () => ({
   getCachedSettings: () => ({}),
   getSettings: async () => ({}),
+  getInitialSettings: () => ({}),
   updateSettings: async () => {},
 }))
 

@@ -13,6 +13,10 @@ import { buildCliLaunch } from '../utils/cliLaunch.js'
 import { logForDebugging } from '../utils/debug.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import { randomUUID } from 'crypto'
+import {
+  SSHProcessTerminationError,
+  terminateSSHProcess,
+} from './terminateSSHProcess.js'
 
 const INIT_TIMEOUT_MS = 30_000
 const STDERR_TAIL_LINES = 20
@@ -30,6 +34,37 @@ export class SSHSessionError extends Error {
     super(message)
     this.name = 'SSHSessionError'
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function rethrowAfterProcessCleanup(
+  proc: Subprocess,
+  error: unknown,
+  context: string,
+): Promise<never> {
+  let confirmed = false
+  try {
+    confirmed = await terminateSSHProcess(proc)
+  } catch (cleanupError) {
+    throw new SSHProcessTerminationError(
+      `${errorMessage(error)}; ${context} cleanup failed: ${errorMessage(cleanupError)}`,
+      proc,
+    )
+  }
+
+  if (!confirmed) {
+    throw new SSHProcessTerminationError(
+      `${errorMessage(error)}; ${context} process-tree termination could not be confirmed`,
+      proc,
+    )
+  }
+
+  throw error instanceof SSHSessionError
+    ? error
+    : new SSHSessionError(errorMessage(error))
 }
 
 export async function createSSHSession(
@@ -196,8 +231,7 @@ export async function createSSHSession(
       remoteCwd = await waitForInit(proc, config.cwd || defaultCwd)
     } catch (err) {
       proxy.stop()
-      proc.kill()
-      throw err
+      return await rethrowAfterProcessCleanup(proc, err, 'SSH initialization')
     }
   }
 
@@ -205,7 +239,7 @@ export async function createSSHSession(
 
   let currentProc = proc
 
-  const reconnect = async (): Promise<Subprocess> => {
+  const reconnect = async (signal?: AbortSignal): Promise<Subprocess> => {
     logForDebugging('[SSH] reconnect: re-spawning SSH process with --continue')
     const reconnectArgs = [...sshArgs]
     const cmdIdx = reconnectArgs.length - 1
@@ -226,7 +260,11 @@ export async function createSSHSession(
     const newStderrChunks: string[] = []
     collectStderr(newProc, newStderrChunks)
 
-    await waitForInit(newProc, remoteCwd)
+    try {
+      await waitForInit(newProc, remoteCwd, signal)
+    } catch (error) {
+      return await rethrowAfterProcessCleanup(newProc, error, 'SSH reconnect')
+    }
     currentProc = newProc
     stderrChunks.length = 0
     stderrChunks.push(...newStderrChunks)
@@ -303,15 +341,18 @@ export async function createLocalSSHSession(config: {
     remoteCwd = await waitForInit(proc, config.cwd)
   } catch (err) {
     proxy.stop()
-    proc.kill()
-    throw err
+    return await rethrowAfterProcessCleanup(
+      proc,
+      err,
+      'Local SSH initialization',
+    )
   }
 
   logForDebugging(`[SSH] local session initialized, remoteCwd=${remoteCwd}`)
 
   let currentProc = proc
 
-  const reconnect = async (): Promise<Subprocess> => {
+  const reconnect = async (signal?: AbortSignal): Promise<Subprocess> => {
     logForDebugging('[SSH] local reconnect: re-spawning CLI with --continue')
     const reconnectCliArgs = [...cliArgs]
     if (!reconnectCliArgs.includes('--continue')) {
@@ -329,7 +370,15 @@ export async function createLocalSSHSession(config: {
     const newStderrChunks: string[] = []
     collectStderr(newProc, newStderrChunks)
 
-    await waitForInit(newProc, remoteCwd)
+    try {
+      await waitForInit(newProc, remoteCwd, signal)
+    } catch (error) {
+      return await rethrowAfterProcessCleanup(
+        newProc,
+        error,
+        'Local SSH reconnect',
+      )
+    }
     currentProc = newProc
     stderrChunks.length = 0
     stderrChunks.push(...newStderrChunks)
@@ -358,6 +407,7 @@ export async function createLocalSSHSession(config: {
 async function waitForInit(
   proc: Subprocess,
   fallbackCwd?: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const stdout = proc.stdout
   if (!stdout) {
@@ -368,24 +418,40 @@ async function waitForInit(
   const decoder = new TextDecoder()
   let buffer = ''
   const deadline = Date.now() + INIT_TIMEOUT_MS
+  let timedOut = false
+  let timeout: ReturnType<typeof setTimeout> | undefined
+
+  const cancelReader = (): void => {
+    void reader.cancel().catch(() => {
+      // Process termination may close stdout before cancellation lands.
+    })
+  }
+  const onAbort = (): void => cancelReader()
+  signal?.addEventListener('abort', onAbort, { once: true })
 
   try {
     while (Date.now() < deadline) {
+      if (signal?.aborted) {
+        cancelReader()
+        throw new SSHSessionError('SSH reconnect was cancelled')
+      }
       const remaining = deadline - Date.now()
-      const result = await Promise.race([
-        reader.read(),
-        new Promise<{ done: true; value: undefined }>((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new SSHSessionError(
-                  'Remote CLI did not initialize within 30 seconds. Check SSH connectivity and remote binary.',
-                ),
-              ),
-            remaining,
-          ),
-        ),
-      ])
+      timeout = setTimeout(() => {
+        timedOut = true
+        cancelReader()
+      }, remaining)
+      const result = await reader.read()
+      clearTimeout(timeout)
+      timeout = undefined
+
+      if (signal?.aborted) {
+        throw new SSHSessionError('SSH reconnect was cancelled')
+      }
+      if (timedOut) {
+        throw new SSHSessionError(
+          'Remote CLI did not initialize within 30 seconds. Check SSH connectivity and remote binary.',
+        )
+      }
 
       if (result.done) {
         throw new SSHSessionError(
@@ -403,7 +469,6 @@ async function waitForInit(
         try {
           const msg = jsonParse(trimmed) as Record<string, unknown>
           if (msg.type === 'system' && msg.subtype === 'init') {
-            reader.releaseLock()
             return (msg.cwd as string) || fallbackCwd || process.cwd()
           }
         } catch {
@@ -412,15 +477,21 @@ async function waitForInit(
       }
     }
   } catch (err) {
-    reader.releaseLock()
     throw err instanceof SSHSessionError
       ? err
       : new SSHSessionError(
           `Error reading init message: ${err instanceof Error ? err.message : String(err)}`,
         )
+  } finally {
+    if (timeout) clearTimeout(timeout)
+    signal?.removeEventListener('abort', onAbort)
+    try {
+      reader.releaseLock()
+    } catch {
+      // A cancelled read may already have released the lock.
+    }
   }
 
-  reader.releaseLock()
   throw new SSHSessionError(
     'Remote CLI did not initialize within 30 seconds. Check SSH connectivity and remote binary.',
   )

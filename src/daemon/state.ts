@@ -1,6 +1,11 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import {
+  isProcessTreeAlive,
+  signalProcessTree,
+  waitForTermination,
+} from '../utils/processTermination.js'
 
 /**
  * Daemon state persisted to disk so that `status` / `stop` can work
@@ -15,6 +20,11 @@ export interface DaemonStateData {
 }
 
 export type DaemonStatus = 'running' | 'stopped' | 'stale'
+
+interface DaemonStopDeps {
+  isAlive: (pid: number) => boolean
+  signalTree: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => Promise<void>
+}
 
 /**
  * Returns the path to the daemon state file for a given daemon name.
@@ -66,12 +76,7 @@ export function removeDaemonState(name = 'remote-control'): void {
  * Check if a process with the given PID is alive.
  */
 function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
+  return isProcessTreeAlive(pid)
 }
 
 /**
@@ -109,6 +114,11 @@ export function queryDaemonStatus(name = 'remote-control'): {
 export async function stopDaemonByPid(
   name = 'remote-control',
   timeoutMs = 10_000,
+  forceWaitMs = 5_000,
+  deps: DaemonStopDeps = {
+    isAlive: isProcessAlive,
+    signalTree: signalProcessTree,
+  },
 ): Promise<boolean> {
   const state = readDaemonState(name)
   if (!state) {
@@ -117,41 +127,40 @@ export async function stopDaemonByPid(
 
   const { pid } = state
 
-  if (!isProcessAlive(pid)) {
+  if (!deps.isAlive(pid)) {
     removeDaemonState(name)
     return false
   }
 
-  // Send SIGTERM
+  // Signal the full tree. On Windows SIGTERM is not catchable, so tree-kill
+  // uses taskkill /T /F; on POSIX descendants still get a graceful SIGTERM.
   try {
-    process.kill(pid, 'SIGTERM')
+    await deps.signalTree(pid, 'SIGTERM')
   } catch {
-    removeDaemonState(name)
-    return false
-  }
-
-  // Wait for exit with timeout
-  const deadline = Date.now() + timeoutMs
-  const pollInterval = 200
-
-  while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) {
+    if (!deps.isAlive(pid)) {
       removeDaemonState(name)
       return true
     }
-    await new Promise(resolve => setTimeout(resolve, pollInterval))
   }
 
-  // Force kill
+  if (await waitForTermination(() => !deps.isAlive(pid), timeoutMs, 200)) {
+    removeDaemonState(name)
+    return true
+  }
+
+  // Force the complete tree, then confirm the supervisor actually exited.
   try {
-    process.kill(pid, 'SIGKILL')
+    await deps.signalTree(pid, 'SIGKILL')
   } catch {
-    // Already dead
+    // A racing natural exit is confirmed by the wait below. Other failures
+    // must not be reported as success while the PID remains alive.
   }
 
-  // Brief wait for SIGKILL to take effect
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  removeDaemonState(name)
-  return true
+  const stopped = await waitForTermination(
+    () => !deps.isAlive(pid),
+    forceWaitMs,
+    100,
+  )
+  if (stopped) removeDaemonState(name)
+  return stopped
 }

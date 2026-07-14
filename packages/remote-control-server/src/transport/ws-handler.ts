@@ -5,10 +5,13 @@ import { publishSessionEvent } from '../services/transport'
 import { log, error as logError } from '../logger'
 import { toClientPayload } from './client-payload'
 import { config } from '../config'
+import { registerWorkerTransport } from './worker-transports'
 
 // Per-connection cleanup, keyed by sessionId (only one WS per session)
 interface CleanupEntry {
   unsub: () => void
+  unsubBusClose: () => void
+  unregisterWorkerTransport: () => void
   keepalive: ReturnType<typeof setInterval>
   ws: WSContext
   openTime: number
@@ -26,6 +29,30 @@ const SERVER_KEEPALIVE_INTERVAL_MS = (config.wsKeepaliveInterval || 20) * 1000
 // If no client data received within this threshold, the connection is
 // considered dead. Set to 3x keepalive to tolerate one missed interval.
 const CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3
+
+function cleanupConnection(
+  sessionId: string,
+  entry: CleanupEntry,
+  closeCode?: number,
+  closeReason?: string,
+) {
+  if (cleanupBySession.get(sessionId) === entry) {
+    cleanupBySession.delete(sessionId)
+  }
+  entry.unsub()
+  entry.unsubBusClose()
+  entry.unregisterWorkerTransport()
+  clearInterval(entry.keepalive)
+  activeConnections.delete(entry.ws)
+
+  if (closeCode !== undefined && entry.ws.readyState === 1) {
+    try {
+      entry.ws.close(closeCode, closeReason)
+    } catch {
+      // The transport is already detached, so a close error is harmless.
+    }
+  }
+}
 
 /**
  * Convert internal EventBus event -> SDK message for bridge client.
@@ -47,9 +74,7 @@ export function handleWebSocketOpen(ws: WSContext, sessionId: string) {
   const existing = cleanupBySession.get(sessionId)
   if (existing) {
     log(`[WS] Replacing existing connection for session=${sessionId}`)
-    existing.unsub()
-    clearInterval(existing.keepalive)
-    activeConnections.delete(existing.ws)
+    cleanupConnection(sessionId, existing, 1000, 'connection_replaced')
   }
 
   const bus = getEventBus(sessionId)
@@ -57,16 +82,32 @@ export function handleWebSocketOpen(ws: WSContext, sessionId: string) {
   // Replay ALL events (inbound + outbound) so the bridge can reconstruct
   // the full conversation history — assistant replies are inbound events.
   const missed = bus.getEventsSince(0)
+  let replayFailed = false
   if (missed.length > 0) {
     log(`[WS] Replaying ${missed.length} missed event(s)`)
     for (const event of missed) {
+      // Interrupts are one-shot control commands. Replaying one after a
+      // reconnect could cancel a later turn after the original request timed
+      // out and was reported as failed.
+      if (event.direction === 'outbound' && event.type === 'interrupt') continue
       if (ws.readyState !== 1) break
       try {
         ws.send(toSDKMessage(event))
       } catch {
-        // ignore send errors during replay
+        replayFailed = true
+        break
       }
     }
+  }
+
+  if (replayFailed || ws.readyState !== 1) {
+    activeConnections.delete(ws)
+    try {
+      ws.close(1011, 'replay_failed')
+    } catch {
+      // The WebSocket failed before it became an active worker transport.
+    }
+    return
   }
 
   const unsub = bus.subscribe((event: SessionEvent) => {
@@ -80,40 +121,51 @@ export function handleWebSocketOpen(ws: WSContext, sessionId: string) {
       ws.send(sdkMsg)
     } catch (err) {
       logError('[RC-DEBUG] [WS] send error:', err)
+      const current = cleanupBySession.get(sessionId)
+      if (current?.ws === ws) {
+        cleanupConnection(sessionId, current, 1011, 'send_failed')
+      }
     }
   })
 
   const keepalive = setInterval(() => {
-    if (ws.readyState !== 1) {
+    const current = cleanupBySession.get(sessionId)
+    if (!current || current.ws !== ws) {
       clearInterval(keepalive)
       return
     }
+    if (ws.readyState !== 1) {
+      cleanupConnection(sessionId, current)
+      return
+    }
     // Check if client is still alive — close if no data received for too long
-    const silenceMs = Date.now() - lastClientActivity
+    const silenceMs = Date.now() - current.lastClientActivity
     if (silenceMs > CLIENT_ACTIVITY_TIMEOUT_MS) {
       log(
         `[WS] Client inactive for ${Math.round(silenceMs / 1000)}s on session=${sessionId}, closing dead connection`,
       )
-      try {
-        ws.close(1000, 'client inactive')
-      } catch {
-        clearInterval(keepalive)
-      }
+      cleanupConnection(sessionId, current, 1000, 'client inactive')
       return
     }
     try {
       ws.send('{"type":"keep_alive"}\n')
     } catch {
-      clearInterval(keepalive)
+      cleanupConnection(sessionId, current, 1011, 'keepalive_failed')
     }
   }, SERVER_KEEPALIVE_INTERVAL_MS)
 
-  cleanupBySession.set(sessionId, {
+  const entry: CleanupEntry = {
     unsub,
+    unsubBusClose: () => {},
+    unregisterWorkerTransport: registerWorkerTransport(sessionId),
     keepalive,
     ws,
     openTime,
     lastClientActivity,
+  }
+  cleanupBySession.set(sessionId, entry)
+  entry.unsubBusClose = bus.onClose(() => {
+    cleanupConnection(sessionId, entry, 1000, 'session_closed')
   })
 }
 
@@ -156,10 +208,8 @@ export function handleWebSocketClose(
     `[WS] Close session=${sessionId} code=${code ?? 'none'} reason=${reason || '(none)'} duration=${duration}s`,
   )
 
-  if (entry) {
-    entry.unsub()
-    clearInterval(entry.keepalive)
-    cleanupBySession.delete(sessionId)
+  if (entry?.ws === ws) {
+    cleanupConnection(sessionId, entry)
   }
 }
 
@@ -257,18 +307,9 @@ export function closeAllConnections(): void {
   if (count === 0) return
 
   log(`[WS] Gracefully closing ${count} active connection(s)...`)
-  for (const [sessionId, entry] of cleanupBySession) {
-    try {
-      entry.unsub()
-      clearInterval(entry.keepalive)
-      if (entry.ws.readyState === 1) {
-        entry.ws.close(1001, 'server_shutdown')
-      }
-    } catch {
-      // ignore errors during shutdown
-    }
+  for (const [sessionId, entry] of [...cleanupBySession]) {
+    cleanupConnection(sessionId, entry, 1001, 'server_shutdown')
   }
-  cleanupBySession.clear()
   activeConnections.clear()
   log('[WS] All connections closed')
 }

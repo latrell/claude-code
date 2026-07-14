@@ -62,6 +62,27 @@ describe('ArtifactTool.call', () => {
     expect((result.data as { error?: string }).error).toBeUndefined()
   })
 
+  test('passes the tool abort signal to the upload request', async () => {
+    const fetchMock = mockFetchSuccess({
+      id: 'cancel-aware',
+      url: 'https://example.test/7d/cancel-aware.html',
+      expiresAt: '2026-06-27T10:00:00.000Z',
+    })
+    globalThis.fetch = fetchMock
+    const abortController = new AbortController()
+
+    await ArtifactTool.call({ file_path: TEST_FILE, ttl: 7 }, {
+      abortController,
+    } as unknown as NonNullable<Parameters<typeof ArtifactTool.call>[1]>)
+
+    const calls = (
+      fetchMock as unknown as {
+        mock: { calls: [string | URL | Request, RequestInit | undefined][] }
+      }
+    ).mock.calls
+    expect(calls[0][1]?.signal).toBe(abortController.signal)
+  })
+
   test('passes hash through when overwriting', async () => {
     const fetchMock = mockFetchSuccess({
       id: 'stable-id',

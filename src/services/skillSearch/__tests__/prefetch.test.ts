@@ -16,6 +16,13 @@ let root: string
 let previousCwd: string
 const originalEnv = { ...process.env }
 
+function createToolUseContext() {
+  return {
+    agentId: undefined,
+    abortController: new AbortController(),
+  } as any
+}
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'skill-search-prefetch-'))
   previousCwd = process.cwd()
@@ -69,7 +76,7 @@ describe('skill search prefetch', () => {
     const attachment = await getTurnZeroSkillDiscovery(
       'audit feature flags for minimal implementation stubs',
       [],
-      { agentId: undefined } as any,
+      createToolUseContext(),
     )
 
     expect(attachment?.type).toBe('skill_discovery')
@@ -87,7 +94,7 @@ describe('skill search prefetch', () => {
     const attachment = await getTurnZeroSkillDiscovery(
       'frobnicate zephyr ledger workflow',
       [],
-      { agentId: undefined } as any,
+      createToolUseContext(),
     )
 
     expect(attachment?.type).toBe('skill_discovery')

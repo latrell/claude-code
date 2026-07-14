@@ -13,8 +13,9 @@ import {
 import {
   completeWorkflowTask,
   failWorkflowTask,
-  killWorkflowTask,
+  finishWorkflowTaskKill,
   registerLocalWorkflowTask,
+  registerWorkflowTaskKillHandler,
 } from '../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import {
   buildHostBundle,
@@ -34,8 +35,19 @@ type RunBinding = {
   setAppState: SetAppState
   abortController: AbortController
   workflowName: string
+  stopRequested: boolean
+  settled: Promise<void>
+  resolveSettled: () => void
+  rejectSettled: (error: unknown) => void
+  killPromise: Promise<boolean> | null
+  detachKillHandler: () => void
+  parentSignal: AbortSignal
+  onParentAbort: () => void
   /** agentId → AbortController. Registered when backend starts an agent; killAgent uses it for precise abort. */
   agentAbortControllers: Map<number, AbortController>
+  /** Retained across backend retry gaps so a killAgent request cannot miss the replacement controller. */
+  knownAgentIds: Set<number>
+  cancelledAgentIds: Set<number>
 }
 
 /** Constructs a WorkflowHostContext from toolUseContext on each tool invocation. */
@@ -76,6 +88,88 @@ export function createWorkflowPorts(opts: {
   const runsDir = getRunsDir()
   const registry = buildRegistry()
 
+  const finishBinding = (
+    runId: string,
+    terminal: 'completed' | 'failed' | 'killed',
+    detail?: string,
+  ): void => {
+    const binding = bindings.get(runId)
+    if (!binding) return
+    let publicationFailed = false
+    let publicationError: unknown
+
+    try {
+      if (
+        terminal === 'killed' ||
+        binding.stopRequested ||
+        binding.abortController.signal.aborted
+      ) {
+        finishWorkflowTaskKill(binding.taskId, binding.setAppState)
+        logForDebugging(`workflow ${runId} killed`)
+      } else if (terminal === 'completed') {
+        completeWorkflowTask(binding.taskId, binding.setAppState)
+        logForDebugging(`workflow ${runId} completed: ${detail ?? ''}`)
+      } else {
+        failWorkflowTask(binding.taskId, binding.setAppState, detail)
+        logForDebugging(`workflow ${runId} failed: ${detail ?? ''}`)
+      }
+    } catch (error) {
+      // Runner settlement alone is not a successful Stop. If publishing the
+      // terminal task state fails, reject the same promise awaited by the Stop
+      // caller so the UI cannot report a false acknowledgement.
+      publicationFailed = true
+      publicationError = error
+      binding.rejectSettled(error)
+    } finally {
+      // The runner delivered its terminal callback, so reclaim its runtime
+      // binding even when AppState publication failed. In that case the task
+      // remains visibly running and a later TaskStop can retry the now-safe
+      // no-runner state transition.
+      bindings.delete(runId)
+      binding.detachKillHandler()
+      binding.parentSignal.removeEventListener('abort', binding.onParentAbort)
+      binding.agentAbortControllers.clear()
+      binding.knownAgentIds.clear()
+      binding.cancelledAgentIds.clear()
+    }
+
+    if (publicationFailed) {
+      // The runner has definitively settled, but the terminal AppState write
+      // failed. Replace the now-detached live-run handler with a narrowly
+      // scoped publication retry. This is the only missing-handler case that
+      // may safely mark the task killed without waiting for another runner.
+      let detachRetryHandler = (): void => {}
+      detachRetryHandler = registerWorkflowTaskKillHandler(
+        binding.taskId,
+        async () => {
+          finishWorkflowTaskKill(binding.taskId, binding.setAppState)
+          detachRetryHandler()
+          return true
+        },
+      )
+      throw publicationError
+    }
+
+    // Release Stop only after the terminal state update succeeded.
+    binding.resolveSettled()
+  }
+
+  const requestKill = (runId: string): Promise<boolean> => {
+    const binding = bindings.get(runId)
+    if (!binding) return Promise.resolve(false)
+    if (binding.killPromise) return binding.killPromise
+
+    binding.stopRequested = true
+    binding.abortController.abort()
+    // Killing the run also aborts all in-flight agents. New controllers registered while the
+    // runner unwinds are aborted immediately by registerAgentAbort below.
+    for (const controller of binding.agentAbortControllers.values()) {
+      controller.abort()
+    }
+    binding.killPromise = binding.settled.then(() => true)
+    return binding.killPromise
+  }
+
   // Telemetry subscription (independent of store). LogEventMetadata only accepts boolean/number/undefined,
   // and runId is a string — use the brand cast provided by the analytics module (verified non-code/path) to pass it through.
   opts.bus.subscribe((e: ProgressEvent) => {
@@ -101,54 +195,86 @@ export function createWorkflowPorts(opts: {
         workflowFile: regOpts.workflowFile ?? '',
         summary: regOpts.summary,
         ...(regOpts.toolUseId ? { toolUseId: regOpts.toolUseId } : {}),
+        ...(bundle.agentId ? { agentId: bundle.agentId } : {}),
         abortController,
       })
       const runId = regOpts.runId ?? taskId
-      bindings.set(runId, {
+      let resolveSettled!: () => void
+      let rejectSettled!: (error: unknown) => void
+      const settled = new Promise<void>((resolve, reject) => {
+        resolveSettled = resolve
+        rejectSettled = reject
+      })
+      // A workflow can finish without a Stop waiter. Keep publication failures
+      // observable to future awaiters without a process-global unhandled
+      // rejection in that no-waiter case.
+      void settled.catch(() => undefined)
+      // ToolUseContext always carries an AbortController in production. Keep the fallback for
+      // embedders/tests that construct the host bundle manually.
+      const parentSignal =
+        bundle.toolUseContext.abortController?.signal ??
+        new AbortController().signal
+      const onParentAbort = (): void => {
+        void requestKill(runId).catch(error => {
+          // Parent cancellation has no direct caller to observe the rejected
+          // Stop promise. Keep TaskStop's explicit path rejecting, but consume
+          // and log this fire-and-forget path so a failed state publication
+          // cannot become an unhandled rejection.
+          logForDebugging(
+            `workflow ${runId} parent cancellation failed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+      }
+      const binding: RunBinding = {
         runId,
         taskId,
         setAppState,
         abortController,
         workflowName: regOpts.workflowName,
+        stopRequested: false,
+        settled,
+        resolveSettled,
+        rejectSettled,
+        killPromise: null,
+        detachKillHandler: () => {},
+        parentSignal,
+        onParentAbort,
         agentAbortControllers: new Map(),
-      })
+        knownAgentIds: new Set(),
+        cancelledAgentIds: new Set(),
+      }
+      bindings.set(runId, binding)
+      binding.detachKillHandler = registerWorkflowTaskKillHandler(taskId, () =>
+        requestKill(runId),
+      )
+      if (parentSignal.aborted) {
+        onParentAbort()
+      } else {
+        parentSignal.addEventListener('abort', onParentAbort, { once: true })
+      }
       logForDebugging(
         `workflow task registered: ${runId} (${regOpts.workflowName})`,
       )
       return { runId, signal: abortController.signal }
     },
     complete(runId, summary) {
-      const b = bindings.get(runId)
-      if (!b) return
-      completeWorkflowTask(b.taskId, b.setAppState)
-      logForDebugging(`workflow ${runId} completed: ${summary ?? ''}`)
-      bindings.delete(runId)
+      finishBinding(runId, 'completed', summary)
     },
     fail(runId, error) {
-      const b = bindings.get(runId)
-      if (!b) return
-      failWorkflowTask(b.taskId, b.setAppState, error)
-      logForDebugging(`workflow ${runId} failed: ${error}`)
-      bindings.delete(runId)
+      finishBinding(runId, 'failed', error)
     },
-    kill(runId) {
-      const b = bindings.get(runId)
-      if (!b) return
-      killWorkflowTask(b.taskId, b.setAppState) // internal abort controller
-      // Killing the run also aborts all in-flight agents (guards against the edge timing where the backend misses the task abort)
-      for (const ac of b.agentAbortControllers.values()) {
-        try {
-          ac.abort()
-        } catch {
-          // no-op: abort won't throw internally, but fail-closed
-        }
-      }
-      b.agentAbortControllers.clear()
-      bindings.delete(runId)
+    kill: requestKill,
+    finishKill(runId) {
+      finishBinding(runId, 'killed')
     },
     registerAgentAbort(runId, agentId, ac) {
       const b = bindings.get(runId)
       if (!b) return
+      b.knownAgentIds.add(agentId)
+      if (b.stopRequested || b.cancelledAgentIds.has(agentId)) {
+        ac.abort()
+        return
+      }
       b.agentAbortControllers.set(agentId, ac)
     },
     unregisterAgentAbort(runId, agentId) {
@@ -160,12 +286,12 @@ export function createWorkflowPorts(opts: {
       const b = bindings.get(runId)
       if (!b) return false
       const ac = b.agentAbortControllers.get(agentId)
-      if (!ac) return false
-      try {
-        ac.abort()
-      } catch {
-        // no-op
-      }
+      // A known id can temporarily have no controller between the first backend attempt and its
+      // retry. Retain the cancellation intent so the retry controller is aborted on registration.
+      if (!ac && !b.knownAgentIds.has(agentId)) return false
+      if (b.cancelledAgentIds.has(agentId)) return false
+      b.cancelledAgentIds.add(agentId)
+      ac?.abort()
       b.agentAbortControllers.delete(agentId)
       return true
     },
@@ -192,7 +318,11 @@ export function createWorkflowPorts(opts: {
     },
     taskRegistrar,
     journalStore: createFileJournalStore(runsDir),
-    permissionGate: { isAborted: () => false }, // engine uses ctx.signal to check abort
+    permissionGate: {
+      isAborted: host =>
+        readHostBundle(host).toolUseContext.abortController?.signal.aborted ??
+        false,
+    },
     logger: {
       debug: msg => logForDebugging(msg),
       warn: msg => logForDebugging(`[workflow warn] ${msg}`),

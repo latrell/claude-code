@@ -12,6 +12,7 @@ import type {
 import { type Tools } from '../../../Tool.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { isAbortError } from '../../../utils/errors.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
@@ -258,6 +259,9 @@ export async function* queryModelGemini(
           : undefined,
     })
   } catch (error) {
+    if (signal.aborted) return
+    if (isAbortError(error)) throw error
+
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Gemini] Error: ${msg}`, { level: 'error' })
 

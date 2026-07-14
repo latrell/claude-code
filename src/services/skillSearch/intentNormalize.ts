@@ -23,6 +23,7 @@
 import { queryHaiku } from '../api/claude.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 
 const INTENT_SYSTEM_PROMPT = `You are a query normalizer for a skill-search index.
 
@@ -90,7 +91,10 @@ export function clearIntentNormalizeCache(): void {
  * Returns `<original> <keywords>` on success, or the original string on any
  * failure path. Never throws.
  */
-export async function normalizeQueryIntent(query: string): Promise<string> {
+export async function normalizeQueryIntent(
+  query: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const trimmed = query.trim()
   if (!trimmed) return trimmed
   if (!isIntentNormalizeEnabled()) return trimmed
@@ -107,7 +111,8 @@ export async function normalizeQueryIntent(query: string): Promise<string> {
   }
 
   const capped = trimmed.slice(0, MAX_QUERY_CHARS)
-  const keywords = await callHaiku(capped)
+  const keywords = await callHaiku(capped, signal)
+  if (signal?.aborted) return trimmed
   const result = keywords ? `${trimmed} ${keywords}` : trimmed
   setCachedQueryIntent(trimmed, result)
   logForDebugging(
@@ -116,16 +121,18 @@ export async function normalizeQueryIntent(query: string): Promise<string> {
   return result
 }
 
-async function callHaiku(query: string): Promise<string> {
+async function callHaiku(
+  query: string,
+  parentSignal?: AbortSignal,
+): Promise<string> {
   const timeoutMs = getTimeoutMs()
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const combinedSignal = createCombinedAbortSignal(parentSignal, { timeoutMs })
 
   try {
     const response = await queryHaiku({
       systemPrompt: asSystemPrompt([INTENT_SYSTEM_PROMPT]),
       userPrompt: query,
-      signal: controller.signal,
+      signal: combinedSignal.signal,
       options: {
         querySource: 'skill_search_intent',
         enablePromptCaching: true,
@@ -138,10 +145,11 @@ async function callHaiku(query: string): Promise<string> {
     const text = extractResponseText(response?.message?.content)
     return sanitizeKeywords(text)
   } catch (error) {
+    if (parentSignal?.aborted) return ''
     logForDebugging(`[skill-search] intent normalize failed: ${error}`)
     return ''
   } finally {
-    clearTimeout(timer)
+    combinedSignal.cleanup()
   }
 }
 

@@ -41,7 +41,11 @@ import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import { abortPromptSuggestion, logSuggestionSuppressed } from '../../services/PromptSuggestion/promptSuggestion.js';
-import { type ActiveSpeculationState, abortSpeculation } from '../../services/PromptSuggestion/speculation.js';
+import {
+  type ActiveSpeculationState,
+  abortSpeculation,
+  abortSpeculationAndWait,
+} from '../../services/PromptSuggestion/speculation.js';
 import { getActiveAgentForInput, getViewedTeammateTask } from '../../state/selectors.js';
 import { enterTeammateView, exitTeammateView, stopOrDismissAgent } from '../../state/teammateViewHelpers.js';
 import type { ToolPermissionContext } from '../../Tool.js';
@@ -1004,7 +1008,7 @@ function PromptInput({
       dismissStashHint();
 
       // Cancel any pending prompt suggestion and speculation when user types
-      abortPromptSuggestion();
+      void abortPromptSuggestion('user-input');
       abortSpeculation(setAppState);
 
       // Check if this is a single character insertion at the start
@@ -1187,6 +1191,11 @@ function PromptInput({
           inputParam = suggestionText;
         }
       }
+
+      // Typing aborts immediately in onChange; submission also drains the
+      // owned side requests so a replacement turn cannot overlap their HTTP
+      // streams or receive a late suggestion/speculation update.
+      await Promise.all([abortPromptSuggestion('user-input-submitted'), abortSpeculationAndWait(setAppState)]);
 
       // Handle @name direct message
       if (isAgentSwarmsEnabled()) {
@@ -1836,7 +1845,7 @@ function PromptInput({
   useKeybinding(
     'app:interrupt',
     () => {
-      abortSpeculation(setAppState);
+      void abortSpeculationAndWait(setAppState);
     },
     {
       context: 'Global',
@@ -2071,7 +2080,7 @@ function PromptInput({
     if (key.escape) {
       // Abort active speculation
       if (speculation.status === 'active') {
-        abortSpeculation(setAppState);
+        void abortSpeculationAndWait(setAppState);
         return;
       }
 

@@ -21,6 +21,7 @@ const {
   withContextWindow,
   withPinnedModel,
   withThinkingEffort,
+  withThinkingEffortTransport,
 } = await import('../profile.js')
 import type { Connection } from '../types.js'
 
@@ -98,6 +99,17 @@ describe('withThinkingEffort', () => {
   })
 })
 
+describe('withThinkingEffortTransport', () => {
+  test('sets and clears the transport without mutating the source', () => {
+    const source = conn({ thinkingEffort: 'max' })
+    const set = withThinkingEffortTransport(source, 'passthrough')
+    expect(set.thinkingEffortTransport).toBe('passthrough')
+    expect(source.thinkingEffortTransport).toBeUndefined()
+    const cleared = withThinkingEffortTransport(set, undefined)
+    expect('thinkingEffortTransport' in cleared).toBe(false)
+  })
+})
+
 describe('withContextWindow', () => {
   test('sets and clears the window', () => {
     const set = withContextWindow(conn(), 1_000_000)
@@ -120,6 +132,7 @@ describe('duplicateConnection', () => {
       presetId: 'deepseek',
       model: 'deepseek-chat',
       thinkingEffort: 'max',
+      thinkingEffortTransport: 'passthrough',
       contextWindow: 1_000_000,
       accountEmail: 'me@example.com',
       createdAt: '2020-01-01T00:00:00.000Z',
@@ -144,6 +157,7 @@ describe('duplicateConnection', () => {
     expect(copy.presetId).toBe('deepseek')
     expect(copy.model).toBe('deepseek-chat')
     expect(copy.thinkingEffort).toBe('max')
+    expect(copy.thinkingEffortTransport).toBe('passthrough')
     expect(copy.contextWindow).toBe(1_000_000)
     expect(copy.createdAt).toBe('2026-07-11T00:00:00.000Z')
     expect(copy.lastUsedAt).toBeUndefined()
@@ -172,7 +186,19 @@ describe('connectionProfileSummary', () => {
           contextWindow: 1_000_000,
         }),
       ),
-    ).toBe('DeepSeek V4 Pro · effort max · ctx 1M')
+    ).toBe('DeepSeek V4 Pro · effort max → high · ctx 1M')
+  })
+
+  test('shows exact max when passthrough is enabled', () => {
+    expect(
+      connectionProfileSummary(
+        conn({
+          model: 'deepseek-v4-pro',
+          thinkingEffort: 'max',
+          thinkingEffortTransport: 'passthrough',
+        }),
+      ),
+    ).toBe('DeepSeek V4 Pro · effort max → max')
   })
 
   test('without a pinned model falls back to the provider default label', () => {

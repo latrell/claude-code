@@ -70,6 +70,7 @@ import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
 import {
+  AbortError,
   errorMessage,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
@@ -101,6 +102,8 @@ import {
   getWebSocketProxyUrl,
 } from '../../utils/proxy.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
+import { terminateProcessTree } from '../../utils/processTermination.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   isPersistError,
@@ -1435,150 +1438,38 @@ export const connectToServer = memoize(
           stdioTransport.stderr?.off('data', stderrHandler)
         }
 
-        // For stdio transports, explicitly terminate the child process with proper signals
-        // NOTE: StdioClientTransport.close() only sends an abort signal, but many MCP servers
-        // (especially Docker containers) need explicit SIGINT/SIGTERM signals to trigger graceful shutdown
-        if (serverRef.type === 'stdio') {
-          try {
-            const stdioTransport = transport as StdioClientTransport
-            const childPid = stdioTransport.pid
-
-            if (childPid) {
-              logMCPDebug(name, 'Sending SIGINT to MCP server process')
-
-              // First try SIGINT (like Ctrl+C)
-              try {
-                process.kill(childPid, 'SIGINT')
-              } catch (error) {
-                logMCPDebug(name, `Error sending SIGINT: ${error}`)
-                return
-              }
-
-              // Wait for graceful shutdown with rapid escalation (total 500ms to keep CLI responsive)
-              // biome-ignore lint/suspicious/noAsyncPromiseExecutor: async needed for sequential await inside executor
-              await new Promise<void>(async resolve => {
-                let resolved = false
-
-                // Set up a timer to check if process still exists
-                const checkInterval = setInterval(() => {
-                  try {
-                    // process.kill(pid, 0) checks if process exists without killing it
-                    process.kill(childPid, 0)
-                  } catch {
-                    // Process no longer exists
-                    if (!resolved) {
-                      resolved = true
-                      clearInterval(checkInterval)
-                      clearTimeout(failsafeTimeout)
-                      logMCPDebug(name, 'MCP server process exited cleanly')
-                      resolve()
-                    }
-                  }
-                }, 50)
-
-                // Absolute failsafe: clear interval after 600ms no matter what
-                const failsafeTimeout = setTimeout(() => {
-                  if (!resolved) {
-                    resolved = true
-                    clearInterval(checkInterval)
-                    logMCPDebug(
-                      name,
-                      'Cleanup timeout reached, stopping process monitoring',
-                    )
-                    resolve()
-                  }
-                }, 600)
-
-                try {
-                  // Wait 100ms for SIGINT to work (usually much faster)
-                  await sleep(100)
-
-                  if (!resolved) {
-                    // Check if process still exists
-                    try {
-                      process.kill(childPid, 0)
-                      // Process still exists, SIGINT failed, try SIGTERM
-                      logMCPDebug(
-                        name,
-                        'SIGINT failed, sending SIGTERM to MCP server process',
-                      )
-                      try {
-                        process.kill(childPid, 'SIGTERM')
-                      } catch (termError) {
-                        logMCPDebug(name, `Error sending SIGTERM: ${termError}`)
-                        resolved = true
-                        clearInterval(checkInterval)
-                        clearTimeout(failsafeTimeout)
-                        resolve()
-                        return
-                      }
-                    } catch {
-                      // Process already exited
-                      resolved = true
-                      clearInterval(checkInterval)
-                      clearTimeout(failsafeTimeout)
-                      resolve()
-                      return
-                    }
-
-                    // Wait 400ms for SIGTERM to work (slower than SIGINT, often used for cleanup)
-                    await sleep(400)
-
-                    if (!resolved) {
-                      // Check if process still exists
-                      try {
-                        process.kill(childPid, 0)
-                        // Process still exists, SIGTERM failed, force kill with SIGKILL
-                        logMCPDebug(
-                          name,
-                          'SIGTERM failed, sending SIGKILL to MCP server process',
-                        )
-                        try {
-                          process.kill(childPid, 'SIGKILL')
-                        } catch (killError) {
-                          logMCPDebug(
-                            name,
-                            `Error sending SIGKILL: ${killError}`,
-                          )
-                        }
-                      } catch {
-                        // Process already exited
-                        resolved = true
-                        clearInterval(checkInterval)
-                        clearTimeout(failsafeTimeout)
-                        resolve()
-                      }
-                    }
-                  }
-
-                  // Final timeout - always resolve after 500ms max (total cleanup time)
-                  if (!resolved) {
-                    resolved = true
-                    clearInterval(checkInterval)
-                    clearTimeout(failsafeTimeout)
-                    resolve()
-                  }
-                } catch {
-                  // Handle any errors in the escalation sequence
-                  if (!resolved) {
-                    resolved = true
-                    clearInterval(checkInterval)
-                    clearTimeout(failsafeTimeout)
-                    resolve()
-                  }
-                }
-              })
-            }
-          } catch (processError) {
-            logMCPDebug(name, `Error terminating process: ${processError}`)
-          }
-        }
-
-        // Close the client connection (which also closes the transport)
         try {
-          await client.close()
-        } catch (error) {
-          logMCPDebug(name, `Error closing client: ${error}`)
+          // Default/omitted MCP transport type is stdio too. Signal the whole
+          // process tree and reject when bounded TERM/KILL waits cannot prove
+          // exit; sending SIGKILL alone is not successful cleanup.
+          if (serverRef.type === 'stdio' || !serverRef.type) {
+            const childPid = (transport as StdioClientTransport).pid
+            if (childPid) {
+              const confirmed = await terminateProcessTree(childPid, {
+                graceMs: 500,
+                forceWaitMs: 500,
+                onSignalError: (signal, error) => {
+                  logMCPDebug(
+                    name,
+                    `Error sending ${signal} to MCP process tree: ${error}`,
+                  )
+                },
+              })
+              if (!confirmed) {
+                throw new StopConfirmationError(
+                  `MCP server ${name} process tree exit could not be confirmed`,
+                )
+              }
+            }
+          }
+        } finally {
+          // Close protocol resources even if OS termination is unconfirmed.
+          // A termination error from the try block remains observable.
+          try {
+            await client.close()
+          } catch (error) {
+            logMCPDebug(name, `Error closing client: ${error}`)
+          }
         }
       }
 
@@ -2130,14 +2021,20 @@ export async function callIdeRpc(
   toolName: string,
   args: Record<string, unknown>,
   client: ConnectedMCPServer,
+  signal?: AbortSignal,
 ): Promise<string | ContentBlockParam[] | undefined> {
-  const result = await callMCPTool({
-    client,
-    tool: toolName,
-    args,
-    signal: createAbortController().signal,
-  })
-  return result.content
+  const ownedController = signal ? undefined : createAbortController()
+  try {
+    const result = await callMCPTool({
+      client,
+      tool: toolName,
+      args,
+      signal: signal ?? ownedController!.signal,
+    })
+    return result.content
+  } finally {
+    ownedController?.abort('IDE RPC completed')
+  }
 }
 
 /**
@@ -3214,6 +3111,10 @@ async function callMCPTool({
       }
     })
 
+    if (signal.aborted) {
+      throw new AbortError('MCP tool call was cancelled')
+    }
+
     if ('isError' in result && result.isError) {
       let errorDetails = 'Unknown error'
       if (
@@ -3283,7 +3184,11 @@ async function callMCPTool({
 
     const elapsed = Date.now() - toolStartTime
 
-    if (e instanceof Error && e.name !== 'AbortError') {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw e
+    }
+
+    if (e instanceof Error) {
       logMCPDebug(
         name,
         `Tool '${tool}' failed after ${Math.floor(elapsed / 1000)}s: ${e.message}`,
@@ -3330,11 +3235,7 @@ async function callMCPTool({
       }
     }
 
-    // When the users hits esc, avoid logspew
-    if (!(e instanceof Error) || e.name !== 'AbortError') {
-      throw e
-    }
-    return { content: undefined }
+    throw e
   } finally {
     // Always clear intervals
     if (progressInterval !== undefined) {

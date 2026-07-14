@@ -77,6 +77,7 @@ import {
 import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
+import { handleRemoteInterrupt, waitForActiveTurnSettlement } from '../bridge/remoteInterruptHandling.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
@@ -164,6 +165,7 @@ import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js';
 import { CancelRequestHandler } from '../hooks/useCancelRequest.js';
+import { cancelActiveRequestSources } from '../utils/cancelRequest.js';
 import { useBackgroundTaskNavigation } from '../hooks/useBackgroundTaskNavigation.js';
 import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
@@ -1154,6 +1156,13 @@ export function REPL({
   // REPL bridge to abort the active query when a remote interrupt arrives.
   const abortControllerRef = useRef<AbortController | null>(null);
   abortControllerRef.current = abortController;
+  // Publish controllers synchronously as well as through React state. Remote
+  // control requests can arrive in the dispatching window before React commits
+  // the state update; the ref must already identify the controller to abort.
+  const setActiveAbortController = useCallback((controller: AbortController | null): void => {
+    abortControllerRef.current = controller;
+    setAbortController(controller);
+  }, []);
 
   // Timestamp (ms) of the most recent local-jsx panel dismissal (e.g. ESC on
   // /workflows). Used by onCancel's grace-period guard: the ESC that closes
@@ -2246,7 +2255,7 @@ export function REPL({
 
         // Clear any active loading state (no queryId since we're not in a query)
         resetLoadingState();
-        setAbortController(null);
+        setActiveAbortController(null);
 
         setConversationId(sessionId);
 
@@ -2625,8 +2634,19 @@ export function REPL({
       }
     }
     setWasAborted(true);
+    const localQueryStatus = queryGuard.status;
+    const hasLocalQueryInFlight = localQueryStatus !== 'idle';
 
-    queryGuard.forceEnd();
+    // Title generation is a concurrent Haiku request started by this turn.
+    // It has its own stale-result guard, so explicitly invalidate it as part
+    // of Stop; otherwise the main request is aborted while this remote request
+    // keeps running. Re-open the one-shot gate so a restored/resubmitted prompt
+    // can generate the title again.
+    titleRequestGuard.invalidate();
+    if (!haikuTitle) {
+      haikuTitleAttemptedRef.current = false;
+    }
+
     skipIdleCheckRef.current = false;
 
     // Preserve partially-streamed text so the user can read what was
@@ -2646,8 +2666,12 @@ export function REPL({
     }
 
     if (focusedInputDialog === 'tool-permission') {
-      // Tool use confirm handles the abort signal itself
-      toolUseConfirmQueue[0]?.onAbort();
+      // Parallel tools can enqueue more than one interactive permission
+      // waiter. Each onAbort resolves a distinct promise; clearing the array
+      // after aborting only the first leaves the others hung forever.
+      for (const confirmation of toolUseConfirmQueue) {
+        confirmation.onAbort();
+      }
       setToolUseConfirmQueue([]);
     } else if (focusedInputDialog === 'prompt') {
       // Reject all pending prompts and clear the queue
@@ -2655,22 +2679,37 @@ export function REPL({
         item.reject(new Error('Prompt cancelled by user'));
       }
       setPromptQueue([]);
-      abortController?.abort('user-cancel');
-    } else if (activeRemote.isRemoteMode) {
-      // Remote mode: send interrupt signal to CCR
-      activeRemote.cancelRequest();
-    } else {
-      abortController?.abort('user-cancel');
     }
+
+    cancelActiveRequestSources({
+      abortController,
+      isRemoteMode: activeRemote.isRemoteMode,
+      cancelRemoteRequest: activeRemote.cancelRequest,
+    });
+    skillImprovementSurvey.cancelPending();
 
     // Clear the controller so subsequent Escape presses don't see a stale
     // aborted signal. Without this, canCancelRunningTask is false (signal
     // defined but .aborted === true), so isActive becomes false if no other
     // activating conditions hold — leaving the Escape keybinding inactive.
-    setAbortController(null);
+    setActiveAbortController(null);
 
-    // forceEnd() skips the finally path — fire directly (aborted=true).
-    void mrOnTurnComplete(messagesRef.current, true);
+    // Keep a local query reserved until its async generator has observed the
+    // abort and run its finally cleanup. This prevents a new turn from
+    // overlapping the cancelled HTTP/tool stream. Purely remote loading has
+    // no local finally, so complete that path here.
+    if (!hasLocalQueryInFlight) {
+      void mrOnTurnComplete(messagesRef.current, true).catch(logError);
+    } else if (localQueryStatus === 'dispatching') {
+      // Pre-query processing may either enter onQuery (which owns completion)
+      // or return/throw before a generator exists. Wait for that decision so
+      // the latter path still receives exactly one turn-complete callback.
+      void queryGuard.waitForDispatchSettlement().then(settledStatus => {
+        if (settledStatus === 'idle') {
+          void mrOnTurnComplete(messagesRef.current, true).catch(logError);
+        }
+      });
+    }
   }
 
   // Function to handle queued command when canceling a permission request
@@ -2700,6 +2739,7 @@ export function REPL({
     isMessageSelectorVisible: isMessageSelectorVisible || !!showBashesDialog,
     screen,
     abortSignal: abortController?.signal,
+    isExternalLoading: isExternalLoading || skillImprovementSurvey.isApplying,
     popCommandFromQueue: handleQueuedCommandOnCancel,
     vimMode,
     isLocalJSXCommand: toolJSX?.isLocalJSXCommand,
@@ -3177,7 +3217,7 @@ export function REPL({
     setMessages,
     setIsLoading: setIsExternalLoading,
     resetLoadingState,
-    setAbortController,
+    setAbortController: setActiveAbortController,
     onBackgroundQuery: handleBackgroundQuery,
   });
 
@@ -3479,7 +3519,7 @@ export function REPL({
           }
         }
         resetLoadingState();
-        setAbortController(null);
+        setActiveAbortController(null);
         return;
       }
 
@@ -3756,10 +3796,10 @@ export function REPL({
           throw error;
         }
       } finally {
-        // queryGuard.end() atomically checks generation and transitions
-        // running→idle. Returns false if a newer query owns the guard
-        // (cancel+resubmit race where the stale finally fires as a microtask).
-        if (queryGuard.end(thisGeneration)) {
+        // Retain the guard through asynchronous turn cleanup. If we published
+        // idle before mrOnTurnComplete and controller cleanup, the queue could
+        // start a new turn and this stale finally could clear its controller.
+        await queryGuard.finalize(thisGeneration, async () => {
           setWasAborted(abortController.signal.aborted);
           setLastQueryCompletionTime(Date.now());
           skipIdleCheckRef.current = false;
@@ -3844,14 +3884,14 @@ export function REPL({
           // reads false at the idle prompt. Without this, the stale non-aborted
           // controller makes ctrl+c fire onCancel() (aborting nothing) instead of
           // propagating to the double-press exit flow.
-          setAbortController(null);
-        }
+          setActiveAbortController(null);
+        });
 
         // Auto-restore: if the user interrupted before any meaningful response
         // arrived, rewind the conversation and restore their prompt — same as
         // opening the message selector and picking the last message.
-        // This runs OUTSIDE the queryGuard.end() check because onCancel calls
-        // forceEnd(), which bumps the generation so end() returns false above.
+        // This runs after queryGuard.finalize so it can inspect the now-idle
+        // guard after the cancelled turn has fully settled.
         // Guards: reason === 'user-cancel' (onCancel/Esc; programmatic aborts
         // use 'background'/'interrupt' and must not rewind — note abort() with
         // no args sets reason to a DOMException, not undefined), !isActive (no
@@ -3984,7 +4024,7 @@ export function REPL({
         // Plan messages use onQuery to preserve planContent metadata for rendering
         // TODO: Once onSubmit supports ContentBlockParam arrays, remove this branch
         const newAbortController = createAbortController();
-        setAbortController(newAbortController);
+        setActiveAbortController(newAbortController);
 
         void onQuery(
           [initialMsg.message],
@@ -4321,7 +4361,7 @@ export function REPL({
         );
         if (queryRequired) {
           const newAbortController = createAbortController();
-          setAbortController(newAbortController);
+          setActiveAbortController(newAbortController);
           void onQuery([], newAbortController, true, [], mainLoopModel);
         }
         return;
@@ -4419,7 +4459,7 @@ export function REPL({
         pastedContents,
         ideSelection,
         setUserInputOnProcessing,
-        setAbortController,
+        setAbortController: setActiveAbortController,
         abortController,
         onQuery,
         setAppState,
@@ -4474,7 +4514,7 @@ export function REPL({
       pastedContents,
       ideSelection,
       setUserInputOnProcessing,
-      setAbortController,
+      setActiveAbortController,
       addNotification,
       onQuery,
       stashedPrompt,
@@ -4802,7 +4842,19 @@ export function REPL({
 
   // REPL Bridge: replicate user/assistant messages to the bridge session
   // for remote access via claude.ai. No-op in external builds or when not enabled.
-  const { sendBridgeResult } = useReplBridge(messages, setMessages, abortControllerRef, commands, mainLoopModel);
+  const interruptBridgeTurn = useCallback(async (): Promise<boolean> => {
+    // Drop Remote Control inputs that have not entered dispatch yet. Without
+    // this, the current turn can settle and ACK Stop, then the queued remote
+    // input immediately starts a new inference.
+    removeByFilter(cmd => cmd.agentId === undefined && cmd.bridgeOrigin === true);
+
+    const waitForSettlement = (): Promise<void> =>
+      waitForActiveTurnSettlement(() => abortControllerRef.current, queryGuard);
+
+    return handleRemoteInterrupt(abortControllerRef.current, waitForSettlement);
+  }, [queryGuard]);
+
+  const { sendBridgeResult } = useReplBridge(messages, setMessages, interruptBridgeTurn, commands, mainLoopModel);
   sendBridgeResultRef.current = sendBridgeResult;
 
   useAfterFirstRender();
@@ -4847,7 +4899,7 @@ export function REPL({
         mainLoopModel,
         ideSelection,
         setUserInputOnProcessing,
-        setAbortController,
+        setAbortController: setActiveAbortController,
         onQuery,
         setAppState,
         querySource: getQuerySourceForREPL(),
@@ -4868,7 +4920,7 @@ export function REPL({
       ideSelection,
       setUserInputOnProcessing,
       canUseTool,
-      setAbortController,
+      setActiveAbortController,
       onQuery,
       addNotification,
       setAppState,
@@ -5047,7 +5099,7 @@ export function REPL({
         if (!command) return;
 
         const newAbortController = createAbortController();
-        setAbortController(newAbortController);
+        setActiveAbortController(newAbortController);
 
         // Create a user message with the formatted content (includes XML wrapper)
         const userMessage = createUserMessage({

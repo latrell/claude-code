@@ -21,7 +21,7 @@ function portsWith(
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete: () => {},
       fail: () => {},
-      kill: () => {},
+      kill: async () => false,
       pendingAction: () => null,
     },
     journalStore: createFileJournalStore(runsDir),
@@ -55,7 +55,7 @@ function portsWithEvents(
         }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: createFileJournalStore(runsDir),
@@ -131,7 +131,7 @@ test('resume: journal hit skips runner call', async () => {
         register: () => ({ runId: 'r', signal: new AbortController().signal }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: createFileJournalStore(dir),
@@ -192,6 +192,27 @@ test('abort → killed', async () => {
   }
 })
 
+test('signal aborted by script before return is authoritative over completed value', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
+  try {
+    const ports = portsWith(dir, new Map())
+    const controller = new AbortController()
+    const result = await runWorkflow({
+      script: `args.cancel(); return 42`,
+      args: { cancel: () => controller.abort() },
+      runId: 'run-racing-abort',
+      ports,
+      host: createHostHandle(null),
+      signal: controller.signal,
+      cwd: dir,
+      budgetTotal: null,
+    })
+    expect(result).toEqual({ status: 'killed' })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('workflow() nesting (one level) shares counts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
@@ -243,7 +264,7 @@ test('scriptChanged=true → truncate journal and run all live', async () => {
         register: () => ({ runId: 'r', signal: new AbortController().signal }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: createFileJournalStore(dir),
@@ -370,7 +391,7 @@ test('re-emit phase_done for currentPhase before terminal state (completed path)
   }
 })
 
-test('re-emit phase_done for currentPhase before terminal state (killed path)', async () => {
+test('pre-aborted run does not execute script and emits killed terminal state', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
     const { ports, events } = portsWithEvents(
@@ -388,9 +409,8 @@ test('re-emit phase_done for currentPhase before terminal state (killed path)', 
       cwd: dir,
       budgetTotal: null,
     })
-    expect(events.some(e => e.type === 'phase_done' && e.phase === 'Run')).toBe(
-      true,
-    )
+    expect(events.some(e => e.type === 'phase_started')).toBe(false)
+    expect(events.some(e => e.type === 'phase_done')).toBe(false)
     expect(
       events.some(e => e.type === 'run_done' && e.status === 'killed'),
     ).toBe(true)
@@ -496,7 +516,7 @@ test('maxConcurrency passthrough: parallel agents bounded by run-level concurren
         register: () => ({ runId: 'r', signal: new AbortController().signal }),
         complete: () => {},
         fail: () => {},
-        kill: () => {},
+        kill: async () => false,
         pendingAction: () => null,
       },
       journalStore: createFileJournalStore(dir),

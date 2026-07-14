@@ -27,6 +27,7 @@ export interface MockToolContextOptions {
   parentMessageId?: string
   assistantMessageId?: string
   turnId?: string
+  abortController?: AbortController
   /** Override toolPermissionContext fields (e.g. mode, alwaysAllowRules). */
   permissionOverrides?: Record<string, unknown>
 }
@@ -37,6 +38,7 @@ export function mockToolContext(opts: MockToolContextOptions = {}): never {
     parentMessageId: opts.parentMessageId,
     assistantMessageId: opts.assistantMessageId,
     turnId: opts.turnId,
+    abortController: opts.abortController ?? new AbortController(),
     getAppState: () => ({
       toolPermissionContext: {
         mode: 'default',

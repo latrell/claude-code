@@ -10,7 +10,9 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // Spread-actual mocks (see CLAUDE.md cross-file mock pollution rules):
 // only the delivery functions are replaced, controllable per test.
 let meowConfigured = false
-const sendMeowPushMock = mock(async (_title: string, _body: string) => true)
+const sendMeowPushMock = mock(
+  async (_title: string, _body: string, _signal?: AbortSignal) => true,
+)
 const actualNotifier = await import('src/services/notifier.js')
 mock.module('src/services/notifier.ts', () => ({
   ...actualNotifier,
@@ -31,6 +33,7 @@ type CallContext = Parameters<typeof PushNotificationTool.call>[1]
 function makeContext(agentId?: string): CallContext {
   return {
     agentId,
+    abortController: new AbortController(),
     getAppState: () => ({ replBridgeEnabled: false }),
   } as unknown as CallContext
 }
@@ -59,10 +62,15 @@ describe('PushNotificationTool main-agent runtime gate', () => {
   })
 
   test('main-agent context (agentId undefined) delivers via MeoW', async () => {
-    const result = await PushNotificationTool.call(INPUT, makeContext())
+    const context = makeContext()
+    const result = await PushNotificationTool.call(INPUT, context)
     expect(result.data.sent).toBe(true)
     expect(sendMeowPushMock).toHaveBeenCalledTimes(1)
-    expect(sendMeowPushMock).toHaveBeenCalledWith('done', 'task finished')
+    expect(sendMeowPushMock).toHaveBeenCalledWith(
+      'done',
+      'task finished',
+      context.abortController.signal,
+    )
   })
 
   test('main-agent context reports MeoW delivery failure', async () => {

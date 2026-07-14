@@ -42,14 +42,18 @@ export class RcsUpstreamClient {
   private closed = false
   private readonly maxReconnectDelay = 30_000
   private readonly baseReconnectDelay = 1_000
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private registrationController: AbortController | null = null
   /** Agent ID obtained from REST registration */
   private agentId: string | null = null
   /** Session ID from REST registration (ACP agents auto-create a session) */
   private sessionId: string | undefined
 
   /** Handler for incoming ACP messages from RCS relay */
-  private messageHandler: ((message: Record<string, unknown>) => void) | null =
-    null
+  private messageHandler:
+    | ((message: Record<string, unknown>) => void | Promise<void>)
+    | null = null
+  private disconnectHandler: (() => void | Promise<void>) | null = null
 
   constructor(private config: RcsUpstreamConfig) {}
 
@@ -59,8 +63,15 @@ export class RcsUpstreamClient {
   }
 
   /** Set handler for incoming ACP messages from RCS relay */
-  setMessageHandler(handler: (message: Record<string, unknown>) => void): void {
+  setMessageHandler(
+    handler: (message: Record<string, unknown>) => void | Promise<void>,
+  ): void {
     this.messageHandler = handler
+  }
+
+  /** Stop active work if the upstream control transport disappears. */
+  setDisconnectHandler(handler: () => void | Promise<void>): void {
+    this.disconnectHandler = handler
   }
 
   /** Register via REST API before establishing WS connection */
@@ -74,20 +85,35 @@ export class RcsUpstreamClient {
     const url = `${baseUrl}/v1/environments/bridge`
     RcsUpstreamClient.log.info({ url }, 'REST register')
 
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.apiToken}`,
-      },
-      body: JSON.stringify({
-        machine_name: this.config.agentName,
-        worker_type: 'acp',
-        bridge_id: this.config.channelGroupId || undefined,
-        max_sessions: this.config.maxSessions,
-        capabilities: this.config.capabilities,
-      }),
-    })
+    const controller = new AbortController()
+    this.registrationController = controller
+    const timeout = setTimeout(
+      () => controller.abort(new Error('RCS registration timed out')),
+      10_000,
+    )
+    let resp: Response
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.config.apiToken}`,
+        },
+        body: JSON.stringify({
+          machine_name: this.config.agentName,
+          worker_type: 'acp',
+          bridge_id: this.config.channelGroupId || undefined,
+          max_sessions: this.config.maxSessions,
+          capabilities: this.config.capabilities,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+      if (this.registrationController === controller) {
+        this.registrationController = null
+      }
+    }
 
     if (!resp.ok) {
       const text = await resp.text()
@@ -134,6 +160,18 @@ export class RcsUpstreamClient {
     RcsUpstreamClient.log.info({ url: wsUrl }, 'connecting WS')
 
     return new Promise((resolve, reject) => {
+      const identifyTimeout = setTimeout(() => {
+        reject(new Error('Timed out waiting for RCS WebSocket identification'))
+        this.ws?.close(4000, 'identification timeout')
+      }, 10_000)
+      const resolveConnect = () => {
+        clearTimeout(identifyTimeout)
+        resolve()
+      }
+      const rejectConnect = (error: Error) => {
+        clearTimeout(identifyTimeout)
+        reject(error)
+      }
       try {
         this.ws = new WebSocket(wsUrl, [
           encodeWebSocketAuthProtocol(this.config.apiToken),
@@ -190,7 +228,7 @@ export class RcsUpstreamClient {
               console.log(tf('     Agent ID: {id}', { id: this.agentId }))
             }
             console.log()
-            resolve()
+            resolveConnect()
           } else if (data.type === 'registered') {
             // Legacy fallback: server still uses old register flow
             RcsUpstreamClient.log.info(
@@ -200,14 +238,15 @@ export class RcsUpstreamClient {
             this.agentId = (data.agent_id as string) || this.agentId
             this.registered = true
             this.reconnectAttempts = 0
-            resolve()
+            resolveConnect()
           } else if (data.type === 'error') {
             RcsUpstreamClient.log.error(
               { message: data.message },
               'server error',
             )
             if (!this.registered) {
-              reject(new Error(data.message as string))
+              rejectConnect(new Error(data.message as string))
+              this.ws?.close(4000, 'registration rejected')
             }
           } else if (data.type === 'keep_alive') {
             // ignore keepalive
@@ -220,31 +259,54 @@ export class RcsUpstreamClient {
               { type: data.type, method: data.method },
               'forwarding to relay handler',
             )
-            this.messageHandler?.(data)
+            void Promise.resolve()
+              .then(() => this.messageHandler?.(data))
+              .catch(error => {
+                RcsUpstreamClient.log.error(
+                  { error: (error as Error).message },
+                  'relay message handler failed',
+                )
+              })
           }
         }
 
         this.ws.onerror = () => {
           // onclose fires after onerror with the actual close code, so we log there
           if (!this.registered) {
-            reject(new Error('WebSocket connection failed'))
+            rejectConnect(new Error('WebSocket connection failed'))
           }
         }
 
         this.ws.onclose = event => {
+          const wasRegistered = this.registered
           RcsUpstreamClient.log.info(
             { code: event.code, reason: event.reason || undefined },
             'ws closed',
           )
           this.registered = false
           this.ws = null
-          if (!this.closed) {
-            this.scheduleReconnect()
+          if (!wasRegistered) {
+            rejectConnect(
+              new Error(`WebSocket closed before registration (${event.code})`),
+            )
           }
+          const cleanup = wasRegistered
+            ? Promise.resolve(this.disconnectHandler?.())
+            : Promise.resolve()
+          void cleanup
+            .catch(error => {
+              RcsUpstreamClient.log.error(
+                { error: (error as Error).message },
+                'upstream disconnect cleanup failed',
+              )
+            })
+            .finally(() => {
+              if (!this.closed) this.scheduleReconnect()
+            })
         }
       } catch (err) {
         RcsUpstreamClient.log.error({ err }, 'connect threw')
-        reject(err)
+        rejectConnect(err as Error)
       }
     })
   }
@@ -274,10 +336,35 @@ export class RcsUpstreamClient {
   async close(): Promise<void> {
     this.closed = true
     this.registered = false
-    if (this.ws) {
-      this.ws.close(1000, 'client shutdown')
-      this.ws = null
+    this.registrationController?.abort(new Error('RCS client closed'))
+    this.registrationController = null
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
+    const ws = this.ws
+    let closeError: Error | null = null
+    if (ws) {
+      const closed = new Promise<boolean>(resolve => {
+        const timeout = setTimeout(() => resolve(false), 2_000)
+        ws.addEventListener(
+          'close',
+          () => {
+            clearTimeout(timeout)
+            resolve(true)
+          },
+          { once: true },
+        )
+      })
+      ws.close(1000, 'client shutdown')
+      if (!(await closed)) {
+        closeError = new Error('Timed out closing RCS WebSocket')
+      } else {
+        this.ws = null
+      }
+    }
+    await this.disconnectHandler?.()
+    if (closeError) throw closeError
     RcsUpstreamClient.log.info('closed')
   }
 
@@ -297,7 +384,9 @@ export class RcsUpstreamClient {
       'reconnecting',
     )
 
-    setTimeout(async () => {
+    if (this.reconnectTimer) return
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null
       if (this.closed) return
       try {
         await this.connect()

@@ -323,7 +323,11 @@ export async function getTurnZeroSkillDiscovery(
     // fallback to original). Turn-zero is the one blocking entry — acceptable
     // to add a Haiku call here since a bad match here pollutes the LLM's
     // context for the entire session.
-    const searchQuery = await normalizeQueryIntent(input)
+    const searchQuery = await normalizeQueryIntent(
+      input,
+      context.abortController.signal,
+    )
+    if (context.abortController.signal.aborted) return null
     const results = searchSkills(searchQuery, index)
     const enriched = await enrichResultsForAutoLoad(results, context)
     const gap = enriched.some(result => result.autoLoaded)

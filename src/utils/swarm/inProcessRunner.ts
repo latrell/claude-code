@@ -68,7 +68,6 @@ import {
   tokenCountWithEstimation,
   getTokenCountFromUsage,
 } from '../../utils/tokens.js'
-import { createAbortController } from '../abortController.js'
 import { type AgentContext, runWithAgentContext } from '../agentContext.js'
 import {
   markAutonomyRunCompleted,
@@ -116,6 +115,11 @@ import {
   createPermissionRequest,
   sendPermissionRequestViaMailbox,
 } from './permissionSync.js'
+import {
+  createInProcessWorkAbortController,
+  registerInProcessTeammateRunner,
+} from './inProcessLifecycle.js'
+import { finalizeKilledInProcessTeammate } from './spawnInProcess.js'
 import { TEAMMATE_SYSTEM_PROMPT_ADDENDUM } from './teammatePromptAddendum.js'
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
@@ -925,6 +929,17 @@ export async function runInProcessTeammate(
     `[inProcessRunner] Starting agent loop for ${identity.agentId}`,
   )
 
+  // A Stop may win the task-registration -> runner-start handoff. Do not run
+  // initialization (or reach a model HTTP/SSE request) for that late start;
+  // attach a short settled runner so the Stop caller can finish honestly.
+  if (abortController.signal.aborted) {
+    return {
+      success: false,
+      error: 'Teammate was stopped before its runner started',
+      messages: [],
+    }
+  }
+
   // Create AgentContext for analytics attribution
   const agentContext: AgentContext = {
     agentId: identity.agentId,
@@ -1075,7 +1090,10 @@ export async function runInProcessTeammate(
       // Create a per-turn abort controller for this iteration.
       // This allows Escape to stop current work without killing the whole teammate.
       // The lifecycle abortController still kills the whole teammate if needed.
-      const currentWorkAbortController = createAbortController()
+      const currentWorkAbortController =
+        createInProcessWorkAbortController(abortController)
+      // Tracks a per-turn Escape independently from a lifecycle Stop.
+      let workWasAborted = false
 
       // Store the work controller in task state so UI can abort it
       updateTaskState(
@@ -1105,46 +1123,61 @@ export async function runInProcessTeammate(
         // trigger the main session's UI callbacks.
         const isolatedContext: ToolUseContext = {
           ...toolUseContext,
+          abortController: currentWorkAbortController,
           readFileState: cloneFileStateCache(toolUseContext.readFileState),
           onCompactProgress: undefined,
           setStreamMode: undefined,
         }
-        const compactedSummary = await compactConversation(
-          allMessages,
-          isolatedContext,
-          {
-            systemPrompt: asSystemPrompt([]),
-            userContext: {},
-            systemContext: {},
-            toolUseContext: isolatedContext,
-            forkContextMessages: [],
-          },
-          true, // suppressFollowUpQuestions
-          undefined, // customInstructions
-          true, // isAutoCompact
-        )
-        contextMessages = buildPostCompactMessages(compactedSummary)
-        // Reset microcompact state since full compact replaces all
-        // messages — old tool IDs are no longer relevant
-        resetMicrocompactState()
-        // Reset content replacement state — compact replaces all messages
-        // so old tool_use_ids are gone. Stale Map entries are harmless
-        // (UUID keys never match) but accumulate memory over long runs.
-        if (teammateReplacementState) {
-          teammateReplacementState = createContentReplacementState()
-        }
-        // Update allMessages in place with compacted version
-        allMessages.length = 0
-        allMessages.push(...contextMessages)
+        try {
+          const compactedSummary = await compactConversation(
+            allMessages,
+            isolatedContext,
+            {
+              systemPrompt: asSystemPrompt([]),
+              userContext: {},
+              systemContext: {},
+              toolUseContext: isolatedContext,
+              forkContextMessages: [],
+            },
+            true, // suppressFollowUpQuestions
+            undefined, // customInstructions
+            true, // isAutoCompact
+          )
+          contextMessages = buildPostCompactMessages(compactedSummary)
+          // Reset microcompact state since full compact replaces all
+          // messages — old tool IDs are no longer relevant
+          resetMicrocompactState()
+          // Reset content replacement state — compact replaces all messages
+          // so old tool_use_ids are gone. Stale Map entries are harmless
+          // (UUID keys never match) but accumulate memory over long runs.
+          if (teammateReplacementState) {
+            teammateReplacementState = createContentReplacementState()
+          }
+          // Update allMessages in place with compacted version
+          allMessages.length = 0
+          allMessages.push(...contextMessages)
 
-        // Mirror compaction into task.messages — otherwise the AppState
-        // mirror grows unbounded (500 turns = 500+ messages, 10-50MB).
-        // Replace with the compacted messages, matching allMessages.
-        updateTaskState(
-          taskId,
-          task => ({ ...task, messages: [...contextMessages, userMessage] }),
-          setAppState,
-        )
+          // Mirror compaction into task.messages — otherwise the AppState
+          // mirror grows unbounded (500 turns = 500+ messages, 10-50MB).
+          // Replace with the compacted messages, matching allMessages.
+          updateTaskState(
+            taskId,
+            task => ({ ...task, messages: [...contextMessages, userMessage] }),
+            setAppState,
+          )
+        } catch (error) {
+          if (
+            currentWorkAbortController.signal.aborted &&
+            !abortController.signal.aborted
+          ) {
+            workWasAborted = true
+            logForDebugging(
+              `[inProcessRunner] ${identity.agentId} compaction aborted by Escape`,
+            )
+          } else {
+            throw error
+          }
+        }
       }
 
       // Pass previous messages as context to preserve conversation history
@@ -1175,133 +1208,169 @@ export async function runInProcessTeammate(
         permissionMode: currentPermissionMode,
       }
 
-      // Track if this iteration was interrupted by work abort (not lifecycle abort)
-      let workWasAborted = false
-
       // Run agent within contexts
-      await runWithTeammateContext(teammateContext, async () => {
-        return runWithAgentContext(agentContext, async () => {
-          // Mark task as running (not idle)
-          updateTaskState(
-            taskId,
-            task => ({ ...task, status: 'running', isIdle: false }),
-            setAppState,
-          )
+      if (!workWasAborted) {
+        try {
+          await runWithTeammateContext(teammateContext, async () => {
+            return runWithAgentContext(agentContext, async () => {
+              // Mark task as running (not idle)
+              updateTaskState(
+                taskId,
+                task => ({ ...task, status: 'running', isIdle: false }),
+                setAppState,
+              )
 
-          // Run the normal agent loop - same runAgent() used by AgentTool/subagents.
-          // This calls query() internally, so we share the core API infrastructure.
-          // Pass forkContextMessages to preserve conversation history across prompts.
-          // In-process teammates are async but run in the same process as the leader,
-          // so they CAN show permission prompts (unlike true background agents).
-          // Use currentWorkAbortController so Escape stops this turn only, not the teammate.
-          for await (const message of runAgent({
-            agentDefinition: iterationAgentDefinition,
-            promptMessages,
-            toolUseContext,
-            canUseTool: createInProcessCanUseTool(
-              identity,
-              currentWorkAbortController,
-              (waitMs: number) => {
+              // Run the normal agent loop - same runAgent() used by AgentTool/subagents.
+              // This calls query() internally, so we share the core API infrastructure.
+              // Pass forkContextMessages to preserve conversation history across prompts.
+              // In-process teammates are async but run in the same process as the leader,
+              // so they CAN show permission prompts (unlike true background agents).
+              // Use currentWorkAbortController so Escape stops this turn only, not the teammate.
+              for await (const message of runAgent({
+                agentDefinition: iterationAgentDefinition,
+                promptMessages,
+                toolUseContext,
+                canUseTool: createInProcessCanUseTool(
+                  identity,
+                  currentWorkAbortController,
+                  (waitMs: number) => {
+                    updateTaskState(
+                      taskId,
+                      task => ({
+                        ...task,
+                        totalPausedMs: (task.totalPausedMs ?? 0) + waitMs,
+                      }),
+                      setAppState,
+                    )
+                  },
+                ),
+                isAsync: true,
+                canShowPermissionPrompts: allowPermissionPrompts ?? true,
+                forkContextMessages,
+                querySource: 'agent:custom',
+                override: { abortController: currentWorkAbortController },
+                model: model as ModelAlias | undefined,
+                preserveToolUseResults: true,
+                availableTools: toolUseContext.options.tools,
+                allowedTools,
+                contentReplacementState: teammateReplacementState,
+              })) {
+                // Check lifecycle abort first (kills whole teammate)
+                if (abortController.signal.aborted) {
+                  logForDebugging(
+                    `[inProcessRunner] ${identity.agentId} lifecycle aborted`,
+                  )
+                  break
+                }
+
+                // Check work abort (stops current turn only)
+                if (currentWorkAbortController.signal.aborted) {
+                  logForDebugging(
+                    `[inProcessRunner] ${identity.agentId} current work aborted (Escape pressed)`,
+                  )
+                  workWasAborted = true
+                  break
+                }
+
+                iterationMessages.push(message)
+                allMessages.push(message)
+
+                updateProgressFromMessage(
+                  tracker,
+                  message,
+                  resolveActivity,
+                  toolUseContext.options.tools,
+                )
+                const progress = getProgressUpdate(tracker)
+
                 updateTaskState(
                   taskId,
-                  task => ({
-                    ...task,
-                    totalPausedMs: (task.totalPausedMs ?? 0) + waitMs,
-                  }),
-                  setAppState,
-                )
-              },
-            ),
-            isAsync: true,
-            canShowPermissionPrompts: allowPermissionPrompts ?? true,
-            forkContextMessages,
-            querySource: 'agent:custom',
-            override: { abortController: currentWorkAbortController },
-            model: model as ModelAlias | undefined,
-            preserveToolUseResults: true,
-            availableTools: toolUseContext.options.tools,
-            allowedTools,
-            contentReplacementState: teammateReplacementState,
-          })) {
-            // Check lifecycle abort first (kills whole teammate)
-            if (abortController.signal.aborted) {
-              logForDebugging(
-                `[inProcessRunner] ${identity.agentId} lifecycle aborted`,
-              )
-              break
-            }
-
-            // Check work abort (stops current turn only)
-            if (currentWorkAbortController.signal.aborted) {
-              logForDebugging(
-                `[inProcessRunner] ${identity.agentId} current work aborted (Escape pressed)`,
-              )
-              workWasAborted = true
-              break
-            }
-
-            iterationMessages.push(message)
-            allMessages.push(message)
-
-            updateProgressFromMessage(
-              tracker,
-              message,
-              resolveActivity,
-              toolUseContext.options.tools,
-            )
-            const progress = getProgressUpdate(tracker)
-
-            updateTaskState(
-              taskId,
-              task => {
-                // Track in-progress tool use IDs for animation in transcript view
-                let inProgressToolUseIDs = task.inProgressToolUseIDs
-                if (message.type === 'assistant') {
-                  for (const block of Array.isArray(message.message!.content)
-                    ? message.message!.content
-                    : []) {
-                    if (
-                      typeof block !== 'string' &&
-                      block.type === 'tool_use'
-                    ) {
-                      inProgressToolUseIDs = new Set([
-                        ...(inProgressToolUseIDs ?? []),
-                        block.id,
-                      ])
-                    }
-                  }
-                } else if (message.type === 'user') {
-                  const content = message.message!.content
-                  if (Array.isArray(content)) {
-                    for (const block of content) {
-                      if (
-                        typeof block === 'object' &&
-                        'type' in block &&
-                        block.type === 'tool_result'
-                      ) {
-                        if (inProgressToolUseIDs) {
-                          inProgressToolUseIDs = new Set(inProgressToolUseIDs)
-                          inProgressToolUseIDs.delete(block.tool_use_id)
+                  task => {
+                    // Track in-progress tool use IDs for animation in transcript view
+                    let inProgressToolUseIDs = task.inProgressToolUseIDs
+                    if (message.type === 'assistant') {
+                      for (const block of Array.isArray(
+                        message.message!.content,
+                      )
+                        ? message.message!.content
+                        : []) {
+                        if (
+                          typeof block !== 'string' &&
+                          block.type === 'tool_use'
+                        ) {
+                          inProgressToolUseIDs = new Set([
+                            ...(inProgressToolUseIDs ?? []),
+                            block.id,
+                          ])
+                        }
+                      }
+                    } else if (message.type === 'user') {
+                      const content = message.message!.content
+                      if (Array.isArray(content)) {
+                        for (const block of content) {
+                          if (
+                            typeof block === 'object' &&
+                            'type' in block &&
+                            block.type === 'tool_result'
+                          ) {
+                            if (inProgressToolUseIDs) {
+                              inProgressToolUseIDs = new Set(
+                                inProgressToolUseIDs,
+                              )
+                              inProgressToolUseIDs.delete(block.tool_use_id)
+                            }
+                          }
                         }
                       }
                     }
-                  }
-                }
 
-                return {
-                  ...task,
-                  progress,
-                  messages: appendCappedMessage(task.messages, message),
-                  inProgressToolUseIDs,
-                }
-              },
-              setAppState,
+                    return {
+                      ...task,
+                      progress,
+                      messages: appendCappedMessage(task.messages, message),
+                      inProgressToolUseIDs,
+                    }
+                  },
+                  setAppState,
+                )
+              }
+
+              return { success: true, messages: iterationMessages }
+            })
+          })
+        } catch (error) {
+          if (
+            currentWorkAbortController.signal.aborted &&
+            !abortController.signal.aborted
+          ) {
+            workWasAborted = true
+            logForDebugging(
+              `[inProcessRunner] ${identity.agentId} current work aborted while the request was pending`,
             )
+          } else {
+            throw error
           }
+        }
+      }
 
-          return { success: true, messages: iterationMessages }
-        })
-      })
+      // Some providers end an aborted iterator cleanly instead of throwing or
+      // yielding again. Observe the signal after settlement as well so Escape
+      // is never misreported as a successful turn.
+      if (
+        currentWorkAbortController.signal.aborted &&
+        !abortController.signal.aborted
+      ) {
+        workWasAborted = true
+      }
+
+      // Detach the child signal from the long-lived lifecycle controller after
+      // a normal turn. Otherwise each completed turn leaves an abort listener
+      // behind until the teammate itself exits.
+      if (!currentWorkAbortController.signal.aborted) {
+        currentWorkAbortController.abort(
+          new Error(`In-process teammate turn ${taskId} settled`),
+        )
+      }
 
       // Clear the work controller from state (it's no longer valid)
       updateTaskState(
@@ -1465,6 +1534,21 @@ export async function runInProcessTeammate(
       }
     }
 
+    if (abortController.signal.aborted) {
+      if (currentAutonomyRunId) {
+        await markAutonomyRunFailed(
+          currentAutonomyRunId,
+          ERROR_MESSAGE_USER_ABORT,
+          currentAutonomyRootDir,
+        )
+      }
+      return {
+        success: false,
+        error: ERROR_MESSAGE_USER_ABORT,
+        messages: allMessages,
+      }
+    }
+
     // Mark as completed when exiting the loop
     let alreadyTerminal = false
     let toolUseId: string | undefined
@@ -1535,6 +1619,7 @@ export async function runInProcessTeammate(
           abortController: undefined,
           unregisterCleanup: undefined,
           currentWorkAbortController: undefined,
+          stopRequested: undefined,
           onIdleCallbacks: [],
         }
       },
@@ -1556,6 +1641,21 @@ export async function runInProcessTeammate(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error'
+
+    if (abortController.signal.aborted) {
+      if (currentAutonomyRunId) {
+        await markAutonomyRunFailed(
+          currentAutonomyRunId,
+          ERROR_MESSAGE_USER_ABORT,
+          currentAutonomyRootDir,
+        )
+      }
+      return {
+        success: false,
+        error: ERROR_MESSAGE_USER_ABORT,
+        messages: allMessages,
+      }
+    }
 
     logForDebugging(
       `[inProcessRunner] Agent ${identity.agentId} failed: ${errorMessage}`,
@@ -1588,6 +1688,7 @@ export async function runInProcessTeammate(
           abortController: undefined,
           unregisterCleanup: undefined,
           currentWorkAbortController: undefined,
+          stopRequested: undefined,
         }
       },
       setAppState,
@@ -1628,6 +1729,20 @@ export async function runInProcessTeammate(
       error: errorMessage,
       messages: allMessages,
     }
+  } finally {
+    if (abortController.signal.aborted) {
+      const task = toolUseContext.getAppState().tasks[taskId]
+      // Explicit Stop callers await this runner and finalize after settlement.
+      // A lifecycle controller may also be aborted directly; in that case the
+      // runner owns finalization so the task cannot remain stuck as running.
+      if (
+        task?.type === 'in_process_teammate' &&
+        task.status === 'running' &&
+        !task.stopRequested
+      ) {
+        await finalizeKilledInProcessTeammate(taskId, setAppState)
+      }
+    }
   }
 }
 
@@ -1644,7 +1759,9 @@ export function startInProcessTeammate(config: InProcessRunnerConfig): void {
   // the full config object (including toolUseContext) while the promise is
   // pending - which can be hours for a long-running teammate.
   const agentId = config.identity.agentId
-  void runInProcessTeammate(config).catch(error => {
+  const runner = runInProcessTeammate(config)
+  registerInProcessTeammateRunner(config.taskId, runner)
+  void runner.catch(error => {
     logForDebugging(`[inProcessRunner] Unhandled error in ${agentId}: ${error}`)
   })
 }

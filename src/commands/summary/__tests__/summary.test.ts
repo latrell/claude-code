@@ -6,6 +6,9 @@ const mockManuallyExtract = mock(
 const mockGetContent = mock(
   (): Promise<any> => Promise.resolve('# Session Summary\n\nDid some work.'),
 )
+const realSessionMemoryUtils = await import(
+  '../../../services/SessionMemory/sessionMemoryUtils.js'
+)
 
 mock.module(
   require.resolve('../../../services/SessionMemory/sessionMemory.js'),
@@ -16,6 +19,7 @@ mock.module(
 mock.module(
   require.resolve('../../../services/SessionMemory/sessionMemoryUtils.js'),
   () => ({
+    ...realSessionMemoryUtils,
     getSessionMemoryContent: mockGetContent,
   }),
 )

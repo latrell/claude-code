@@ -3,6 +3,7 @@ import type {
   BetaMessage,
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type {
   Message,
@@ -29,6 +30,8 @@ import {
   createChatGPTResponsesStream,
 } from './responsesAdapter.js'
 import { resolveChatGPTResponsesReasoningEffort } from './reasoningEffort.js'
+import { resolveOpenAICompatibleReasoningEffort } from '../../connections/effortTransport.js'
+import { mapThinkingEffortToEffortValue } from '../../connections/thinkingEffort.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import {
@@ -36,6 +39,7 @@ import {
   toolMatchesName,
 } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { isAbortError } from '../../../utils/errors.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
 import {
@@ -77,27 +81,6 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
-
-/**
- * Chat Completions `reasoning_effort` from the resolved effort value.
- * The public Chat Completions field only accepts low/medium/high, so
- * xhigh/max clamp to 'high'. Undefined (no explicit effort) omits the field
- * entirely — many OpenAI-compatible endpoints reject unknown values.
- */
-function convertToChatCompletionsReasoningEffort(
-  effortValue: unknown,
-): 'low' | 'medium' | 'high' | undefined {
-  if (effortValue === 'low') return 'low'
-  if (effortValue === 'medium') return 'medium'
-  if (
-    effortValue === 'high' ||
-    effortValue === 'xhigh' ||
-    effortValue === 'max'
-  ) {
-    return 'high'
-  }
-  return undefined
-}
 
 /**
  * Mirrors the Anthropic request path's deferred-tool announcement for OpenAI.
@@ -309,11 +292,23 @@ export async function* queryModelOpenAI(
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
-    const reasoningEffort = resolveChatGPTResponsesReasoningEffort(
+    const queryEffortValue =
+      options.effortValue ??
+      mapThinkingEffortToEffortValue(
+        options.providerRuntimeConfig?.thinkingEffort,
+      )
+    const responsesReasoningEffort = resolveChatGPTResponsesReasoningEffort(
       openaiModel,
-      options.effortValue,
+      queryEffortValue,
       providerEnv,
     )
+    const chatCompletionsReasoningEffort =
+      resolveOpenAICompatibleReasoningEffort(
+        queryEffortValue,
+        options.thinkingEffortTransport ??
+          options.providerRuntimeConfig?.thinkingEffortTransport,
+        providerEnv,
+      )
 
     // 9. Log tool filtering details
     if (useSearchExtraTools) {
@@ -375,7 +370,7 @@ export async function* queryModelOpenAI(
                   messages: openaiMessages,
                   tools: openaiTools,
                   toolChoice: openaiToolChoice,
-                  reasoningEffort,
+                  reasoningEffort: responsesReasoningEffort,
                 }),
                 signal: innerSignal,
                 fetchOverride: options.fetchOverride as unknown as typeof fetch,
@@ -401,10 +396,8 @@ export async function* queryModelOpenAI(
                 enableThinking,
                 maxTokens,
                 temperatureOverride: options.temperatureOverride,
-                reasoningEffort: convertToChatCompletionsReasoningEffort(
-                  options.effortValue,
-                ),
-              }),
+                reasoningEffort: chatCompletionsReasoningEffort,
+              }) as unknown as ChatCompletionCreateParamsStreaming,
               { signal: innerSignal },
             ),
             openaiModel,
@@ -574,6 +567,9 @@ export async function* queryModelOpenAI(
       }
     }
   } catch (error) {
+    if (signal.aborted) return
+    if (isAbortError(error)) throw error
+
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
 

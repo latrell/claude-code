@@ -27,7 +27,12 @@ import {
   getAllEventBuses,
   getEventBus,
 } from '../transport/event-bus'
-import { createSSEWriter, createSSEStream } from '../transport/sse-writer'
+import {
+  createSSEWriter,
+  createSSEStream,
+  createWorkerEventStream,
+} from '../transport/sse-writer'
+import { hasActiveWorkerTransport } from '../transport/worker-transports'
 
 /** Read up to N bytes from a Response stream, then cancel */
 async function readPartialStream(
@@ -208,6 +213,64 @@ describe('SSE Writer', () => {
       expect(eventText).toContain('real-time')
 
       reader.cancel()
+    })
+
+    test('closes a live web stream when the session bus is removed', async () => {
+      const app = new Hono()
+      app.get('/stream/:sessionId', c =>
+        createSSEStream(c, c.req.param('sessionId'), 0),
+      )
+
+      const res = await app.request('/stream/s-close')
+      const reader = res.body!.getReader()
+      await reader.read()
+
+      removeEventBus('s-close')
+
+      expect((await reader.read()).done).toBe(true)
+    })
+
+    test('closes and unregisters a worker stream when the session bus is removed', async () => {
+      const app = new Hono()
+      app.get('/worker/:sessionId', c =>
+        createWorkerEventStream(c, c.req.param('sessionId'), 0),
+      )
+
+      const res = await app.request('/worker/worker-close')
+      const reader = res.body!.getReader()
+      await reader.read()
+      expect(hasActiveWorkerTransport('worker-close')).toBe(true)
+
+      removeEventBus('worker-close')
+
+      expect((await reader.read()).done).toBe(true)
+      expect(hasActiveWorkerTransport('worker-close')).toBe(false)
+    })
+
+    test('does not replay stale interrupts to a reconnecting worker', async () => {
+      const bus = getEventBus('worker-reconnect')
+      bus.publish({
+        id: 'before',
+        sessionId: 'worker-reconnect',
+        type: 'status',
+        payload: {},
+        direction: 'inbound',
+      })
+      bus.publish({
+        id: 'stale-interrupt',
+        sessionId: 'worker-reconnect',
+        type: 'interrupt',
+        payload: { action: 'interrupt' },
+        direction: 'outbound',
+      })
+
+      const app = new Hono()
+      app.get('/worker', c => createWorkerEventStream(c, 'worker-reconnect', 1))
+      const res = await app.request('/worker')
+      const text = await readPartialStream(res)
+
+      expect(text).toContain(': keepalive')
+      expect(text).not.toContain('interrupt')
     })
   })
 })

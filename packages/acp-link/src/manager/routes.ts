@@ -51,7 +51,7 @@ export function createApp(manager: ProcessManager): Hono {
     )
   })
 
-  app.post('/api/instances/:id/stop', c => {
+  app.post('/api/instances/:id/stop', async c => {
     const id = c.req.param('id')
     const inst = manager.get(id)
     if (!inst) {
@@ -62,7 +62,11 @@ export function createApp(manager: ProcessManager): Hono {
       logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 400)
       return c.json({ error: t('not running') }, 400)
     }
-    manager.stop(inst.id)
+    const stopped = await manager.stop(inst.id)
+    if (!stopped) {
+      logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 500)
+      return c.json({ error: t('failed to stop process') }, 500)
+    }
     logReq('POST', `/api/instances/${id.slice(0, 8)}/stop`, 200)
     return c.json({ ok: true })
   })

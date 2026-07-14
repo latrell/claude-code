@@ -526,9 +526,8 @@ function chatgptSlotConfig(
     modelType: 'openai',
     env: { OPENAI_AUTH_MODE: 'chatgpt' },
     ...(model && { model }),
-    ...(connection.thinkingEffort && {
-      thinkingEffort: connection.thinkingEffort,
-    }),
+    thinkingEffort: connection.thinkingEffort,
+    thinkingEffortTransport: connection.thinkingEffortTransport,
     credentialScope: connection.credentialRef ?? 'default',
   }
 }
@@ -547,9 +546,8 @@ function anthropicOAuthSlotConfig(
   return {
     modelType: 'anthropic',
     ...(model && { model }),
-    ...(connection.thinkingEffort && {
-      thinkingEffort: connection.thinkingEffort,
-    }),
+    thinkingEffort: connection.thinkingEffort,
+    thinkingEffortTransport: connection.thinkingEffortTransport,
     credentialScope,
   }
 }
@@ -571,9 +569,10 @@ function slotLoginConfig(
     modelType: kindToModelType(connection.kind),
     ...(Object.keys(cleanEnv).length > 0 && { env: cleanEnv }),
     ...(model && { model }),
-    ...(connection.thinkingEffort && {
-      thinkingEffort: connection.thinkingEffort,
-    }),
+    // Keep both keys explicit. updateSettingsForSource deep-merges objects;
+    // undefined is required to clear values left by a previously active slot.
+    thinkingEffort: connection.thinkingEffort,
+    thinkingEffortTransport: connection.thinkingEffortTransport,
     credentialScope,
   }
 }

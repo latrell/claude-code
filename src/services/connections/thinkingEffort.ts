@@ -14,7 +14,11 @@
 import type { EffortValue } from '../../utils/effort.js'
 import { getSessionAssignment } from './sessionAssignments.js'
 import { findConnection, getDefaultAssignment } from './store.js'
-import type { AgentSlot, ThinkingEffort } from './types.js'
+import type {
+  AgentSlot,
+  ThinkingEffort,
+  ThinkingEffortTransport,
+} from './types.js'
 
 /**
  * Thinking effort pinned to the connection currently active in `slot`.
@@ -27,6 +31,15 @@ export function getConnectionThinkingEffort(
   const assignment = getSessionAssignment(slot) ?? getDefaultAssignment(slot)
   if (!assignment) return undefined
   return findConnection(assignment.connectionId)?.thinkingEffort
+}
+
+/** Wire-encoding policy pinned to the connection active in `slot`. */
+export function getConnectionThinkingEffortTransport(
+  slot: AgentSlot,
+): ThinkingEffortTransport | undefined {
+  const assignment = getSessionAssignment(slot) ?? getDefaultAssignment(slot)
+  if (!assignment) return undefined
+  return findConnection(assignment.connectionId)?.thinkingEffortTransport
 }
 
 /**
@@ -65,6 +78,17 @@ export function resolveQueryThinkingEffort(
   return providerRuntimeConfig
     ? providerRuntimeConfig.thinkingEffort
     : getConnectionThinkingEffort('main')
+}
+
+/** Slot-aware counterpart of resolveQueryThinkingEffort for wire encoding. */
+export function resolveQueryThinkingEffortTransport(
+  providerRuntimeConfig:
+    | { thinkingEffortTransport?: ThinkingEffortTransport }
+    | undefined,
+): ThinkingEffortTransport | undefined {
+  return providerRuntimeConfig
+    ? providerRuntimeConfig.thinkingEffortTransport
+    : getConnectionThinkingEffortTransport('main')
 }
 
 /**

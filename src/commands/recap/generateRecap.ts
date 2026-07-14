@@ -54,6 +54,7 @@ async function getRecapPrompt(): Promise<string> {
  * @returns RecapResult discriminated union
  */
 export async function generateRecap(signal: AbortSignal): Promise<RecapResult> {
+  if (signal.aborted) return { kind: 'aborted' }
   const cacheSafeParams = getLastCacheSafeParams()
   if (!cacheSafeParams) {
     logForDebugging('[recap] no CacheSafeParams saved, skipping')
@@ -62,7 +63,8 @@ export async function generateRecap(signal: AbortSignal): Promise<RecapResult> {
 
   // Wrap the parent signal so we can abort our inner request independently
   const inner = new AbortController()
-  signal.addEventListener('abort', () => inner.abort(), { once: true })
+  const handleAbort = (): void => inner.abort(signal.reason)
+  signal.addEventListener('abort', handleAbort, { once: true })
 
   try {
     const { messages } = await runForkedAgent({
@@ -121,5 +123,7 @@ export async function generateRecap(signal: AbortSignal): Promise<RecapResult> {
     }
     logForDebugging(`[recap] generation failed: ${err}`)
     return { kind: 'failed' }
+  } finally {
+    signal.removeEventListener('abort', handleAbort)
   }
 }

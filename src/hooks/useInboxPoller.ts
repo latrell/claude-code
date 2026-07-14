@@ -28,16 +28,11 @@ import {
 } from '../utils/permissions/PermissionMode.js'
 import { applyPermissionUpdate } from '../utils/permissions/PermissionUpdate.js'
 import { jsonStringify } from '../utils/slowOperations.js'
-import { isInsideTmux } from '../utils/swarm/backends/detection.js'
-import {
-  ensureBackendsRegistered,
-  getBackendByType,
-} from '../utils/swarm/backends/registry.js'
-import type { PaneBackendType } from '../utils/swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js'
 import { getLeaderToolUseConfirmQueue } from '../utils/swarm/leaderPermissionBridge.js'
 import { sendPermissionResponseViaMailbox } from '../utils/swarm/permissionSync.js'
 import {
+  confirmTeammateShutdown,
   removeTeammateFromTeamFile,
   setMemberMode,
 } from '../utils/swarm/teamHelpers.js'
@@ -60,7 +55,7 @@ import {
   isShutdownApproved,
   isShutdownRequest,
   isTeamPermissionUpdate,
-  markMessagesAsRead,
+  markMessagesAsReadByPredicate,
   readUnreadMessages,
   type TeammateMessage,
   writeToMailbox,
@@ -106,6 +101,10 @@ function getAgentNameToPoll(appState: AppState): string | undefined {
 }
 
 const INBOX_POLL_INTERVAL_MS = 1000
+
+function mailboxMessageIdentity(message: TeammateMessage): string {
+  return `${message.from}\0${message.timestamp}\0${message.text}`
+}
 
 type Props = {
   enabled: boolean
@@ -154,6 +153,9 @@ export function useInboxPoller({
 
     logForDebugging(`[InboxPoller] Found ${unread.length} unread message(s)`)
 
+    const currentBatch = new Set(unread.map(mailboxMessageIdentity))
+    const deferredMessages = new Set<string>()
+
     // Check for plan approval responses and transition out of plan mode if approved
     // Security: Only accept approval responses from the team lead
     if (isTeammate() && isPlanModeRequired()) {
@@ -199,7 +201,15 @@ export function useInboxPoller({
     // Helper to mark messages as read in the inbox file.
     // Called after messages are successfully delivered or reliably queued.
     const markRead = () => {
-      void markMessagesAsRead(agentName, currentAppState.teamContext?.teamName)
+      const deferredSnapshot = new Set(deferredMessages)
+      void markMessagesAsReadByPredicate(
+        agentName,
+        message => {
+          const identity = mailboxMessageIdentity(message)
+          return currentBatch.has(identity) && !deferredSnapshot.has(identity)
+        },
+        currentAppState.teamContext?.teamName,
+      )
     }
 
     // Separate permission messages from regular teammate messages
@@ -694,39 +704,33 @@ export function useInboxPoller({
         const parsed = isShutdownApproved(m.text)
         if (!parsed) continue
 
-        // Kill the pane if we have the info (pane-based teammates)
-        if (parsed.paneId && parsed.backendType) {
-          void (async () => {
-            try {
-              // Ensure backend classes are imported (no subprocess probes)
-              await ensureBackendsRegistered()
-              const insideTmux = await isInsideTmux()
-              const backend = getBackendByType(
-                parsed.backendType as PaneBackendType,
-              )
-              const success = await backend?.killPane(
-                parsed.paneId!,
-                !insideTmux,
-              )
-              logForDebugging(
-                `[InboxPoller] Killed pane ${parsed.paneId} for ${parsed.from}: ${success}`,
-              )
-            } catch (error) {
-              logForDebugging(
-                `[InboxPoller] Failed to kill pane for ${parsed.from}: ${error}`,
-              )
-            }
-          })()
+        const teammateToRemove = parsed.from
+        const teammateId = currentAppState.teamContext?.teammates
+          ? Object.entries(currentAppState.teamContext.teammates).find(
+              ([, t]) => t.name === teammateToRemove,
+            )?.[0]
+          : undefined
+
+        const terminated = await confirmTeammateShutdown(
+          teammateId ?? teammateToRemove,
+          setAppState,
+          parsed.paneId,
+          parsed.backendType,
+        )
+        if (!terminated) {
+          logForDebugging(
+            `[InboxPoller] Shutdown for ${teammateToRemove} was not confirmed; preserving teammate state`,
+          )
+          // Leave this approval unread. A controller abort or pane kill request
+          // is not confirmation, and acknowledging it here would make the
+          // failed shutdown impossible to retry on the next poll.
+          deferredMessages.add(mailboxMessageIdentity(m))
+          continue
         }
 
-        // Remove the teammate from teamContext.teammates so the count is accurate
-        const teammateToRemove = parsed.from
+        // Remove the teammate only after its runner/process tree is confirmed
+        // stopped, so the UI cannot turn a failed kill into a false success.
         if (teammateToRemove && currentAppState.teamContext?.teammates) {
-          // Find the teammate ID by name
-          const teammateId = Object.entries(
-            currentAppState.teamContext.teammates,
-          ).find(([, t]) => t.name === teammateToRemove)?.[0]
-
           if (teammateId) {
             // Remove from team file (leader owns team file mutations)
             const teamName = currentAppState.teamContext?.teamName

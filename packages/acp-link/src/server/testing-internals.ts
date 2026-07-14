@@ -31,6 +31,7 @@ export const __testing = {
       connection?: unknown
       process?: ChildProcess | null
       sessionId?: string | null
+      activePrompt?: Promise<void> | null
       clientInfo?: { name: string; version: string }
       clientCapabilities?: Record<string, unknown>
       jsonRpc?: boolean
@@ -42,6 +43,7 @@ export const __testing = {
     full.connection = (state.connection ??
       null) as acp.ClientSideConnection | null
     full.sessionId = state.sessionId ?? null
+    full.activePrompt = state.activePrompt ?? null
     if (state.clientInfo) full.clientInfo = state.clientInfo
     if (state.clientCapabilities)
       full.clientCapabilities = state.clientCapabilities

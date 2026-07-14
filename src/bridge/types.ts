@@ -81,6 +81,20 @@ export type SpawnMode = 'single-session' | 'worktree' | 'same-dir'
  */
 export type BridgeWorkerType = 'claude_code' | 'claude_code_assistant'
 
+/**
+ * Interrupt handlers may defer releasing local cancellation state until the
+ * bridge has queued the matching control response. Boolean remains supported
+ * for callers that do not need acknowledgement ordering.
+ */
+export type BridgeInterruptResult =
+  | boolean
+  | {
+      confirmed: boolean
+      afterAcknowledgement?: () => void
+    }
+
+export type BridgeInterruptHandler = () => Promise<BridgeInterruptResult>
+
 export type BridgeConfig = {
   dir: string
   machineName: string
@@ -181,8 +195,11 @@ export type BridgeApiClient = {
 export type SessionHandle = {
   sessionId: string
   done: Promise<SessionDoneStatus>
-  kill(): void
-  forceKill(): void
+  /**
+   * Terminate the complete child process tree and confirm it exited. The
+   * implementation escalates from SIGTERM to SIGKILL after graceMs.
+   */
+  terminate(graceMs?: number, forceWaitMs?: number): Promise<boolean>
   activities: SessionActivity[] // ring buffer of recent activities (last ~10)
   currentActivity: SessionActivity | null // most recent
   accessToken: string // session_ingress_token for API calls

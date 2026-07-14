@@ -39,6 +39,13 @@ import { getOpenAIClient } from '../services/api/openai/client.js'
 import { openAICompatSupportsThinkingControl } from '../services/api/openai/requestBody.js'
 import { getGrokClient } from '../services/api/grok/client.js'
 import { isChatGPTAuthEnabled } from '../services/api/openai/chatgptAuth.js'
+import { resolveChatGPTResponsesReasoningEffort } from '../services/api/openai/reasoningEffort.js'
+import { resolveOpenAICompatibleReasoningEffort } from '../services/connections/effortTransport.js'
+import {
+  mapThinkingEffortToEffortValue,
+  resolveQueryThinkingEffort,
+  resolveQueryThinkingEffortTransport,
+} from '../services/connections/thinkingEffort.js'
 import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
@@ -801,6 +808,15 @@ async function sideQueryViaOpenAICompatible(
   // for provider-scoped reads; a runtime without env inherits the main
   // session's env — same semantics as queryModelOpenAI/Gemini/Grok.
   const scopedEnv = runtime?.env ?? process.env
+  const connectionThinkingEffort = resolveQueryThinkingEffort(runtime)
+  const thinkingDisabled =
+    thinking === false || connectionThinkingEffort === 'off'
+  const effortValue = thinkingDisabled
+    ? undefined
+    : typeof thinking === 'number'
+      ? thinking
+      : mapThinkingEffortToEffortValue(connectionThinkingEffort)
+  const effortTransport = resolveQueryThinkingEffortTransport(runtime)
 
   // Resolve model name per provider
   const openaiModel =
@@ -853,7 +869,7 @@ async function sideQueryViaOpenAICompatible(
   // sent when the endpoint is known to understand thinking-control fields —
   // strict OpenAI-compatible endpoints would otherwise reject unknown params.
   if (
-    thinking === false &&
+    thinkingDisabled &&
     openAICompatSupportsThinkingControl(openaiModel, scopedEnv)
   ) {
     requestParams.thinking = { type: 'disabled' }
@@ -865,6 +881,13 @@ async function sideQueryViaOpenAICompatible(
   }
 
   if (provider === 'openai' && isChatGPTAuthEnabled(scopedEnv)) {
+    const reasoningEffort = thinkingDisabled
+      ? undefined
+      : resolveChatGPTResponsesReasoningEffort(
+          openaiModel,
+          effortValue,
+          scopedEnv,
+        )
     const requestSignal = signal ?? new AbortController().signal
     const adaptedStream = await createRetriedSideQueryStream(
       async innerSignal =>
@@ -876,6 +899,7 @@ async function sideQueryViaOpenAICompatible(
                 messages: openaiMessages,
                 tools: openaiTools ?? [],
                 toolChoice: openaiToolChoice,
+                reasoningEffort,
               }),
               signal: innerSignal,
               credentialScope: runtime?.credentialScope,
@@ -915,6 +939,17 @@ async function sideQueryViaOpenAICompatible(
     setLastApiCompletionTimestamp(now)
 
     return response
+  }
+
+  const reasoningEffort = thinkingDisabled
+    ? undefined
+    : resolveOpenAICompatibleReasoningEffort(
+        effortValue,
+        provider === 'openai' ? effortTransport : 'compatible',
+        scopedEnv,
+      )
+  if (reasoningEffort !== undefined) {
+    requestParams.reasoning_effort = reasoningEffort
   }
 
   const client =

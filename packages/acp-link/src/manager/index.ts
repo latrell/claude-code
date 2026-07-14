@@ -16,8 +16,18 @@ export async function startManager(port: number): Promise<void> {
     if (shuttingDown) return
     shuttingDown = true
     console.log(t('Shutting down...'))
-    await manager.shutdownAll()
-    process.exit(0)
+    try {
+      await manager.shutdownAll()
+      process.exit(0)
+    } catch (error) {
+      shuttingDown = false
+      console.error(
+        tf('Failed to stop all managed instances: {message}', {
+          message: (error as Error).message,
+        }),
+      )
+      process.exitCode = 1
+    }
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)

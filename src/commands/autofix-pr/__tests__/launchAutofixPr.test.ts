@@ -1,10 +1,12 @@
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
   describe,
   expect,
   mock,
+  spyOn,
   test,
 } from 'bun:test'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
@@ -24,8 +26,10 @@ const teleportMock = mock(
   (): Promise<TeleportResult> =>
     Promise.resolve({ id: 'session-123', title: 'Autofix PR: acme/myrepo#42' }),
 )
+const stopRemoteSessionMock = mock(() => Promise.resolve(true))
 mock.module('src/utils/teleport.js', () => ({
   teleportToRemote: teleportMock,
+  stopRemoteSession: stopRemoteSessionMock,
   // Stubs for other exports — Bun mock-module is process-level, so when
   // run combined with teleport-command tests these would otherwise leak as
   // undefined and crash. Keep here in sync with utils/teleport.tsx exports
@@ -39,16 +43,21 @@ mock.module('src/utils/teleport.js', () => ({
     Promise.resolve({ branchName: 'main', branchError: null }),
   ),
   processMessagesForTeleportResume: mock((m: unknown[]) => m),
+  pollRemoteSessionEvents: mock(() =>
+    Promise.resolve({ events: [], nextCursor: null }),
+  ),
   teleportFromSessionsAPI: mock(() =>
     Promise.resolve({ branch: null, messages: [], error: null }),
   ),
   teleportToRemoteWithErrorHandling: mock(() => Promise.resolve(null)),
 }))
 
+const registeredStopMock = mock(() => Promise.resolve())
 const registerMock = mock(() => ({
   taskId: 'framework-task-id',
   sessionId: 'session-123',
   cleanup: () => {},
+  stop: registeredStopMock,
 }))
 const checkEligibilityMock = mock(() =>
   Promise.resolve({ eligible: true as const }),
@@ -69,15 +78,33 @@ const registerContentExtractorMock = mock<
   (taskType: string, extractor: (log: unknown[]) => string | null) => void
 >(() => {})
 
-mock.module('src/tasks/RemoteAgentTask/RemoteAgentTask.js', () => ({
-  checkRemoteAgentEligibility: checkEligibilityMock,
-  registerRemoteAgentTask: registerMock,
-  registerCompletionHook: registerCompletionHookMock,
-  registerCompletionChecker: registerCompletionCheckerMock,
-  registerContentExtractor: registerContentExtractorMock,
-  getRemoteTaskSessionUrl: getSessionUrlMock,
-  formatPreconditionError: (e: { type: string }) => e.type,
-}))
+const remoteAgentTaskModule = await import(
+  'src/tasks/RemoteAgentTask/RemoteAgentTask.js'
+)
+const remoteAgentSpies = [
+  spyOn(
+    remoteAgentTaskModule,
+    'checkRemoteAgentEligibility',
+  ).mockImplementation(checkEligibilityMock as never),
+  spyOn(remoteAgentTaskModule, 'registerRemoteAgentTask').mockImplementation(
+    registerMock as never,
+  ),
+  spyOn(remoteAgentTaskModule, 'registerCompletionHook').mockImplementation(
+    registerCompletionHookMock as never,
+  ),
+  spyOn(remoteAgentTaskModule, 'registerCompletionChecker').mockImplementation(
+    registerCompletionCheckerMock as never,
+  ),
+  spyOn(remoteAgentTaskModule, 'registerContentExtractor').mockImplementation(
+    registerContentExtractorMock as never,
+  ),
+  spyOn(remoteAgentTaskModule, 'getRemoteTaskSessionUrl').mockImplementation(
+    getSessionUrlMock as never,
+  ),
+  spyOn(remoteAgentTaskModule, 'formatPreconditionError').mockImplementation(
+    ((error: { type: string }) => error.type) as never,
+  ),
+]
 
 const fetchPrHeadShaMock = mock<
   (owner: string, repo: string, prNumber: number) => Promise<string | null>
@@ -108,7 +135,9 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 const noop = () => {}
+const actualBootstrapState = await import('src/bootstrap/state.js')
 mock.module('src/bootstrap/state.js', () => ({
+  ...actualBootstrapState,
   getSessionId: () => 'parent-session-id',
   getParentSessionId: () => undefined,
   // Additional exports needed by transitive imports (e.g. cwd.ts, sandbox-adapter.ts)
@@ -121,6 +150,11 @@ mock.module('src/bootstrap/state.js', () => ({
   setLastAPIRequestMessages: noop,
   getIsNonInteractiveSession: () => false,
   addSlowOperation: noop,
+  waitForScrollIdle: () => Promise.resolve(),
+  getSessionTrustAccepted: () => true,
+  getModelStrings: () => null,
+  setModelStrings: noop,
+  resetModelStringsForTestingOnly: noop,
 }))
 
 // Mock skillDetect so initialMessage is deterministic across CI environments
@@ -145,16 +179,20 @@ beforeAll(async () => {
 
 // Helper context
 function makeContext() {
-  return { abortController: new AbortController() } as Parameters<
-    typeof callAutofixPr
-  >[1]
+  return {
+    abortController: new AbortController(),
+    setAppState: noop,
+    getAppState: () => ({ tasks: {} }),
+  } as unknown as Parameters<typeof callAutofixPr>[1]
 }
 
 const onDone = mock((_result?: string, _opts?: unknown) => {})
 
 beforeEach(() => {
   teleportMock.mockClear()
+  stopRemoteSessionMock.mockClear()
   registerMock.mockClear()
+  registeredStopMock.mockClear()
   detectRepoMock.mockClear()
   checkEligibilityMock.mockClear()
   logEventMock.mockClear()
@@ -164,6 +202,10 @@ beforeEach(() => {
 
 afterEach(() => {
   clearActiveMonitor()
+})
+
+afterAll(() => {
+  for (const spy of remoteAgentSpies) spy.mockRestore()
 })
 
 describe('callAutofixPr', () => {
@@ -240,13 +282,86 @@ describe('callAutofixPr', () => {
     await callAutofixPr(onDone, makeContext(), 'stop')
     expect(getActiveMonitor()).toBeNull()
     const firstArg = onDone.mock.calls[0]?.[0] as string
-    expect(firstArg).toMatch(/Stopped local monitoring/)
+    expect(firstArg).toMatch(/Stopped autofix/)
+    expect(registeredStopMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('stop during teleport waits for launch settlement and interrupts a late-created session', async () => {
+    let finishTeleport: (result: TeleportResult) => void = () => {}
+    teleportMock.mockImplementationOnce(
+      () =>
+        new Promise<TeleportResult>(resolve => {
+          finishTeleport = resolve
+        }),
+    )
+
+    const start = callAutofixPr(onDone, makeContext(), '42')
+    while (teleportMock.mock.calls.length === 0) await Promise.resolve()
+
+    const stop = callAutofixPr(onDone, makeContext(), 'stop')
+    finishTeleport({ id: 'late-session', title: 'late' })
+    await Promise.all([start, stop])
+
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(stopRemoteSessionMock).toHaveBeenCalledWith('late-session')
+    expect(getActiveMonitor()).toBeNull()
+  })
+
+  test('stop during repository preflight cancels the launch before teleport', async () => {
+    let finishDetection: (result: {
+      host: string
+      owner: string
+      name: string
+    }) => void = () => {}
+    detectRepoMock.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finishDetection = resolve
+        }),
+    )
+
+    const start = callAutofixPr(onDone, makeContext(), '42')
+    while (!getActiveMonitor()) await Promise.resolve()
+    const stop = callAutofixPr(onDone, makeContext(), 'stop')
+
+    finishDetection({ host: 'github.com', owner: 'acme', name: 'myrepo' })
+    await Promise.all([start, stop])
+
+    expect(teleportMock).not.toHaveBeenCalled()
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(getActiveMonitor()).toBeNull()
+  })
+
+  test('Esc keeps a late session tracked when remote Stop is not acknowledged', async () => {
+    let finishTeleport: (result: TeleportResult) => void = () => {}
+    teleportMock.mockImplementationOnce(
+      () =>
+        new Promise<TeleportResult>(resolve => {
+          finishTeleport = resolve
+        }),
+    )
+    stopRemoteSessionMock.mockImplementationOnce(() => Promise.resolve(false))
+    const context = makeContext()
+
+    const start = callAutofixPr(onDone, context, '42')
+    while (teleportMock.mock.calls.length === 0) await Promise.resolve()
+    context.abortController.abort('user-cancel')
+    finishTeleport({ id: 'late-session', title: 'late' })
+    await start
+
+    expect(stopRemoteSessionMock).toHaveBeenCalledWith('late-session')
+    expect(getActiveMonitor()).not.toBeNull()
+    expect(
+      onDone.mock.calls.some(call =>
+        String(call[0]).includes('Could not confirm'),
+      ),
+    ).toBe(true)
   })
 
   test('stop with no active monitor reports no active monitor', async () => {
     await callAutofixPr(onDone, makeContext(), 'stop')
     const firstArg = onDone.mock.calls[0]?.[0] as string
-    expect(firstArg).toMatch(/No active autofix monitor/)
+    expect(firstArg).toMatch(/No active autofix monitor|没有活跃/)
   })
 
   test('freeform prompt returns not supported message', async () => {
@@ -476,7 +591,13 @@ describe('callAutofixPr · Phase 2 completionChecker integration', () => {
   test('callAutofixPr captures initialHeadSha via fetchPrHeadSha', async () => {
     fetchPrHeadShaMock.mockClear()
     await callAutofixPr(onDone, makeContext(), '42')
-    expect(fetchPrHeadShaMock).toHaveBeenCalledWith('acme', 'myrepo', 42)
+    expect(fetchPrHeadShaMock).toHaveBeenCalledWith(
+      'acme',
+      'myrepo',
+      42,
+      undefined,
+      expect.any(AbortSignal),
+    )
   })
 
   test('initialHeadSha is passed into remoteTaskMetadata on register', async () => {

@@ -62,7 +62,9 @@ test('createWorkflowTool returns complete descriptor shape', () => {
       register: () => ({ runId: 'r', signal: new AbortController().signal }),
       complete() {},
       fail() {},
-      kill() {},
+      async kill() {
+        return false
+      },
       pendingAction: () => null,
     },
     journalStore: {

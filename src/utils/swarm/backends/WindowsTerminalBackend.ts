@@ -11,17 +11,34 @@ import { registerWindowsTerminalBackend } from './registry.js'
 import type { CreatePaneResult, PaneBackend, PaneId } from './types.js'
 
 type CommandResult = { stdout: string; stderr: string; code: number }
-type CommandRunner = (command: string, args: string[]) => Promise<CommandResult>
+type CommandRunner = (
+  command: string,
+  args: string[],
+  timeoutMs?: number,
+) => Promise<CommandResult>
 
-type PaneStatus = 'registered' | 'spawning' | 'ready' | 'killing' | 'dead'
+type PaneStatus =
+  | 'registered'
+  | 'spawning'
+  | 'ready'
+  | 'orphaned'
+  | 'killing'
+  | 'dead'
+
+type ProcessIdentity = {
+  pid: number
+  startedAtFileTime: string
+}
 
 type WindowsTerminalPane = {
   title: string
   mode: 'pane' | 'window'
   pidFile: string
   status: PaneStatus
-  pid?: number
+  processIdentity?: ProcessIdentity
+  pendingTree?: ProcessIdentity[]
   spawnPromise?: Promise<void>
+  killPromise?: Promise<boolean>
 }
 
 function quotePowerShellString(value: string): string {
@@ -35,7 +52,9 @@ function wrapPowerShellCommand(command: string, pidFile: string): string {
   // Use newlines (\n) so the parser treats it as one statement.
   return [
     "$ErrorActionPreference = 'Stop'",
-    `Set-Content -LiteralPath ${quotedPidFile} -Value $PID`,
+    '$processStartTicks = (Get-Process -Id $PID -ErrorAction Stop).StartTime.ToFileTimeUtc()',
+    '$processStartTime = $processStartTicks - ($processStartTicks % 10)',
+    `Set-Content -LiteralPath ${quotedPidFile} -Value "$PID|$processStartTime"`,
     [
       `try { ${command}; if ($LASTEXITCODE -is [int]) { exit $LASTEXITCODE } }`,
       `catch { Write-Error $_; exit 1 }`,
@@ -46,6 +65,8 @@ function wrapPowerShellCommand(command: string, pidFile: string): string {
 
 const WT_PANE_TIMEOUT_DEFAULT_MS = 8000
 const WT_PANE_POLL_INTERVAL_MS = 200
+const WT_KILL_TIMEOUT_DEFAULT_MS = 2_000
+const WT_KILL_COMMAND_TIMEOUT_DEFAULT_MS = 1_000
 
 function getWtPaneTimeoutMs(): number {
   const raw = process.env.CLAUDE_WT_PANE_TIMEOUT_MS
@@ -56,23 +77,53 @@ function getWtPaneTimeoutMs(): number {
     : WT_PANE_TIMEOUT_DEFAULT_MS
 }
 
+function getWtKillTimeoutMs(): number {
+  const raw = process.env.CLAUDE_WT_KILL_TIMEOUT_MS
+  if (!raw) return WT_KILL_TIMEOUT_DEFAULT_MS
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : WT_KILL_TIMEOUT_DEFAULT_MS
+}
+
+function getWtKillCommandTimeoutMs(): number {
+  const raw = process.env.CLAUDE_WT_KILL_COMMAND_TIMEOUT_MS
+  if (!raw) return WT_KILL_COMMAND_TIMEOUT_DEFAULT_MS
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : WT_KILL_COMMAND_TIMEOUT_DEFAULT_MS
+}
+
+function parseProcessIdentity(content: string): ProcessIdentity | null {
+  const match = /^(\d+)\|(\d+)$/.exec(content.trim())
+  if (!match) return null
+
+  const pid = Number.parseInt(match[1]!, 10)
+  if (!Number.isFinite(pid) || pid <= 0) return null
+
+  return {
+    pid,
+    startedAtFileTime: match[2]!,
+  }
+}
+
 async function waitForPidFile(
   pidFile: string,
   timeoutMs: number,
-): Promise<number> {
+): Promise<ProcessIdentity> {
   const deadline = Date.now() + timeoutMs
   let lastErr: unknown
   while (Date.now() < deadline) {
     try {
       const content = (await readFile(pidFile, 'utf-8')).trim()
-      if (!/^\d+$/.test(content)) {
+      const identity = parseProcessIdentity(content)
+      if (!identity) {
         lastErr = new Error(
-          `pidFile content not a valid pid: ${JSON.stringify(content)}`,
+          `pidFile content not a valid process identity: ${JSON.stringify(content)}`,
         )
       } else {
-        const pid = Number.parseInt(content, 10)
-        if (Number.isFinite(pid) && pid > 0) return pid
-        lastErr = new Error(`pidFile content parsed to invalid pid: ${pid}`)
+        return identity
       }
     } catch (err) {
       lastErr = err
@@ -115,14 +166,177 @@ export class WindowsTerminalBackend implements PaneBackend {
       typeof runCommandOrOptions === 'function' ||
       runCommandOrOptions === undefined
     ) {
-      this.runCommand = runCommandOrOptions ?? execFileNoThrow
+      this.runCommand =
+        runCommandOrOptions ??
+        ((command, args, timeoutMs) =>
+          execFileNoThrow(command, args, {
+            timeout: timeoutMs,
+            preserveOutputOnError: true,
+            useCwd: true,
+          }))
       this.getPlatformValue = getPlatformValue ?? getPlatform
       this.pidFileDir = tmpdir()
     } else {
-      this.runCommand = runCommandOrOptions.runCommand ?? execFileNoThrow
+      this.runCommand =
+        runCommandOrOptions.runCommand ??
+        ((command, args, timeoutMs) =>
+          execFileNoThrow(command, args, {
+            timeout: timeoutMs,
+            preserveOutputOnError: true,
+            useCwd: true,
+          }))
       this.getPlatformValue = runCommandOrOptions.getPlatform ?? getPlatform
       this.pidFileDir = runCommandOrOptions.pidFileDir ?? tmpdir()
     }
+  }
+
+  /**
+   * Every OS query in the Stop path has a hard deadline. The default runner
+   * also receives the timeout so execa terminates the child; Promise.race is a
+   * second line of defence for injected/custom runners that ignore it.
+   */
+  private async runCommandWithDeadline(
+    command: string,
+    args: string[],
+  ): Promise<CommandResult> {
+    const timeoutMs = getWtKillCommandTimeoutMs()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const timedOut = new Promise<CommandResult>(resolve => {
+      timeout = setTimeout(
+        () =>
+          resolve({
+            stdout: '',
+            stderr: `${command} timed out after ${timeoutMs}ms`,
+            code: 1,
+          }),
+        timeoutMs + 50,
+      )
+    })
+    const commandResult = this.runCommand(command, args, timeoutMs).catch(
+      (error: unknown): CommandResult => ({
+        stdout: '',
+        stderr: error instanceof Error ? error.message : String(error),
+        code: 1,
+      }),
+    )
+
+    try {
+      return await Promise.race([commandResult, timedOut])
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
+  }
+
+  private async inspectProcessIdentity(
+    pid: number,
+  ): Promise<ProcessIdentity | 'missing' | null> {
+    const script = [
+      `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
+      "if ($null -eq $process) { [Console]::Out.Write('MISSING'); exit 0 }",
+      'try { $startTicks = $process.StartTime.ToFileTimeUtc(); [Console]::Out.Write($startTicks - ($startTicks % 10)) }',
+      'catch { [Console]::Error.Write($_); exit 2 }',
+    ].join('; ')
+    const result = await this.runCommandWithDeadline('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ])
+    if (result.code !== 0) return null
+
+    const output = result.stdout.trim()
+    if (output === 'MISSING') return 'missing'
+    if (!/^\d+$/.test(output)) return null
+    return { pid, startedAtFileTime: output }
+  }
+
+  private async captureProcessTree(
+    root: ProcessIdentity,
+  ): Promise<ProcessIdentity[] | null> {
+    const script = [
+      '$allProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop)',
+      '$processesById = @{}',
+      'foreach ($snapshot in $allProcesses) { $processesById[[int]$snapshot.ProcessId] = $snapshot }',
+      '$pending = [System.Collections.Generic.Queue[int]]::new()',
+      '$seen = [System.Collections.Generic.HashSet[int]]::new()',
+      `$pending.Enqueue(${root.pid})`,
+      'while ($pending.Count -gt 0) {',
+      '  $currentPid = $pending.Dequeue()',
+      '  if (-not $seen.Add($currentPid)) { continue }',
+      '  foreach ($child in $allProcesses) {',
+      '    if ($child.ParentProcessId -eq $currentPid) { $pending.Enqueue([int]$child.ProcessId) }',
+      '  }',
+      '}',
+      'foreach ($processId in $seen) {',
+      '  $snapshot = $processesById[$processId]',
+      '  if ($null -ne $snapshot) {',
+      "    try { $startTicks = $snapshot.CreationDate.ToFileTimeUtc(); [Console]::Out.WriteLine(('{0}|{1}' -f $processId, ($startTicks - ($startTicks % 10)))) } catch { [Console]::Error.Write($_); exit 2 }",
+      '  }',
+      '}',
+    ].join('\n')
+    const result = await this.runCommandWithDeadline('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ])
+    if (result.code !== 0) return null
+
+    const identities = new Map<number, ProcessIdentity>()
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const identity = parseProcessIdentity(line)
+      if (identity) identities.set(identity.pid, identity)
+    }
+    const capturedRoot = identities.get(root.pid)
+    if (
+      !capturedRoot ||
+      capturedRoot.startedAtFileTime !== root.startedAtFileTime
+    ) {
+      // The root exited or its PID was reused between the first identity check
+      // and the CIM snapshot. Do not act on the replacement's descendants.
+      return null
+    }
+    identities.set(root.pid, root)
+    return [...identities.values()]
+  }
+
+  private async inspectLiveTreeMembers(
+    identities: ProcessIdentity[],
+  ): Promise<ProcessIdentity[] | null> {
+    const expected = identities
+      .map(identity => `'${identity.pid}|${identity.startedAtFileTime}'`)
+      .join(',')
+    const script = [
+      `$expected = @(${expected})`,
+      'foreach ($entry in $expected) {',
+      "  $parts = $entry.Split('|')",
+      '  $processId = [int]$parts[0]',
+      '  $expectedStart = $parts[1]',
+      '  $process = Get-Process -Id $processId -ErrorAction SilentlyContinue',
+      '  if ($null -ne $process) {',
+      '    try {',
+      '      $startTicks = $process.StartTime.ToFileTimeUtc()',
+      '      $actualStart = ($startTicks - ($startTicks % 10)).ToString()',
+      "      if ($actualStart -eq $expectedStart) { [Console]::Out.WriteLine(('{0}|{1}' -f $processId, $actualStart)) }",
+      '    } catch { [Console]::Error.Write($_); exit 2 }',
+      '  }',
+      '}',
+    ].join('\n')
+    const result = await this.runCommandWithDeadline('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ])
+    if (result.code !== 0) return null
+
+    return result.stdout
+      .split(/\r?\n/)
+      .map(parseProcessIdentity)
+      .filter((identity): identity is ProcessIdentity => identity !== null)
   }
 
   private makePidFile(paneId: string): string {
@@ -206,6 +420,11 @@ export class WindowsTerminalBackend implements PaneBackend {
     if (pane.status === 'dead') {
       throw new Error(`Pane ${paneId} is dead; create a new pane`)
     }
+    if (pane.status === 'orphaned') {
+      throw new Error(
+        `Pane ${paneId} has an unconfirmed launch; Stop it before creating a replacement`,
+      )
+    }
     // pane.status === 'registered' → 继续
 
     // 提前赋值 spawnPromise 在任何 await 前（inner Promise 包装）
@@ -255,9 +474,9 @@ export class WindowsTerminalBackend implements PaneBackend {
       }
 
       const timeoutMs = getWtPaneTimeoutMs()
-      let pid: number
+      let processIdentity: ProcessIdentity
       try {
-        pid = await waitForPidFile(pane.pidFile, timeoutMs)
+        processIdentity = await waitForPidFile(pane.pidFile, timeoutMs)
       } catch (err) {
         throw new Error(
           `Windows Terminal pane failed to launch within ${timeoutMs}ms\n` +
@@ -270,12 +489,15 @@ export class WindowsTerminalBackend implements PaneBackend {
         )
       }
 
-      pane.pid = pid
+      pane.processIdentity = processIdentity
       pane.status = 'ready'
       resolveSpawn()
     } catch (err) {
-      pane.status = 'dead'
-      pane.pid = undefined
+      // wt.exe may have accepted the launch even if the PID handshake failed.
+      // Keep the pane addressable so a later Stop can retry the pidFile and
+      // never discard a potentially live process without confirmation.
+      pane.status = 'orphaned'
+      pane.processIdentity = undefined
       rejectSpawn(err)
       throw err
     } finally {
@@ -318,78 +540,232 @@ export class WindowsTerminalBackend implements PaneBackend {
     paneId: PaneId,
     _useExternalSession?: boolean,
   ): Promise<boolean> {
-    const pane = this.panes.get(paneId)
+    let pane = this.panes.get(paneId)
     if (!pane) {
-      return false
+      // A different leader process (or a freshly constructed backend) may
+      // receive the Stop request. Recover the identity handshake from disk;
+      // never fall back to a naked PID or an unverified process lookup.
+      const pidFile = this.makePidFile(paneId)
+      let recoveredIdentity: ProcessIdentity | null = null
+      try {
+        recoveredIdentity = parseProcessIdentity(
+          (await readFile(pidFile, 'utf-8')).trim(),
+        )
+      } catch {
+        // Missing/unreadable handshake means the target cannot be proven.
+      }
+      if (!recoveredIdentity) return false
+
+      pane = {
+        title: paneId,
+        mode: 'pane',
+        pidFile,
+        status: 'orphaned',
+        processIdentity: recoveredIdentity,
+      }
+      this.panes.set(paneId, pane)
     }
 
-    // 1. 解 kill-while-spawn race：await spawn 完成（不论成功失败）
+    // Concurrent Stop callers must observe one shared, authoritative result.
+    if (pane.killPromise) return pane.killPromise
+
+    const killPromise = this.killPaneOnce(paneId, pane)
+    pane.killPromise = killPromise
+    try {
+      return await killPromise
+    } finally {
+      if (pane.killPromise === killPromise) {
+        pane.killPromise = undefined
+      }
+    }
+  }
+
+  private async killPaneOnce(
+    paneId: PaneId,
+    pane: WindowsTerminalPane,
+  ): Promise<boolean> {
+    // Resolve the kill-while-spawn race before reading status or identity.
     if (pane.status === 'spawning' && pane.spawnPromise) {
       await pane.spawnPromise.catch(() => {})
     }
 
-    // 2. TOCTOU 修正：重读 status/pid
+    if (pane.status === 'registered') {
+      // No launch command has been issued, so there is no process to confirm.
+      pane.status = 'dead'
+      this.panes.delete(paneId)
+      return true
+    }
     if (pane.status === 'dead') {
       this.panes.delete(paneId)
-      return false
+      return true
     }
-    if (pane.status !== 'ready') {
-      // 还在其它非终态（理论不可达，保险）
+    if (pane.status !== 'ready' && pane.status !== 'orphaned') {
       return false
     }
 
+    const retryStatus = pane.status
     pane.status = 'killing'
 
-    // 3. 优先用缓存 pid
-    let pid: number | undefined = pane.pid
-
-    // 4. fallback：缓存没有则读盘（保留 retry 3×500ms）
-    if (pid === undefined) {
-      let pidContent: string | null = null
-      for (let attempt = 0; attempt < 3; attempt++) {
+    let identity = pane.processIdentity
+    if (!identity) {
+      // A successful wt.exe invocation can outlive a delayed pidFile write.
+      // Retry the handshake, but retain tracking if identity is still unknown.
+      for (let attempt = 0; attempt < 3 && !identity; attempt++) {
         try {
-          pidContent = (await readFile(pane.pidFile, 'utf-8')).trim()
-          break
+          const content = (await readFile(pane.pidFile, 'utf-8')).trim()
+          identity = parseProcessIdentity(content) ?? undefined
         } catch {
-          if (attempt === 2) {
-            pane.status = 'dead'
-            this.panes.delete(paneId)
-            return false
-          }
-          await new Promise(r => setTimeout(r, 500))
+          // The launcher may still be between process start and Set-Content.
+        }
+        if (!identity && attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
-      if (!pidContent || !/^\d+$/.test(pidContent)) {
-        pane.status = 'dead'
-        this.panes.delete(paneId)
+      if (!identity) {
+        pane.status = retryStatus
+        logForDebugging(
+          `[WindowsTerminalBackend] killPane ${paneId}: process identity unavailable; preserving tracking`,
+        )
         return false
       }
-      const parsed = Number.parseInt(pidContent, 10)
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        pane.status = 'dead'
-        this.panes.delete(paneId)
-        return false
-      }
-      pid = parsed
+      pane.processIdentity = identity
     }
 
-    // 5. 执行 Stop-Process
-    const result = await this.runCommand('powershell.exe', [
-      '-NoLogo',
-      '-NoProfile',
-      '-Command',
-      `Stop-Process -Id ${pid} -Force -ErrorAction Stop`,
-    ])
+    let processTree = pane.pendingTree
+    let liveBeforeKill: ProcessIdentity[]
+    if (!processTree) {
+      // PID alone is unsafe: Windows can reuse it after the original shell
+      // exits. Match creation time before enumerating or signalling anything.
+      const currentIdentity = await this.inspectProcessIdentity(identity.pid)
+      if (currentIdentity === null) {
+        pane.status = retryStatus
+        logForDebugging(
+          `[WindowsTerminalBackend] killPane ${paneId} pid=${identity.pid}: identity inspection failed; preserving tracking`,
+        )
+        return false
+      }
+      if (
+        currentIdentity === 'missing' ||
+        currentIdentity.startedAtFileTime !== identity.startedAtFileTime
+      ) {
+        // Never signal a reused PID. Without a pre-stop tree snapshot, root
+        // absence alone cannot prove that descendants also exited.
+        pane.status = retryStatus
+        logForDebugging(
+          `[WindowsTerminalBackend] killPane ${paneId} pid=${identity.pid}: original root absent${currentIdentity === 'missing' ? '' : ' (PID reused)'} but tree was not captured; preserving tracking`,
+        )
+        return false
+      }
 
-    // 6. 不管成功失败都清缓存 + 标 dead + 从 map 删（防 PID 复用误杀）
-    pane.pid = undefined
-    pane.status = 'dead'
-    this.panes.delete(paneId)
+      // Snapshot descendants before termination. taskkill /T requests the
+      // whole tree; the snapshot provides identity-safe post-kill proof.
+      const capturedTree = await this.captureProcessTree(identity)
+      if (!capturedTree) {
+        pane.status = retryStatus
+        logForDebugging(
+          `[WindowsTerminalBackend] killPane ${paneId} pid=${identity.pid}: process-tree inspection failed; preserving tracking`,
+        )
+        return false
+      }
+      processTree = capturedTree
+      pane.pendingTree = processTree
+      const capturedLiveMembers = await this.inspectLiveTreeMembers(processTree)
+      const capturedRootStillLive = capturedLiveMembers?.some(
+        member =>
+          member.pid === identity.pid &&
+          member.startedAtFileTime === identity.startedAtFileTime,
+      )
+      if (!capturedLiveMembers || !capturedRootStillLive) {
+        // Preserve the snapshot for a retry if inspection itself failed, but
+        // never signal a missing/reused root during this attempt.
+        pane.status = retryStatus
+        return false
+      }
+      liveBeforeKill = capturedLiveMembers
+    } else {
+      // A previous attempt may have killed the root but timed out while
+      // confirming descendants. Resume from the exact stored identities.
+      const liveMembers = await this.inspectLiveTreeMembers(processTree)
+      if (liveMembers === null) {
+        pane.status = retryStatus
+        return false
+      }
+      if (liveMembers.length === 0) {
+        pane.processIdentity = undefined
+        pane.pendingTree = undefined
+        pane.status = 'dead'
+        this.panes.delete(paneId)
+        await unlink(pane.pidFile).catch(() => {})
+        return true
+      }
+      liveBeforeKill = liveMembers
+    }
+
+    const waitForTreeExit = async (): Promise<boolean> => {
+      const deadline = Date.now() + getWtKillTimeoutMs()
+      while (true) {
+        const liveMembers = await this.inspectLiveTreeMembers(processTree)
+        if (liveMembers === null) return false
+        if (liveMembers.length === 0) return true
+        if (Date.now() >= deadline) return false
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
+
+    const pickKillTargets = (
+      liveMembers: ProcessIdentity[],
+    ): ProcessIdentity[] => {
+      const liveRoot = liveMembers.find(
+        member =>
+          member.pid === identity.pid &&
+          member.startedAtFileTime === identity.startedAtFileTime,
+      )
+      // /T on a live root covers its descendants. If the root already exited,
+      // target each still-live snapshotted descendant individually.
+      return liveRoot ? [liveRoot] : liveMembers
+    }
+    const signalTreeMembers = async (
+      liveMembers: ProcessIdentity[],
+      force: boolean,
+    ): Promise<CommandResult[]> =>
+      Promise.all(
+        pickKillTargets(liveMembers).map(member =>
+          this.runCommandWithDeadline('taskkill.exe', [
+            '/PID',
+            String(member.pid),
+            '/T',
+            ...(force ? ['/F'] : []),
+          ]),
+        ),
+      )
+
+    const graceful = await signalTreeMembers(liveBeforeKill, false)
+    let killed = await waitForTreeExit()
+    let forced: CommandResult[] = []
+    if (!killed) {
+      const liveAfterGrace = await this.inspectLiveTreeMembers(processTree)
+      if (liveAfterGrace !== null && liveAfterGrace.length > 0) {
+        forced = await signalTreeMembers(liveAfterGrace, true)
+        killed = await waitForTreeExit()
+      }
+    }
+
+    if (killed) {
+      pane.processIdentity = undefined
+      pane.pendingTree = undefined
+      pane.status = 'dead'
+      this.panes.delete(paneId)
+      await unlink(pane.pidFile).catch(() => {})
+    } else {
+      // Preserve identity and metadata so the user can retry Stop. A command
+      // exit code, timeout, or root disappearance alone is not tree proof.
+      pane.status = retryStatus
+    }
 
     logForDebugging(
-      `[WindowsTerminalBackend] killPane ${paneId} pid=${pid} code=${result.code}`,
+      `[WindowsTerminalBackend] killPane ${paneId} pid=${identity.pid} treeSize=${processTree.length} graceful=${graceful.map(result => result.code).join(',')} force=${forced.length > 0 ? forced.map(result => result.code).join(',') : 'not-needed'} confirmed=${killed}`,
     )
-    return result.code === 0
+    return killed
   }
 
   async hidePane(

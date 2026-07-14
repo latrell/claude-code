@@ -35,7 +35,7 @@ type AxiosRespLike = {
 }
 
 const mockAxiosRequest = mock(
-  async (): Promise<AxiosRespLike> => ({
+  async (_config?: unknown): Promise<AxiosRespLike> => ({
     status: 200,
     statusText: 'OK',
     headers: { 'content-type': 'application/json' },
@@ -219,6 +219,28 @@ describe('VaultHttpFetchTool: call() — secret leak prevention', () => {
     const json = JSON.stringify(result.data)
     expect(json).not.toContain('XSECRETXX')
     expect(json).not.toContain('Bearer XSECRETXX')
+  })
+
+  test('passes the tool abort signal to axios', async () => {
+    const { VaultHttpFetchTool } = await import('../VaultHttpFetchTool.js')
+    const abortController = new AbortController()
+    mockAxiosRequest.mockImplementation(async () => makeAxiosResp({}))
+
+    await VaultHttpFetchTool.call(
+      {
+        url: 'https://api.example.com',
+        method: 'GET',
+        vault_auth_key: 'gh',
+        auth_scheme: 'bearer',
+        reason: 'test cancellation propagation',
+      },
+      mockToolContext({ abortController }),
+    )
+
+    const config = mockAxiosRequest.mock.calls.at(-1)?.[0] as
+      | { signal?: AbortSignal }
+      | undefined
+    expect(config?.signal).toBe(abortController.signal)
   })
 
   test('AC14: secret echoed in 4xx response body is scrubbed', async () => {

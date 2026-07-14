@@ -291,7 +291,12 @@ export async function finalizePendingAsyncHooks(): Promise<void> {
         )
       } else {
         if (hook.shellCommand && hook.shellCommand.status !== 'killed') {
-          hook.shellCommand.kill()
+          const confirmed = await hook.shellCommand.kill()
+          if (!confirmed) {
+            throw new Error(
+              `Unable to confirm async hook process ${hook.processId} stopped`,
+            )
+          }
         }
         await finalizeHook(hook, 1, 'cancelled')
       }

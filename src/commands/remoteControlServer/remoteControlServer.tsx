@@ -15,6 +15,7 @@ import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { errorMessage } from '../../utils/errors.js';
 import { t, tf } from '../../i18n/t.js';
+import { terminateProcessTree } from '../../utils/processTermination.js';
 
 type ServerStatus = 'stopped' | 'starting' | 'running' | 'error';
 
@@ -108,18 +109,27 @@ function ServerManagementDialog({ onDone }: Props): React.ReactNode {
   const logPreview = daemonLogs.slice(-5);
 
   function handleStop(): void {
-    stopDaemon();
-    onDone(t('Remote Control Server stopped.'), { display: 'system' });
+    void stopDaemon().then(stopped => {
+      onDone(
+        stopped ? t('Remote Control Server stopped.') : t('Remote Control Server could not be confirmed as stopped.'),
+        { display: 'system' },
+      );
+    });
   }
 
   function handleRestart(): void {
-    stopDaemon();
-    try {
-      startDaemon();
-      onDone(t('Remote Control Server restarted.'), { display: 'system' });
-    } catch (err) {
-      onDone(tf('Failed to restart: {msg}', { msg: errorMessage(err) }), { display: 'system' });
-    }
+    void stopDaemon().then(stopped => {
+      if (!stopped) {
+        onDone(t('Remote Control Server could not be confirmed as stopped.'), { display: 'system' });
+        return;
+      }
+      try {
+        startDaemon();
+        onDone(t('Remote Control Server restarted.'), { display: 'system' });
+      } catch (err) {
+        onDone(tf('Failed to restart: {msg}', { msg: errorMessage(err) }), { display: 'system' });
+      }
+    });
   }
 
   function handleContinue(): void {
@@ -236,14 +246,18 @@ function startDaemon(): void {
   });
 
   child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
-    daemonProcess = null;
-    daemonStatus = 'stopped';
+    if (daemonProcess === child) {
+      daemonProcess = null;
+      daemonStatus = 'stopped';
+    }
     daemonLogs.push(`[daemon] exited (code=${code ?? 'unknown'}, signal=${signal})`);
   });
 
   child.on('error', (err: Error) => {
-    daemonProcess = null;
-    daemonStatus = 'error';
+    if (daemonProcess === child) {
+      daemonProcess = null;
+      daemonStatus = 'error';
+    }
     daemonLogs.push(`[daemon] error: ${err.message}`);
   });
 }
@@ -251,24 +265,23 @@ function startDaemon(): void {
 /**
  * Stop the daemon supervisor.
  */
-function stopDaemon(): void {
-  if (daemonProcess && !daemonProcess.killed) {
-    daemonProcess.kill('SIGTERM');
-    // Force kill after 10s grace
-    const pid = daemonProcess.pid;
-    setTimeout(() => {
-      try {
-        if (pid) process.kill(pid, 0); // Check if still alive
-        if (daemonProcess && !daemonProcess.killed) {
-          daemonProcess.kill('SIGKILL');
-        }
-      } catch {
-        // Process already gone
-      }
-    }, 10_000);
+async function stopDaemon(): Promise<boolean> {
+  const child = daemonProcess;
+  const pid = child?.pid;
+  if (!child || !pid || child.exitCode !== null || child.signalCode !== null) {
+    if (daemonProcess === child) daemonProcess = null;
+    daemonStatus = 'stopped';
+    return true;
   }
-  daemonProcess = null;
-  daemonStatus = 'stopped';
+
+  const stopped = await terminateProcessTree(pid, {
+    graceMs: 10_000,
+    forceWaitMs: 5_000,
+  });
+
+  if (stopped && daemonProcess === child) daemonProcess = null;
+  daemonStatus = stopped ? 'stopped' : 'error';
+  return stopped;
 }
 
 export async function call(

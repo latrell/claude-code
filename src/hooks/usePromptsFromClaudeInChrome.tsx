@@ -94,8 +94,14 @@ export function usePromptsFromClaudeInChrome(
     if (!chromeClient) return;
 
     const chromeMode = toolPermissionMode === 'bypassPermissions' ? 'skip_all_permission_checks' : 'ask';
+    const abortController = new AbortController();
 
-    void callIdeRpc('set_permission_mode', { mode: chromeMode }, chromeClient);
+    void callIdeRpc('set_permission_mode', { mode: chromeMode }, chromeClient, abortController.signal).catch(error => {
+      if (!abortController.signal.aborted) {
+        logError(error as Error);
+      }
+    });
+    return () => abortController.abort();
   }, [mcpClients, toolPermissionMode]);
 }
 

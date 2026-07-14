@@ -7,7 +7,6 @@ import {
   type BridgePermissionResponse,
   parseBridgePermissionResponse,
 } from '../bridge/bridgePermissionCallbacks.js';
-import { handleRemoteInterrupt } from '../bridge/remoteInterruptHandling.js';
 import { isTranscriptResetResultReady, shouldDeferBridgeResult } from '../bridge/bridgeResultScheduling.js';
 import { buildBridgeConnectUrl } from '../bridge/bridgeStatusUtil.js';
 import { extractInboundMessageFields } from '../bridge/inboundMessages.js';
@@ -74,7 +73,7 @@ const MAX_CONSECUTIVE_INIT_FAILURES = 3;
 export function useReplBridge(
   messages: Message[],
   setMessages: (action: React.SetStateAction<Message[]>) => void,
-  abortControllerRef: React.RefObject<AbortController | null>,
+  interruptActiveTurn: () => Promise<boolean>,
   commands: readonly Command[],
   mainLoopModel: string,
 ): { sendBridgeResult: () => void } {
@@ -157,6 +156,10 @@ export function useReplBridge(
       }
 
       let cancelled = false;
+      // Inbound messages may be awaiting attachment downloads when Stop
+      // arrives. Invalidating their generation prevents that older async
+      // continuation from enqueueing a fresh turn after cancellation ACK.
+      let inboundGeneration = 0;
       // Capture messages.length now so we don't re-send initial messages
       // through writeMessages after the bridge connects.
       const initialMessageCount = messages.length;
@@ -203,6 +206,7 @@ export function useReplBridge(
           // await — messages with attachments just land in the queue slightly
           // later, which is fine (web messages aren't rapid-fire).
           async function handleInboundMessage(msg: SDKMessage): Promise<void> {
+            const generation = inboundGeneration;
             try {
               const fields = extractInboundMessageFields(msg);
               if (!fields) return;
@@ -226,6 +230,7 @@ export function useReplBridge(
                 }
               }
               const content = await resolveAndPrepend(msg, sanitized as string | ContentBlockParam[]);
+              if (generation !== inboundGeneration) return;
 
               const preview = typeof content === 'string' ? content.slice(0, 80) : `[${content.length} content blocks]`;
               logForDebugging(`[bridge:repl] Injecting inbound user message: ${preview}${uuid ? ` uuid=${uuid}` : ''}`);
@@ -435,8 +440,9 @@ export function useReplBridge(
             tags: outboundOnly ? ['ccr-mirror'] : undefined,
             onInboundMessage: handleInboundMessage,
             onPermissionResponse: handlePermissionResponse,
-            onInterrupt() {
-              handleRemoteInterrupt(abortControllerRef.current);
+            async onInterrupt() {
+              ++inboundGeneration;
+              return interruptActiveTurn();
             },
             onSetModel(model) {
               const resolved = model === 'default' ? null : (model ?? null);
@@ -746,7 +752,7 @@ export function useReplBridge(
         transcriptResetPendingRef.current = false;
       };
     }
-  }, [replBridgeEnabled, replBridgeOutboundOnly, setAppState, setMessages, addNotification]);
+  }, [replBridgeEnabled, replBridgeOutboundOnly, setAppState, setMessages, addNotification, interruptActiveTurn]);
 
   // Write new messages as they appear.
   // Also re-runs when replBridgeConnected changes (bridge finishes init),

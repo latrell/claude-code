@@ -1021,6 +1021,9 @@ export function useEventProcessor() {
         }
         break;
       case 'interrupt':
+        // Outbound interrupt events are requests. Only render the inbound
+        // acknowledgement emitted after the worker confirms cancellation.
+        if (direction === 'outbound') return;
         removeLoading();
         setMessages(prev => [...prev, { kind: 'system', content: 'Session interrupted' }]);
         break;

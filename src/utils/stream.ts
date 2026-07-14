@@ -25,11 +25,11 @@ export class Stream<T> implements AsyncIterator<T> {
         value: this.queue.shift()!,
       })
     }
-    if (this.isDone) {
-      return Promise.resolve({ done: true, value: undefined })
-    }
     if (this.hasError) {
       return Promise.reject(this.hasError)
+    }
+    if (this.isDone) {
+      return Promise.resolve({ done: true, value: undefined })
     }
     return new Promise<IteratorResult<T>>((resolve, reject) => {
       this.readResolve = resolve
@@ -38,6 +38,9 @@ export class Stream<T> implements AsyncIterator<T> {
   }
 
   enqueue(value: T): void {
+    if (this.isDone || this.hasError) {
+      return
+    }
     if (this.readResolve) {
       const resolve = this.readResolve
       this.readResolve = undefined
@@ -59,6 +62,9 @@ export class Stream<T> implements AsyncIterator<T> {
   }
 
   error(error: unknown) {
+    if (this.isDone || this.hasError) {
+      return
+    }
     this.hasError = error
     if (this.readReject) {
       const reject = this.readReject
@@ -69,8 +75,18 @@ export class Stream<T> implements AsyncIterator<T> {
   }
 
   return(): Promise<IteratorResult<T, unknown>> {
+    if (this.isDone) {
+      return Promise.resolve({ done: true, value: undefined })
+    }
     this.isDone = true
-    if (this.returned) {
+    this.queue.length = 0
+    if (this.readResolve) {
+      const resolve = this.readResolve
+      this.readResolve = undefined
+      this.readReject = undefined
+      resolve({ done: true, value: undefined })
+    }
+    if (this.returned && !this.hasError) {
       this.returned()
     }
     return Promise.resolve({ done: true, value: undefined })

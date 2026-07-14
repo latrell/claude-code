@@ -123,9 +123,11 @@ export function useRemoteSession({
   const isCompactingRef = useRef(false)
 
   const managerRef = useRef<RemoteSessionManager | null>(null)
+  const cancellationPendingRef = useRef(false)
 
   // Track whether we've already updated the session title (for no-initial-prompt sessions)
   const hasUpdatedTitleRef = useRef(false)
+  const titleAbortControllerRef = useRef<AbortController | null>(null)
 
   // UUIDs of user messages we POSTed locally — the WS echoes them back and
   // we must filter them out when convertUserTextMessages is on, or the viewer
@@ -152,6 +154,10 @@ export function useRemoteSession({
     if (!config) {
       return
     }
+
+    titleAbortControllerRef.current?.abort('remote-session-changed')
+    titleAbortControllerRef.current = null
+    hasUpdatedTitleRef.current = false
 
     logForDebugging(
       `[useRemoteSession] Initializing for session ${config.sessionId}`,
@@ -446,7 +452,7 @@ export function useRemoteSession({
       onDisconnected: () => {
         logForDebugging('[useRemoteSession] Disconnected')
         setConnStatus('disconnected')
-        setIsLoading(false)
+        if (!cancellationPendingRef.current) setIsLoading(false)
         runningTaskIdsRef.current.clear()
         writeTaskCount()
         setInProgressToolUseIDs?.(prev => (prev.size > 0 ? new Set() : prev))
@@ -461,6 +467,8 @@ export function useRemoteSession({
 
     return () => {
       logForDebugging('[useRemoteSession] Cleanup - disconnecting')
+      titleAbortControllerRef.current?.abort('remote-session-disconnected')
+      titleAbortControllerRef.current = null
       // Clear any pending timeout
       if (responseTimeoutRef.current) {
         clearTimeout(responseTimeoutRef.current)
@@ -531,17 +539,24 @@ export function useRemoteSession({
             ? content
             : extractTextContent(content, ' ')
         if (description) {
+          const titleAbortController = new AbortController()
+          titleAbortControllerRef.current = titleAbortController
           // generateSessionTitle never rejects (wraps body in try/catch,
           // returns null on failure), so no .catch needed on this chain.
-          void generateSessionTitle(
-            description,
-            new AbortController().signal,
-          ).then(title => {
-            void updateSessionTitle(
-              sessionId,
-              title ?? truncateToWidth(description, 75),
-            )
-          })
+          void generateSessionTitle(description, titleAbortController.signal)
+            .then(title => {
+              if (titleAbortController.signal.aborted) return
+              void updateSessionTitle(
+                sessionId,
+                title ?? truncateToWidth(description, 75),
+                titleAbortController.signal,
+              )
+            })
+            .finally(() => {
+              if (titleAbortControllerRef.current === titleAbortController) {
+                titleAbortControllerRef.current = null
+              }
+            })
         }
       }
 
@@ -590,11 +605,48 @@ export function useRemoteSession({
     // Send interrupt signal to CCR. Skip in viewerOnly mode — Ctrl+C
     // should never interrupt the remote agent.
     if (!config?.viewerOnly) {
-      managerRef.current?.cancelSession()
+      // REPL resets its aggregate loading flags before invoking each concrete
+      // canceller. Re-assert loading here and clear it only after the remote
+      // worker acknowledges the interrupt; otherwise Escape merely makes the
+      // local UI look idle while inference can still be running remotely.
+      setIsLoading(true)
+      cancellationPendingRef.current = true
+      const manager = managerRef.current
+      if (manager) {
+        void manager.cancelSession().then(cancelled => {
+          if (managerRef.current !== manager) return
+          if (cancelled) {
+            cancellationPendingRef.current = false
+            setIsLoading(false)
+            return
+          }
+          setMessages(prev => [
+            ...prev,
+            createSystemMessage(
+              t('Remote request could not be confirmed as stopped.'),
+              'warning',
+            ),
+          ])
+        })
+      } else {
+        setMessages(prev => [
+          ...prev,
+          createSystemMessage(
+            t('Remote request could not be confirmed as stopped.'),
+            'warning',
+          ),
+        ])
+      }
+    } else {
+      setIsLoading(false)
     }
 
-    setIsLoading(false)
-  }, [config, setIsLoading])
+    if (titleAbortControllerRef.current) {
+      titleAbortControllerRef.current.abort('user-cancel')
+      titleAbortControllerRef.current = null
+      hasUpdatedTitleRef.current = false
+    }
+  }, [config, setIsLoading, setMessages])
 
   // Disconnect from the session
   const disconnect = useCallback(() => {
@@ -603,6 +655,8 @@ export function useRemoteSession({
       clearTimeout(responseTimeoutRef.current)
       responseTimeoutRef.current = null
     }
+    titleAbortControllerRef.current?.abort('remote-session-disconnected')
+    titleAbortControllerRef.current = null
     managerRef.current?.disconnect()
     managerRef.current = null
   }, [])

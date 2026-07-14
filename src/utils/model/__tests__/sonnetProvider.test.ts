@@ -226,6 +226,7 @@ describe('sonnet provider config', () => {
       env: { OPENAI_API_KEY: 'conn-key', OPENAI_BASE_URL: 'https://conn.test' },
       model: 'deepseek-v4-pro',
       thinkingEffort: 'high',
+      thinkingEffortTransport: 'passthrough',
       credentialScope: SONNET_CREDENTIAL_SCOPE,
     })
     try {
@@ -236,6 +237,7 @@ describe('sonnet provider config', () => {
       expect(config?.env?.OPENAI_BASE_URL).toBe('https://conn.test')
       expect(config?.env?.OPENAI_MODEL).toBe('deepseek-v4-pro')
       expect(config?.thinkingEffort).toBe('high')
+      expect(config?.thinkingEffortTransport).toBe('passthrough')
     } finally {
       setSonnetProviderConfigOverride(undefined)
     }

@@ -8,6 +8,7 @@ import {
   type WorkflowHostContext,
   type WorkflowInput,
   type WorkflowPorts,
+  WorkflowAbortedError,
 } from '@claude-code-best/workflow-engine'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -65,7 +66,8 @@ export type WorkflowService = {
     toolUseContext: ToolUseContext,
     canUseTool: CanUseToolFn,
   ): Promise<{ runId: string; scriptPath?: string }>
-  kill(runId: string): void
+  /** Abort and resolve only after the detached runner has settled and task state is killed. */
+  kill(runId: string): Promise<boolean>
   /**
    * Aborts a single agent (does not affect other agents in the same run; workflow keeps running).
    * Returns whether the agent was hit (false = agent already finished/does not exist). An aborted agent returns dead → null.
@@ -75,7 +77,7 @@ export type WorkflowService = {
    * Cleanup on process exit / config unload: kill all running runs to avoid orphan tasks.
    * Completed/failed runs are unaffected. Idempotent — safe to call multiple times.
    */
-  shutdown(): void
+  shutdown(): Promise<void>
   listRuns(): RunProgress[]
   getRun(runId: string): RunProgress | undefined
   /**
@@ -186,7 +188,14 @@ export function makeService(
     ports,
 
     async launch(input, toolUseContext, canUseTool) {
+      const callerSignal = toolUseContext.abortController?.signal
+      if (callerSignal?.aborted) {
+        throw new WorkflowAbortedError()
+      }
       const { script, workflowFile, workflowName } = await resolveSource(input)
+      if (callerSignal?.aborted) {
+        throw new WorkflowAbortedError()
+      }
       try {
         parseScript(script)
       } catch (e) {
@@ -204,6 +213,15 @@ export function makeService(
         },
         host.handle,
       )
+      const cancelBeforeLaunch = async (): Promise<never> => {
+        const settlement = ports.taskRegistrar.kill(runId)
+        ports.taskRegistrar.finishKill?.(runId)
+        await settlement
+        throw new WorkflowAbortedError()
+      }
+      if (callerSignal?.aborted || signal.aborted) {
+        return await cancelBeforeLaunch()
+      }
 
       // Inline entry: persist script to the run directory (symmetric with WorkflowTool), return a reusable path.
       // Degrade on write failure (log), do not block the run (script is already in memory).
@@ -220,6 +238,9 @@ export function makeService(
             `workflow inline script persist failed: ${(e as Error).message}`,
           )
         }
+      }
+      if (callerSignal?.aborted || signal.aborted) {
+        return await cancelBeforeLaunch()
       }
 
       // detached: do not await, let the caller get runId immediately; on completion route to the registrar.
@@ -244,7 +265,11 @@ export function makeService(
           } else if (result.status === 'failed') {
             ports.taskRegistrar.fail(runId, result.error ?? 'failed')
           } else {
-            ports.taskRegistrar.kill(runId)
+            if (ports.taskRegistrar.finishKill) {
+              ports.taskRegistrar.finishKill(runId)
+            } else {
+              void ports.taskRegistrar.kill(runId)
+            }
           }
         })
         .catch(e => ports.taskRegistrar.fail(runId, (e as Error).message))
@@ -256,28 +281,33 @@ export function makeService(
       }
     },
 
-    kill(runId) {
-      ports.taskRegistrar.kill(runId)
+    async kill(runId) {
+      const killed = await ports.taskRegistrar.kill(runId)
+      return killed !== false
     },
     killAgent(runId, agentId) {
       return ports.taskRegistrar.killAgent?.(runId, agentId) ?? false
     },
 
-    shutdown() {
+    async shutdown() {
       // Only kill running: for completed/failed runs the taskRegistrar has already reclaimed the binding, kill is a no-op.
       // taskRegistrar.kill is a safe no-op for unknown runIds, hence idempotent — multiple shutdowns do not throw repeatedly.
       // Each kill is wrapped in its own try/catch: kill internally routes through setAppState, and process-exit phase triggers a React re-render
       // which may throw (render already unmounted, etc.); a single failure should not block cleanup of other runs.
+      const kills: Promise<void>[] = []
       for (const run of store.list()) {
         if (run.status !== 'running') continue
-        try {
-          ports.taskRegistrar.kill(run.runId)
-        } catch (e) {
-          logForDebugging(
-            `workflow shutdown: kill ${run.runId} failed: ${(e as Error).message}`,
-          )
-        }
+        kills.push(
+          Promise.resolve(ports.taskRegistrar.kill(run.runId))
+            .then(() => {})
+            .catch(e => {
+              logForDebugging(
+                `workflow shutdown: kill ${run.runId} failed: ${(e as Error).message}`,
+              )
+            }),
+        )
       }
+      await Promise.all(kills)
     },
 
     listRuns: () => store.list(),

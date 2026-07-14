@@ -4,8 +4,9 @@ import * as acp from '@agentclientprotocol/sdk'
 import type { WSContext } from 'hono/ws'
 import { tf } from '../../../../src/i18n/t.js'
 import { send, sendJsonRpcError } from './client-send.js'
-import { cancelPendingPermissions, createClient } from './acp-client.js'
+import { createClient } from './acp-client.js'
 import { buildAgentEnv } from './permission-mode.js'
+import { disconnectAgent, terminateAgentProcess } from './process-lifecycle.js'
 import { clients, getAgentConfig, logAgent } from './runtime-state.js'
 import {
   JSONRPC_INTERNAL_ERROR,
@@ -44,19 +45,23 @@ export async function handleConnect(ws: WSContext): Promise<void> {
 
   // Kill existing process if any (only if not healthy)
   if (state.process) {
-    cancelPendingPermissions(state)
-    state.process.kill()
-    state.process = null
-    state.connection = null
+    const stopped = await terminateAgentProcess(state)
+    if (!stopped) {
+      throw new Error('Failed to stop the previous agent process tree')
+    }
   }
 
+  let agentProcess: ReturnType<typeof spawn> | null = null
   try {
     logAgent.info({ command: AGENT_COMMAND, args: AGENT_ARGS }, 'spawning')
 
-    const agentProcess = spawn(AGENT_COMMAND, AGENT_ARGS, {
+    agentProcess = spawn(AGENT_COMMAND, AGENT_ARGS, {
       cwd: AGENT_CWD,
       stdio: ['pipe', 'pipe', 'inherit'],
       env: buildAgentEnv(),
+      // Establish a process group on POSIX so cancellation includes tools and
+      // shell grandchildren, not only the ACP wrapper process.
+      detached: process.platform !== 'win32',
     })
 
     state.process = agentProcess
@@ -64,11 +69,19 @@ export async function handleConnect(ws: WSContext): Promise<void> {
     // Clean up state when agent process exits unexpectedly
     agentProcess.on('exit', code => {
       logAgent.info({ exitCode: code }, 'agent process exited')
-      // Only clear if this is still the current process
+      // The wrapper may exit before a spawned tool/HTTP worker. Keep the PID
+      // long enough to verify the whole process group is gone.
       if (state.process === agentProcess) {
-        state.process = null
-        state.connection = null
-        state.sessionId = null
+        void terminateAgentProcess(state).then(stopped => {
+          if (!stopped) {
+            logAgent.error(
+              { pid: agentProcess?.pid },
+              'agent exited but descendants are still alive',
+            )
+            return
+          }
+          send(ws, 'status', { connected: false })
+        })
       }
     })
 
@@ -126,13 +139,35 @@ export async function handleConnect(ws: WSContext): Promise<void> {
       protocolVersion: initResult.protocolVersion,
     })
 
-    connection.closed.then(() => {
-      logAgent.info('connection closed')
-      state.connection = null
-      state.sessionId = null
-      send(ws, 'status', { connected: false })
-    })
+    void connection.closed
+      .catch(error => {
+        logAgent.warn(
+          { error: (error as Error).message },
+          'connection closed with an error',
+        )
+      })
+      .then(async () => {
+        logAgent.info('connection closed')
+        if (state.connection === connection) {
+          state.connection = null
+          state.sessionId = null
+          state.activePrompt = null
+          const stopped = await terminateAgentProcess(state)
+          if (stopped) {
+            send(ws, 'status', { connected: false })
+          }
+        }
+      })
   } catch (error) {
+    if (agentProcess && state.process === agentProcess) {
+      const stopped = await terminateAgentProcess(state)
+      if (!stopped) {
+        logAgent.error(
+          { pid: agentProcess.pid },
+          'connect cleanup could not stop agent process tree',
+        )
+      }
+    }
     logAgent.error({ error: (error as Error).message }, 'connect failed')
     sendJsonRpcError(
       ws,
@@ -144,16 +179,14 @@ export async function handleConnect(ws: WSContext): Promise<void> {
   }
 }
 
-export function handleDisconnect(ws: WSContext): void {
+export async function handleDisconnect(ws: WSContext): Promise<void> {
   const state = clients.get(ws)
   if (!state) return
 
-  if (state.process) {
-    state.process.kill()
-    state.process = null
+  const stopped = await disconnectAgent(state)
+  if (!stopped) {
+    throw new Error('Failed to confirm agent process tree stopped')
   }
-  state.connection = null
-  state.sessionId = null
 
   send(ws, 'status', { connected: false })
 }

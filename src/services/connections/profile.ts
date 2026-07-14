@@ -11,8 +11,14 @@
 
 import { t } from '../../i18n/t.js'
 import { formatContextWindow } from './contextWindows.js'
+import { getConnectionReasoningEffortPreview } from './effortTransport.js'
 import { connectionModelDisplayName } from './modelCatalog.js'
-import type { Connection, ConnectionKind, ThinkingEffort } from './types.js'
+import type {
+  Connection,
+  ConnectionKind,
+  ThinkingEffort,
+  ThinkingEffortTransport,
+} from './types.js'
 
 /**
  * Kinds that cannot run without an explicit model id: key-based third-party
@@ -66,6 +72,20 @@ export function withThinkingEffort(
   return next
 }
 
+/** Set or clear the OpenAI-compatible effort wire-encoding policy. */
+export function withThinkingEffortTransport(
+  connection: Connection,
+  transport: ThinkingEffortTransport | undefined,
+): Connection {
+  const next: Connection = { ...connection }
+  if (transport === undefined) {
+    delete next.thinkingEffortTransport
+  } else {
+    next.thinkingEffortTransport = transport
+  }
+  return next
+}
+
 /** Set or clear (undefined) the connection-level context window. */
 export function withContextWindow(
   connection: Connection,
@@ -84,7 +104,8 @@ export function withContextWindow(
  * Copy a connection into a new profile: credentials (apiKey / baseUrl /
  * machineId / credentialRef), catalogs (models / tierModels / presetId /
  * modelContextWindows) and profile fields (model / thinkingEffort /
- * contextWindow) are carried over; createdAt is reset and lastUsedAt
+ * thinkingEffortTransport / contextWindow) are carried over; createdAt is
+ * reset and lastUsedAt
  * dropped. This is the "same deepseek key, two profiles" entry point.
  */
 export function duplicateConnection(
@@ -110,12 +131,21 @@ export function connectionProfileSummary(connection: Connection): string {
       : t('provider default'),
   ]
   if (connection.thinkingEffort) {
-    parts.push(`effort ${connection.thinkingEffort}`)
+    parts.push(`effort ${connectionEffortSummary(connection)}`)
   }
   if (connection.contextWindow) {
     parts.push(`ctx ${formatContextWindow(connection.contextWindow)}`)
   }
   return parts.join(' · ')
+}
+
+/** Profile effort plus its request value when the transport changes it. */
+export function connectionEffortSummary(connection: Connection): string {
+  const effort = connection.thinkingEffort
+  if (!effort) return t('provider default')
+  if (connection.kind !== 'openai-compat' || effort === 'off') return effort
+  const actual = getConnectionReasoningEffortPreview(connection)
+  return actual === undefined ? effort : `${effort} → ${actual}`
 }
 
 function comparableLabel(value: string): string {

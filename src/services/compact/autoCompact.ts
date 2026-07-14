@@ -279,6 +279,11 @@ export async function autoCompactIfNeeded(
   compactionResult?: CompactionResult
   consecutiveFailures?: number
 }> {
+  const abortSignal = toolUseContext.abortController.signal
+  if (abortSignal.aborted) {
+    return { wasCompacted: false }
+  }
+
   if (isEnvTruthy(process.env.DISABLE_COMPACT)) {
     return { wasCompacted: false }
   }
@@ -301,7 +306,7 @@ export async function autoCompactIfNeeded(
     snipTokensFreed,
   )
 
-  if (!shouldCompact) {
+  if (abortSignal.aborted || !shouldCompact) {
     return { wasCompacted: false }
   }
 
@@ -318,7 +323,11 @@ export async function autoCompactIfNeeded(
     messages,
     toolUseContext.agentId,
     recompactionInfo.autoCompactThreshold,
+    abortSignal,
   )
+  if (abortSignal.aborted) {
+    return { wasCompacted: false }
+  }
   if (sessionMemoryResult) {
     // Reset lastSummarizedMessageId since session memory compaction prunes messages
     // and the old message UUID will no longer exist after the REPL replaces messages

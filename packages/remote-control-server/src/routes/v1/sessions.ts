@@ -5,11 +5,14 @@ import {
   getSession,
   updateSessionTitle,
   archiveSession,
+  isSessionClosedStatus,
   resolveExistingSessionId,
 } from '../../services/session'
 import { createWorkItem } from '../../services/work-dispatch'
 import { apiKeyAuth, acceptCliHeaders } from '../../auth/middleware'
 import { publishSessionEvent } from '../../services/transport'
+import { requestSessionInterrupt } from '../../services/session-interrupt'
+import { hasActiveWorkerTransport } from '../../transport/worker-transports'
 
 const app = new Hono()
 
@@ -83,13 +86,51 @@ app.post('/:id/archive', acceptCliHeaders, apiKeyAuth, async c => {
     )
   }
 
-  try {
-    archiveSession(sessionId)
-  } catch {
-    return c.json({ status: 'ok' }, 409)
+  let interruptRequestId: string | undefined
+  if (hasActiveWorkerTransport(sessionId)) {
+    const interrupt = await requestSessionInterrupt(sessionId)
+    if (!interrupt.ok) {
+      const currentSession = getSession(sessionId)
+      if (currentSession && isSessionClosedStatus(currentSession.status)) {
+        return c.json({ status: 'ok' }, 200)
+      }
+      return c.json(
+        {
+          error: {
+            type: 'interrupt_not_acknowledged',
+            reason: interrupt.reason,
+            message: interrupt.message,
+          },
+        },
+        503,
+      )
+    }
+    interruptRequestId = interrupt.requestId
+  } else if (
+    !isSessionClosedStatus(session.status) &&
+    session.status !== 'idle'
+  ) {
+    return c.json(
+      {
+        error: {
+          type: 'interrupt_not_acknowledged',
+          reason: 'worker_unavailable',
+          message:
+            'The session is active but no live transport is available to receive an interrupt',
+        },
+      },
+      503,
+    )
   }
 
-  return c.json({ status: 'ok' }, 200)
+  archiveSession(sessionId)
+  return c.json(
+    {
+      status: 'ok',
+      ...(interruptRequestId ? { request_id: interruptRequestId } : {}),
+    },
+    200,
+  )
 })
 
 /** POST /v1/sessions/:id/events — Send event to session */

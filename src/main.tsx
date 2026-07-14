@@ -809,9 +809,9 @@ export async function main() {
     // 杀掉所有 running workflow，避免孤儿 task 留在 AppState 里
     try {
       const { peekWorkflowService } = require('./workflow/service.js') as {
-        peekWorkflowService: () => { shutdown: () => void } | null;
+        peekWorkflowService: () => { shutdown: () => Promise<void> } | null;
       };
-      peekWorkflowService()?.shutdown();
+      void peekWorkflowService()?.shutdown();
     } catch {
       // workflow 未启用或已卸载——忽略
     }

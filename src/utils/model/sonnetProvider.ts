@@ -1,8 +1,9 @@
 import {
   asThinkingEffort,
   getConnectionThinkingEffort,
+  getConnectionThinkingEffortTransport,
 } from '../../services/connections/thinkingEffort.js'
-import type { ThinkingEffort } from '../../services/connections/types.js'
+import { asThinkingEffortTransport } from '../../services/connections/effortTransport.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import {
@@ -235,6 +236,12 @@ export function getSonnetProviderRuntimeConfig(
         'thinkingEffort'
       ],
     ) ?? getConnectionThinkingEffort('sonnet')
+  const thinkingEffortTransport =
+    asThinkingEffortTransport(
+      (sonnetProvider as Record<string, unknown> | undefined)?.[
+        'thinkingEffortTransport'
+      ],
+    ) ?? getConnectionThinkingEffortTransport('sonnet')
 
   return {
     provider,
@@ -243,6 +250,7 @@ export function getSonnetProviderRuntimeConfig(
     model,
     credentialScope: sonnetProvider?.credentialScope ?? SONNET_CREDENTIAL_SCOPE,
     ...(thinkingEffort && { thinkingEffort }),
+    ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }
 }
 

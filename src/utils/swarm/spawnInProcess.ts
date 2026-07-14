@@ -41,6 +41,11 @@ import {
   registerAgent as registerPerfettoAgent,
   unregisterAgent as unregisterPerfettoAgent,
 } from '../telemetry/perfettoTracing.js'
+import {
+  cancelInProcessTeammateRunnerReservation,
+  reserveInProcessTeammateRunner,
+  waitForInProcessTeammateRunner,
+} from './inProcessLifecycle.js'
 import { removeMemberByAgentId } from './teamHelpers.js'
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
@@ -112,6 +117,7 @@ export async function spawnInProcessTeammate(
   // Generate deterministic agent ID
   const agentId = formatAgentId(name, teamName)
   const taskId = generateTaskId('in_process_teammate')
+  let runnerReserved = false
 
   logForDebugging(
     `[spawnInProcessTeammate] Spawning ${agentId} (taskId: ${taskId})`,
@@ -183,10 +189,15 @@ export async function spawnInProcessTeammate(
     // Register cleanup handler for graceful shutdown
     const unregisterCleanup = registerCleanup(async () => {
       logForDebugging(`[spawnInProcessTeammate] Cleanup called for ${agentId}`)
-      abortController.abort()
-      // Task state will be updated by the execution loop when it detects abort
+      await killInProcessTeammate(taskId, setAppState)
     })
     taskState.unregisterCleanup = unregisterCleanup
+
+    // Reserve runner settlement before making the task visible. A synchronous
+    // Stop triggered during the spawn/start handoff must wait for the late
+    // runner to attach and unwind instead of publishing a false killed state.
+    reserveInProcessTeammateRunner(taskId)
+    runnerReserved = true
 
     // Register task in AppState
     registerTask(taskState, setAppState)
@@ -203,6 +214,9 @@ export async function spawnInProcessTeammate(
       teammateContext,
     }
   } catch (error) {
+    if (runnerReserved) {
+      cancelInProcessTeammateRunnerReservation(taskId)
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error during spawn'
     logForDebugging(
@@ -223,17 +237,93 @@ export async function spawnInProcessTeammate(
  *
  * @param taskId - Task ID of the teammate to kill
  * @param setAppState - AppState setter
- * @returns true if killed successfully
+ * @returns true only after the runner has exited and the task is marked killed
  */
-export function killInProcessTeammate(
+export async function killInProcessTeammate(
   taskId: string,
   setAppState: SetAppStateFn,
-): boolean {
+): Promise<boolean> {
+  let stopRequested = false
+
+  setAppState((prev: AppState) => {
+    const task = prev.tasks[taskId]
+    if (
+      !task ||
+      task.type !== 'in_process_teammate' ||
+      task.status !== 'running'
+    ) {
+      return prev
+    }
+
+    stopRequested = true
+    const stopReason = new Error(`In-process teammate ${taskId} was stopped`)
+
+    // Abort both controllers explicitly. The per-turn controller is linked to
+    // the lifecycle controller, but aborting it first guarantees the active
+    // HTTP/SSE request observes cancellation even if lifecycle propagation is
+    // delayed by a custom signal implementation.
+    task.currentWorkAbortController?.abort(stopReason)
+    task.abortController?.abort(stopReason)
+
+    return {
+      ...prev,
+      tasks: {
+        ...prev.tasks,
+        [taskId]: {
+          ...task,
+          stopRequested: true,
+        },
+      },
+    }
+  })
+
+  if (!stopRequested) {
+    return false
+  }
+
+  // Do not advertise a terminal state while runAgent/compaction may still be
+  // unwinding. This settlement represents the complete runner, not merely UI
+  // stream consumption.
+  const runnerSettled = await waitForInProcessTeammateRunner(taskId)
+  if (!runnerSettled) {
+    // An aborted controller is only cancellation intent. Without a runner
+    // reservation/settlement there is no proof execution stopped, so keep the
+    // task tracked and retryable instead of falsely publishing `killed`.
+    return false
+  }
+
+  const finalized = await finalizeKilledInProcessTeammate(taskId, setAppState)
+  if (finalized) {
+    return true
+  }
+
+  // Concurrent stop callers share the same runner settlement. The first one
+  // performs finalization; later callers still succeed once they observe the
+  // confirmed killed state.
+  let alreadyKilled = false
+  setAppState(prev => {
+    alreadyKilled = prev.tasks[taskId]?.status === 'killed'
+    return prev
+  })
+  return alreadyKilled
+}
+
+/**
+ * Commits the killed terminal state after execution has stopped. The runner
+ * also uses this for lifecycle aborts that did not originate from an explicit
+ * task Stop request.
+ */
+export async function finalizeKilledInProcessTeammate(
+  taskId: string,
+  setAppState: SetAppStateFn,
+): Promise<boolean> {
   let killed = false
   let teamName: string | null = null
   let agentId: string | null = null
   let toolUseId: string | undefined
   let description: string | undefined
+  let unregisterCleanup: (() => void) | undefined
+  let idleCallbacks: Array<() => void> = []
   let pendingAutonomyRuns: Array<{ runId: string; rootDir?: string }> = []
 
   setAppState((prev: AppState) => {
@@ -244,7 +334,10 @@ export function killInProcessTeammate(
 
     const teammateTask = task as InProcessTeammateTaskState
 
-    if (teammateTask.status !== 'running') {
+    if (
+      teammateTask.status !== 'running' ||
+      !teammateTask.abortController?.signal.aborted
+    ) {
       return prev
     }
 
@@ -253,6 +346,8 @@ export function killInProcessTeammate(
     agentId = teammateTask.identity.agentId
     toolUseId = teammateTask.toolUseId
     description = teammateTask.description
+    unregisterCleanup = teammateTask.unregisterCleanup
+    idleCallbacks = teammateTask.onIdleCallbacks ?? []
 
     // Capture pending autonomy run IDs before clearing them
     pendingAutonomyRuns = teammateTask.pendingUserMessages.flatMap(message =>
@@ -268,17 +363,9 @@ export function killInProcessTeammate(
         : [],
     )
 
-    // Abort the controller to stop execution
-    teammateTask.abortController?.abort()
-
-    // Call cleanup handler
-    teammateTask.unregisterCleanup?.()
-
-    // Update task state and remove from teamContext.teammates
+    // Execution has already settled (or this is the runner's own finalizer).
+    // Only now expose the terminal state and release runtime references.
     killed = true
-
-    // Call pending idle callbacks to unblock any waiters (e.g., engine.waitForIdle)
-    teammateTask.onIdleCallbacks?.forEach(cb => cb())
 
     // Remove from teamContext.teammates using the agentId
     let updatedTeamContext = prev.teamContext
@@ -309,45 +396,64 @@ export function killInProcessTeammate(
           abortController: undefined,
           unregisterCleanup: undefined,
           currentWorkAbortController: undefined,
+          stopRequested: undefined,
         },
       },
     }
   })
+
+  if (!killed) {
+    return false
+  }
+
+  unregisterCleanup?.()
+  idleCallbacks.forEach(callback => callback())
 
   // Remove from team file (outside state updater to avoid file I/O in callback)
   if (teamName && agentId) {
     removeMemberByAgentId(teamName, agentId)
   }
 
-  if (killed) {
-    for (const run of pendingAutonomyRuns) {
-      void markAutonomyRunFailed(
+  const autonomyResults = await Promise.allSettled(
+    pendingAutonomyRuns.map(run =>
+      markAutonomyRunFailed(
         run.runId,
         `Teammate ${agentId ?? taskId} was stopped before it could consume the queued autonomy prompt.`,
         run.rootDir,
+      ),
+    ),
+  )
+  for (const result of autonomyResults) {
+    if (result.status === 'rejected') {
+      logForDebugging(
+        `[killInProcessTeammate] Failed to finalize queued autonomy run for ${taskId}: ${String(result.reason)}`,
       )
     }
-    void evictTaskOutput(taskId)
-    // notified:true was pre-set so no XML notification fires; close the SDK
-    // task_started bookend directly. The in-process runner's own
-    // completion/failure emit guards on status==='running' so it won't
-    // double-emit after seeing status:killed.
-    emitTaskTerminatedSdk(taskId, 'stopped', {
-      toolUseId,
-      summary: description,
-    })
-    setTimeout(
-      evictTerminalTask.bind(null, taskId, setAppState),
-      STOPPED_DISPLAY_MS,
+  }
+  try {
+    await evictTaskOutput(taskId)
+  } catch (error) {
+    logForDebugging(
+      `[killInProcessTeammate] Failed to flush task output for ${taskId}: ${String(error)}`,
     )
   }
+  // notified:true was pre-set so no XML notification fires; close the SDK
+  // task_started bookend directly.
+  emitTaskTerminatedSdk(taskId, 'stopped', {
+    toolUseId,
+    summary: description,
+  })
+  setTimeout(
+    evictTerminalTask.bind(null, taskId, setAppState),
+    STOPPED_DISPLAY_MS,
+  )
 
   // Release perfetto agent registry entry
   if (agentId) {
     unregisterPerfettoAgent(agentId)
   }
 
-  return killed
+  return true
 }
 
 /**
@@ -355,10 +461,10 @@ export function killInProcessTeammate(
  * Used by team-level UI/actions where the stable identifier is
  * "name@team", not the AppState task id.
  */
-export function killInProcessTeammateByAgentId(
+export async function killInProcessTeammateByAgentId(
   agentIdToKill: string,
   setAppState: SetAppStateFn,
-): boolean {
+): Promise<boolean> {
   let taskIdToKill: string | undefined
 
   setAppState((prev: AppState) => {

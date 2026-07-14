@@ -7,6 +7,14 @@ type MonitorState = {
   prNumber: number
   abortController: AbortController
   startedAt: number
+  /** Stable identity retained when taskId changes after framework registration. */
+  launchToken?: string
+  /** Resolves only after teleport can no longer create/register a late task. */
+  launchSettled?: Promise<void>
+  sessionId?: string
+  stopping?: boolean
+  cleanup?: () => void
+  stopTask?: () => Promise<void>
 }
 
 let active: MonitorState | null = null
@@ -43,12 +51,14 @@ export function setActiveMonitor(state: MonitorState): void {
 
 /**
  * Releases the active monitor. If `taskId` is provided, only releases when the
- * active monitor's taskId matches — prevents a late-arriving cleanup from
- * clobbering a freshly-acquired lock owned by a different task.
+ * active monitor's taskId or stable launchToken matches — prevents a
+ * late-arriving cleanup from clobbering a freshly-acquired lock owned by a
+ * different launch, including while taskId is swapped during registration.
  */
 export function clearActiveMonitor(taskId?: string): void {
   if (!active) return
-  if (taskId && active.taskId !== taskId) return
+  if (taskId && active.taskId !== taskId && active.launchToken !== taskId)
+    return
   active.abortController.abort()
   active = null
 }

@@ -43,12 +43,14 @@ import { logError } from './utils/log.js'
 import {
   mapThinkingEffortToEffortValue,
   resolveQueryThinkingEffort,
+  resolveQueryThinkingEffortTransport,
 } from './services/connections/thinkingEffort.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
+import { isAbortError } from './utils/errors.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -104,7 +106,7 @@ import {
 import { ESCALATED_MAX_TOKENS } from './utils/context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { SLEEP_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/SleepTool/prompt.js'
-import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
+import { PostSamplingHookLifecycle } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
 import type { QuerySource } from './constants/querySource.js'
 import type { QueuedCommand } from './types/textInputTypes.js'
@@ -115,6 +117,7 @@ import { runTools } from './services/tools/toolOrchestration.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
+import { cancelPromptSuggestionForParent } from './services/PromptSuggestion/promptSuggestion.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
@@ -319,6 +322,10 @@ export async function* query(
       }
     : params
 
+  const postSamplingHooks = new PostSamplingHookLifecycle(
+    paramsWithTrace.toolUseContext.abortController,
+  )
+
   let terminal: Terminal | undefined
   let didThrow = false
   let thrownError: unknown
@@ -327,12 +334,36 @@ export async function* query(
       paramsWithTrace,
       consumedCommandUuids,
       consumedAutonomyCommands,
+      postSamplingHooks,
     )
   } catch (error) {
     didThrow = true
     thrownError = error
     throw error
   } finally {
+    const isAborted =
+      terminal?.reason === 'aborted_streaming' ||
+      terminal?.reason === 'aborted_tools'
+    const shouldAbortPostSamplingHooks =
+      didThrow ||
+      terminal === undefined ||
+      isAborted ||
+      paramsWithTrace.toolUseContext.abortController.signal.aborted
+    await postSamplingHooks.finish({
+      abort: shouldAbortPostSamplingHooks,
+      reason:
+        paramsWithTrace.toolUseContext.abortController.signal.reason ??
+        (didThrow ? thrownError : 'query-closed'),
+    })
+
+    if (shouldAbortPostSamplingHooks) {
+      await cancelPromptSuggestionForParent(
+        paramsWithTrace.toolUseContext.abortController,
+        paramsWithTrace.toolUseContext.abortController.signal.reason ??
+          (didThrow ? thrownError : 'query-closed'),
+      )
+    }
+
     await finalizeAutonomyCommandsForTurn({
       commands: consumedAutonomyCommands,
       outcome: getAutonomyTurnOutcome({
@@ -350,9 +381,6 @@ export async function* query(
 
     // Only end the trace if we created it — sub-agents own their traces
     if (ownsTrace) {
-      const isAborted =
-        terminal?.reason === 'aborted_streaming' ||
-        terminal?.reason === 'aborted_tools'
       endTrace(langfuseTrace, undefined, isAborted ? 'interrupted' : undefined)
       // Flush the processor to release span data (including serialized
       // conversation history stored as langfuse.observation.input). Without
@@ -400,6 +428,7 @@ async function* queryLoop(
   params: QueryParams,
   consumedCommandUuids: string[],
   consumedAutonomyCommands: QueuedCommand[],
+  postSamplingHooks: PostSamplingHookLifecycle,
 ): AsyncGenerator<
   | StreamEvent
   | RequestStartEvent
@@ -904,6 +933,10 @@ async function* queryLoop(
     const connectionThinkingEffort = resolveQueryThinkingEffort(
       toolUseContext.options.providerRuntimeConfig,
     )
+    const connectionThinkingEffortTransport =
+      resolveQueryThinkingEffortTransport(
+        toolUseContext.options.providerRuntimeConfig,
+      )
 
     queryCheckpoint('query_api_loop_start')
     try {
@@ -961,6 +994,7 @@ async function* queryLoop(
               effortValue:
                 appState.effortValue ??
                 mapThinkingEffortToEffortValue(connectionThinkingEffort),
+              thinkingEffortTransport: connectionThinkingEffortTransport,
               advisorModel: appState.advisorModel,
               skipCacheWrite,
               agentId: toolUseContext.agentId,
@@ -1242,94 +1276,69 @@ async function* queryLoop(
         }
       }
     } catch (error) {
-      logError(error)
-      const errorMessage =
-        error instanceof Error ? error.message : String(error)
-      logEvent('tengu_query_error', {
-        assistantMessages: assistantMessages.length,
-        toolUses: assistantMessages.flatMap(_ =>
-          (Array.isArray(_.message?.content)
-            ? (_.message.content as Array<{ type: string }>)
-            : []
-          ).filter(content => content.type === 'tool_use'),
-        ).length,
-
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
-
-      // Handle image size/resize errors with user-friendly messages
-      if (
-        error instanceof ImageSizeError ||
-        error instanceof ImageResizeError
-      ) {
-        yield createAssistantAPIErrorMessage({
-          content: error.message,
-        })
-        return { reason: 'image_error' }
-      }
-
-      // Generally queryModelWithStreaming should not throw errors but instead
-      // yield them as synthetic assistant messages. However if it does throw
-      // due to a bug, we may end up in a state where we have already emitted
-      // a tool_use block but will stop before emitting the tool_result.
-      yield* yieldMissingToolResultBlocks(assistantMessages, errorMessage)
-
-      // Surface the real error instead of a misleading "[Request interrupted
-      // by user]" — this path is a model/runtime failure, not a user action.
-      // SDK consumers were seeing phantom interrupts on e.g. Node 18's missing
-      // Array.prototype.with(), masking the actual cause.
-      yield createAssistantAPIErrorMessage({
-        content: errorMessage,
-      })
-
-      // To help track down bugs, log loudly for ants
-      logAntError('Query error', error)
-      return { reason: 'model_error', error }
-    }
-
-    // 检测缓存命中率并在需要时 yield 警告消息
-    // 必须在 executePostSamplingHooks 之前执行，确保警告消息在工具结果之前显示
-    if (
-      assistantMessages.length > 0 &&
-      !toolUseContext.options.isNonInteractiveSession
-    ) {
-      const lastAssistant = assistantMessages.at(-1)
-      const usage = lastAssistant?.message?.usage as
-        | {
-            input_tokens: number
-            cache_creation_input_tokens: number
-            cache_read_input_tokens: number
-          }
-        | undefined
-      if (usage && isCacheWarningEnabled()) {
-        const warningInfo = shouldShowCacheWarning(
-          usage,
-          querySource,
-          getCacheThreshold(),
-        )
-        if (warningInfo) {
-          yield createCacheWarningMessage(warningInfo)
+      // Some transports throw while their AbortSignal is being torn down.
+      // Cancellation is control flow, not a model failure: let the unified
+      // abort path below synthesize missing tool results and the interruption
+      // marker without logging or surfacing a spurious API error.
+      if (isAbortError(error)) {
+        // A provider can report AbortError just before its signal listener has
+        // propagated the abort to this turn. Normalize that ordering race so
+        // execution cannot fall through to cache warnings or post-sampling
+        // side queries as though the request completed successfully.
+        if (!toolUseContext.abortController.signal.aborted) {
+          toolUseContext.abortController.abort(error)
         }
+      } else if (!toolUseContext.abortController.signal.aborted) {
+        logError(error)
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        logEvent('tengu_query_error', {
+          assistantMessages: assistantMessages.length,
+          toolUses: assistantMessages.flatMap(_ =>
+            (Array.isArray(_.message?.content)
+              ? (_.message.content as Array<{ type: string }>)
+              : []
+            ).filter(content => content.type === 'tool_use'),
+          ).length,
+
+          queryChainId: queryChainIdForAnalytics,
+          queryDepth: queryTracking.depth,
+        })
+
+        // Handle image size/resize errors with user-friendly messages
+        if (
+          error instanceof ImageSizeError ||
+          error instanceof ImageResizeError
+        ) {
+          yield createAssistantAPIErrorMessage({
+            content: error.message,
+          })
+          return { reason: 'image_error' }
+        }
+
+        // Generally queryModelWithStreaming should not throw errors but instead
+        // yield them as synthetic assistant messages. However if it does throw
+        // due to a bug, we may end up in a state where we have already emitted
+        // a tool_use block but will stop before emitting the tool_result.
+        yield* yieldMissingToolResultBlocks(assistantMessages, errorMessage)
+
+        // Surface the real error instead of a misleading "[Request interrupted
+        // by user]" — this path is a model/runtime failure, not a user action.
+        // SDK consumers were seeing phantom interrupts on e.g. Node 18's missing
+        // Array.prototype.with(), masking the actual cause.
+        yield createAssistantAPIErrorMessage({
+          content: errorMessage,
+        })
+
+        // To help track down bugs, log loudly for ants
+        logAntError('Query error', error)
+        return { reason: 'model_error', error }
       }
     }
 
-    // Execute post-sampling hooks after model response is complete
-    if (assistantMessages.length > 0) {
-      void executePostSamplingHooks(
-        messagesForQuery.concat(assistantMessages),
-        systemPrompt,
-        userContext,
-        systemContext,
-        toolUseContext,
-        querySource,
-      )
-    }
-
-    // We need to handle a streaming abort before anything else.
-    // When using streamingToolExecutor, we must consume getRemainingResults() so the
-    // executor can generate synthetic tool_result blocks for queued/in-progress tools.
-    // Without this, tool_use blocks would lack matching tool_result blocks.
+    // Handle cancellation before cache warnings or post-sampling hooks. Those
+    // hooks may start their own model requests; running them for a cancelled
+    // partial response made remote inference continue after Esc.
     if (toolUseContext.abortController.signal.aborted) {
       if (streamingToolExecutor) {
         // Consume remaining results - executor generates synthetic tool_results for
@@ -1367,6 +1376,44 @@ async function* queryLoop(
         })
       }
       return { reason: 'aborted_streaming' }
+    }
+
+    // 检测缓存命中率并在需要时 yield 警告消息
+    // 必须在 executePostSamplingHooks 之前执行，确保警告消息在工具结果之前显示
+    if (
+      assistantMessages.length > 0 &&
+      !toolUseContext.options.isNonInteractiveSession
+    ) {
+      const lastAssistant = assistantMessages.at(-1)
+      const usage = lastAssistant?.message?.usage as
+        | {
+            input_tokens: number
+            cache_creation_input_tokens: number
+            cache_read_input_tokens: number
+          }
+        | undefined
+      if (usage && isCacheWarningEnabled()) {
+        const warningInfo = shouldShowCacheWarning(
+          usage,
+          querySource,
+          getCacheThreshold(),
+        )
+        if (warningInfo) {
+          yield createCacheWarningMessage(warningInfo)
+        }
+      }
+    }
+
+    // Execute post-sampling hooks after model response is complete
+    if (assistantMessages.length > 0) {
+      postSamplingHooks.schedule(
+        messagesForQuery.concat(assistantMessages),
+        systemPrompt,
+        userContext,
+        systemContext,
+        toolUseContext,
+        querySource,
+      )
     }
 
     // Yield tool use summary from previous turn — haiku (~1s) resolved during model streaming (5-30s)

@@ -14,6 +14,7 @@ import type { TaskContext } from '../../Task.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { updateAgentSummary } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { AgentId } from '../../types/ids.js'
+import { createChildAbortController } from '../../utils/abortController.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   type CacheSafeParams,
@@ -40,20 +41,28 @@ export type AgentSummaryDependencies = Partial<{
   updateAgentSummary: typeof updateAgentSummary
 }>
 
+export type AgentSummaryHandle = {
+  stop: () => Promise<void>
+}
+
 export function startAgentSummarization(
   taskId: string,
   agentId: AgentId,
   cacheSafeParams: CacheSafeParams,
   setAppState: TaskContext['setAppState'],
   dependencies: AgentSummaryDependencies = {},
-): { stop: () => void } {
+): AgentSummaryHandle {
   // Drop forkContextMessages from the closure — runSummary rebuilds it each
   // tick from getAgentTranscript(). Without this, the original fork messages
   // (passed from AgentTool.tsx) are pinned for the lifetime of the timer.
   const { forkContextMessages: _drop, ...baseParams } = cacheSafeParams
+  const parentAbortController = cacheSafeParams.toolUseContext.abortController
   let summaryAbortController: AbortController | null = null
+  let activeRun: Promise<void> | null = null
   let timeoutId: ReturnType<typeof setTimeout> | null = null
   let stopped = false
+  let stopPromise: Promise<void> | null = null
+  let timerGeneration = 0
   let previousSummary: string | null = null
   let lastHandledTranscriptFingerprint: string | null = null
   const clearTimeoutImpl = dependencies.clearTimeout ?? clearTimeout
@@ -68,18 +77,21 @@ export function startAgentSummarization(
     dependencies.updateAgentSummary ?? updateAgentSummary
 
   async function runSummary(): Promise<void> {
-    if (stopped) return
-    if (isPoorModeActiveImpl()) {
-      logForDebuggingImpl('[AgentSummary] Skipping summary — poor mode active')
-      scheduleNext()
-      return
-    }
-
-    logForDebuggingImpl(`[AgentSummary] Timer fired for agent ${agentId}`)
+    if (stopped || parentAbortController.signal.aborted) return
 
     try {
+      if (isPoorModeActiveImpl()) {
+        logForDebuggingImpl(
+          '[AgentSummary] Skipping summary — poor mode active',
+        )
+        return
+      }
+
+      logForDebuggingImpl(`[AgentSummary] Timer fired for agent ${agentId}`)
+
       // Read current messages from transcript
       const transcript = await getAgentTranscriptImpl(agentId)
+      if (stopped || parentAbortController.signal.aborted) return
       if (!transcript || transcript.messages.length < 3) {
         // Not enough context yet — finally block will schedule next attempt
         logForDebuggingImpl(
@@ -117,7 +129,10 @@ export function startAgentSummarization(
       )
 
       // Create abort controller for this summary
-      summaryAbortController = new AbortController()
+      const runAbortController = createChildAbortController(
+        parentAbortController,
+      )
+      summaryAbortController = runAbortController
 
       // Deny tools via callback, NOT by passing tools:[] - that busts cache
       const canUseTool = async () => ({
@@ -143,18 +158,24 @@ export function startAgentSummarization(
         canUseTool,
         querySource: 'agent_summary',
         forkLabel: 'agent_summary',
-        overrides: { abortController: summaryAbortController },
+        overrides: { abortController: runAbortController },
         skipTranscript: true,
       })
 
-      if (stopped) return
+      if (
+        stopped ||
+        parentAbortController.signal.aborted ||
+        runAbortController.signal.aborted
+      ) {
+        return
+      }
 
       // Extract summary text from result
       for (const msg of result.messages) {
         if (msg.type !== 'assistant') continue
         // Skip API error messages
         if (msg.isApiErrorMessage) {
-          logForDebugging(
+          logForDebuggingImpl(
             `[AgentSummary] Skipping API error message for ${taskId}`,
           )
           continue
@@ -175,34 +196,80 @@ export function startAgentSummarization(
         }
       }
     } catch (e) {
-      if (!stopped && e instanceof Error) {
+      if (
+        !stopped &&
+        !parentAbortController.signal.aborted &&
+        e instanceof Error
+      ) {
         logErrorImpl(e)
       }
     } finally {
+      // Aborting an already-settled child removes its propagation listener from
+      // the parent, avoiding one retained listener per summary interval.
+      summaryAbortController?.abort()
       summaryAbortController = null
       // Reset timer on completion (not initiation) to prevent overlapping summaries
-      if (!stopped) {
+      if (!stopped && !parentAbortController.signal.aborted) {
         scheduleNext()
       }
     }
   }
 
-  function scheduleNext(): void {
-    if (stopped) return
-    timeoutId = setTimeoutImpl(runSummary, SUMMARY_INTERVAL_MS)
+  function startSummaryRun(): Promise<void> {
+    if (stopped || parentAbortController.signal.aborted) {
+      return Promise.resolve()
+    }
+    if (activeRun) return activeRun
+
+    // Start on the next microtask so activeRun is published before any injected
+    // dependency can synchronously/re-entrantly call stop().
+    const run = Promise.resolve()
+      .then(runSummary)
+      .catch(error => {
+        // runSummary handles request failures itself. This final boundary also
+        // covers failures in its scheduling cleanup and guarantees stop() is a
+        // non-rejecting settlement barrier for the owning agent lifecycle.
+        logErrorImpl(error)
+      })
+    activeRun = run
+    void run.then(() => {
+      if (activeRun === run) activeRun = null
+    })
+    return run
   }
 
-  function stop(): void {
+  function scheduleNext(): void {
+    if (stopped) return
+    const generation = ++timerGeneration
+    timeoutId = setTimeoutImpl(() => {
+      if (stopped || generation !== timerGeneration) return Promise.resolve()
+      timeoutId = null
+      return startSummaryRun()
+    }, SUMMARY_INTERVAL_MS)
+  }
+
+  function stop(): Promise<void> {
+    if (stopPromise) return stopPromise
+
     logForDebuggingImpl(`[AgentSummary] Stopping summarization for ${taskId}`)
     stopped = true
-    if (timeoutId) {
+    timerGeneration += 1
+    if (timeoutId !== null) {
       clearTimeoutImpl(timeoutId)
       timeoutId = null
     }
     if (summaryAbortController) {
       summaryAbortController.abort()
-      summaryAbortController = null
     }
+
+    // Capture the active run after setting stopped and aborting it. Any timer
+    // callback that has not started yet now observes stopped; a callback that
+    // already started published activeRun synchronously before its first await.
+    const runToSettle = activeRun
+    stopPromise = runToSettle
+      ? runToSettle.then(() => undefined)
+      : Promise.resolve()
+    return stopPromise
   }
 
   // Start the first timer

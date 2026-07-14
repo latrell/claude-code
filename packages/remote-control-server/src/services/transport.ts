@@ -76,6 +76,7 @@ export function normalizePayload(
   // Preserve permission fields
   if (p.request_id) normalized.request_id = p.request_id
   if (p.request) normalized.request = p.request
+  if (p.response) normalized.response = p.response
   if (p.approved !== undefined) normalized.approved = p.approved
   if (p.updated_input) normalized.updated_input = p.updated_input
 
@@ -98,9 +99,9 @@ export function publishSessionEvent(
   type: string,
   payload: unknown,
   direction: 'inbound' | 'outbound',
+  eventId = randomUUID(),
 ) {
   const bus = getEventBus(sessionId)
-  const eventId = randomUUID()
 
   const normalized = normalizePayload(type, payload)
 

@@ -19,6 +19,7 @@ import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
 import { getOrganizationUUID } from '../services/oauth/client.js';
+import type { SessionsWebSocket as SessionsWebSocketClient } from '../remote/SessionsWebSocket.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
@@ -894,8 +895,10 @@ export async function teleportToRemote(options: {
 }): Promise<TeleportToRemoteResponse | null> {
   const { initialMessage, signal } = options;
   try {
+    signal.throwIfAborted();
     // Check authentication
     await checkAndRefreshOAuthTokenIfNeeded();
+    signal.throwIfAborted();
     const accessToken = getClaudeAIOAuthTokens()?.accessToken;
     if (!accessToken) {
       logError(new Error('No access token found for remote session creation'));
@@ -904,6 +907,7 @@ export async function teleportToRemote(options: {
 
     // Get organization UUID
     const orgUUID = await getOrganizationUUID();
+    signal.throwIfAborted();
     if (!orgUUID) {
       logError(new Error('Unable to get organization UUID for remote session creation'));
       return null;
@@ -977,7 +981,13 @@ export async function teleportToRemote(options: {
       logForDebugging(
         `[teleportToRemote] explicit env ${options.environmentId}, ${Object.keys(envVars).length} env vars, ${seedBundleFileId ? `bundle=${seedBundleFileId}` : `source=${gitSource?.url ?? 'none'}@${options.branchName ?? 'default'}`}`,
       );
-      const response = await axios.post(url, requestBody, { headers, signal });
+      // Do not abort the mutating POST after it has been dispatched: the
+      // server may create the session even if the client drops the response,
+      // leaving no session id for the caller to interrupt. Cancellation is
+      // checked immediately before dispatch; afterwards we await the causal
+      // response so the caller can stop the returned session explicitly.
+      signal.throwIfAborted();
+      const response = await axios.post(url, requestBody, { headers });
       if (response.status !== 200 && response.status !== 201) {
         logError(new Error(`CreateSession ${response.status}: ${jsonStringify(response.data)}`));
         return null;
@@ -1165,7 +1175,7 @@ export async function teleportToRemote(options: {
     }
 
     // Fetch available environments
-    let environments = await fetchEnvironments();
+    let environments = await fetchEnvironments(signal);
     if (!environments || environments.length === 0) {
       logError(new Error('No environments available for session creation'));
       return null;
@@ -1188,7 +1198,7 @@ export async function teleportToRemote(options: {
     // then fail loudly.
     if (options.useDefaultEnvironment && !cloudEnv) {
       logForDebugging(`No anthropic_cloud in env list (${environments.length} envs); retrying fetchEnvironments`);
-      const retried = await fetchEnvironments();
+      const retried = await fetchEnvironments(signal);
       cloudEnv = retried?.find(env => env.kind === 'anthropic_cloud');
       if (!cloudEnv) {
         logError(
@@ -1290,7 +1300,15 @@ export async function teleportToRemote(options: {
     logForDebugging(`Creating session with payload: ${jsonStringify(requestBody, null, 2)}`);
 
     // Make API call
-    const response = await axios.post(url, requestBody, { headers, signal, validateStatus: status => status < 500 });
+    // Once this mutating request is accepted, losing its response would also
+    // lose the only session id we can use to send a real interrupt. Check
+    // cancellation before dispatch, then let the POST settle and return the
+    // id; callers that were canceled meanwhile immediately stop that session.
+    signal.throwIfAborted();
+    const response = await axios.post(url, requestBody, {
+      headers,
+      validateStatus: status => status < 500,
+    });
     const isSuccess = response.status === 200 || response.status === 201;
 
     if (!isSuccess) {
@@ -1324,32 +1342,113 @@ export async function teleportToRemote(options: {
 }
 
 /**
- * Best-effort session archive. POST /v1/sessions/{id}/archive has no
- * running-status check (unlike DELETE which 409s on RUNNING), so it works
- * mid-implementation. Archived sessions reject new events (send_events.go),
- * so the remote stops on its next write. 409 (already archived) treated as
- * success. Fire-and-forget; failure leaks a visible session until the
- * reaper collects it.
+ * Best-effort session archive. Archiving prevents future event ingestion but
+ * is not itself an execution interrupt: an already-running inference may not
+ * attempt another write for some time. Explicit Stop actions must call
+ * stopRemoteSession() instead.
  */
-export async function archiveRemoteSession(sessionId: string, timeout = 10_000): Promise<void> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-  if (!accessToken) return;
-  const orgUUID = await getOrganizationUUID();
-  if (!orgUUID) return;
-  const headers = {
-    ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
-    'x-organization-uuid': orgUUID,
-  };
-  const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/archive`;
+export async function archiveRemoteSession(sessionId: string, timeout = 10_000): Promise<boolean> {
   try {
+    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+    if (!accessToken) {
+      logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing OAuth token`);
+      return false;
+    }
+    const orgUUID = await getOrganizationUUID();
+    if (!orgUUID) {
+      logForDebugging(`[archiveRemoteSession] ${sessionId} failed: missing organization UUID`);
+      return false;
+    }
+    const headers = {
+      ...getOAuthHeaders(accessToken),
+      'anthropic-beta': 'ccr-byoc-2025-07-29',
+      'x-organization-uuid': orgUUID,
+    };
+    const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/archive`;
     const resp = await axios.post(url, {}, { headers, timeout, validateStatus: s => s < 500 });
     if (resp.status === 200 || resp.status === 409) {
       logForDebugging(`[archiveRemoteSession] archived ${sessionId}`);
+      return true;
     } else {
       logForDebugging(`[archiveRemoteSession] ${sessionId} failed ${resp.status}: ${jsonStringify(resp.data)}`);
+      return false;
     }
   } catch (err) {
     logError(err);
+    return false;
   }
+}
+
+/**
+ * Interrupt a first-party remote worker and wait for its matching control ACK.
+ * Merely closing this observer WebSocket would leave the worker running.
+ */
+export async function interruptRemoteSession(sessionId: string, timeout = 15_000): Promise<boolean> {
+  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+  if (!accessToken) {
+    logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing OAuth token`);
+    return false;
+  }
+  const orgUUID = await getOrganizationUUID();
+  if (!orgUUID) {
+    logForDebugging(`[interruptRemoteSession] ${sessionId} failed: missing organization UUID`);
+    return false;
+  }
+
+  const { SessionsWebSocket } = await import('../remote/SessionsWebSocket.js');
+  let socket: SessionsWebSocketClient | undefined;
+  let requestStarted = false;
+  let finish: (result: boolean) => void = () => {};
+  const result = new Promise<boolean>(resolve => {
+    let settled = false;
+    const complete = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    finish = complete;
+    const timer = setTimeout(() => complete(false), timeout);
+    timer.unref?.();
+
+    socket = new SessionsWebSocket(sessionId, orgUUID, () => getClaudeAIOAuthTokens()?.accessToken ?? accessToken, {
+      onMessage: () => {},
+      onConnected: () => {
+        if (requestStarted || !socket) return;
+        requestStarted = true;
+        void socket
+          .sendControlRequest({ subtype: 'interrupt' })
+          .then(response => complete(response.response.subtype === 'success'))
+          .catch(error => {
+            logError(error);
+            complete(false);
+          });
+      },
+      onClose: () => complete(false),
+      onError: error => logError(error),
+    });
+  });
+
+  try {
+    await socket!.connect();
+    const interrupted = await result;
+    logForDebugging(`[interruptRemoteSession] ${sessionId} ${interrupted ? 'acknowledged' : 'failed'}`);
+    return interrupted;
+  } catch (error) {
+    logError(error);
+    finish(false);
+    return false;
+  } finally {
+    socket?.close();
+  }
+}
+
+/** Interrupt execution first, then archive to prevent any later event replay. */
+export async function stopRemoteSession(sessionId: string): Promise<boolean> {
+  // An archived session rejects future events, but does not prove an already
+  // accepted inference/tool turn has stopped. Always require the worker's
+  // interrupt acknowledgement, even when another caller archived first.
+  const interrupted = await interruptRemoteSession(sessionId);
+  if (!interrupted) return false;
+  return archiveRemoteSession(sessionId);
 }

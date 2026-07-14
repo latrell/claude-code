@@ -74,8 +74,12 @@ export interface AgentCapabilities {
 // Track connected clients and their agent connections
 export interface ClientState {
   process: ChildProcess | null
+  /** In-flight, de-duplicated process-tree termination. */
+  processTermination: Promise<boolean> | null
   connection: acp.ClientSideConnection | null
   sessionId: string | null
+  /** Settles only when the current session/prompt request has stopped. */
+  activePrompt: Promise<void> | null
   pendingPermissions: Map<string, PendingPermission>
   agentCapabilities: AgentCapabilities | null
   promptCapabilities: PromptCapabilities | null
@@ -127,8 +131,10 @@ export const DEFAULT_CLIENT_CAPABILITIES = Object.freeze({
 export function createClientState(): ClientState {
   return {
     process: null,
+    processTermination: null,
     connection: null,
     sessionId: null,
+    activePrompt: null,
     pendingPermissions: new Map(),
     agentCapabilities: null,
     promptCapabilities: null,

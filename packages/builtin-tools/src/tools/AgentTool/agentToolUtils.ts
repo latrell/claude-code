@@ -31,7 +31,6 @@ import {
   getProgressUpdate,
   getTokenCountFromTracker,
   isLocalAgentTask,
-  killAsyncAgent,
   type ProgressTracker,
   updateAgentProgress as updateAsyncAgentProgress,
   updateProgressFromMessage,
@@ -42,6 +41,7 @@ import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { isInProtectedNamespace } from 'src/utils/envUtils.js'
 import { AbortError, errorMessage } from 'src/utils/errors.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import type { CacheSafeParams } from 'src/utils/forkedAgent.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import {
@@ -546,7 +546,7 @@ export async function runAsyncAgentLifecycle({
     worktreeBranch?: string
   }>
 }): Promise<void> {
-  let stopSummarization: (() => void) | undefined
+  let stopSummarization: (() => Promise<void>) | undefined
   const agentMessages: MessageType[] = []
   try {
     const tracker = createProgressTracker()
@@ -605,7 +605,11 @@ export async function runAsyncAgentLifecycle({
       }
     }
 
-    stopSummarization?.()
+    if (abortController.signal.aborted) {
+      throw new AbortError()
+    }
+
+    await stopSummarization?.()
 
     // If the agent's final assistant message is an API error (e.g.
     // "API Error: terminated"), the stream was interrupted and the
@@ -674,13 +678,17 @@ export async function runAsyncAgentLifecycle({
       ...worktreeResult,
     })
   } catch (error) {
-    stopSummarization?.()
-    if (error instanceof AbortError) {
-      // killAsyncAgent is a no-op if TaskStop already set status='killed' —
-      // but only this catch handler has agentMessages, so the notification
-      // must fire unconditionally. Transition status BEFORE worktree cleanup
-      // so TaskOutput unblocks even if git hangs (gh-20236).
-      killAsyncAgent(taskId, rootSetAppState)
+    // Do not publish a terminal task state until the summary side query has
+    // aborted and fully unwound. stop() is idempotent, so the finally below is
+    // a safe backstop for errors in this handler.
+    await stopSummarization?.()
+    if (
+      !(error instanceof StopConfirmationError) &&
+      (error instanceof AbortError || abortController.signal.aborted)
+    ) {
+      // The tracked execution owns the killed transition after this lifecycle
+      // (including worktree cleanup) has fully settled. This catch still owns
+      // the partial-result notification because it has the message buffer.
       logEvent('tengu_agent_tool_terminated', {
         agent_type:
           metadata.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -718,6 +726,7 @@ export async function runAsyncAgentLifecycle({
       ...worktreeResult,
     })
   } finally {
+    await stopSummarization?.()
     clearInvokedSkillsForAgent(agentIdForCleanup)
     clearDumpState(agentIdForCleanup)
   }

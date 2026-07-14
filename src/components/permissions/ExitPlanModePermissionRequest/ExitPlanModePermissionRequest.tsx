@@ -84,6 +84,8 @@ type ResponseValue =
   | 'ultraplan'
   | 'no';
 
+const AUTO_NAME_SESSION_TIMEOUT_MS = 60_000;
+
 /**
  * Build permission updates for plan approval, including prompt-based rules if provided.
  * Prompt-based rules are only added when classifier permissions are enabled (Ant-only).
@@ -135,7 +137,11 @@ export function autoNameSessionFromPlan(
     // conversations, where recency matters). Plans front-load the goal and
     // end with testing steps — head-slice so Haiku sees the summary.
     [createUserMessage({ content: plan.slice(0, 1000) })],
-    new AbortController().signal,
+    // Clear-context acceptance intentionally aborts the current tool controller
+    // before this request finishes, so it cannot be the parent signal here.
+    // Bound the detached naming request so it still actively closes its HTTP
+    // request instead of surviving indefinitely.
+    AbortSignal.timeout(AUTO_NAME_SESSION_TIMEOUT_MS),
   )
     .then(async name => {
       // On clear-context acceptance, regenerateSessionId() has run by now —
@@ -159,6 +165,7 @@ export function autoNameSessionFromPlan(
 
 export function ExitPlanModePermissionRequest({
   toolUseConfirm,
+  toolUseContext,
   onDone,
   onReject,
   workerBadge,
@@ -348,7 +355,7 @@ export function ExitPlanModePermissionRequest({
         seedPlan: currentPlan,
         getAppState: store.getState,
         setAppState: store.setState,
-        signal: new AbortController().signal,
+        signal: toolUseContext.abortController.signal,
       })
         .then(msg => enqueuePendingNotification({ value: msg, mode: 'task-notification' }))
         .catch(logError);

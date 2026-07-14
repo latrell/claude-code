@@ -1,4 +1,4 @@
-import React, { Suspense, use, useState } from 'react';
+import React, { Suspense, use, useEffect, useRef, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { logEvent } from '../../services/analytics/index.js';
@@ -12,6 +12,7 @@ import {
 import { ShimmerChar } from '../Spinner/ShimmerChar.js';
 import { useShimmerAnimation } from '../Spinner/useShimmerAnimation.js';
 import { t } from '../../i18n/t.js';
+import { createChildAbortController } from '../../utils/abortController.js';
 
 const LOADING_MESSAGE = 'Loading explanation…';
 
@@ -64,6 +65,7 @@ type PermissionExplanationProps = {
   toolInput: unknown;
   toolDescription?: string;
   messages?: Message[];
+  abortController: AbortController;
 };
 
 type ExplainerState = {
@@ -76,13 +78,16 @@ type ExplainerState = {
  * Creates an explanation promise that never rejects.
  * Errors are caught and returned as null.
  */
-function createExplanationPromise(props: PermissionExplanationProps): Promise<PermissionExplanationType | null> {
+function createExplanationPromise(
+  props: PermissionExplanationProps,
+  signal: AbortSignal,
+): Promise<PermissionExplanationType | null> {
   return generatePermissionExplanation({
     toolName: props.toolName,
     toolInput: props.toolInput,
     toolDescription: props.toolDescription,
     messages: props.messages,
-    signal: new AbortController().signal, // Won't abort - request is fast enough
+    signal,
   }).catch(() => null);
 }
 
@@ -95,6 +100,15 @@ export function usePermissionExplainerUI(props: PermissionExplanationProps): Exp
   const enabled = isPermissionExplainerEnabled();
   const [visible, setVisible] = useState(false);
   const [promise, setPromise] = useState<Promise<PermissionExplanationType | null> | null>(null);
+  const requestAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      requestAbortControllerRef.current?.abort();
+      requestAbortControllerRef.current = null;
+    },
+    [],
+  );
 
   // Use keybinding for ctrl+e toggle (configurable via keybindings.json)
   useKeybinding(
@@ -104,7 +118,16 @@ export function usePermissionExplainerUI(props: PermissionExplanationProps): Exp
         logEvent('tengu_permission_explainer_shortcut_used', {});
         // Only create the promise on first toggle (lazy loading)
         if (!promise) {
-          setPromise(createExplanationPromise(props));
+          const controller = createChildAbortController(props.abortController);
+          requestAbortControllerRef.current = controller;
+          setPromise(
+            createExplanationPromise(props, controller.signal).finally(() => {
+              controller.abort();
+              if (requestAbortControllerRef.current === controller) {
+                requestAbortControllerRef.current = null;
+              }
+            }),
+          );
         }
       }
       setVisible(v => !v);

@@ -123,4 +123,44 @@ describe('sendMeowPush', () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  test('combines the caller abort signal with the request timeout', async () => {
+    mockedConfig = {
+      preferredNotifChannel: 'meow',
+      meowNotifNickname: 'tester',
+    }
+
+    const originalFetch = globalThis.fetch
+    const abortController = new AbortController()
+    let requestSignal: AbortSignal | null | undefined
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      requestSignal = init?.signal
+      return await new Promise<Response>((_resolve, reject) => {
+        if (requestSignal?.aborted) {
+          reject(requestSignal.reason)
+          return
+        }
+        requestSignal?.addEventListener(
+          'abort',
+          () => reject(requestSignal?.reason),
+          { once: true },
+        )
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const pending = sendMeowPush(
+        'Task cancelled',
+        'Stop sending.',
+        abortController.signal,
+      )
+      const cancellation = new Error('cancelled by user')
+      abortController.abort(cancellation)
+
+      await expect(pending).rejects.toBe(cancellation)
+      expect(requestSignal?.aborted).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })

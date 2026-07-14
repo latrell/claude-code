@@ -6,6 +6,8 @@ import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { tf } from 'src/i18n/t.js'
+import { terminateProcessTree } from 'src/utils/processTermination.js'
+import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import type { McpClientDependencies } from './interfaces.js'
 import type { ConnectedMCPServer, ScopedMcpServerConfig } from './types.js'
 
@@ -305,130 +307,30 @@ export function installConnectionMonitor(
 // ============================================================================
 
 /**
- * Terminates a stdio child process with escalating signals:
- * SIGINT (100ms) → SIGTERM (400ms) → SIGKILL
- *
- * Total maximum cleanup time: ~500ms
+ * Terminates a stdio process tree and waits for confirmed exit after both the
+ * graceful and forceful phases.
  */
 export async function terminateWithSignalEscalation(
   childPid: number,
   logger: McpClientDependencies['logger'],
   serverName: string,
+  terminate: typeof terminateProcessTree = terminateProcessTree,
 ): Promise<void> {
-  try {
-    logger.debug(`[${serverName}] Sending SIGINT to MCP server process`)
-
-    try {
-      process.kill(childPid, 'SIGINT')
-    } catch (error) {
-      logger.debug(`[${serverName}] Error sending SIGINT: ${error}`)
-      return
-    }
-
-    // biome-ignore lint/suspicious/noAsyncPromiseExecutor: complex cleanup logic requires async in executor
-    await new Promise<void>(async resolve => {
-      let resolved = false
-
-      const checkInterval = setInterval(() => {
-        try {
-          process.kill(childPid, 0)
-        } catch {
-          if (!resolved) {
-            resolved = true
-            clearInterval(checkInterval)
-            clearTimeout(failsafeTimeout)
-            logger.debug(`[${serverName}] MCP server process exited cleanly`)
-            resolve()
-          }
-        }
-      }, 50)
-
-      const failsafeTimeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true
-          clearInterval(checkInterval)
-          logger.debug(
-            `[${serverName}] Cleanup timeout reached, stopping process monitoring`,
-          )
-          resolve()
-        }
-      }, 600)
-
-      try {
-        // Wait 100ms for SIGINT to work
-        await sleep(100)
-
-        if (!resolved) {
-          try {
-            process.kill(childPid, 0)
-            // Process still exists, try SIGTERM
-            logger.debug(`[${serverName}] SIGINT failed, sending SIGTERM`)
-            try {
-              process.kill(childPid, 'SIGTERM')
-            } catch (termError) {
-              logger.debug(
-                `[${serverName}] Error sending SIGTERM: ${termError}`,
-              )
-              resolved = true
-              clearInterval(checkInterval)
-              clearTimeout(failsafeTimeout)
-              resolve()
-              return
-            }
-          } catch {
-            resolved = true
-            clearInterval(checkInterval)
-            clearTimeout(failsafeTimeout)
-            resolve()
-            return
-          }
-
-          // Wait 400ms for SIGTERM
-          await sleep(400)
-
-          if (!resolved) {
-            try {
-              process.kill(childPid, 0)
-              logger.debug(`[${serverName}] SIGTERM failed, sending SIGKILL`)
-              try {
-                process.kill(childPid, 'SIGKILL')
-              } catch (killError) {
-                logger.debug(
-                  `[${serverName}] Error sending SIGKILL: ${killError}`,
-                )
-              }
-            } catch {
-              resolved = true
-              clearInterval(checkInterval)
-              clearTimeout(failsafeTimeout)
-              resolve()
-            }
-          }
-        }
-
-        if (!resolved) {
-          resolved = true
-          clearInterval(checkInterval)
-          clearTimeout(failsafeTimeout)
-          resolve()
-        }
-      } catch {
-        if (!resolved) {
-          resolved = true
-          clearInterval(checkInterval)
-          clearTimeout(failsafeTimeout)
-          resolve()
-        }
-      }
-    })
-  } catch (processError) {
-    logger.debug(`[${serverName}] Error terminating process: ${processError}`)
+  logger.debug(`[${serverName}] Terminating MCP server process tree`)
+  const confirmed = await terminate(childPid, {
+    graceMs: 500,
+    forceWaitMs: 500,
+    onSignalError: (signal, error) => {
+      logger.debug(
+        `[${serverName}] Error sending ${signal} to MCP process tree: ${error}`,
+      )
+    },
+  })
+  if (!confirmed) {
+    throw new StopConfirmationError(
+      `[${serverName}] MCP server process tree exit could not be confirmed`,
+    )
   }
-}
-
-/** Simple sleep utility (avoids importing from host) */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 // ============================================================================
@@ -483,16 +385,19 @@ export function createCleanup(options: CleanupOptions): () => Promise<void> {
     // Remove stderr listener
     stderrCleanup?.removeHandler()
 
-    // Signal escalation for stdio
-    if (transportType === 'stdio' && childPid) {
-      await terminateWithSignalEscalation(childPid, logger, serverName)
-    }
-
-    // Close the client connection (which also closes the transport)
     try {
-      await client.close()
-    } catch (error) {
-      logger.debug(`[${serverName}] Error closing client: ${error}`)
+      // Signal escalation for stdio. This rejects when exit cannot be proven.
+      if (transportType === 'stdio' && childPid) {
+        await terminateWithSignalEscalation(childPid, logger, serverName)
+      }
+    } finally {
+      // Close protocol resources even when OS-level termination confirmation
+      // fails; the original confirmation error still propagates to Stop.
+      try {
+        await client.close()
+      } catch (error) {
+        logger.debug(`[${serverName}] Error closing client: ${error}`)
+      }
     }
   }
 }

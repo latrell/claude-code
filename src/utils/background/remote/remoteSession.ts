@@ -44,9 +44,12 @@ export type BackgroundRemoteSessionPrecondition =
  */
 export async function checkBackgroundRemoteSessionEligibility({
   skipBundle = false,
+  signal,
 }: {
   skipBundle?: boolean
+  signal?: AbortSignal
 } = {}): Promise<BackgroundRemoteSessionPrecondition[]> {
+  signal?.throwIfAborted()
   const errors: BackgroundRemoteSessionPrecondition[] = []
 
   // Check policy first - if blocked, no need to check other preconditions
@@ -57,9 +60,10 @@ export async function checkBackgroundRemoteSessionEligibility({
 
   const [needsLogin, hasRemoteEnv, repository] = await Promise.all([
     checkNeedsClaudeAiLogin(),
-    checkHasRemoteEnvironment(),
+    checkHasRemoteEnvironment(signal),
     detectCurrentRepositoryWithHost(),
   ])
+  signal?.throwIfAborted()
 
   if (needsLogin) {
     errors.push({ type: 'not_logged_in' })
@@ -88,7 +92,9 @@ export async function checkBackgroundRemoteSessionEligibility({
     const hasGithubApp = await checkGithubAppInstalled(
       repository.owner,
       repository.name,
+      signal,
     )
+    signal?.throwIfAborted()
     if (!hasGithubApp) {
       errors.push({ type: 'github_app_not_installed' })
     }

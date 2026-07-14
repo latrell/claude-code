@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import type { ToolResultBlockParam } from 'src/Tool.js'
+import type { ToolResultBlockParam, ToolUseContext } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 
@@ -84,7 +84,7 @@ Use this for:
     }
   },
 
-  async call(input: BrowserInput) {
+  async call(input: BrowserInput, context?: ToolUseContext) {
     const action = input.action ?? 'navigate'
 
     if (action === 'navigate' || action === 'screenshot') {
@@ -98,6 +98,7 @@ Use this for:
               'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           },
           redirect: 'follow',
+          signal: context?.abortController.signal,
         })
 
         if (!response.ok) {
@@ -147,6 +148,9 @@ Use this for:
           },
         }
       } catch (err) {
+        if (context?.abortController.signal.aborted) {
+          throw err
+        }
         return {
           data: {
             title: 'Error',

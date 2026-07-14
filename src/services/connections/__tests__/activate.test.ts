@@ -762,6 +762,7 @@ describe('activateConnectionForSession (subagent slot)', () => {
     const conn = openaiConn({
       model: 'deepseek-reasoner',
       thinkingEffort: 'high',
+      thinkingEffortTransport: 'passthrough',
     })
     upsertConnection(conn)
     const result = await activateConnectionForSession(conn, 'subagent')
@@ -770,6 +771,26 @@ describe('activateConnectionForSession (subagent slot)', () => {
       | (Record<string, unknown> & { env?: Record<string, string> })
       | undefined
     expect(config?.['thinkingEffort']).toBe('high')
+    expect(config?.['thinkingEffortTransport']).toBe('passthrough')
+  })
+
+  test('a compatible scoped connection clears a previous passthrough transport', async () => {
+    const exact = openaiConn({
+      id: 'exact-relay',
+      thinkingEffort: 'max',
+      thinkingEffortTransport: 'passthrough',
+    })
+    const compatible = openaiConn({
+      id: 'compatible-relay',
+      thinkingEffort: 'max',
+    })
+    upsertConnection(exact)
+    upsertConnection(compatible)
+    await activateConnectionGlobally(exact, 'subagent')
+    await activateConnectionGlobally(compatible, 'subagent')
+    expect(
+      getSubagentProviderConfig({}, {})?.thinkingEffortTransport,
+    ).toBeUndefined()
   })
 
   test('thinkingEffort off puts OPENAI_ENABLE_THINKING=0 in the subagent env', async () => {

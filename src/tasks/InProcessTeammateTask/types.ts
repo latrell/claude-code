@@ -42,6 +42,7 @@ export type InProcessTeammateTaskState = TaskStateBase & {
   selectedAgent?: AgentDefinition
   abortController?: AbortController // Runtime only, not serialized to disk - kills WHOLE teammate
   currentWorkAbortController?: AbortController // Runtime only - aborts current turn without killing teammate
+  stopRequested?: boolean // Runtime only - terminal state is committed after the runner settles
   unregisterCleanup?: () => void // Runtime only
 
   // Plan mode approval tracking (planModeRequired is in identity)

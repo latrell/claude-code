@@ -10,8 +10,10 @@ mock.module('src/utils/log.ts', logMock)
 const {
   asThinkingEffort,
   getConnectionThinkingEffort,
+  getConnectionThinkingEffortTransport,
   mapThinkingEffortToEffortValue,
   resolveQueryThinkingEffort,
+  resolveQueryThinkingEffortTransport,
 } = await import('../thinkingEffort.js')
 const { setSessionAssignment } = await import('../sessionAssignments.js')
 const { _invalidateConnectionsCache, setDefaultAssignment, upsertConnection } =
@@ -101,6 +103,27 @@ describe('getConnectionThinkingEffort', () => {
   })
 })
 
+describe('getConnectionThinkingEffortTransport', () => {
+  test('resolves transport independently for each slot', () => {
+    upsertConnection(
+      conn({
+        id: 'main-conn',
+        thinkingEffortTransport: 'compatible',
+      }),
+    )
+    upsertConnection(
+      conn({
+        id: 'sub-conn',
+        thinkingEffortTransport: 'passthrough',
+      }),
+    )
+    setSessionAssignment('main', { connectionId: 'main-conn' })
+    setSessionAssignment('subagent', { connectionId: 'sub-conn' })
+    expect(getConnectionThinkingEffortTransport('main')).toBe('compatible')
+    expect(getConnectionThinkingEffortTransport('subagent')).toBe('passthrough')
+  })
+})
+
 describe('resolveQueryThinkingEffort', () => {
   test('subagent query with runtime config uses its pinned effort, not the main slot', () => {
     // Main slot pinned 'off' must NOT leak into a subagent whose own
@@ -140,6 +163,25 @@ describe('resolveQueryThinkingEffort', () => {
 
   test('no assignments anywhere resolves to undefined', () => {
     expect(resolveQueryThinkingEffort(undefined)).toBeUndefined()
+  })
+})
+
+describe('resolveQueryThinkingEffortTransport', () => {
+  test('scoped runtime never inherits the main transport', () => {
+    upsertConnection(
+      conn({
+        id: 'main-exact',
+        thinkingEffortTransport: 'passthrough',
+      }),
+    )
+    setSessionAssignment('main', { connectionId: 'main-exact' })
+    expect(resolveQueryThinkingEffortTransport({})).toBeUndefined()
+    expect(
+      resolveQueryThinkingEffortTransport({
+        thinkingEffortTransport: 'compatible',
+      }),
+    ).toBe('compatible')
+    expect(resolveQueryThinkingEffortTransport(undefined)).toBe('passthrough')
   })
 })
 

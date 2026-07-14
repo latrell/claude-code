@@ -33,15 +33,19 @@ import {
   handleWebSocketClose,
   closeAllConnections,
 } from '../transport/ws-handler'
+import { hasActiveWorkerTransport } from '../transport/worker-transports'
 
 // Minimal WSContext mock
 function createMockWs(readyState = 1) {
   const sent: string[] = []
+  const closeCalls: Array<{ code?: number; reason?: string }> = []
   return {
     readyState,
     send: (data: string) => sent.push(data),
-    close: (_code?: number, _reason?: string) => {},
+    close: (code?: number, reason?: string) =>
+      closeCalls.push({ code, reason }),
     getSentData: () => sent,
+    getCloseCalls: () => closeCalls,
   } as any
 }
 
@@ -230,6 +234,22 @@ describe('ws-handler', () => {
       expect(msg.isSynthetic).toBe(true)
     })
 
+    test('does not replay stale interrupt commands after reconnect', () => {
+      const bus = getEventBus('stale-interrupt')
+      bus.publish({
+        id: 'interrupt-1',
+        sessionId: 'stale-interrupt',
+        type: 'interrupt',
+        payload: { action: 'interrupt' },
+        direction: 'outbound',
+      })
+
+      const ws = createMockWs()
+      handleWebSocketOpen(ws, 'stale-interrupt')
+
+      expect(ws.getSentData()).toHaveLength(0)
+    })
+
     test('replaces existing connection for same session', () => {
       const ws1 = createMockWs()
       const ws2 = createMockWs()
@@ -246,6 +266,19 @@ describe('ws-handler', () => {
         direction: 'outbound',
       })
       expect(ws2.getSentData().length).toBeGreaterThanOrEqual(1)
+    })
+
+    test('closes and unregisters the worker transport when its bus closes', () => {
+      const ws = createMockWs()
+      handleWebSocketOpen(ws, 's-close')
+      expect(hasActiveWorkerTransport('s-close')).toBe(true)
+
+      removeEventBus('s-close')
+
+      expect(ws.getCloseCalls()).toEqual([
+        { code: 1000, reason: 'session_closed' },
+      ])
+      expect(hasActiveWorkerTransport('s-close')).toBe(false)
     })
   })
 

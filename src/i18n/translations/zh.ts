@@ -2621,10 +2621,30 @@ const zh: Record<string, string> = {
   'Thinking effort — {label}': '思考强度 — {label}',
   'Applied while this connection is active (Default = provider behavior)':
     '此连接激活期间生效（默认 = 提供者默认行为）',
+  'Configured value → actual request value (environment and /effort overrides take priority)':
+    '配置值 → 实际请求值（环境变量和 /effort 覆盖优先）',
   'Default (not set)': '默认（不设置）',
   'Off — disable thinking': '关闭 — 禁用思考',
   Medium: '中',
   Max: '最大',
+  'Max — compatible': '最大 — 兼容模式',
+  'Max — exact': '最大 — 原样传输',
+  'Actual request: provider/model default': '实际请求：提供者/模型默认值',
+  'Actual request: thinking disabled': '实际请求：禁用思考',
+  'Actual request: reasoning_effort={value}':
+    '实际请求：reasoning_effort={value}',
+  'Actual request: thinkingBudget={value}': '实际请求：thinkingBudget={value}',
+  'Actual request: highest value supported by the selected ChatGPT model':
+    '实际请求：所选 ChatGPT 模型支持的最高值',
+  'Requested provider effort: {value}': '向提供者请求的思考强度：{value}',
+  'endpoint must support this exact value': '端点必须支持该原始值',
+  'CLAUDE_CODE_EFFORT_LEVEL={value} currently overrides this profile and omits the effort field':
+    'CLAUDE_CODE_EFFORT_LEVEL={value} 当前覆盖此档案，并省略思考强度字段',
+  'Current override: CLAUDE_CODE_EFFORT_LEVEL={value} → {actual}; connection profile value is not active':
+    '当前覆盖：CLAUDE_CODE_EFFORT_LEVEL={value} → {actual}；连接档案值未生效',
+  'Current override: /effort {value} → {actual}; use /effort auto to apply the connection profile':
+    '当前覆盖：/effort {value} → {actual}；使用 /effort auto 后才会应用连接档案值',
+  'effort field omitted': '省略思考强度字段',
   current: '当前',
   'Context window…': '上下文窗口…',
   'Duplicate connection…': '复制连接…',

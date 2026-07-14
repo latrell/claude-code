@@ -517,9 +517,11 @@ export async function sendEventToRemoteSession(
 export async function updateSessionTitle(
   sessionId: string,
   title: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   try {
     const { accessToken, orgUUID } = await prepareApiRequest()
+    if (signal?.aborted) return false
 
     const url = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}`
     const headers = {
@@ -536,6 +538,7 @@ export async function updateSessionTitle(
       { title },
       {
         headers,
+        signal,
         validateStatus: status => status < 500,
       },
     )
@@ -552,6 +555,7 @@ export async function updateSessionTitle(
     )
     return false
   } catch (error) {
+    if (signal?.aborted) return false
     logForDebugging(`[updateSessionTitle] Error: ${errorMessage(error)}`)
     return false
   }

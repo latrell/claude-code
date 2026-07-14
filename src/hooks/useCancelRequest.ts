@@ -26,6 +26,7 @@ import { exitTeammateView } from '../state/teammateViewHelpers.js'
 import {
   killAllRunningAgentTasks,
   markAgentsNotified,
+  suppressAgentNotification,
 } from '../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { PromptInputMode, VimMode } from '../types/textInputTypes.js'
 import {
@@ -34,6 +35,8 @@ import {
   hasCommandsInQueue,
 } from '../utils/messageQueueManager.js'
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
+import { canCancelRequest } from '../utils/cancelRequest.js'
+import { errorMessage } from '../utils/errors.js'
 
 /** Time window in ms during which a second press kills all background agents. */
 const KILL_AGENTS_CONFIRM_WINDOW_MS = 3000
@@ -47,6 +50,7 @@ type CancelRequestHandlerProps = {
   isMessageSelectorVisible: boolean
   screen: Screen
   abortSignal?: AbortSignal
+  isExternalLoading?: boolean
   popCommandFromQueue?: () => void
   vimMode?: VimMode
   isLocalJSXCommand?: boolean
@@ -69,6 +73,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     isMessageSelectorVisible,
     screen,
     abortSignal,
+    isExternalLoading = false,
     popCommandFromQueue,
     vimMode,
     isLocalJSXCommand,
@@ -95,7 +100,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
     // Priority 1: If there's an active task running, cancel it first
     // This takes precedence over queue management so users can always interrupt Claude
-    if (abortSignal !== undefined && !abortSignal.aborted) {
+    if (canCancelRequest(abortSignal, isExternalLoading)) {
       logEvent('tengu_cancel', cancelProps)
       setToolUseConfirmQueue(() => [])
       onCancel()
@@ -116,6 +121,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     onCancel()
   }, [
     abortSignal,
+    isExternalLoading,
     popCommandFromQueue,
     setToolUseConfirmQueue,
     onCancel,
@@ -127,7 +133,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   // Overlays (ModelPicker, ThinkingToggle, etc.) register themselves via useRegisterOverlay
   // Local JSX commands (like /model, /btw) handle their own input
   const isOverlayActive = useIsOverlayActive()
-  const canCancelRunningTask = abortSignal !== undefined && !abortSignal.aborted
+  const canCancelRunningTask = canCancelRequest(abortSignal, isExternalLoading)
   const hasQueuedCommands = queuedCommandsLength > 0
   // When in bash/background mode with empty input, escape should exit the mode
   // rather than cancel the request. Let PromptInput handle mode exit.
@@ -167,8 +173,8 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     isActive: isEscapeActive,
   })
 
-  // Shared kill path: stop all agents, suppress per-agent notifications,
-  // emit SDK events, enqueue a single aggregate model-facing notification.
+  // Shared kill path: stop all agents, then publish stopped notifications
+  // only after every runner has actually settled.
   // Returns true if anything was killed.
   const killAllAgentsAndNotify = useCallback((): boolean => {
     const tasks = store.getState().tasks
@@ -176,29 +182,76 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
       ([, t]) => t.type === 'local_agent' && t.status === 'running',
     )
     if (running.length === 0) return false
-    killAllRunningAgentTasks(tasks, setAppState)
-    const descriptions: string[] = []
-    for (const [taskId, task] of running) {
-      markAgentsNotified(taskId, setAppState)
-      descriptions.push(task.description)
-      emitTaskTerminatedSdk(taskId, 'stopped', {
-        toolUseId: task.toolUseId,
-        summary: task.description,
+    const releaseSuppressions = running.map(([taskId]) =>
+      suppressAgentNotification(taskId),
+    )
+    void killAllRunningAgentTasks(tasks, setAppState)
+      .then(({ succeeded, failures }) => {
+        const succeededIds = new Set(succeeded)
+        const stopped = running.filter(([taskId]) => succeededIds.has(taskId))
+        for (const [taskId, task] of stopped) {
+          markAgentsNotified(taskId, setAppState)
+          emitTaskTerminatedSdk(task.id, 'stopped', {
+            toolUseId: task.toolUseId,
+            summary: task.description,
+          })
+        }
+        if (stopped.length > 0) {
+          const descriptions = stopped.map(([, task]) => task.description)
+          const summary =
+            descriptions.length === 1
+              ? tf(
+                  'Background agent "{description}" was stopped by the user.',
+                  { description: descriptions[0] },
+                )
+              : tf(
+                  '{n} background agents were stopped by the user: {descriptions}',
+                  {
+                    n: descriptions.length,
+                    descriptions: descriptions.map(d => `"${d}"`).join(', '),
+                  },
+                )
+          enqueuePendingNotification({
+            value: summary,
+            mode: 'task-notification',
+          })
+          onAgentsKilled()
+        }
+
+        if (failures.length > 0) {
+          const failureText = failures
+            .map(({ taskId, error }) => `${taskId}: ${errorMessage(error)}`)
+            .join('; ')
+          addNotification({
+            key: 'kill-agents-failed',
+            text: tf('Could not confirm all agents stopped: {error}', {
+              error: failureText,
+            }),
+            priority: 'immediate',
+            timeoutMs: 5000,
+          })
+          enqueuePendingNotification({
+            value: `Agent Stop was not confirmed for: ${failureText}`,
+            mode: 'task-notification',
+          })
+        }
       })
-    }
-    const summary =
-      descriptions.length === 1
-        ? tf('Background agent "{description}" was stopped by the user.', {
-            description: descriptions[0],
-          })
-        : tf('{n} background agents were stopped by the user: {descriptions}', {
-            n: descriptions.length,
-            descriptions: descriptions.map(d => `"${d}"`).join(', '),
-          })
-    enqueuePendingNotification({ value: summary, mode: 'task-notification' })
-    onAgentsKilled()
+      .catch(error => {
+        // Keep unconfirmed tasks visible/notified=false so the user can retry.
+        addNotification({
+          key: 'kill-agents-failed',
+          text: tf('Could not confirm all agents stopped: {error}', {
+            error: errorMessage(error),
+          }),
+          priority: 'immediate',
+          timeoutMs: 5000,
+        })
+      })
+      .finally(() => {
+        releaseSuppressions.forEach(release => release())
+      })
     return true
-  }, [store, setAppState, onAgentsKilled])
+  }, [store, setAppState, onAgentsKilled, addNotification])
 
   // Ctrl+C (app:interrupt). Scoped to teammate-view: killing agents from the
   // main prompt stays a deliberate gesture (chat:killAgents), not a

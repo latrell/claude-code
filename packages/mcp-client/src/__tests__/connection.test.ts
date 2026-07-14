@@ -5,6 +5,7 @@ import {
   MAX_ERRORS_BEFORE_RECONNECT,
   isTerminalConnectionError,
   isMcpSessionExpiredError,
+  terminateWithSignalEscalation,
 } from '../connection.js'
 
 describe('connection constants', () => {
@@ -92,5 +93,29 @@ describe('isMcpSessionExpiredError', () => {
   test('rejects errors without code property', () => {
     const error = new Error('Session not found')
     expect(isMcpSessionExpiredError(error)).toBe(false)
+  })
+})
+
+describe('terminateWithSignalEscalation', () => {
+  test('does not report cleanup success when process exit is unconfirmed', async () => {
+    const messages: string[] = []
+    const logger = {
+      debug(message: string) {
+        messages.push(message)
+      },
+      info() {},
+      warn() {},
+      error() {},
+    }
+
+    await expect(
+      terminateWithSignalEscalation(
+        123,
+        logger,
+        'stubborn-server',
+        async () => false,
+      ),
+    ).rejects.toThrow('exit could not be confirmed')
+    expect(messages[0]).toContain('process tree')
   })
 })

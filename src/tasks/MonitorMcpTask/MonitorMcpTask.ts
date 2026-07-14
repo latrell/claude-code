@@ -9,7 +9,15 @@ import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
 import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 import { registerTask, updateTaskState } from '../../utils/task/framework.js'
+
+type MonitorMcpSettlement = {
+  abortController?: AbortController
+  settled: Promise<void>
+}
+
+const monitorMcpSettlements = new Map<string, MonitorMcpSettlement>()
 
 export type MonitorMcpTaskState = TaskStateBase & {
   type: 'monitor_mcp'
@@ -44,9 +52,22 @@ export function registerMonitorMcpTask(
     toolUseId?: string
     agentId?: AgentId
     abortController?: AbortController
+    /** Resolves/rejects only after the monitoring runner has fully unwound. */
+    settlement?: Promise<unknown>
   },
 ): string {
   const id = generateTaskId('monitor_mcp')
+  if (opts.settlement) {
+    monitorMcpSettlements.set(id, {
+      abortController: opts.abortController,
+      // Stop only needs settlement proof. The producer remains responsible
+      // for reflecting success/failure in task state.
+      settled: opts.settlement.then(
+        () => undefined,
+        () => undefined,
+      ),
+    })
+  }
   const task: MonitorMcpTaskState = {
     ...createTaskStateBase(id, 'monitor_mcp', opts.description, opts.toolUseId),
     type: 'monitor_mcp',
@@ -57,7 +78,12 @@ export function registerMonitorMcpTask(
     agentId: opts.agentId,
     abortController: opts.abortController,
   }
-  registerTask(task, setAppState)
+  try {
+    registerTask(task, setAppState)
+  } catch (error) {
+    monitorMcpSettlements.delete(id)
+    throw error
+  }
   return id
 }
 
@@ -65,6 +91,7 @@ export function completeMonitorMcpTask(
   taskId: string,
   setAppState: SetAppState,
 ): void {
+  monitorMcpSettlements.delete(taskId)
   updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => ({
     ...task,
     status: 'completed',
@@ -78,6 +105,7 @@ export function failMonitorMcpTask(
   taskId: string,
   setAppState: SetAppState,
 ): void {
+  monitorMcpSettlements.delete(taskId)
   updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => ({
     ...task,
     status: 'failed',
@@ -87,10 +115,44 @@ export function failMonitorMcpTask(
   }))
 }
 
-export function killMonitorMcp(taskId: string, setAppState: SetAppState): void {
+export async function killMonitorMcp(
+  taskId: string,
+  setAppState: SetAppState,
+): Promise<boolean> {
+  let matched = false
+  let abortController: AbortController | undefined
+
   updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => {
     if (task.status !== 'running') return task
-    task.abortController?.abort()
+    matched = true
+    abortController = task.abortController
+    return task
+  })
+
+  if (!matched) return false
+
+  const settlement = monitorMcpSettlements.get(taskId)
+  const matchingSettlement =
+    settlement && settlement.abortController === abortController
+      ? settlement
+      : undefined
+
+  abortController?.abort(new Error(`MCP monitor task ${taskId} was stopped`))
+
+  // An AbortController proves only that cancellation was requested, and the
+  // absence of one is not proof that no runner exists. Without settlement,
+  // publishing killed could hide a live subscription or HTTP/SSE stream.
+  if (!matchingSettlement) return false
+  await matchingSettlement.settled
+
+  let confirmedTerminal = false
+  updateTaskState<MonitorMcpTaskState>(taskId, setAppState, task => {
+    if (task.status !== 'running') {
+      confirmedTerminal = true
+      return task
+    }
+    if (task.abortController !== abortController) return task
+    confirmedTerminal = true
     return {
       ...task,
       status: 'killed',
@@ -99,6 +161,11 @@ export function killMonitorMcp(taskId: string, setAppState: SetAppState): void {
       abortController: undefined,
     }
   })
+
+  if (monitorMcpSettlements.get(taskId) === matchingSettlement) {
+    monitorMcpSettlements.delete(taskId)
+  }
+  return confirmedTerminal
 }
 
 /**
@@ -106,12 +173,13 @@ export function killMonitorMcp(taskId: string, setAppState: SetAppState): void {
  * Called from runAgent.ts finally block so subscriptions don't outlive
  * the agent that started them.
  */
-export function killMonitorMcpTasksForAgent(
+export async function killMonitorMcpTasksForAgent(
   agentId: AgentId,
   getAppState: () => AppState,
   setAppState: SetAppState,
-): void {
+): Promise<void> {
   const tasks = getAppState().tasks ?? {}
+  const kills: Array<Promise<boolean>> = []
   for (const [taskId, task] of Object.entries(tasks)) {
     if (
       isMonitorMcpTask(task) &&
@@ -121,8 +189,22 @@ export function killMonitorMcpTasksForAgent(
       logForDebugging(
         `killMonitorMcpTasksForAgent: killing orphaned monitor task ${taskId} (agent ${agentId} exiting)`,
       )
-      killMonitorMcp(taskId, setAppState)
+      kills.push(killMonitorMcp(taskId, setAppState))
     }
+  }
+
+  const results = await Promise.allSettled(kills)
+  const failures = results.flatMap(result => {
+    if (result.status === 'rejected') return [result.reason]
+    return result.value
+      ? []
+      : [new Error('MCP monitor termination was not confirmed')]
+  })
+  if (failures.length > 0) {
+    throw new StopConfirmationError(
+      `Failed to confirm termination of ${failures.length} MCP monitor task(s) owned by agent ${agentId}`,
+      failures,
+    )
   }
 }
 
@@ -131,6 +213,10 @@ export const MonitorMcpTask: Task = {
   type: 'monitor_mcp',
 
   async kill(taskId, setAppState) {
-    killMonitorMcp(taskId, setAppState)
+    if (!(await killMonitorMcp(taskId, setAppState))) {
+      throw new StopConfirmationError(
+        `MCP monitor task ${taskId} termination could not be confirmed`,
+      )
+    }
   },
 }

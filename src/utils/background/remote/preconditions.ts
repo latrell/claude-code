@@ -42,11 +42,14 @@ export async function checkIsGitClean(): Promise<boolean> {
  * Checks if user has access to at least one remote environment
  * @returns true if user has remote environments, false otherwise
  */
-export async function checkHasRemoteEnvironment(): Promise<boolean> {
+export async function checkHasRemoteEnvironment(
+  signal?: AbortSignal,
+): Promise<boolean> {
   try {
-    const environments = await fetchEnvironments()
+    const environments = await fetchEnvironments(signal)
     return environments.length > 0
   } catch (error) {
+    signal?.throwIfAborted()
     logForDebugging(`checkHasRemoteEnvironment failed: ${errorMessage(error)}`)
     return false
   }
@@ -141,6 +144,7 @@ export async function checkGithubAppInstalled(
     )
     return false
   } catch (error) {
+    signal?.throwIfAborted()
     // 4XX errors typically mean app is not installed or repo not accessible
     if (axios.isAxiosError(error)) {
       const status = error.response?.status

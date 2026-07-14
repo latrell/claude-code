@@ -4,7 +4,10 @@ import { getSystemPrompt } from 'src/constants/prompts.js'
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { ToolUseContext } from 'src/Tool.js'
-import { registerAsyncAgent } from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
+import {
+  registerAsyncAgent,
+  trackLocalAgentExecution,
+} from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
 import { assembleToolPool } from 'src/tools.js'
 import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js'
 import { asAgentId } from 'src/types/ids.js'
@@ -231,35 +234,41 @@ export async function resumeAgentBackground({
   const wrapWithCwd = <T>(fn: () => T): T =>
     resumedWorktreePath ? runWithCwdOverride(resumedWorktreePath, fn) : fn()
 
-  void runWithAgentContext(asyncAgentContext, () =>
-    wrapWithCwd(() =>
-      runAsyncAgentLifecycle({
-        taskId: agentBackgroundTask.agentId,
-        abortController: agentBackgroundTask.abortController!,
-        makeStream: onCacheSafeParams =>
-          runAgent({
-            ...runAgentParams,
-            override: {
-              ...runAgentParams.override,
-              agentId: asAgentId(agentBackgroundTask.agentId),
-              abortController: agentBackgroundTask.abortController!,
-            },
-            onCacheSafeParams,
+  void trackLocalAgentExecution({
+    taskId: agentBackgroundTask.agentId,
+    abortController: agentBackgroundTask.abortController!,
+    startExecution: () =>
+      runWithAgentContext(asyncAgentContext, () =>
+        wrapWithCwd(() =>
+          runAsyncAgentLifecycle({
+            taskId: agentBackgroundTask.agentId,
+            abortController: agentBackgroundTask.abortController!,
+            makeStream: onCacheSafeParams =>
+              runAgent({
+                ...runAgentParams,
+                override: {
+                  ...runAgentParams.override,
+                  agentId: asAgentId(agentBackgroundTask.agentId),
+                  abortController: agentBackgroundTask.abortController!,
+                },
+                onCacheSafeParams,
+              }),
+            metadata,
+            description: uiDescription,
+            toolUseContext,
+            rootSetAppState,
+            agentIdForCleanup: agentId,
+            enableSummarization:
+              isCoordinatorMode() ||
+              isForkSubagentEnabled() ||
+              getSdkAgentProgressSummariesEnabled(),
+            getWorktreeResult: async () =>
+              resumedWorktreePath ? { worktreePath: resumedWorktreePath } : {},
           }),
-        metadata,
-        description: uiDescription,
-        toolUseContext,
-        rootSetAppState,
-        agentIdForCleanup: agentId,
-        enableSummarization:
-          isCoordinatorMode() ||
-          isForkSubagentEnabled() ||
-          getSdkAgentProgressSummariesEnabled(),
-        getWorktreeResult: async () =>
-          resumedWorktreePath ? { worktreePath: resumedWorktreePath } : {},
-      }),
-    ),
-  )
+        ),
+      ),
+    setAppState: rootSetAppState,
+  })
 
   return {
     agentId,

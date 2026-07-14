@@ -214,10 +214,24 @@ export function useDirectConnect({
 
   // Cancel the current request
   const cancelRequest = useCallback(() => {
-    // Send interrupt signal to the server
-    managerRef.current?.sendInterrupt()
-
-    setIsLoading(false)
+    setIsLoading(true)
+    const manager = managerRef.current
+    if (!manager) {
+      process.stderr.write(
+        `\n${t('Remote request could not be confirmed as stopped.')}\n`,
+      )
+      return
+    }
+    void manager.sendInterrupt().then(confirmed => {
+      if (managerRef.current !== manager) return
+      if (confirmed) {
+        setIsLoading(false)
+      } else {
+        process.stderr.write(
+          `\n${t('Remote request could not be confirmed as stopped.')}\n`,
+        )
+      }
+    })
   }, [setIsLoading])
 
   const disconnect = useCallback(() => {
