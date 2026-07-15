@@ -21,6 +21,8 @@ export type ProviderRuntimeConfig = {
   env?: Record<string, string | undefined>
   model?: string | null
   credentialScope?: string
+  /** Saved connection profile backing this scoped runtime, when known. */
+  connectionId?: string
   /** Thinking effort pinned by the subagent connection profile. */
   thinkingEffort?: ThinkingEffort
   /** OpenAI-compatible wire encoding pinned by the scoped connection. */
@@ -272,6 +274,9 @@ export function getSubagentProviderRuntimeConfig(
     model,
     credentialScope:
       subagentProvider?.credentialScope ?? SUBAGENT_CREDENTIAL_SCOPE,
+    ...(subagentProvider?.connectionId && {
+      connectionId: subagentProvider.connectionId,
+    }),
     ...(thinkingEffort && { thinkingEffort }),
     ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }

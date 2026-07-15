@@ -249,6 +249,9 @@ export function getSonnetProviderRuntimeConfig(
     env: envWithProviderModel(provider, sonnetProvider?.env, model),
     model,
     credentialScope: sonnetProvider?.credentialScope ?? SONNET_CREDENTIAL_SCOPE,
+    ...(sonnetProvider?.connectionId && {
+      connectionId: sonnetProvider.connectionId,
+    }),
     ...(thinkingEffort && { thinkingEffort }),
     ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }

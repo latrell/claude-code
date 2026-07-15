@@ -4,6 +4,17 @@ import {
   getSessionId,
 } from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
+import { classifyConnectionOrigin } from '../services/connections/origin.js'
+import { getSessionAssignment } from '../services/connections/sessionAssignments.js'
+import {
+  findConnection,
+  getDefaultAssignment,
+} from '../services/connections/store.js'
+import type {
+  AgentSlot,
+  Connection,
+  ConnectionKind,
+} from '../services/connections/types.js'
 import type { LogOption } from '../types/logs.js'
 import { t, tf } from '../i18n/t.js'
 import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
@@ -104,11 +115,195 @@ export function calculateLayoutDimensions(
 function isDeepSeekBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   try {
-    const hostname = new URL(baseUrl).hostname
-    return hostname.includes('deepseek')
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.deepseek.com'
   } catch {
     return false
   }
+}
+
+function providerForConnectionKind(
+  kind: ConnectionKind,
+): ProviderRuntimeConfig['provider'] {
+  switch (kind) {
+    case 'anthropic-oauth':
+    case 'anthropic-api':
+      return 'firstParty'
+    case 'chatgpt-oauth':
+    case 'openai-compat':
+      return 'openai'
+    case 'gemini':
+      return 'gemini'
+    case 'grok':
+      return 'grok'
+    case 'cursor':
+      return 'cursor'
+  }
+}
+
+function runtimeBaseUrl(
+  runtimeConfig: ProviderRuntimeConfig,
+): string | undefined {
+  const env = runtimeConfig.env
+  switch (runtimeConfig.provider) {
+    case 'firstParty':
+      return env?.ANTHROPIC_BASE_URL
+    case 'openai':
+      return env?.OPENAI_BASE_URL
+    case 'gemini':
+      return env?.GEMINI_BASE_URL
+    case 'grok':
+      return env?.GROK_BASE_URL
+    case 'cursor':
+      return env?.CURSOR_BASE_URL
+    default:
+      return undefined
+  }
+}
+
+function normalizeBaseUrl(baseUrl: string | undefined): string | undefined {
+  if (!baseUrl) return undefined
+  try {
+    const url = new URL(baseUrl)
+    url.hash = ''
+    url.search = ''
+    return url.toString().replace(/\/$/, '').toLowerCase()
+  } catch {
+    return baseUrl.replace(/\/$/, '').toLowerCase()
+  }
+}
+
+/**
+ * Legacy scoped settings did not record their connection id. Match those
+ * against the assigned profile using provider, auth mode, endpoint and model
+ * so an environment/CLI override cannot inherit a stale registry label.
+ */
+export function connectionMatchesRuntimeConfig(
+  connection: Connection,
+  runtimeConfig: ProviderRuntimeConfig,
+): boolean {
+  if (providerForConnectionKind(connection.kind) !== runtimeConfig.provider) {
+    return false
+  }
+
+  const authMode = runtimeConfig.env?.OPENAI_AUTH_MODE
+  if (connection.kind === 'chatgpt-oauth' && authMode !== 'chatgpt') {
+    return false
+  }
+  if (connection.kind === 'openai-compat' && authMode === 'chatgpt') {
+    return false
+  }
+
+  if (
+    connection.model &&
+    runtimeConfig.model &&
+    connection.model !== runtimeConfig.model
+  ) {
+    return false
+  }
+
+  const connectionUrl = normalizeBaseUrl(connection.baseUrl)
+  const configUrl = normalizeBaseUrl(runtimeBaseUrl(runtimeConfig))
+  if (connectionUrl !== configUrl) return false
+
+  return true
+}
+
+export function resolveAssignedConnection(
+  runtimeConfig: ProviderRuntimeConfig,
+  assignments: { session?: string; default?: string },
+  lookup: (connectionId: string) => Connection | undefined,
+): Connection | undefined {
+  if (runtimeConfig.connectionId) {
+    const connection = lookup(runtimeConfig.connectionId)
+    return connection &&
+      connectionMatchesRuntimeConfig(connection, runtimeConfig)
+      ? connection
+      : undefined
+  }
+
+  if (assignments.session) {
+    const connection = lookup(assignments.session)
+    return connection &&
+      connectionMatchesRuntimeConfig(connection, runtimeConfig)
+      ? connection
+      : undefined
+  }
+
+  if (!assignments.default) return undefined
+  const connection = lookup(assignments.default)
+  return connection && connectionMatchesRuntimeConfig(connection, runtimeConfig)
+    ? connection
+    : undefined
+}
+
+function getAssignedConnection(
+  slot: AgentSlot,
+  runtimeConfig: ProviderRuntimeConfig,
+): Connection | undefined {
+  return resolveAssignedConnection(
+    runtimeConfig,
+    {
+      session: getSessionAssignment(slot)?.connectionId,
+      default: getDefaultAssignment(slot)?.connectionId,
+    },
+    findConnection,
+  )
+}
+
+function formatOriginLabel(
+  origin: ReturnType<typeof classifyConnectionOrigin>,
+): string {
+  return origin === 'official'
+    ? t('Official')
+    : origin === 'local'
+      ? t('Local deployment')
+      : t('Third-party')
+}
+
+function formatIdentity(
+  label: string,
+  origin: ReturnType<typeof classifyConnectionOrigin>,
+): string {
+  return tf('{label} ({origin})', {
+    label,
+    origin: formatOriginLabel(origin),
+  })
+}
+
+function formatConnectionIdentity(connection: Connection): string {
+  return formatIdentity(connection.label, classifyConnectionOrigin(connection))
+}
+
+function connectionKindForRuntime(
+  runtimeConfig: ProviderRuntimeConfig,
+): ConnectionKind | undefined {
+  switch (runtimeConfig.provider) {
+    case 'firstParty':
+      return 'anthropic-api'
+    case 'openai':
+      return runtimeConfig.env?.OPENAI_AUTH_MODE === 'chatgpt'
+        ? 'chatgpt-oauth'
+        : 'openai-compat'
+    case 'gemini':
+      return 'gemini'
+    case 'grok':
+      return 'grok'
+    case 'cursor':
+      return 'cursor'
+    default:
+      return undefined
+  }
+}
+
+function formatRuntimeIdentity(runtimeConfig: ProviderRuntimeConfig): string {
+  const providerName = formatProviderName(runtimeConfig)
+  const baseUrl = runtimeBaseUrl(runtimeConfig)
+  const kind = connectionKindForRuntime(runtimeConfig)
+  if (!baseUrl || !kind) return providerName
+  return formatIdentity(
+    providerName,
+    classifyConnectionOrigin({ kind, baseUrl }),
+  )
 }
 
 /**
@@ -304,9 +499,9 @@ export function getSubagentBillingDisplayName(
  * Returns undefined when no subagent provider is configured.
  *
  * Uses getAgentModel() to resolve the effective subagent model from the
- * provider runtime config. When the resolved model matches the parent model
- * (i.e. the subagent truly inherits), displays "Inherit from parent".
- * Otherwise displays the resolved model name (e.g. "deepseek-v4-pro").
+ * provider runtime config. A named connection is displayed with its actual
+ * origin (official, local deployment, or third-party). Model-name equality is
+ * never used as evidence that two slots share a connection.
  *
  * @param runtimeConfig - The subagent provider runtime config
  * @param parentModel - The resolved main loop model name
@@ -318,9 +513,12 @@ function formatProviderSlotDisplayLine(
   parentModel: string,
   billingType?: string,
   displayModelOverride?: string,
+  connection?: Connection,
 ): string | undefined {
   if (!runtimeConfig) return undefined
-  const providerName = formatProviderName(runtimeConfig)
+  const providerName = connection
+    ? formatConnectionIdentity(connection)
+    : formatRuntimeIdentity(runtimeConfig)
   const resolvedModel =
     displayModelOverride ??
     getAgentModel(
@@ -331,6 +529,9 @@ function formatProviderSlotDisplayLine(
       runtimeConfig,
     )
   const modelPart =
+    !connection &&
+    displayModelOverride === undefined &&
+    !runtimeConfig.model &&
     resolvedModel === parentModel
       ? t('Inherit from parent')
       : getAgentModelDisplay(resolvedModel)
@@ -343,12 +544,15 @@ export function formatSubagentDisplayLine(
   runtimeConfig: ProviderRuntimeConfig | undefined,
   parentModel: string,
   billingType?: string,
+  connection?: Connection,
 ): string | undefined {
   return formatProviderSlotDisplayLine(
     t('Subagent:'),
     runtimeConfig,
     parentModel,
     billingType,
+    undefined,
+    connection,
   )
 }
 
@@ -357,6 +561,7 @@ export function formatFastDisplayLine(
   parentModel: string,
   billingType?: string,
   displayModel?: string,
+  connection?: Connection,
 ): string | undefined {
   return formatProviderSlotDisplayLine(
     t('Fast agent:'),
@@ -364,6 +569,7 @@ export function formatFastDisplayLine(
     parentModel,
     billingType,
     displayModel,
+    connection,
   )
 }
 
@@ -372,6 +578,7 @@ export function formatSonnetDisplayLine(
   parentModel: string,
   billingType?: string,
   displayModel?: string,
+  connection?: Connection,
 ): string | undefined {
   return formatProviderSlotDisplayLine(
     t('Sonnet agent:'),
@@ -379,6 +586,7 @@ export function formatSonnetDisplayLine(
     parentModel,
     billingType,
     displayModel,
+    connection,
   )
 }
 
@@ -563,7 +771,15 @@ export function formatReleaseNoteForDisplay(
  * @param parentModel - The resolved main loop model name (e.g. from useMainLoopModel()),
  *   used to resolve the effective subagent model for display.
  */
-export function getLogoDisplayData(parentModel: string): {
+export function getLogoDisplayData(
+  parentModel: string,
+  options?: {
+    resolveConnection?: (
+      slot: AgentSlot,
+      runtimeConfig: ProviderRuntimeConfig,
+    ) => Connection | undefined
+  },
+): {
   version: string
   cwd: string
   billingType: string
@@ -582,15 +798,20 @@ export function getLogoDisplayData(parentModel: string): {
     : displayPath
   const billingType = getBillingDisplayName()
   const agentName = getInitialSettings().agent
+  const resolveConnection = options?.resolveConnection ?? getAssignedConnection
   const subagentRuntimeConfig = getSubagentProviderRuntimeConfig()
   const subagentBillingType = getSubagentBillingDisplayName(
     subagentRuntimeConfig,
     billingType,
   )
+  const subagentConnection = subagentRuntimeConfig
+    ? resolveConnection('subagent', subagentRuntimeConfig)
+    : undefined
   const subagentLine = formatSubagentDisplayLine(
     subagentRuntimeConfig,
     parentModel,
     subagentBillingType,
+    subagentConnection,
   )
   const fastRuntimeConfig = getFastProviderRuntimeConfig()
   const fastModel = fastRuntimeConfig
@@ -600,11 +821,15 @@ export function getLogoDisplayData(parentModel: string): {
     fastRuntimeConfig,
     billingType,
   )
+  const fastConnection = fastRuntimeConfig
+    ? resolveConnection('fast', fastRuntimeConfig)
+    : undefined
   const fastLine = formatFastDisplayLine(
     fastRuntimeConfig,
     parentModel,
     fastBillingType,
     fastModel,
+    fastConnection,
   )
   const sonnetRuntimeConfig = getSonnetProviderRuntimeConfig()
   const sonnetModel = sonnetRuntimeConfig
@@ -614,11 +839,15 @@ export function getLogoDisplayData(parentModel: string): {
     sonnetRuntimeConfig,
     billingType,
   )
+  const sonnetConnection = sonnetRuntimeConfig
+    ? resolveConnection('sonnet', sonnetRuntimeConfig)
+    : undefined
   const sonnetLine = formatSonnetDisplayLine(
     sonnetRuntimeConfig,
     parentModel,
     sonnetBillingType,
     sonnetModel,
+    sonnetConnection,
   )
 
   return {

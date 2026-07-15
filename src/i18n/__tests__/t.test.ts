@@ -111,6 +111,12 @@ describe('t', () => {
     mockLanguage = '简体中文'
     expect(t('Welcome back!')).toBe('欢迎回来！')
     expect(t('Inherit from parent')).toBe('继承自父智能体')
+    expect(t('Official')).toBe('官方')
+    expect(t('Local deployment')).toBe('本地部署')
+    expect(t('Third-party')).toBe('第三方')
+    expect(
+      tf('{label} ({origin})', { label: 'DeepSeek', origin: '官方' }),
+    ).toBe('DeepSeek（官方）')
     expect(t('Subagent:')).toBe('子智能体：')
     expect(t('Subagent:')).not.toBe('Subagent:')
     expect(t('cycle')).toBe('切换')

@@ -13,6 +13,7 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 import { setChatGPTSubscriptionPlan } from '../../bootstrap/state.js'
+import type { Connection } from '../../services/connections/types.js'
 import { setFastProviderConfigOverride } from '../model/fastProvider.js'
 import {
   setSubagentProviderConfigOverride,
@@ -21,9 +22,11 @@ import {
 import {
   formatFastDisplayLine,
   formatSubagentDisplayLine,
+  connectionMatchesRuntimeConfig,
   getBillingDisplayName,
   getLogoDisplayData,
   getSubagentBillingDisplayName,
+  resolveAssignedConnection,
 } from '../logoV2Utils.js'
 
 const PARENT_MODEL = 'claude-sonnet-4-6-20250514'
@@ -292,8 +295,170 @@ describe('formatFastDisplayLine', () => {
       },
     }
     expect(formatFastDisplayLine(config, PARENT_MODEL, 'DeepSeek API')).toBe(
-      'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
+      'Fast agent: DeepSeek (Official) · DeepSeek V4 Flash · DeepSeek API',
     )
+  })
+
+  test('classifies anonymous runtime endpoints when no saved connection exists', () => {
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+      env: { OPENAI_BASE_URL: 'http://192.168.11.6:8080/v1' },
+    }
+
+    expect(
+      formatFastDisplayLine(
+        config,
+        PARENT_MODEL,
+        'OpenAI-compatible API',
+        config.model ?? undefined,
+      ),
+    ).toContain('OpenAI (Local deployment)')
+
+    config.env = { OPENAI_BASE_URL: 'https://openrouter.ai/api/v1' }
+    expect(
+      formatFastDisplayLine(
+        config,
+        PARENT_MODEL,
+        'OpenAI-compatible API',
+        config.model ?? undefined,
+      ),
+    ).toContain('OpenAI (Third-party)')
+  })
+
+  test('shows the exact official connection when it uses the same model as the main agent', () => {
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com',
+        OPENAI_MODEL: 'deepseek-v4-flash',
+      },
+    }
+    const connection: Connection = {
+      id: 'deepseek-v4-flash',
+      label: 'DeepSeek-V4-Flash',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    }
+
+    expect(
+      formatFastDisplayLine(
+        config,
+        'deepseek-v4-flash',
+        'DeepSeek API',
+        'deepseek-v4-flash',
+        connection,
+      ),
+    ).toBe(
+      'Fast agent: DeepSeek-V4-Flash (Official) · DeepSeek V4 Flash · DeepSeek API',
+    )
+  })
+
+  test('labels local and third-party connections by their actual origin', () => {
+    const config: ProviderRuntimeConfig = {
+      provider: 'openai',
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+    }
+    const local: Connection = {
+      id: 'dgx-spark',
+      label: 'DGX Spark',
+      kind: 'openai-compat',
+      baseUrl: 'http://192.168.11.6:8080/v1',
+      model: 'deepseek-v4-flash',
+    }
+    const relay: Connection = {
+      id: 'openrouter',
+      label: 'OpenRouter',
+      kind: 'openai-compat',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'deepseek-v4-flash',
+    }
+
+    expect(
+      formatFastDisplayLine(
+        config,
+        PARENT_MODEL,
+        'OpenAI-compatible API',
+        config.model ?? undefined,
+        local,
+      ),
+    ).toContain('DGX Spark (Local deployment)')
+    expect(
+      formatFastDisplayLine(
+        config,
+        PARENT_MODEL,
+        'OpenAI-compatible API',
+        config.model ?? undefined,
+        relay,
+      ),
+    ).toContain('OpenRouter (Third-party)')
+  })
+})
+
+describe('connectionMatchesRuntimeConfig', () => {
+  const connection: Connection = {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    kind: 'openai-compat',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+  }
+
+  test('matches the saved connection to its scoped runtime', () => {
+    expect(
+      connectionMatchesRuntimeConfig(connection, {
+        provider: 'openai',
+        model: 'deepseek-v4-flash',
+        env: { OPENAI_BASE_URL: 'https://api.deepseek.com/' },
+      }),
+    ).toBe(true)
+  })
+
+  test('rejects a stale assignment when an environment override changes the endpoint', () => {
+    expect(
+      connectionMatchesRuntimeConfig(connection, {
+        provider: 'openai',
+        model: 'deepseek-v4-flash',
+        env: { OPENAI_BASE_URL: 'https://relay.example.com/v1' },
+      }),
+    ).toBe(false)
+  })
+
+  test('resolves a matching global default after a fresh process start', () => {
+    const lookup = (id: string) =>
+      id === connection.id ? connection : undefined
+    expect(
+      resolveAssignedConnection(
+        {
+          provider: 'openai',
+          model: 'deepseek-v4-flash',
+          env: { OPENAI_BASE_URL: 'https://api.deepseek.com' },
+        },
+        { default: connection.id },
+        lookup,
+      ),
+    ).toBe(connection)
+  })
+
+  test('does not fall back to a global label when a session assignment is stale', () => {
+    const lookup = (id: string) =>
+      id === connection.id ? connection : undefined
+    expect(
+      resolveAssignedConnection(
+        {
+          provider: 'openai',
+          model: 'deepseek-v4-flash',
+          env: { OPENAI_BASE_URL: 'https://api.deepseek.com' },
+        },
+        { session: 'deleted-session-connection', default: connection.id },
+        lookup,
+      ),
+    ).toBeUndefined()
   })
 })
 
@@ -321,14 +486,52 @@ describe('getLogoDisplayData', () => {
     process.env.DEMO_VERSION = 'test'
 
     try {
-      const result = getLogoDisplayData(PARENT_MODEL)
+      const result = getLogoDisplayData(PARENT_MODEL, {
+        resolveConnection: () => undefined,
+      })
 
       expect(result.subagentLine).toBe(
-        'Subagent: DeepSeek · DeepSeek V4 Pro · DeepSeek API',
+        'Subagent: DeepSeek (Official) · DeepSeek V4 Pro · DeepSeek API',
       )
       expect(result.fastLine).toBe(
-        'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
+        'Fast agent: DeepSeek (Official) · DeepSeek V4 Flash · DeepSeek API',
       )
+    } finally {
+      if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION
+      else process.env.DEMO_VERSION = previousDemoVersion
+    }
+  })
+
+  test('uses the assigned connection identity instead of inferring inheritance from an equal model id', () => {
+    const fastConnection: Connection = {
+      id: 'deepseek-v4-flash',
+      label: 'DeepSeek-V4-Flash',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    }
+    setFastProviderConfigOverride({
+      modelType: 'openai',
+      model: 'deepseek-v4-flash',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com',
+        OPENAI_API_KEY: 'sk-fast',
+      },
+      credentialScope: 'fast',
+    })
+    const previousDemoVersion = process.env.DEMO_VERSION
+    process.env.DEMO_VERSION = 'test'
+
+    try {
+      const result = getLogoDisplayData('deepseek-v4-flash', {
+        resolveConnection: slot =>
+          slot === 'fast' ? fastConnection : undefined,
+      })
+
+      expect(result.fastLine).toBe(
+        'Fast agent: DeepSeek-V4-Flash (Official) · DeepSeek V4 Flash · DeepSeek API',
+      )
+      expect(result.fastLine).not.toContain('Inherit from parent')
     } finally {
       if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION
       else process.env.DEMO_VERSION = previousDemoVersion
@@ -430,6 +633,14 @@ describe('getBillingDisplayName', () => {
     const result = getBillingDisplayName(
       { modelType: 'openai' },
       { OPENAI_BASE_URL: 'https://my-custom-api.example.com/v1' },
+    )
+    expect(result).toBe('OpenAI-compatible API')
+  })
+
+  test('does not treat a DeepSeek-looking relay hostname as the official API', () => {
+    const result = getBillingDisplayName(
+      { modelType: 'openai' },
+      { OPENAI_BASE_URL: 'https://deepseek-proxy.example.com/v1' },
     )
     expect(result).toBe('OpenAI-compatible API')
   })

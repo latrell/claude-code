@@ -197,7 +197,6 @@ export function ThinkingEffortPicker({ connection, appStateEffort, onChange, onC
         visibleOptionCount={8}
         defaultFocusValue={current}
         onBack={onCancel}
-        onCancel={onCancel}
         onChange={value =>
           onChange(applyConnectionThinkingEffortSelection(connection, value as ThinkingEffortSelection))
         }

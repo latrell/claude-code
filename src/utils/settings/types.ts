@@ -51,6 +51,10 @@ export const ProviderLoginConfigSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Credential/token namespace for scoped provider auth'),
+      connectionId: z
+        .string()
+        .optional()
+        .describe('Saved connection profile backing this scoped provider'),
       thinkingEffort: z
         .enum(['off', 'low', 'medium', 'high', 'max'])
         .optional()

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Dialog, Text } from '@anthropic/ink';
+import { Box, Byline, Dialog, KeyboardShortcutHint, Text } from '@anthropic/ink';
 import {
   activateConnectionForSession,
   activateConnectionGlobally,
@@ -46,11 +46,13 @@ import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { removeCursorOAuth } from '../../services/api/cursor/cursorOAuth.js';
 import { useAppState } from '../../state/AppState.js';
 import { t, tf } from '../../i18n/t.js';
+import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
 import { AddConnectionWizard } from './AddConnectionWizard.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
 import { ConnectionSelect } from './ConnectionSelect.js';
+import { shouldConnectionsDialogHandleCancel } from './navigation.js';
 import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
 
 export type ActivationScope = 'session' | 'global';
@@ -416,7 +418,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 },
               ]
             : []),
-          { label: t('Close'), value: 'close' },
         ];
         return (
           <Box flexDirection="column" gap={1}>
@@ -446,8 +447,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
                 } else if (value === 'clear-sonnet') {
                   clearSonnetDefault();
                   refresh();
-                } else if (value === 'close') {
-                  onDone();
                 }
               }}
             />
@@ -530,7 +529,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               ]}
               visibleOptionCount={11}
               onBack={() => setView({ mode: 'list' })}
-              onCancel={() => setView({ mode: 'list' })}
               onChange={value => {
                 const activation = ACTIVATION_MENU_ACTIONS[value];
                 if (activation) {
@@ -643,7 +641,6 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
               options={options}
               visibleOptionCount={10}
               onBack={() => setView({ mode: 'menu', connectionId: connection.id })}
-              onCancel={() => setView({ mode: 'menu', connectionId: connection.id })}
               onChange={value => {
                 if (value === '__custom__') {
                   const trimmed = customModelInput.trim();
@@ -954,7 +951,7 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
         return (
           <Box flexDirection="column" gap={1}>
             <Text color="error">{view.message}</Text>
-            <ConnectionSelect options={[]} onBack={() => setView(view.back)} onCancel={() => setView(view.back)} />
+            <ConnectionSelect options={[]} onBack={() => setView(view.back)} />
           </Box>
         );
 
@@ -981,9 +978,27 @@ export function ConnectionsPanel({ onDone, onMainModelChange, onAuthChanged }: P
       : view.mode === 'model-pick' || view.mode === 'context-window'
         ? `${view.mode}:${view.connectionId}:${view.next ? `${view.next.slot}:${view.next.scope}` : 'menu'}`
         : view.mode;
+  const isRootView = shouldConnectionsDialogHandleCancel(view.mode);
 
   return (
-    <Dialog title={t('Connections')} onCancel={() => onDone()} hideInputGuide>
+    <Dialog
+      title={t('Connections')}
+      onCancel={() => onDone()}
+      hideInputGuide={!isRootView}
+      isCancelActive={isRootView}
+      inputGuide={() => (
+        <Byline>
+          <KeyboardShortcutHint shortcut="↑/↓" action={t('navigate')} />
+          <KeyboardShortcutHint shortcut="Enter" action={t('select')} />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description={t('close')}
+          />
+        </Byline>
+      )}
+    >
       <Box key={viewKey} flexDirection="column">
         {inner}
       </Box>

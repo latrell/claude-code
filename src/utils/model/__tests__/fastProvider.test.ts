@@ -221,6 +221,7 @@ describe('fast provider config', () => {
       modelType: 'openai',
       env: { OPENAI_API_KEY: 'conn-key', OPENAI_BASE_URL: 'https://conn.test' },
       model: 'deepseek-v4-flash',
+      connectionId: 'deepseek-official',
       thinkingEffort: 'off',
       thinkingEffortTransport: 'passthrough',
       credentialScope: FAST_CREDENTIAL_SCOPE,
@@ -230,6 +231,7 @@ describe('fast provider config', () => {
 
       expect(config?.provider).toBe('openai')
       expect(config?.model).toBe('deepseek-v4-flash')
+      expect(config?.connectionId).toBe('deepseek-official')
       expect(config?.env?.OPENAI_BASE_URL).toBe('https://conn.test')
       expect(config?.env?.OPENAI_MODEL).toBe('deepseek-v4-flash')
       expect(config?.thinkingEffort).toBe('off')

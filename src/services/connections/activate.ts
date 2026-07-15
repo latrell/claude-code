@@ -524,6 +524,7 @@ function chatgptSlotConfig(
 ): ProviderLoginConfig {
   return {
     modelType: 'openai',
+    connectionId: connection.id,
     env: { OPENAI_AUTH_MODE: 'chatgpt' },
     ...(model && { model }),
     thinkingEffort: connection.thinkingEffort,
@@ -545,6 +546,7 @@ function anthropicOAuthSlotConfig(
 ): ProviderLoginConfig {
   return {
     modelType: 'anthropic',
+    connectionId: connection.id,
     ...(model && { model }),
     thinkingEffort: connection.thinkingEffort,
     thinkingEffortTransport: connection.thinkingEffortTransport,
@@ -567,6 +569,7 @@ function slotLoginConfig(
   }
   return {
     modelType: kindToModelType(connection.kind),
+    connectionId: connection.id,
     ...(Object.keys(cleanEnv).length > 0 && { env: cleanEnv }),
     ...(model && { model }),
     // Keep both keys explicit. updateSettingsForSource deep-merges objects;

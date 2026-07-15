@@ -57,11 +57,6 @@ export type UseSelectProps<T> = {
   onDownFromLastItem?: () => void
 
   /**
-   * Callback when user presses the left arrow outside an input option.
-   */
-  onLeftArrow?: () => void
-
-  /**
    * Callback when input mode should be toggled for an option.
    * Called when Tab is pressed (to enter or exit input mode).
    */
@@ -87,13 +82,6 @@ export type UseSelectProps<T> = {
   onEnterImageSelection?: () => boolean
 }
 
-export function shouldHandleSelectLeftArrow(
-  leftArrow: boolean,
-  isInInput: boolean,
-): boolean {
-  return leftArrow && !isInInput
-}
-
 export const useSelectInput = <T>({
   isDisabled = false,
   disableSelection = false,
@@ -102,7 +90,6 @@ export const useSelectInput = <T>({
   isMultiSelect = false,
   onUpFromFirstItem,
   onDownFromLastItem,
-  onLeftArrow,
   onInputModeToggle,
   inputValues,
   imagesSelected = false,
@@ -189,15 +176,6 @@ export const useSelectInput = <T>({
         opt => opt.value === state.focusedValue,
       )
       const currentIsInInput = focusedOption?.type === 'input'
-
-      if (
-        onLeftArrow &&
-        shouldHandleSelectLeftArrow(key.leftArrow, currentIsInInput)
-      ) {
-        event.stopImmediatePropagation()
-        onLeftArrow()
-        return
-      }
 
       // Handle Tab key for input mode toggling
       if (key.tab && onInputModeToggle && state.focusedValue !== undefined) {

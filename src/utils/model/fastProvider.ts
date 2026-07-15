@@ -242,6 +242,9 @@ export function getFastProviderRuntimeConfig(
     env: envWithProviderModel(provider, fastProvider?.env, model),
     model,
     credentialScope: fastProvider?.credentialScope ?? FAST_CREDENTIAL_SCOPE,
+    ...(fastProvider?.connectionId && {
+      connectionId: fastProvider.connectionId,
+    }),
     ...(thinkingEffort && { thinkingEffort }),
     ...(thinkingEffortTransport && { thinkingEffortTransport }),
   }

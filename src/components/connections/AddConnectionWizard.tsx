@@ -15,6 +15,7 @@ import { withContextWindow, withPinnedModel } from '../../services/connections/p
 import { generateConnectionId, listConnections, upsertConnection } from '../../services/connections/store.js';
 import type { Connection, ConnectionKind, TierModels } from '../../services/connections/types.js';
 import { saveCurrentOAuthAccountToSlot } from '../../services/connections/oauthAccounts.js';
+import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { useAppState } from '../../state/AppState.js';
 import {
   CHINA_LLM_PROVIDERS,
@@ -28,6 +29,7 @@ import { ChatGPTDeviceLogin } from './ChatGPTDeviceLogin.js';
 import { ConnectionSelect } from './ConnectionSelect.js';
 import { CursorDeviceLogin } from './CursorDeviceLogin.js';
 import { ConnectionForm, type ConnectionFormField } from './ConnectionForm.js';
+import { connectionOAuthBackTarget } from './navigation.js';
 import { ThinkingEffortPicker } from './ThinkingEffortPicker.js';
 
 type WizardStep =
@@ -38,6 +40,7 @@ type WizardStep =
       kind: Exclude<ConnectionKind, 'anthropic-oauth' | 'chatgpt-oauth'>;
       preset?: ProviderPreset;
       presetMode?: 'api' | 'coding-plan';
+      back: WizardStep;
     }
   | { step: 'claude-oauth' }
   | { step: 'chatgpt-oauth'; scope: string }
@@ -47,12 +50,12 @@ type WizardStep =
    * Profile steps run between credential entry and finishCreate: pin a model,
    * pick a thinking effort (skipped for Cursor — effort is encoded in the
    * model id) and set a context window (skipped for OAuth kinds with
-   * provider-known windows). `back` is the pre-profile step ←/Esc returns to.
+   * provider-known windows). `back` is the pre-profile step Esc returns to.
    */
   | { step: 'profile-model'; draft: Connection; back: WizardStep }
   | { step: 'profile-effort'; draft: Connection; back: WizardStep }
   | { step: 'profile-context'; draft: Connection; back: WizardStep }
-  | { step: 'error'; message: string };
+  | { step: 'error'; message: string; back: WizardStep };
 
 type Props = {
   onCreated: (connection: Connection) => void;
@@ -104,6 +107,20 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
   // Holds the "Custom model…" text field value so the step only advances on
   // Enter (Select's onChange with '__custom__'), not on every keystroke.
   const [customModelInput, setCustomModelInput] = useState('');
+
+  const oauthStep =
+    step.step === 'claude-oauth' || step.step === 'chatgpt-oauth' || step.step === 'cursor-oauth' ? step.step : null;
+  useKeybinding(
+    'confirm:no',
+    () => {
+      if (!oauthStep) return;
+      setStep({ step: connectionOAuthBackTarget(oauthStep) });
+    },
+    {
+      context: 'Confirmation',
+      isActive: oauthStep !== null,
+    },
+  );
 
   // Fetch the live model list when entering the profile-model step. The
   // draft is not persisted yet, so this uses the pure fetch — detected
@@ -172,6 +189,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       setStep({
         step: 'error',
         message: t('Login finished but no account information was stored.'),
+        back: { step: 'kind' },
       });
       return;
     }
@@ -243,7 +261,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
             options={options}
             visibleOptionCount={10}
             onBack={onCancel}
-            onCancel={onCancel}
             onChange={choice => {
               setSubmitError(null);
               if (choice.startsWith('preset:')) {
@@ -252,7 +269,13 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
                 if (preset.codingPlan) {
                   setStep({ step: 'preset-mode', preset });
                 } else {
-                  setStep({ step: 'form', kind: 'openai-compat', preset, presetMode: 'api' });
+                  setStep({
+                    step: 'form',
+                    kind: 'openai-compat',
+                    preset,
+                    presetMode: 'api',
+                    back: { step: 'kind' },
+                  });
                 }
                 return;
               }
@@ -262,7 +285,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               }
               const customKind = CUSTOM_KIND_CHOICES[choice];
               if (customKind) {
-                setStep({ step: 'form', kind: customKind });
+                setStep({ step: 'form', kind: customKind, back: { step: 'kind' } });
                 return;
               }
               if (choice === 'claude-oauth') {
@@ -295,13 +318,13 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               },
             ]}
             onBack={() => setStep({ step: 'kind' })}
-            onCancel={() => setStep({ step: 'kind' })}
             onChange={value => {
               setStep({
                 step: 'form',
                 kind: 'openai-compat',
                 preset,
                 presetMode: value === 'coding-plan' ? 'coding-plan' : 'api',
+                back: { step: 'preset-mode', preset },
               });
             }}
           />
@@ -310,7 +333,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
     }
 
     case 'form': {
-      const { kind, preset, presetMode } = step;
+      const { kind, preset, presetMode, back } = step;
       const isCursor = kind === 'cursor';
       const presetBaseUrl = preset ? resolveChinaProviderBaseURL(preset.id, presetMode ?? 'api') : undefined;
       const keyFormat =
@@ -394,7 +417,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
           }
           fields={fields}
           submitError={submitError}
-          onCancel={() => setStep({ step: 'kind' })}
+          onCancel={() => setStep(back)}
           onSubmit={values => {
             const label = values['label'] || preset?.label || kind;
             const tiers = preset ? presetTierModels(preset) : undefined;
@@ -425,6 +448,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
             {t('Signing in adds this account as a connection and makes it the active Claude account.')}
           </Text>
           <ConsoleOAuthFlow forceLoginMethod="claudeai" onDone={handleClaudeOAuthDone} />
+          <Text dimColor>{`Esc ${t('go back')}`}</Text>
         </Box>
       );
 
@@ -447,12 +471,11 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
               },
             ]}
             onBack={() => setStep({ step: 'kind' })}
-            onCancel={() => setStep({ step: 'kind' })}
             onChange={value => {
               if (value === 'oauth') {
                 setStep({ step: 'cursor-oauth', scope: generateConnectionId('cursor') });
               } else if (value === 'manual') {
-                setStep({ step: 'form', kind: 'cursor' });
+                setStep({ step: 'form', kind: 'cursor', back: { step: 'cursor-mode' } });
               }
             }}
           />
@@ -461,44 +484,48 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
 
     case 'cursor-oauth':
       return (
-        <CursorDeviceLogin
-          key="step-cursor-oauth"
-          scope={step.scope}
-          onSuccess={() => {
-            const existing = findExisting('cursor', c => c.credentialRef === step.scope);
-            const label = t('Cursor Account');
-            const connection: Connection = existing ?? {
-              id: step.scope,
-              label,
-              kind: 'cursor',
-              credentialRef: step.scope,
-              createdAt: new Date().toISOString(),
-            };
-            startProfile(connection, { step: 'cursor-mode' });
-          }}
-          onError={message => setStep({ step: 'error', message })}
-        />
+        <Box key="step-cursor-oauth" flexDirection="column" gap={1}>
+          <CursorDeviceLogin
+            scope={step.scope}
+            onSuccess={() => {
+              const existing = findExisting('cursor', c => c.credentialRef === step.scope);
+              const label = t('Cursor Account');
+              const connection: Connection = existing ?? {
+                id: step.scope,
+                label,
+                kind: 'cursor',
+                credentialRef: step.scope,
+                createdAt: new Date().toISOString(),
+              };
+              startProfile(connection, { step: 'cursor-mode' });
+            }}
+            onError={message => setStep({ step: 'error', message, back: { step: 'cursor-mode' } })}
+          />
+          <Text dimColor>{`Esc ${t('go back')}`}</Text>
+        </Box>
       );
 
     case 'chatgpt-oauth':
       return (
-        <ChatGPTDeviceLogin
-          key="step-chatgpt-oauth"
-          scope={step.scope}
-          onSuccess={() => {
-            const existing = findExisting('chatgpt-oauth', c => c.credentialRef === step.scope);
-            const label = t('ChatGPT Subscription');
-            const connection: Connection = existing ?? {
-              id: step.scope,
-              label,
-              kind: 'chatgpt-oauth',
-              credentialRef: step.scope,
-              createdAt: new Date().toISOString(),
-            };
-            startProfile(connection, { step: 'kind' });
-          }}
-          onError={message => setStep({ step: 'error', message })}
-        />
+        <Box key="step-chatgpt-oauth" flexDirection="column" gap={1}>
+          <ChatGPTDeviceLogin
+            scope={step.scope}
+            onSuccess={() => {
+              const existing = findExisting('chatgpt-oauth', c => c.credentialRef === step.scope);
+              const label = t('ChatGPT Subscription');
+              const connection: Connection = existing ?? {
+                id: step.scope,
+                label,
+                kind: 'chatgpt-oauth',
+                credentialRef: step.scope,
+                createdAt: new Date().toISOString(),
+              };
+              startProfile(connection, { step: 'kind' });
+            }}
+            onError={message => setStep({ step: 'error', message, back: { step: 'kind' } })}
+          />
+          <Text dimColor>{`Esc ${t('go back')}`}</Text>
+        </Box>
       );
 
     case 'profile-model': {
@@ -527,7 +554,6 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
             options={options}
             visibleOptionCount={10}
             onBack={() => setStep(back)}
-            onCancel={() => setStep(back)}
             onChange={value => {
               if (value === '__custom__') {
                 const trimmed = customModelInput.trim();
@@ -617,12 +643,7 @@ export function AddConnectionWizard({ onCreated, onCancel }: Props): React.React
       return (
         <Box key="step-error" flexDirection="column" gap={1}>
           <Text color="error">{step.message}</Text>
-          <ConnectionSelect
-            options={[{ label: t('Cancel'), value: 'cancel' }]}
-            onBack={() => setStep({ step: 'kind' })}
-            onCancel={onCancel}
-            onChange={onCancel}
-          />
+          <ConnectionSelect options={[]} onBack={() => setStep(step.back)} />
         </Box>
       );
 

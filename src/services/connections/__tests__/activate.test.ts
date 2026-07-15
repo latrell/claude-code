@@ -993,6 +993,7 @@ describe('activateConnectionForSession (fast slot)', () => {
 
     const config = getFastProviderConfig({}, {})
     expect(config?.modelType).toBe('openai')
+    expect(config?.connectionId).toBe(conn.id)
     expect(config?.model).toBe('deepseek-chat')
     expect(config?.env?.OPENAI_API_KEY).toBe('sk-a')
     expect(config?.env?.OPENAI_BASE_URL).toBe('https://api.deepseek.com')
@@ -1086,10 +1087,15 @@ describe('activateConnectionGlobally (fast slot)', () => {
     expect(result.success).toBe(true)
 
     const settings = readUserSettings() as {
-      fastProvider?: { modelType: string; env?: Record<string, string> }
+      fastProvider?: {
+        modelType: string
+        connectionId?: string
+        env?: Record<string, string>
+      }
       providerModels?: Record<string, { fastModel?: string }>
     }
     expect(settings.fastProvider?.modelType).toBe('openai')
+    expect(settings.fastProvider?.connectionId).toBe(conn.id)
     expect(settings.fastProvider?.env?.OPENAI_API_KEY).toBe('sk-a')
     expect(settings.providerModels?.['openai']?.fastModel).toBe('deepseek-chat')
 
