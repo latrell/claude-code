@@ -295,39 +295,11 @@ describe('formatFastDisplayLine', () => {
       },
     }
     expect(formatFastDisplayLine(config, PARENT_MODEL, 'DeepSeek API')).toBe(
-      'Fast agent: DeepSeek (Official) · DeepSeek V4 Flash · DeepSeek API',
+      'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
     )
   })
 
-  test('classifies anonymous runtime endpoints when no saved connection exists', () => {
-    const config: ProviderRuntimeConfig = {
-      provider: 'openai',
-      modelType: 'openai',
-      model: 'deepseek-v4-flash',
-      env: { OPENAI_BASE_URL: 'http://192.168.11.6:8080/v1' },
-    }
-
-    expect(
-      formatFastDisplayLine(
-        config,
-        PARENT_MODEL,
-        'OpenAI-compatible API',
-        config.model ?? undefined,
-      ),
-    ).toContain('OpenAI (Local deployment)')
-
-    config.env = { OPENAI_BASE_URL: 'https://openrouter.ai/api/v1' }
-    expect(
-      formatFastDisplayLine(
-        config,
-        PARENT_MODEL,
-        'OpenAI-compatible API',
-        config.model ?? undefined,
-      ),
-    ).toContain('OpenAI (Third-party)')
-  })
-
-  test('shows the exact official connection when it uses the same model as the main agent', () => {
+  test('shows the exact connection name when it uses the same model as the main agent', () => {
     const config: ProviderRuntimeConfig = {
       provider: 'openai',
       modelType: 'openai',
@@ -353,12 +325,10 @@ describe('formatFastDisplayLine', () => {
         'deepseek-v4-flash',
         connection,
       ),
-    ).toBe(
-      'Fast agent: DeepSeek-V4-Flash (Official) · DeepSeek V4 Flash · DeepSeek API',
-    )
+    ).toBe('Fast agent: DeepSeek-V4-Flash · DeepSeek V4 Flash · DeepSeek API')
   })
 
-  test('labels local and third-party connections by their actual origin', () => {
+  test('uses saved names to distinguish compatible connections with different endpoints', () => {
     const config: ProviderRuntimeConfig = {
       provider: 'openai',
       modelType: 'openai',
@@ -387,7 +357,7 @@ describe('formatFastDisplayLine', () => {
         config.model ?? undefined,
         local,
       ),
-    ).toContain('DGX Spark (Local deployment)')
+    ).toBe('Fast agent: DGX Spark · DeepSeek V4 Flash · OpenAI-compatible API')
     expect(
       formatFastDisplayLine(
         config,
@@ -396,7 +366,7 @@ describe('formatFastDisplayLine', () => {
         config.model ?? undefined,
         relay,
       ),
-    ).toContain('OpenRouter (Third-party)')
+    ).toBe('Fast agent: OpenRouter · DeepSeek V4 Flash · OpenAI-compatible API')
   })
 })
 
@@ -491,10 +461,10 @@ describe('getLogoDisplayData', () => {
       })
 
       expect(result.subagentLine).toBe(
-        'Subagent: DeepSeek (Official) · DeepSeek V4 Pro · DeepSeek API',
+        'Subagent: DeepSeek · DeepSeek V4 Pro · DeepSeek API',
       )
       expect(result.fastLine).toBe(
-        'Fast agent: DeepSeek (Official) · DeepSeek V4 Flash · DeepSeek API',
+        'Fast agent: DeepSeek · DeepSeek V4 Flash · DeepSeek API',
       )
     } finally {
       if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION
@@ -529,7 +499,7 @@ describe('getLogoDisplayData', () => {
       })
 
       expect(result.fastLine).toBe(
-        'Fast agent: DeepSeek-V4-Flash (Official) · DeepSeek V4 Flash · DeepSeek API',
+        'Fast agent: DeepSeek-V4-Flash · DeepSeek V4 Flash · DeepSeek API',
       )
       expect(result.fastLine).not.toContain('Inherit from parent')
     } finally {

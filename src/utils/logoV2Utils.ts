@@ -4,7 +4,6 @@ import {
   getSessionId,
 } from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
-import { classifyConnectionOrigin } from '../services/connections/origin.js'
 import { getSessionAssignment } from '../services/connections/sessionAssignments.js'
 import {
   findConnection,
@@ -250,62 +249,6 @@ function getAssignedConnection(
   )
 }
 
-function formatOriginLabel(
-  origin: ReturnType<typeof classifyConnectionOrigin>,
-): string {
-  return origin === 'official'
-    ? t('Official')
-    : origin === 'local'
-      ? t('Local deployment')
-      : t('Third-party')
-}
-
-function formatIdentity(
-  label: string,
-  origin: ReturnType<typeof classifyConnectionOrigin>,
-): string {
-  return tf('{label} ({origin})', {
-    label,
-    origin: formatOriginLabel(origin),
-  })
-}
-
-function formatConnectionIdentity(connection: Connection): string {
-  return formatIdentity(connection.label, classifyConnectionOrigin(connection))
-}
-
-function connectionKindForRuntime(
-  runtimeConfig: ProviderRuntimeConfig,
-): ConnectionKind | undefined {
-  switch (runtimeConfig.provider) {
-    case 'firstParty':
-      return 'anthropic-api'
-    case 'openai':
-      return runtimeConfig.env?.OPENAI_AUTH_MODE === 'chatgpt'
-        ? 'chatgpt-oauth'
-        : 'openai-compat'
-    case 'gemini':
-      return 'gemini'
-    case 'grok':
-      return 'grok'
-    case 'cursor':
-      return 'cursor'
-    default:
-      return undefined
-  }
-}
-
-function formatRuntimeIdentity(runtimeConfig: ProviderRuntimeConfig): string {
-  const providerName = formatProviderName(runtimeConfig)
-  const baseUrl = runtimeBaseUrl(runtimeConfig)
-  const kind = connectionKindForRuntime(runtimeConfig)
-  if (!baseUrl || !kind) return providerName
-  return formatIdentity(
-    providerName,
-    classifyConnectionOrigin({ kind, baseUrl }),
-  )
-}
-
 /**
  * Maps a provider runtime config to a human-readable provider name.
  * Priority: modelType (e.g. 'openai') > provider (e.g. 'firstParty').
@@ -499,9 +442,10 @@ export function getSubagentBillingDisplayName(
  * Returns undefined when no subagent provider is configured.
  *
  * Uses getAgentModel() to resolve the effective subagent model from the
- * provider runtime config. A named connection is displayed with its actual
- * origin (official, local deployment, or third-party). Model-name equality is
- * never used as evidence that two slots share a connection.
+ * provider runtime config. A named connection is displayed verbatim so users
+ * can distinguish multiple endpoints for the same provider and model.
+ * Model-name equality is never used as evidence that two slots share a
+ * connection.
  *
  * @param runtimeConfig - The subagent provider runtime config
  * @param parentModel - The resolved main loop model name
@@ -516,9 +460,7 @@ function formatProviderSlotDisplayLine(
   connection?: Connection,
 ): string | undefined {
   if (!runtimeConfig) return undefined
-  const providerName = connection
-    ? formatConnectionIdentity(connection)
-    : formatRuntimeIdentity(runtimeConfig)
+  const connectionName = connection?.label ?? formatProviderName(runtimeConfig)
   const resolvedModel =
     displayModelOverride ??
     getAgentModel(
@@ -537,7 +479,7 @@ function formatProviderSlotDisplayLine(
       : getAgentModelDisplay(resolvedModel)
 
   const billingSuffix = billingType ? ` · ${billingType}` : ''
-  return `${label} ${providerName} · ${modelPart}${billingSuffix}`
+  return `${label} ${connectionName} · ${modelPart}${billingSuffix}`
 }
 
 export function formatSubagentDisplayLine(
