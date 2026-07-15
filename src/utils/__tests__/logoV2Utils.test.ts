@@ -21,6 +21,7 @@ import {
 } from '../model/subagentProvider.js'
 import {
   formatFastDisplayLine,
+  formatMainDisplayName,
   formatSubagentDisplayLine,
   connectionMatchesRuntimeConfig,
   getBillingDisplayName,
@@ -34,6 +35,18 @@ const PARENT_MODEL = 'claude-sonnet-4-6-20250514'
 afterEach(() => {
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
+})
+
+describe('formatMainDisplayName', () => {
+  test('prefixes the model with the exact saved connection name', () => {
+    expect(
+      formatMainDisplayName('DeepSeek V4 Flash with max effort', 'DGX Spark'),
+    ).toBe('DGX Spark · DeepSeek V4 Flash with max effort')
+  })
+
+  test('keeps the existing model display without a saved connection', () => {
+    expect(formatMainDisplayName('Claude Sonnet 4.6')).toBe('Claude Sonnet 4.6')
+  })
 })
 
 describe('formatSubagentDisplayLine', () => {
@@ -415,6 +428,44 @@ describe('connectionMatchesRuntimeConfig', () => {
     ).toBe(connection)
   })
 
+  test('keeps the main connection identity after its model changes', () => {
+    const lookup = (id: string) =>
+      id === connection.id ? connection : undefined
+    expect(
+      resolveAssignedConnection(
+        {
+          provider: 'openai',
+          env: { OPENAI_BASE_URL: 'https://api.deepseek.com' },
+        },
+        { session: connection.id },
+        lookup,
+      ),
+    ).toBe(connection)
+  })
+
+  test('selects the exact assigned account when profiles share an endpoint and model', () => {
+    const personalAccount: Connection = {
+      ...connection,
+      id: 'deepseek-personal',
+      label: 'DeepSeek Personal',
+      apiKey: 'sk-personal',
+    }
+    const lookup = (id: string) =>
+      [connection, personalAccount].find(candidate => candidate.id === id)
+
+    expect(
+      resolveAssignedConnection(
+        {
+          provider: 'openai',
+          model: 'deepseek-v4-flash',
+          env: { OPENAI_BASE_URL: 'https://api.deepseek.com' },
+        },
+        { session: personalAccount.id, default: connection.id },
+        lookup,
+      ),
+    ).toBe(personalAccount)
+  })
+
   test('does not fall back to a global label when a session assignment is stale', () => {
     const lookup = (id: string) =>
       id === connection.id ? connection : undefined
@@ -433,6 +484,51 @@ describe('connectionMatchesRuntimeConfig', () => {
 })
 
 describe('getLogoDisplayData', () => {
+  test('returns the exact main connection name for the selected account', () => {
+    const workAccount: Connection = {
+      id: 'deepseek-work',
+      label: 'DeepSeek Work',
+      kind: 'openai-compat',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    }
+    const personalAccount: Connection = {
+      ...workAccount,
+      id: 'deepseek-personal',
+      label: 'DeepSeek Personal',
+    }
+    const previousDemoVersion = process.env.DEMO_VERSION
+    process.env.DEMO_VERSION = 'test'
+
+    try {
+      const workResult = getLogoDisplayData('deepseek-v4-flash', {
+        resolveConnection: slot => (slot === 'main' ? workAccount : undefined),
+      })
+      const personalResult = getLogoDisplayData('deepseek-v4-flash', {
+        resolveConnection: slot =>
+          slot === 'main' ? personalAccount : undefined,
+      })
+
+      expect(workResult.mainConnectionName).toBe('DeepSeek Work')
+      expect(personalResult.mainConnectionName).toBe('DeepSeek Personal')
+      expect(
+        formatMainDisplayName(
+          'DeepSeek V4 Flash',
+          workResult.mainConnectionName,
+        ),
+      ).toBe('DeepSeek Work · DeepSeek V4 Flash')
+      expect(
+        formatMainDisplayName(
+          'DeepSeek V4 Flash',
+          personalResult.mainConnectionName,
+        ),
+      ).toBe('DeepSeek Personal · DeepSeek V4 Flash')
+    } finally {
+      if (previousDemoVersion === undefined) delete process.env.DEMO_VERSION
+      else process.env.DEMO_VERSION = previousDemoVersion
+    }
+  })
+
   test('returns both subagentLine and fastLine when scoped providers are configured', () => {
     setSubagentProviderConfigOverride({
       modelType: 'openai',

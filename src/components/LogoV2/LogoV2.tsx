@@ -11,6 +11,7 @@ import {
   getRecentActivitySync,
   getRecentReleaseNotesSync,
   getLogoDisplayData,
+  formatMainDisplayName,
 } from '../../utils/logoV2Utils.js';
 import { truncate } from '../../utils/format.js';
 import { getDisplayPath } from '../../utils/file.js';
@@ -149,6 +150,7 @@ export function LogoV2(): React.ReactNode {
     version,
     cwd,
     billingType,
+    mainConnectionName,
     agentName: agentNameFromSettings,
     subagentLine,
     fastLine,
@@ -158,7 +160,10 @@ export function LogoV2(): React.ReactNode {
   const agentName = agent ?? agentNameFromSettings;
   // -20 to account for the max length of subscription name " · Claude Enterprise".
   const effortSuffix = getEffortSuffix(model, effortValue);
-  const modelDisplayName = truncate(fullModelDisplayName + effortSuffix, LEFT_PANEL_MAX_WIDTH - 20);
+  const modelDisplayName = truncate(
+    formatMainDisplayName(fullModelDisplayName + effortSuffix, mainConnectionName),
+    LEFT_PANEL_MAX_WIDTH - 20,
+  );
 
   // Show condensed logo if no new changelog and not showing onboarding and not forcing full logo
   if (!hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO)) {

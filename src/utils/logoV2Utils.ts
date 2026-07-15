@@ -498,6 +498,20 @@ export function formatSubagentDisplayLine(
   )
 }
 
+/**
+ * Prefixes the main model with its saved connection name. The connection
+ * label identifies the concrete account/endpoint even when multiple saved
+ * connections use the same provider and model.
+ */
+export function formatMainDisplayName(
+  modelDisplayName: string,
+  connectionName?: string,
+): string {
+  return connectionName
+    ? `${connectionName} · ${modelDisplayName}`
+    : modelDisplayName
+}
+
 export function formatFastDisplayLine(
   runtimeConfig: ProviderRuntimeConfig | undefined,
   parentModel: string,
@@ -725,6 +739,7 @@ export function getLogoDisplayData(
   version: string
   cwd: string
   billingType: string
+  mainConnectionName?: string
   agentName: string | undefined
   subagentLine?: string
   fastLine?: string
@@ -738,9 +753,16 @@ export function getLogoDisplayData(
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
-  const billingType = getBillingDisplayName()
-  const agentName = getInitialSettings().agent
+  const settings = getInitialSettings()
+  const billingType = getBillingDisplayName(settings)
+  const agentName = settings.agent
   const resolveConnection = options?.resolveConnection ?? getAssignedConnection
+  const mainRuntimeConfig: ProviderRuntimeConfig = {
+    provider: getAPIProvider(settings, process.env),
+    modelType: settings.modelType,
+    env: process.env,
+  }
+  const mainConnectionName = resolveConnection('main', mainRuntimeConfig)?.label
   const subagentRuntimeConfig = getSubagentProviderRuntimeConfig()
   const subagentBillingType = getSubagentBillingDisplayName(
     subagentRuntimeConfig,
@@ -796,6 +818,7 @@ export function getLogoDisplayData(
     version,
     cwd,
     billingType,
+    mainConnectionName,
     agentName,
     subagentLine,
     fastLine,

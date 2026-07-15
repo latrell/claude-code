@@ -6,7 +6,12 @@ import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { truncate } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
-import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
+import {
+  formatMainDisplayName,
+  formatModelAndBilling,
+  getLogoDisplayData,
+  truncatePath,
+} from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 import { t } from '../../i18n/t.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
@@ -37,6 +42,7 @@ export function CondensedLogo(): ReactNode {
     version,
     cwd,
     billingType,
+    mainConnectionName,
     agentName: agentNameFromSettings,
     subagentLine,
     fastLine,
@@ -70,7 +76,7 @@ export function CondensedLogo(): ReactNode {
 
   const effortSuffix = getEffortSuffix(model, effortValue);
   const { shouldSplit, truncatedModel, truncatedBilling } = formatModelAndBilling(
-    modelDisplayName + effortSuffix,
+    formatMainDisplayName(modelDisplayName + effortSuffix, mainConnectionName),
     billingType,
     textWidth,
   );
