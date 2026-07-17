@@ -27,7 +27,7 @@ import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 import { toError } from './errors.js'
 import { logError } from './log.js'
-import { enqueue } from './messageQueueManager.js'
+import { enqueue, stampCommandQueuePosition } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import {
   claimConsumableQueuedAutonomyCommands,
@@ -376,6 +376,7 @@ export async function handlePromptSubmit(
     bridgeOrigin,
     uuid,
   }
+  stampCommandQueuePosition(cmd)
 
   await executeUserInput({
     queuedCommands: [cmd],
@@ -431,8 +432,11 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
   const abortController = createAbortController()
   setAbortController(abortController)
 
-  function makeContext(): ProcessUserInputContext {
-    return getToolUseContext(messages, [], abortController, mainLoopModel)
+  function makeContext(command: QueuedCommand): ProcessUserInputContext {
+    return {
+      ...getToolUseContext(messages, [], abortController, mainLoopModel),
+      queuedCommand: command,
+    }
   }
 
   // Wrap in try-finally so the guard is released even if processUserInput
@@ -461,6 +465,9 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // ideSelection + pastedContents, rest skip attachments to avoid
     // duplicating turn-level context (IDE selection, todos, diffs).
     let commands = queuedCommands ?? []
+    for (const command of commands) {
+      stampCommandQueuePosition(command)
+    }
     const queuedAutonomyClaim =
       await claimConsumableQueuedAutonomyCommands(commands)
     commands = queuedAutonomyClaim.attachmentCommands
@@ -505,7 +512,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             preExpansionInput: cmd.preExpansionValue,
             mode: cmd.mode,
             setToolJSX,
-            context: makeContext(),
+            context: makeContext(cmd),
             pastedContents: isFirst ? cmd.pastedContents : undefined,
             messages,
             setUserInputOnProcessing: isFirst

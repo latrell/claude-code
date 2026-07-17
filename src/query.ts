@@ -99,7 +99,7 @@ const _jobClassifier = feature('TEMPLATES')
 import {
   enqueue,
   remove as removeFromQueue,
-  getCommandsByMaxPriority,
+  getCommandsByMaxPriorityBeforeConversationReset,
   isSlashCommand,
 } from './utils/messageQueueManager.js'
 import {
@@ -2349,10 +2349,12 @@ async function* queryLoop(
     // (agent/workflow/framework) still default to 'later' — the Sleep flush
     // covers those. If all task types move to 'next', this branch could go.
     //
-    // Slash commands are excluded from mid-turn drain — they must go through
-    // processSlashCommand after the turn ends (via useQueueProcessor), not be
-    // sent to the model as text. Bash-mode commands are already excluded by
-    // INLINE_NOTIFICATION_MODES in getQueuedCommandAttachments.
+    // Conversation-reset commands (/clear and aliases) and everything queued
+    // after the first one are excluded from mid-turn drain. The reset must run
+    // between turns (via useQueueProcessor), and later prompts belong on the
+    // other side of that control-flow boundary. Other slash commands are still
+    // excluded from the snapshot below. Bash-mode commands are excluded later
+    // by INLINE_NOTIFICATION_MODES in getQueuedCommandAttachments.
     //
     // Agent scoping: the queue is a process-global singleton shared by the
     // coordinator and all in-process subagents. Each loop drains only what's
@@ -2364,15 +2366,20 @@ async function* queryLoop(
     const isMainThread =
       querySource.startsWith('repl_main_thread') || querySource === 'sdk'
     const currentAgentId = toolUseContext.agentId
-    const queuedCommandsSnapshot = getCommandsByMaxPriority(
-      sleepRan ? 'later' : 'next',
-    ).filter(cmd => {
-      if (isSlashCommand(cmd)) return false
-      if (isMainThread) return cmd.agentId === undefined
-      // Subagents only drain task-notifications addressed to them — never
-      // user prompts, even if someone stamps an agentId on one.
-      return cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
-    })
+    const queuedCommandsSnapshot =
+      getCommandsByMaxPriorityBeforeConversationReset(
+        sleepRan ? 'later' : 'next',
+        cmd =>
+          isMainThread
+            ? cmd.agentId === undefined
+            : cmd.agentId === currentAgentId,
+      ).filter(cmd => {
+        if (isSlashCommand(cmd)) return false
+        if (isMainThread) return true
+        // Subagents only drain task-notifications addressed to them — never
+        // user prompts, even if someone stamps an agentId on one.
+        return cmd.mode === 'task-notification'
+      })
     const queuedAutonomyClaim = await claimConsumableQueuedAutonomyCommands(
       queuedCommandsSnapshot,
     )

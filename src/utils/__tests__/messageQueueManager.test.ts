@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
+  captureConversationClearQueueBarrier,
   clearCommandQueue,
+  clearCommandsForConversationReset,
   dequeue,
   dequeueAllMatching,
   enqueue,
   enqueuePendingNotification,
+  getCommandsByMaxPriorityBeforeConversationReset,
   hasCommandsInQueue,
+  isConversationResetCommand,
   isSlashCommand,
   peek,
   resetCommandQueue,
+  stampCommandQueuePosition,
 } from '../messageQueueManager.js'
 
 // Reset module-level queue state between tests
@@ -45,6 +50,30 @@ describe('messageQueueManager.isSlashCommand', () => {
         skipSlashCommands: true,
       } as any),
     ).toBe(false)
+  })
+
+  test('recognizes slash commands in content block input', () => {
+    expect(
+      isSlashCommand({
+        value: [{ type: 'text', text: '/clear' }],
+        mode: 'prompt',
+      } as any),
+    ).toBe(true)
+  })
+})
+
+describe('messageQueueManager.isConversationResetCommand', () => {
+  test('recognizes clear and its aliases only', () => {
+    for (const value of ['/clear', '/reset', '/new', '/clear now']) {
+      expect(isConversationResetCommand({ value, mode: 'prompt' } as any)).toBe(
+        true,
+      )
+    }
+    for (const value of ['/help', '/CLEAR', '/clear\nnow']) {
+      expect(isConversationResetCommand({ value, mode: 'prompt' } as any)).toBe(
+        false,
+      )
+    }
   })
 })
 
@@ -185,6 +214,131 @@ describe('messageQueueManager.clearCommandQueue', () => {
   test('no-op on empty queue', () => {
     clearCommandQueue()
     expect(hasCommandsInQueue()).toBe(false)
+  })
+})
+
+describe('messageQueueManager conversation clear barrier', () => {
+  test('drops old main-thread work but preserves everything submitted later', () => {
+    enqueue({ value: 'old prompt', mode: 'prompt' } as any)
+    enqueuePendingNotification({
+      value: 'old notification',
+      mode: 'task-notification',
+    } as any)
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+
+    const clearCommand = dequeue(command => command.value === '/clear')
+    expect(clearCommand).toBeDefined()
+    const barrier = captureConversationClearQueueBarrier(clearCommand)
+
+    enqueue({ value: 'new prompt', mode: 'prompt' } as any)
+    enqueuePendingNotification({
+      value: 'post-clear notification',
+      mode: 'task-notification',
+    } as any)
+    enqueuePendingNotification({
+      value: 'agent-private notification',
+      mode: 'task-notification',
+      agentId: 'agent-1',
+    } as any)
+    enqueuePendingNotification({
+      value: 'stopped-agent notification',
+      mode: 'task-notification',
+      agentId: 'agent-2',
+    } as any)
+
+    const removed = clearCommandsForConversationReset(
+      barrier,
+      new Set(['agent-1']),
+    )
+
+    expect(removed.map(command => command.value)).toEqual([
+      'old prompt',
+      'old notification',
+      'stopped-agent notification',
+    ])
+    expect(dequeue()!.value).toBe('new prompt')
+    expect(dequeue()!.value).toBe('post-clear notification')
+    expect(dequeue()!.value).toBe('agent-private notification')
+  })
+
+  test('uses a stamped direct command when capture happens after later input', () => {
+    enqueue({ value: 'old prompt', mode: 'prompt' } as any)
+    const directClear = { value: '/clear', mode: 'prompt' } as any
+    stampCommandQueuePosition(directClear)
+
+    enqueue({ value: 'new prompt', mode: 'prompt' } as any)
+    const barrier = captureConversationClearQueueBarrier(directClear)
+
+    clearCommandsForConversationReset(barrier)
+    expect(dequeue()!.value).toBe('new prompt')
+    expect(hasCommandsInQueue()).toBe(false)
+  })
+
+  test('keeps submission order across two queued clears', () => {
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueue({ value: 'new prompt', mode: 'prompt' } as any)
+
+    const firstClear = dequeue()
+    clearCommandsForConversationReset(
+      captureConversationClearQueueBarrier(firstClear),
+    )
+
+    const secondClear = dequeue()
+    expect(secondClear?.value).toBe('/clear')
+    clearCommandsForConversationReset(
+      captureConversationClearQueueBarrier(secondClear),
+    )
+
+    expect(dequeue()?.value).toBe('new prompt')
+  })
+})
+
+describe('messageQueueManager conversation reset drain barrier', () => {
+  test('does not expose commands queued after a reset command', () => {
+    enqueue({ value: 'old prompt', mode: 'prompt' } as any)
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueue({ value: 'new prompt', mode: 'prompt' } as any)
+
+    const commands = getCommandsByMaxPriorityBeforeConversationReset(
+      'later',
+      command => command.agentId === undefined,
+    )
+
+    expect(commands.map(command => command.value)).toEqual(['old prompt'])
+  })
+
+  test('scopes reset barriers so main-thread commands do not block agents', () => {
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueuePendingNotification({
+      value: 'agent notification',
+      mode: 'task-notification',
+      agentId: 'agent-1',
+    } as any)
+
+    const commands = getCommandsByMaxPriorityBeforeConversationReset(
+      'later',
+      command => command.agentId === 'agent-1',
+    )
+
+    expect(commands.map(command => command.value)).toEqual([
+      'agent notification',
+    ])
+  })
+
+  test('does not drain lower-priority old work ahead of a reset command', () => {
+    enqueuePendingNotification({
+      value: 'old notification',
+      mode: 'task-notification',
+    } as any)
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+
+    const commands = getCommandsByMaxPriorityBeforeConversationReset(
+      'later',
+      command => command.agentId === undefined,
+    )
+
+    expect(commands).toEqual([])
   })
 })
 

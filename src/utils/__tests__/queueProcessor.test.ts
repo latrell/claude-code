@@ -38,6 +38,61 @@ describe('processQueueIfReady', () => {
     expect(executed[0]).toEqual(['/help'])
   })
 
+  test('does not batch prompts across a slash command', () => {
+    const executed: string[][] = []
+    const executeInput = async (commands: any[]) => {
+      executed.push(commands.map(command => command.value as string))
+    }
+    enqueue({ value: 'old prompt', mode: 'prompt' } as any)
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueue({ value: 'new prompt', mode: 'prompt' } as any)
+
+    processQueueIfReady({ executeInput })
+    expect(executed).toEqual([['old prompt']])
+
+    processQueueIfReady({ executeInput })
+    expect(executed).toEqual([['old prompt'], ['/clear']])
+
+    processQueueIfReady({ executeInput })
+    expect(executed).toEqual([['old prompt'], ['/clear'], ['new prompt']])
+  })
+
+  test('processes a reset barrier before higher-priority commands submitted later', () => {
+    const executed: string[][] = []
+    enqueue({ value: '/clear', mode: 'prompt' } as any)
+    enqueue({
+      value: 'new urgent prompt',
+      mode: 'prompt',
+      priority: 'now',
+    } as any)
+
+    processQueueIfReady({
+      executeInput: async commands => {
+        executed.push(commands.map(command => command.value as string))
+      },
+    })
+
+    expect(executed).toEqual([['/clear']])
+  })
+
+  test('retains priority ordering for non-reset slash commands', () => {
+    const executed: string[][] = []
+    enqueue({ value: '/help', mode: 'prompt' } as any)
+    enqueue({
+      value: 'urgent prompt',
+      mode: 'prompt',
+      priority: 'now',
+    } as any)
+
+    processQueueIfReady({
+      executeInput: async commands => {
+        executed.push(commands.map(command => command.value as string))
+      },
+    })
+
+    expect(executed).toEqual([['urgent prompt']])
+  })
+
   test('processes bash mode command individually', () => {
     const executed: string[][] = []
     enqueue({ value: 'git status', mode: 'bash' } as any)

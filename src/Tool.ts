@@ -74,6 +74,7 @@ import type {
   PromptResponse,
 } from './types/hooks.js'
 import type { AgentId } from './types/ids.js'
+import type { QueuedCommand } from './types/textInputTypes.js'
 import type { DeepImmutable } from './types/utils.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import type { FileHistoryState } from './utils/fileHistory.js'
@@ -251,6 +252,11 @@ export type ToolUseContext = {
   setConversationId?: (id: UUID) => void
   /** Called synchronously before /clear starts changing session state. */
   onConversationClear?: () => void
+  /**
+   * Queue item currently being dispatched; used to isolate `/clear` at its
+   * submission boundary.
+   */
+  queuedCommand?: QueuedCommand
   agentId?: AgentId // Only set for subagents; use getSessionId() for session ID. Hooks use this to distinguish subagent calls.
   agentType?: string // Subagent type name. For the main thread's --agent type, hooks fall back to getMainThreadAgentType().
   /** When true, canUseTool must always be called even when hooks auto-approve.

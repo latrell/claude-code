@@ -2,7 +2,10 @@ import type { QueuedCommand } from '../types/textInputTypes.js'
 import {
   dequeue,
   dequeueAllMatching,
+  getCommandQueue,
   hasCommandsInQueue,
+  isConversationResetCommand,
+  isSlashCommand,
   peek,
 } from './messageQueueManager.js'
 
@@ -12,28 +15,6 @@ type ProcessQueueParams = {
 
 type ProcessQueueResult = {
   processed: boolean
-}
-
-/**
- * Check if a queued command is a slash command (value starts with '/').
- */
-function isSlashCommand(cmd: QueuedCommand): boolean {
-  if (typeof cmd.value === 'string') {
-    return (
-      cmd.value.trim().startsWith('/') &&
-      (!cmd.skipSlashCommands || cmd.bridgeOrigin === true)
-    )
-  }
-  // For ContentBlockParam[], check the first text block
-  for (const block of cmd.value) {
-    if (block.type === 'text') {
-      return (
-        block.text.trim().startsWith('/') &&
-        (!cmd.skipSlashCommands || cmd.bridgeOrigin === true)
-      )
-    }
-  }
-  return false
 }
 
 /**
@@ -47,7 +28,9 @@ function isSlashCommand(cmd: QueuedCommand): boolean {
  * are drained at once and passed as a single array to executeInput — each
  * becomes its own user message with its own UUID. Different modes
  * (e.g. prompt vs task-notification) are never mixed because they are
- * treated differently downstream.
+ * treated differently downstream. Conversation-reset commands form a hard
+ * submission-order barrier so prompts on opposite sides of `/clear` (or an
+ * alias) never share a model turn. Other slash commands retain priority order.
  *
  * The caller is responsible for ensuring no query is currently running
  * and for calling this function again after each command completes
@@ -65,8 +48,17 @@ export function processQueueIfReady({
   // false with the queue unchanged → the React effect never re-fires and any
   // queued user prompt stalls permanently.
   const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
+  const mainThreadQueue = getCommandQueue().filter(isMainThread)
+  const resetIndex = mainThreadQueue.findIndex(isConversationResetCommand)
+  const executableCommands = new Set(
+    resetIndex === -1
+      ? mainThreadQueue
+      : mainThreadQueue.slice(0, resetIndex + 1),
+  )
+  const isExecutableMainThread = (cmd: QueuedCommand) =>
+    isMainThread(cmd) && executableCommands.has(cmd)
 
-  const next = peek(isMainThread)
+  const next = peek(isExecutableMainThread)
   if (!next) {
     return { processed: false }
   }
@@ -74,7 +66,7 @@ export function processQueueIfReady({
   // Slash commands and bash-mode commands are processed individually.
   // Bash commands need per-command error isolation, exit codes, and progress UI.
   if (isSlashCommand(next) || next.mode === 'bash') {
-    const cmd = dequeue(isMainThread)!
+    const cmd = dequeue(isExecutableMainThread)!
     void executeInput([cmd])
     return { processed: true }
   }
@@ -82,7 +74,10 @@ export function processQueueIfReady({
   // Drain all non-slash-command items with the same mode at once.
   const targetMode = next.mode
   const commands = dequeueAllMatching(
-    cmd => isMainThread(cmd) && !isSlashCommand(cmd) && cmd.mode === targetMode,
+    cmd =>
+      isExecutableMainThread(cmd) &&
+      !isSlashCommand(cmd) &&
+      cmd.mode === targetMode,
   )
   if (commands.length === 0) {
     return { processed: false }

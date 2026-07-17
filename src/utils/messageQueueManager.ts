@@ -46,11 +46,23 @@ function logOperation(operation: QueueOperation, content?: string): void {
 // Non-React code (print.ts streaming loop) reads directly via
 // getCommandQueue() / getCommandQueueLength().
 //
-// Priority determines dequeue order: 'now' > 'next' > 'later'.
-// Within the same priority, commands are processed FIFO.
+// Priority determines dequeue order: 'now' > 'next' > 'later'. Within the same
+// priority, commands are processed FIFO. Conversation-reset commands form a
+// hard submission-order barrier so post-clear work cannot run in old context.
 // ============================================================================
 
 const commandQueue: QueuedCommand[] = []
+type CommandQueueMetadata = {
+  sequence: number
+}
+
+type ConversationClearQueueBarrier = Readonly<CommandQueueMetadata>
+
+let commandMetadataByCommand = new WeakMap<
+  QueuedCommand,
+  CommandQueueMetadata
+>()
+let lastEnqueuedSequence = 0
 /** Frozen snapshot — recreated on every mutation for useSyncExternalStore. */
 let snapshot: readonly QueuedCommand[] = Object.freeze([])
 const queueChanged = createSignal()
@@ -126,7 +138,9 @@ export function recheckCommandQueue(): void {
  * Defaults priority to 'next' (processed before task notifications).
  */
 export function enqueue(command: QueuedCommand): void {
-  commandQueue.push({ ...command, priority: command.priority ?? 'next' })
+  const queuedCommand = { ...command, priority: command.priority ?? 'next' }
+  stampCommandQueuePosition(queuedCommand)
+  commandQueue.push(queuedCommand)
   notifySubscribers()
   logOperation(
     'enqueue',
@@ -140,7 +154,9 @@ export function enqueue(command: QueuedCommand): void {
  * is never starved by system messages.
  */
 export function enqueuePendingNotification(command: QueuedCommand): void {
-  commandQueue.push({ ...command, priority: command.priority ?? 'later' })
+  const queuedCommand = { ...command, priority: command.priority ?? 'later' }
+  stampCommandQueuePosition(queuedCommand)
+  commandQueue.push(queuedCommand)
   notifySubscribers()
   logOperation(
     'enqueue',
@@ -328,11 +344,66 @@ export function clearCommandQueue(): void {
 }
 
 /**
+ * Assign a submission-order position to a command without enqueueing it.
+ * Direct commands need this stamp before their first await so later user input
+ * is ordered after them just like input submitted through the shared queue.
+ */
+export function stampCommandQueuePosition(command: QueuedCommand): void {
+  if (commandMetadataByCommand.has(command)) return
+  commandMetadataByCommand.set(command, {
+    sequence: ++lastEnqueuedSequence,
+  })
+}
+
+/**
+ * Capture the queue position at which a conversation clear was submitted.
+ *
+ * A queued `/clear` carries its original position even after dequeueing, while
+ * direct commands are stamped at dispatch before their first await. The
+ * fallback covers internal callers that do not originate from user input.
+ */
+export function captureConversationClearQueueBarrier(
+  command?: QueuedCommand,
+): ConversationClearQueueBarrier {
+  const commandMetadata = command
+    ? commandMetadataByCommand.get(command)
+    : undefined
+  return {
+    sequence: commandMetadata?.sequence ?? lastEnqueuedSequence,
+  }
+}
+
+/**
+ * Remove queued commands that cannot survive the conversation being cleared.
+ *
+ * Commands for the explicitly preserved background agents survive. Commands
+ * for stopped foreground agents are removed because those agents can no longer
+ * drain them. Main-thread work submitted before (or at) `/clear` belongs to the
+ * old conversation and is discarded. Anything submitted after the barrier
+ * survives; this is an explicit temporal policy for completion notifications
+ * from background tasks that are themselves preserved across `/clear`.
+ */
+export function clearCommandsForConversationReset(
+  barrier: ConversationClearQueueBarrier,
+  preservedAgentIds: ReadonlySet<string> = new Set(),
+): QueuedCommand[] {
+  return removeByFilter(command => {
+    if (command.agentId !== undefined) {
+      return !preservedAgentIds.has(command.agentId)
+    }
+    const metadata = commandMetadataByCommand.get(command)
+    return metadata === undefined || metadata.sequence <= barrier.sequence
+  })
+}
+
+/**
  * Clear all commands and reset snapshot.
  * Used for test cleanup.
  */
 export function resetCommandQueue(): void {
   commandQueue.length = 0
+  commandMetadataByCommand = new WeakMap()
+  lastEnqueuedSequence = 0
   snapshot = Object.freeze([])
 }
 
@@ -502,6 +573,45 @@ export function getCommandsByMaxPriority(
 }
 
 /**
+ * Return priority-eligible commands that the scheduler would reach before the
+ * first conversation-reset command in the selected queue scope. Resets execute
+ * between turns and form a control-flow boundary: later prompts must not be
+ * folded into the old turn, and lower-priority work must not jump ahead of it.
+ */
+export function getCommandsByMaxPriorityBeforeConversationReset(
+  maxPriority: QueuePriority,
+  filter: (command: QueuedCommand) => boolean,
+): QueuedCommand[] {
+  const scopedCommands = commandQueue.filter(filter)
+  const resetIndex = scopedCommands.findIndex(isConversationResetCommand)
+  const resetCommand =
+    resetIndex === -1 ? undefined : scopedCommands[resetIndex]
+  const commandsBeforeReset =
+    resetIndex === -1 ? scopedCommands : scopedCommands.slice(0, resetIndex)
+  const threshold = PRIORITY_ORDER[maxPriority]
+  const resetPriority = resetCommand
+    ? PRIORITY_ORDER[resetCommand.priority ?? 'next']
+    : Infinity
+  return commandsBeforeReset.filter(command => {
+    const priority = PRIORITY_ORDER[command.priority ?? 'next']
+    return priority <= threshold && priority <= resetPriority
+  })
+}
+
+/** Whether this command starts a fresh conversation when locally dispatched. */
+export function isConversationResetCommand(cmd: QueuedCommand): boolean {
+  if (!isSlashCommand(cmd)) return false
+  const value =
+    typeof cmd.value === 'string'
+      ? cmd.value
+      : cmd.value.find(block => block.type === 'text')?.text
+  const commandName = value?.trim().slice(1).split(' ', 1)[0]
+  return (
+    commandName === 'clear' || commandName === 'reset' || commandName === 'new'
+  )
+}
+
+/**
  * Returns true if the command is a slash command that should be routed through
  * processSlashCommand rather than sent to the model as text.
  *
@@ -510,9 +620,19 @@ export function getCommandsByMaxPriority(
  * through isBridgeSafeCommand().
  */
 export function isSlashCommand(cmd: QueuedCommand): boolean {
-  return (
-    typeof cmd.value === 'string' &&
-    cmd.value.trim().startsWith('/') &&
-    (!cmd.skipSlashCommands || cmd.bridgeOrigin === true)
-  )
+  if (typeof cmd.value === 'string') {
+    return (
+      cmd.value.trim().startsWith('/') &&
+      (!cmd.skipSlashCommands || cmd.bridgeOrigin === true)
+    )
+  }
+  for (const block of cmd.value) {
+    if (block.type === 'text') {
+      return (
+        block.text.trim().startsWith('/') &&
+        (!cmd.skipSlashCommands || cmd.bridgeOrigin === true)
+      )
+    }
+  }
+  return false
 }

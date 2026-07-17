@@ -11,9 +11,12 @@ import {
   getSessionId,
   regenerateSessionId,
   resetCostState,
+  setHasExitedPlanMode,
   setLastAPIRequest,
   setLastAPIRequestMessages,
   setLastClassifierRequests,
+  setNeedsAutoModeExitAttachment,
+  setNeedsPlanModeExitAttachment,
 } from '../../bootstrap/state.js'
 import type { SDKStatusMessage } from '../../entrypoints/sdk/coreTypes.js'
 import {
@@ -21,6 +24,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import type { AppState } from '../../state/AppState.js'
+import { isTerminalTaskStatus } from '../../Task.js'
 import { isInProcessTeammateTask } from '../../tasks/InProcessTeammateTask/types.js'
 import {
   isLocalAgentTask,
@@ -31,6 +35,7 @@ import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
 import { isLocalShellTask } from '../../tasks/LocalShellTask/guards.js'
 import { asAgentId } from '../../types/ids.js'
 import type { Message } from '../../types/message.js'
+import type { QueuedCommand } from '../../types/textInputTypes.js'
 import { createEmptyAttributionState } from '../../utils/commitAttribution.js'
 import type { FileStateCache } from '../../utils/fileStateCache.js'
 import {
@@ -38,6 +43,10 @@ import {
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
 import { clearAllPlanSlugs } from '../../utils/plans.js'
+import {
+  captureConversationClearQueueBarrier,
+  clearCommandsForConversationReset,
+} from '../../utils/messageQueueManager.js'
 import { setCwd } from '../../utils/Shell.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
 import {
@@ -81,6 +90,8 @@ export async function clearConversation({
   setAppState,
   setConversationId,
   onConversationClear,
+  queuedCommand,
+  preserveModeTransitionState = false,
 }: {
   setMessages: (updater: (prev: Message[]) => Message[]) => void
   readFileState: FileStateCache
@@ -90,11 +101,15 @@ export async function clearConversation({
   setAppState?: (f: (prev: AppState) => AppState) => void
   setConversationId?: (id: UUID) => void
   onConversationClear?: () => void
+  queuedCommand?: QueuedCommand
+  /** Internal plan-exit clears carry one-shot transition guidance forward. */
+  preserveModeTransitionState?: boolean
 }): Promise<void> {
   // Invalidate session-scoped async UI work before the first await. A title
   // provider may ignore AbortSignal, so callers also guard late callbacks by
   // session/generation after this notification.
   onConversationClear?.()
+  const queueBarrier = captureConversationClearQueueBarrier(queuedCommand)
 
   // Execute SessionEnd hooks before clearing (bounded by
   // CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS, default 1.5s)
@@ -200,6 +215,12 @@ export async function clearConversation({
   discoveredSkillNames?.clear()
   loadedNestedMemoryPaths?.clear()
 
+  if (!preserveModeTransitionState) {
+    setHasExitedPlanMode(false)
+    setNeedsPlanModeExitAttachment(false)
+    setNeedsAutoModeExitAttachment(false)
+  }
+
   // Clean out necessary items from App State
   if (setAppState) {
     setAppState(prev => {
@@ -221,6 +242,11 @@ export async function clearConversation({
         // Clear standalone agent context (name/color set by /rename, /color)
         // so the new session doesn't display the old session's identity badge
         standaloneAgentContext: undefined,
+        // A user-issued /clear discards plan verification state. The internal
+        // plan-exit clear keeps it for the new plan-execution conversation.
+        pendingPlanVerification: preserveModeTransitionState
+          ? prev.pendingPlanVerification
+          : undefined,
         fileHistory: {
           snapshots: [],
           trackedFiles: new Set(),
@@ -297,4 +323,22 @@ export async function clearConversation({
   if (hookMessages.length > 0) {
     setMessages(() => hookMessages)
   }
+
+  // Apply the submission-order boundary after the async clear finishes. Work
+  // already queued when `/clear` was submitted is discarded; prompts and task
+  // completions submitted later remain queued for the fresh conversation.
+  // Re-read tasks so agents created while /clear awaited are included, while
+  // agents that reached a terminal state no longer retain undrainable entries.
+  const queueAgentIdsToPreserve = new Set<string>()
+  if (getAppState) {
+    for (const task of Object.values(getAppState().tasks)) {
+      if (isTerminalTaskStatus(task.status)) continue
+      if (isLocalAgentTask(task)) {
+        queueAgentIdsToPreserve.add(task.agentId)
+      } else if (isInProcessTeammateTask(task)) {
+        queueAgentIdsToPreserve.add(task.identity.agentId)
+      }
+    }
+  }
+  clearCommandsForConversationReset(queueBarrier, queueAgentIdsToPreserve)
 }

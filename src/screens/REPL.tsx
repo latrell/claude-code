@@ -4172,6 +4172,7 @@ export function REPL({
           setAppState,
           setConversationId,
           onConversationClear: resetGeneratedTitleForClear,
+          preserveModeTransitionState: true,
         });
         bashTools.current.clear();
         bashToolsProcessedIdx.current = 0;
