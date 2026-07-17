@@ -1,3 +1,6 @@
+import { stringWidth } from '@anthropic/ink'
+import { getGraphemeSegmenter } from '../../utils/intl.js'
+
 /**
  * EffortPanel ultracode 档位的背景波纹动画 —— 纯函数模块（颜色驱动）。
  *
@@ -173,6 +176,7 @@ export const TRANSPARENT = 'transparent'
  * - 文字 overlay cell 用具体颜色（suggestion / warning 等）。
  */
 export type Cell = {
+  /** 宽字符的首 cell 保存字素，后续占位 cell 使用空字符串。 */
   char: string
   color: string
 }
@@ -272,8 +276,9 @@ export function computeRippleCells(args: {
  * - 文字字符永远胜出（替换底层 cell.char）
  * - overlay.color 为 undefined 时保留底层 cell.color（仅替换 char）
  * - overlay.color 指定时同时覆盖 char + color
+ * - 按终端显示宽度写入；CJK / emoji 等宽字符会占用多个 cell
  * - 超出右边界的文字被截断
- * - x 为负时跳过前 |x| 个字符
+ * - x 为负时跳过左边界外的完整字素
  *
  * 不修改原数组，返回新数组（防御式拷贝）。
  */
@@ -283,16 +288,39 @@ export function applyOverlaysToCells(
 ): Cell[] {
   const out: Cell[] = cells.map(c => ({ ...c }))
   for (const overlay of overlays) {
-    const start = overlay.x
-    if (start >= out.length) continue
-    for (let i = 0; i < overlay.text.length; i++) {
-      const targetIdx = start + i
-      if (targetIdx < 0) continue
-      if (targetIdx >= out.length) break
+    let targetIdx = overlay.x
+    if (targetIdx >= out.length) continue
+
+    for (const { segment: grapheme } of getGraphemeSegmenter().segment(
+      overlay.text,
+    )) {
+      const graphemeWidth = stringWidth(grapheme)
+      if (graphemeWidth <= 0) continue
+
+      const graphemeEnd = targetIdx + graphemeWidth
+      if (graphemeEnd <= 0) {
+        targetIdx = graphemeEnd
+        continue
+      }
+      if (targetIdx < 0) {
+        // A wide glyph cannot be rendered partially at the left boundary.
+        targetIdx = graphemeEnd
+        continue
+      }
+      if (targetIdx >= out.length || graphemeEnd > out.length) break
+
       out[targetIdx] = {
-        char: overlay.text[i],
+        char: grapheme,
         color: overlay.color ?? out[targetIdx].color,
       }
+      for (let offset = 1; offset < graphemeWidth; offset++) {
+        const continuationIdx = targetIdx + offset
+        out[continuationIdx] = {
+          char: '',
+          color: overlay.color ?? out[continuationIdx].color,
+        }
+      }
+      targetIdx = graphemeEnd
     }
   }
   return out

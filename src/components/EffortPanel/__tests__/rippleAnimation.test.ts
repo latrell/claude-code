@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { stringWidth } from '@anthropic/ink'
 import {
   type Cell,
   type Overlay,
@@ -304,6 +305,30 @@ describe('applyOverlaysToCells', () => {
     expect(out[0]).toEqual({ char: 'A', color: '#5769F7' })
     expect(out[1]).toEqual({ char: 'B', color: '#5769F7' })
     expect(out[2]).toEqual({ char: ' ', color: TRANSPARENT })
+  })
+
+  test('宽字符按终端显示宽度占用 continuation cells', () => {
+    const cells = makeCells(Array.from({ length: 8 }, () => TRANSPARENT))
+    const label = '更智能'
+    const out = applyOverlaysToCells(cells, [
+      {
+        text: label,
+        x: cells.length - stringWidth(label),
+        color: '#5769F7',
+      },
+    ])
+
+    expect(out.map(cell => cell.char)).toEqual([
+      ' ',
+      ' ',
+      '更',
+      '',
+      '智',
+      '',
+      '能',
+      '',
+    ])
+    expect(stringWidth(out.map(cell => cell.char).join(''))).toBe(cells.length)
   })
 
   test('overlay 超出右边界被截断', () => {

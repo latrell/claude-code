@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BaseText, Box, Text, useTerminalSize } from '@anthropic/ink';
+import { BaseText, Box, stringWidth, Text, useTerminalSize } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride } from '../../utils/effort.js';
 import {
@@ -304,10 +304,12 @@ function RippleContent({ renderRow, cursor, segment, panelWidth, time }: RippleC
   const labelSelectedColor = rotateHue(COLOR_LABEL_SELECTED, hueShift);
   const labelDefaultColor = rotateHue(COLOR_LABEL_DEFAULT, hueShift);
 
-  const fasterOverlay: Overlay = { text: 'Faster', x: 0, color: overlayColor };
+  const fasterLabel = t('Faster');
+  const smarterLabel = t('Smarter');
+  const fasterOverlay: Overlay = { text: fasterLabel, x: 0, color: overlayColor };
   const smarterOverlay: Overlay = {
-    text: 'Smarter',
-    x: panelWidth - 'Smarter'.length,
+    text: smarterLabel,
+    x: panelWidth - stringWidth(smarterLabel),
     color: overlayColor,
   };
   const separatorOverlay: Overlay = {

@@ -84,6 +84,8 @@ describe('t', () => {
     expect(t('Cancel')).toBe('取消')
     expect(t('Save to file')).toBe('保存到文件')
     expect(t('Unknown error')).toBe('未知错误')
+    expect(t('Faster')).toBe('更快')
+    expect(t('Smarter')).toBe('更智能')
   })
 
   test('translates CLI option descriptions', () => {
