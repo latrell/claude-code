@@ -49,7 +49,14 @@ export function formatCountdown(epochSeconds: number): string {
   return `${minutes}m`;
 }
 
-export function formatProviderBucketLabel(label: string): string {
+const CHATGPT_BASE_LIMIT_LABELS = new Set(['Primary rate limit', 'Secondary rate limit']);
+
+export function formatProviderBucketLabel(label: string, kind?: ProviderUsageBucket['kind']): string {
+  if (CHATGPT_BASE_LIMIT_LABELS.has(label)) {
+    if (kind === 'session') return t('Session ').trim();
+    if (kind === 'weekly') return t('Weekly ').trim();
+  }
+
   if (getResolvedLanguage() === 'zh') {
     if (label === 'Primary rate limit') return '主限';
     if (label === 'Secondary rate limit') return '副限';
@@ -91,7 +98,7 @@ function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; n
   return (
     <>
       <Separator />
-      <Text dimColor>{formatProviderBucketLabel(bucket.label)} </Text>
+      <Text dimColor>{formatProviderBucketLabel(bucket.label, bucket.kind)} </Text>
       {isDollarBucket ? (
         <Text color={pctColor}>
           {formatCentsCompact(bucket.usedCents ?? 0)}

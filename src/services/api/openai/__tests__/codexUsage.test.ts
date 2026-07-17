@@ -808,7 +808,39 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
     expect(bucket.resetsAt).toBe(1700000000)
   })
 
-  test('does NOT call updateProviderBuckets when rateLimits is empty array', async () => {
+  test('maps a weekly-only primary window for the status line', async () => {
+    authEnabled = true
+
+    globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url === `${BASE}/wham/usage`) {
+        return Promise.resolve(
+          jsonResponse({
+            plan_type: 'plus',
+            rate_limit: {
+              primary_window: {
+                used_percent: 42,
+                limit_window_seconds: 604800,
+                reset_at: 1800000000,
+              },
+            },
+          }),
+        )
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage()
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    const bucket = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
+    expect(bucket.kind).toBe('weekly')
+    expect(bucket.label).toBe('Primary rate limit')
+    expect(bucket.utilization).toBeCloseTo(0.42, 5)
+    expect(bucket.resetsAt).toBe(1800000000)
+  })
+
+  test('clears provider buckets when usage succeeds without rate limits', async () => {
     authEnabled = true
 
     globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
@@ -821,7 +853,7 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
 
     const result = await fetchCodexUsage()
     expect(result).not.toBeNull()
-    expect(storeUpdateCalls).toHaveLength(0)
+    expect(storeUpdateCalls).toEqual([{ providerId: 'openai', buckets: [] }])
   })
 
   test('does NOT call updateProviderBuckets when usage endpoint fails', async () => {

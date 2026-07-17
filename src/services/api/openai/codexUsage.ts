@@ -567,11 +567,15 @@ export async function fetchCodexUsage(
     writePlanCacheSync(accountId, account?.subscriptionPlan)
   }
 
-  // Feed rate-limit buckets into the provider-usage store for the status-line.
-  // Only update when we have data; do NOT clear existing header-derived buckets
-  // when the Codex API returns no rate-limit data.
-  if (rateLimits && rateLimits.length > 0) {
-    updateProviderBuckets('openai', mapCodexLimitsToProviderBuckets(rateLimits))
+  // A successful usage response is authoritative for ChatGPT subscription
+  // limits. Replace the whole snapshot, including with an empty list, so a
+  // removed window (for example the old short-term limit) cannot linger in
+  // the status line. Preserve the last snapshot only when the request fails.
+  if (usageJSON !== null) {
+    updateProviderBuckets(
+      'openai',
+      rateLimits ? mapCodexLimitsToProviderBuckets(rateLimits) : [],
+    )
   }
 
   if (!account && !rateLimits && !tokenUsage) {

@@ -58,6 +58,15 @@ describe('selectStatusLineProviderBuckets', () => {
     expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0], buckets[1]]);
   });
 
+  test('keeps a weekly limit when it is the only ChatGPT base window', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'weekly', label: 'Primary rate limit', utilization: 0.42 },
+      { kind: 'custom', label: 'GPT-5.3-Codex-Spark', utilization: 0.8 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0]]);
+  });
+
   test('keeps all OpenAI buckets when primary and secondary limits are absent', () => {
     const buckets: ProviderUsageBucket[] = [
       { kind: 'requests', label: 'RPM', utilization: 0.5 },

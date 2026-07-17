@@ -166,6 +166,16 @@ describe('mapBucketsForDisplay', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatProviderBucketLabel (en)', () => {
+  test('uses the window kind for ChatGPT base limit labels', () => {
+    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('Weekly');
+    expect(formatProviderBucketLabel('Secondary rate limit', 'weekly')).toBe('Weekly');
+    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('Session');
+  });
+
+  test('preserves additional limit labels regardless of window kind', () => {
+    expect(formatProviderBucketLabel('GPT-5.3-Codex-Spark', 'weekly')).toBe('GPT-5.3-Codex-Spark');
+  });
+
   test('compacts Cursor bucket labels for the status line', () => {
     expect(formatProviderBucketLabel('Included usage')).toBe('Usage');
     expect(formatProviderBucketLabel('Included API usage')).toBe('API');
@@ -226,6 +236,8 @@ describe('Chinese locale', () => {
   test('formatProviderBucketLabel uses short Chinese status-line labels', () => {
     expect(formatProviderBucketLabel('Primary rate limit')).toBe('主限');
     expect(formatProviderBucketLabel('Secondary rate limit')).toBe('副限');
+    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('每周');
+    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('会话');
     expect(formatProviderBucketLabel('RPM')).toBe('请求/分钟');
   });
 
