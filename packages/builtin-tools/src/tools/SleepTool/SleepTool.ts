@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import type { ToolResultBlockParam } from 'src/Tool.js'
+import type { ToolResultBlockParam, ToolUseContext } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { notifyAutomationStateChanged } from 'src/utils/sessionState.js'
@@ -42,14 +42,14 @@ function isProactiveSleepAllowed(): boolean {
   return mod.isProactiveActive()
 }
 
-function hasQueuedWakeSignal(): boolean {
+function hasQueuedWakeSignal(agentId: ToolUseContext['agentId']): boolean {
   const queue =
     require('src/utils/messageQueueManager.js') as typeof import('src/utils/messageQueueManager.js')
-  return queue.hasCommandsInQueue()
+  return queue.hasCommandsAddressedTo(agentId)
 }
 
-function shouldInterruptSleep(): boolean {
-  return !isProactiveSleepAllowed() || hasQueuedWakeSignal()
+function shouldInterruptSleep(agentId: ToolUseContext['agentId']): boolean {
+  return !isProactiveSleepAllowed() || hasQueuedWakeSignal(agentId)
 }
 
 export const SleepTool = buildTool({
@@ -105,7 +105,7 @@ export const SleepTool = buildTool({
   async call(input: SleepInput, context) {
     // Don't enter sleep if proactive was disabled or new work arrived while
     // the model was deciding to wait.
-    if (shouldInterruptSleep()) {
+    if (shouldInterruptSleep(context.agentId)) {
       return {
         data: {
           slept_seconds: 0,
@@ -177,7 +177,7 @@ export const SleepTool = buildTool({
         // Poll proactive state and the shared command queue so new work can
         // wake Sleep without waiting for the full duration.
         wakeCheck = setInterval(() => {
-          if (shouldInterruptSleep()) {
+          if (shouldInterruptSleep(context.agentId)) {
             interrupt()
           }
         }, SLEEP_WAKE_CHECK_INTERVAL_MS)

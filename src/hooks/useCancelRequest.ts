@@ -33,7 +33,7 @@ import type { PromptInputMode, VimMode } from '../types/textInputTypes.js'
 import {
   clearCommandQueue,
   enqueuePendingNotification,
-  hasCommandsInQueue,
+  isQueuedCommandEditable,
 } from '../utils/messageQueueManager.js'
 import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
 import { canCancelRequest } from '../utils/cancelRequest.js'
@@ -93,7 +93,11 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   } = props
   const store = useAppStateStore()
   const setAppState = useSetAppState()
-  const queuedCommandsLength = useCommandQueue().length
+  const queuedCommands = useCommandQueue()
+  const hasQueuedCommands = queuedCommands.some(
+    command =>
+      command.agentId === undefined && isQueuedCommandEditable(command),
+  )
   const { addNotification, removeNotification } = useNotifications()
   const lastKillAgentsPressRef = useRef<number>(0)
   const viewSelectionMode = useAppState(s => s.viewSelectionMode)
@@ -119,7 +123,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     }
 
     // Priority 2: Pop queue when Claude is idle (no running task to cancel)
-    if (hasCommandsInQueue()) {
+    if (hasQueuedCommands) {
       if (popCommandFromQueue) {
         popCommandFromQueue()
         return
@@ -135,6 +139,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     isQueryActive,
     isExternalLoading,
     hasCancelableAuxiliaryWork,
+    hasQueuedCommands,
     popCommandFromQueue,
     setToolUseConfirmQueue,
     onCancel,
@@ -153,7 +158,6 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
   )
   const canCancelForegroundOrAuxiliary =
     canCancelRunningTask || hasCancelableAuxiliaryWork
-  const hasQueuedCommands = queuedCommandsLength > 0
   // When in bash/background mode with empty input, escape should exit the mode
   // rather than cancel the request. Let PromptInput handle mode exit.
   // This only applies to Escape, not Ctrl+C which should always cancel.

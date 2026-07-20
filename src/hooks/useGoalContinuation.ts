@@ -40,7 +40,7 @@ import {
 } from 'src/services/goal/prompts.js'
 import {
   enqueue,
-  getCommandQueueSnapshot,
+  hasCommandsAddressedTo,
 } from 'src/utils/messageQueueManager.js'
 
 function hookLog(msg: string): void {
@@ -98,8 +98,7 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
     // If the user typed something (e.g. `/goal pause`) while a turn was
     // running, let their message process first. After it finishes, the
     // next idle cycle will re-evaluate whether to continue.
-    const liveQueueLength = getCommandQueueSnapshot().length
-    if (liveQueueLength > 0) {
+    if (hasCommandsAddressedTo(undefined)) {
       hookLog('skip: yielding to queued user messages')
       return
     }

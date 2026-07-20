@@ -9,10 +9,12 @@ import {
   enqueue,
   enqueuePendingNotification,
   getCommandsByMaxPriorityBeforeConversationReset,
+  hasCommandsAddressedTo,
   hasCommandsInQueue,
   isConversationResetCommand,
   isSlashCommand,
   peek,
+  popAllEditable,
   resetCommandQueue,
   stampCommandQueuePosition,
 } from '../messageQueueManager.js'
@@ -104,6 +106,47 @@ describe('messageQueueManager.enqueuePendingNotification', () => {
     expect(cmd).toBeDefined()
     expect(cmd!.priority).toBe('later')
     expect(cmd!.mode).toBe('task-notification')
+  })
+})
+
+describe('messageQueueManager.hasCommandsAddressedTo', () => {
+  test('isolates main-thread and subagent queue ownership', () => {
+    enqueuePendingNotification({
+      value: 'private completion',
+      mode: 'task-notification',
+      agentId: 'agent-1' as any,
+    })
+
+    expect(hasCommandsInQueue()).toBe(true)
+    expect(hasCommandsAddressedTo(undefined)).toBe(false)
+    expect(hasCommandsAddressedTo('agent-1' as any)).toBe(true)
+
+    enqueuePendingNotification({
+      value: 'main completion',
+      mode: 'task-notification',
+    })
+
+    expect(hasCommandsAddressedTo(undefined)).toBe(true)
+  })
+})
+
+describe('messageQueueManager.popAllEditable', () => {
+  test('pops only editable commands addressed to the requested owner', () => {
+    enqueue({
+      value: 'private subagent prompt',
+      mode: 'prompt',
+      agentId: 'agent-1' as any,
+    })
+    enqueue({ value: 'main prompt', mode: 'prompt' })
+
+    const result = popAllEditable('draft', 5)
+
+    expect(result?.text).toBe('main prompt\ndraft')
+    expect(hasCommandsAddressedTo(undefined)).toBe(false)
+    expect(hasCommandsAddressedTo('agent-1' as any)).toBe(true)
+    expect(dequeue(command => command.agentId === 'agent-1')?.value).toBe(
+      'private subagent prompt',
+    )
   })
 })
 

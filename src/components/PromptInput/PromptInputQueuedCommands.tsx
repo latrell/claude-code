@@ -91,7 +91,7 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
     // (scheduled tasks, proactive ticks) are system-generated and hidden.
     // Channel messages are the exception — isMeta but shown so the keyboard
     // user sees what arrived.
-    const visibleCommands = queuedCommands.filter(isQueuedCommandVisible);
+    const visibleCommands = queuedCommands.filter(cmd => cmd.agentId === undefined && isQueuedCommandVisible(cmd));
     if (visibleCommands.length === 0) return null;
     const processedCommands = processQueuedCommands(visibleCommands);
     return normalizeMessages(

@@ -415,7 +415,7 @@ import {
   enqueue,
   type SetAppState,
   getCommandQueue,
-  getCommandQueueLength,
+  hasCommandsAddressedTo,
   removeByFilter,
 } from '../utils/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
@@ -923,6 +923,13 @@ export function REPL({
   const fileHistory = useAppState(s => s.fileHistory);
   const initialMessage = useAppState(s => s.initialMessage);
   const queuedCommands = useCommandQueue();
+  // In-process agents share this store with the REPL. Their addressed
+  // notifications are not main-thread work and may outlive a failed agent
+  // cleanup, so none of the main idle/spinner gates may count them.
+  const mainThreadQueuedCommandsLength = queuedCommands.reduce(
+    (total, command) => total + (command.agentId === undefined ? 1 : 0),
+    0,
+  );
   // feature() is a build-time constant — dead code elimination removes the hook
   // call entirely in external builds, so this is safe despite looking conditional.
   // These fields contain excluded strings that must not appear in external builds.
@@ -2161,7 +2168,7 @@ export function REPL({
       // Without this, the spinner briefly disappears between consecutive notifications
       // (e.g., multiple background agents completing in rapid succession) because
       // isLoading goes false momentarily between processing each one.
-      getCommandQueueLength() > 0) &&
+      mainThreadQueuedCommandsLength > 0) &&
     // Hide spinner when waiting for leader to approve permission request
     !pendingWorkerRequest &&
     !onlySleepToolActive &&
@@ -3266,7 +3273,7 @@ export function REPL({
     // Aborting subagents may produce task-completed notifications.
     // Clear task notifications so the queue processor doesn't immediately
     // start a new foreground query; forward them to the background session.
-    const removedNotifications = removeByFilter(cmd => cmd.mode === 'task-notification');
+    const removedNotifications = removeByFilter(cmd => cmd.agentId === undefined && cmd.mode === 'task-notification');
 
     void (async () => {
       const toolUseContext = getToolUseContext(messagesRef.current, [], new AbortController(), mainLoopModel);
@@ -4113,7 +4120,7 @@ export function REPL({
           abortController.signal.reason === 'user-cancel' &&
           !queryGuard.isActive &&
           inputValueRef.current === '' &&
-          getCommandQueueLength() === 0 &&
+          !hasCommandsAddressedTo(undefined) &&
           !store.getState().viewingAgentTaskId
         ) {
           const msgs = messagesRef.current;
@@ -5095,7 +5102,7 @@ export function REPL({
   // (GH #3117).
   const hasCountedQueueUseRef = useRef(false);
   useEffect(() => {
-    if (queuedCommands.length < 1) {
+    if (mainThreadQueuedCommandsLength < 1) {
       hasCountedQueueUseRef.current = false;
       return;
     }
@@ -5105,7 +5112,7 @@ export function REPL({
       ...current,
       promptQueueUseCount: (current.promptQueueUseCount ?? 0) + 1,
     }));
-  }, [queuedCommands.length]);
+  }, [mainThreadQueuedCommandsLength]);
 
   // Process queued commands when query completes and queue has items
 
@@ -5309,7 +5316,7 @@ export function REPL({
       // Read from the module-level store at call time (not the render-time
       // snapshot) to avoid a stale closure — this callback's deps don't
       // include the queue.
-      if (getCommandQueue().some(cmd => cmd.mode === 'prompt' || cmd.mode === 'bash')) {
+      if (getCommandQueue().some(cmd => cmd.agentId === undefined && (cmd.mode === 'prompt' || cmd.mode === 'bash'))) {
         return false;
       }
 
@@ -5449,7 +5456,7 @@ export function REPL({
     // message will be processed asynchronously and a premature tick would
     // race with it, causing concurrent-query enqueue of expanded skill text.
     isLoading: isLoading || initialMessage !== null,
-    queuedCommandsLength: queuedCommands.length,
+    queuedCommandsLength: mainThreadQueuedCommandsLength,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     isInPlanMode: toolPermissionContext.mode === 'plan',
     onQueueTick: (command: QueuedCommand) => enqueue(command),
@@ -5460,7 +5467,7 @@ export function REPL({
   useGoalContinuation?.({
     isLoading: isLoading || initialMessage !== null,
     wasAborted,
-    queuedCommandsLength: queuedCommands.length,
+    queuedCommandsLength: mainThreadQueuedCommandsLength,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     isInPlanMode: toolPermissionContext.mode === 'plan',
     isQueryActiveNow: queryGuard.getSnapshot,
@@ -5498,7 +5505,7 @@ export function REPL({
 
     if (
       proactiveNextTickAt !== null &&
-      queuedCommands.length === 0 &&
+      mainThreadQueuedCommandsLength === 0 &&
       !isShowingLocalJSXCommand &&
       toolPermissionContext.mode !== 'plan' &&
       initialMessage === null
@@ -5524,14 +5531,14 @@ export function REPL({
     isShowingLocalJSXCommand,
     proactiveActive,
     proactiveNextTickAt,
-    queuedCommands.length,
+    mainThreadQueuedCommandsLength,
     toolPermissionContext.mode,
   ]);
 
   // Abort the current operation when a 'now' priority message arrives
   // (e.g. from a chat UI client via UDS).
   useEffect(() => {
-    if (queuedCommands.some(cmd => cmd.priority === 'now')) {
+    if (queuedCommands.some(cmd => cmd.agentId === undefined && cmd.priority === 'now')) {
       abortControllerRef.current?.abort('interrupt');
     }
   }, [queuedCommands]);

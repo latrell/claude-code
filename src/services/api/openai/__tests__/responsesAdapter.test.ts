@@ -404,6 +404,58 @@ describe('createChatGPTResponsesStream', () => {
   let tempDir: string
   let originalFetch: typeof globalThis.fetch
 
+  function createKeepaliveSSEFixture(params: {
+    initialEvents: Record<string, unknown>[]
+    delayedEvents?: Record<string, unknown>[]
+    delayMs?: number
+  }): {
+    body: ReadableStream<Uint8Array>
+    wasCancelled: () => boolean
+    dispose: () => void
+  } {
+    let cancelled = false
+    let keepaliveId: ReturnType<typeof setInterval> | undefined
+    let delayedId: ReturnType<typeof setTimeout> | undefined
+    const encoder = new TextEncoder()
+    const encodeEvents = (events: Record<string, unknown>[]) =>
+      encoder.encode(
+        events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''),
+      )
+    const dispose = () => {
+      if (keepaliveId !== undefined) clearInterval(keepaliveId)
+      if (delayedId !== undefined) clearTimeout(delayedId)
+    }
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encodeEvents(params.initialEvents))
+        keepaliveId = setInterval(() => {
+          controller.enqueue(encoder.encode(': keepalive\n\n'))
+        }, 3)
+        if (params.delayedEvents) {
+          delayedId = setTimeout(() => {
+            controller.enqueue(encodeEvents(params.delayedEvents!))
+          }, params.delayMs ?? 5)
+        }
+      },
+      cancel() {
+        cancelled = true
+        dispose()
+      },
+    })
+    return { body, wasCancelled: () => cancelled, dispose }
+  }
+
+  async function readNextStreamError(
+    iterator: AsyncIterator<Record<string, unknown>>,
+  ): Promise<unknown> {
+    try {
+      await iterator.next()
+    } catch (error) {
+      return error
+    }
+    throw new Error('Expected the stream to reject')
+  }
+
   beforeEach(() => {
     envSnapshot = {
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
@@ -1455,6 +1507,344 @@ describe('createChatGPTResponsesStream', () => {
       expect(isRetryableCompatError(error)).toBe(true)
     }
     expect(bodyCancelled).toBe(true)
+  })
+
+  test('times out and cancels after finalized output despite SSE keepalives and fragments', async () => {
+    let bodyCancelled = false
+    let keepaliveId: ReturnType<typeof setInterval> | undefined
+    let tick = 0
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","status":"completed","content":[{"type":"output_text","text":"done"}]}}\n\n',
+          ),
+        )
+        keepaliveId = setInterval(() => {
+          controller.enqueue(
+            encoder.encode(tick++ % 2 === 0 ? ': keepalive\n\n' : 'x'),
+          )
+        }, 3)
+      },
+      cancel() {
+        bodyCancelled = true
+        if (keepaliveId !== undefined) clearInterval(keepaliveId)
+      },
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 250,
+      terminalEventGraceMs: 25,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'response.output_item.done',
+    })
+    try {
+      await iterator.next()
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as Error).message).toContain('terminal event timeout')
+      expect((error as { retryable?: boolean }).retryable).toBe(true)
+      expect(isRetryableCompatError(error)).toBe(true)
+    } finally {
+      if (keepaliveId !== undefined) clearInterval(keepaliveId)
+    }
+    expect(bodyCancelled).toBe(true)
+  })
+
+  test('times out when semantic generation stops before finalized output', async () => {
+    const fixture = createKeepaliveSSEFixture({
+      initialEvents: [
+        { type: 'response.created', response: { status: 'in_progress' } },
+        {
+          type: 'response.output_text.delta',
+          output_index: 0,
+          content_index: 0,
+          delta: 'partial',
+        },
+      ],
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(fixture.body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 35,
+      terminalEventGraceMs: 20,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    try {
+      expect((await iterator.next()).value).toMatchObject({
+        type: 'response.created',
+      })
+      expect((await iterator.next()).value).toMatchObject({
+        type: 'response.output_text.delta',
+      })
+      const error = await readNextStreamError(iterator)
+      expect((error as Error).message).toContain('stream idle timeout')
+      expect(isRetryableCompatError(error)).toBe(true)
+    } finally {
+      fixture.dispose()
+    }
+    expect(fixture.wasCancelled()).toBe(true)
+  })
+
+  test('bounds a finalized reasoning item followed only by keepalives', async () => {
+    const fixture = createKeepaliveSSEFixture({
+      initialEvents: [
+        {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: { type: 'reasoning', summary: [] },
+        },
+      ],
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(fixture.body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 35,
+      terminalEventGraceMs: 20,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    try {
+      expect((await iterator.next()).value).toMatchObject({
+        type: 'response.output_item.done',
+      })
+      const error = await readNextStreamError(iterator)
+      expect((error as Error).message).toContain('stream idle timeout')
+      expect((error as Error).message).not.toContain('terminal event timeout')
+    } finally {
+      fixture.dispose()
+    }
+    expect(fixture.wasCancelled()).toBe(true)
+  })
+
+  test('remains bounded after new progress disarms terminal grace', async () => {
+    const fixture = createKeepaliveSSEFixture({
+      initialEvents: [
+        {
+          type: 'response.output_text.done',
+          output_index: 0,
+          content_index: 0,
+          text: 'first',
+        },
+      ],
+      delayedEvents: [
+        {
+          type: 'response.output_item.added',
+          output_index: 1,
+          item: { type: 'reasoning', summary: [] },
+        },
+      ],
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(fixture.body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 40,
+      terminalEventGraceMs: 20,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+
+    try {
+      expect((await iterator.next()).value).toMatchObject({
+        type: 'response.output_text.done',
+      })
+      expect((await iterator.next()).value).toMatchObject({
+        type: 'response.output_item.added',
+      })
+      const error = await readNextStreamError(iterator)
+      expect((error as Error).message).toContain('stream idle timeout')
+      expect((error as Error).message).not.toContain('terminal event timeout')
+    } finally {
+      fixture.dispose()
+    }
+    expect(fixture.wasCancelled()).toBe(true)
+  })
+
+  test('does not start terminal grace after a finalized reasoning item', async () => {
+    let keepaliveId: ReturnType<typeof setInterval> | undefined
+    let finishId: ReturnType<typeof setTimeout> | undefined
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","summary":[]}}\n\n',
+          ),
+        )
+        keepaliveId = setInterval(() => {
+          controller.enqueue(encoder.encode(': keepalive\n\n'))
+        }, 3)
+        finishId = setTimeout(() => {
+          if (keepaliveId !== undefined) clearInterval(keepaliveId)
+          controller.enqueue(
+            encoder.encode(
+              [
+                {
+                  type: 'response.output_item.done',
+                  output_index: 1,
+                  item: {
+                    type: 'message',
+                    status: 'completed',
+                    content: [{ type: 'output_text', text: 'finished' }],
+                  },
+                },
+                {
+                  type: 'response.completed',
+                  response: { status: 'completed' },
+                },
+              ]
+                .map(event => `data: ${JSON.stringify(event)}\n\n`)
+                .join(''),
+            ),
+          )
+          controller.close()
+        }, 60)
+      },
+      cancel() {
+        if (keepaliveId !== undefined) clearInterval(keepaliveId)
+        if (finishId !== undefined) clearTimeout(finishId)
+      },
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 250,
+      terminalEventGraceMs: 25,
+    })
+    const types: unknown[] = []
+
+    for await (const event of stream) types.push(event.type)
+
+    expect(types).toEqual([
+      'response.output_item.done',
+      'response.output_item.done',
+      'response.completed',
+    ])
+  })
+
+  test('disarms terminal grace when a new output item starts', async () => {
+    let keepaliveId: ReturnType<typeof setInterval> | undefined
+    let progressId: ReturnType<typeof setTimeout> | undefined
+    let finishId: ReturnType<typeof setTimeout> | undefined
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":"first"}\n\n',
+          ),
+        )
+        keepaliveId = setInterval(() => {
+          controller.enqueue(encoder.encode(': keepalive\n\n'))
+        }, 3)
+        progressId = setTimeout(() => {
+          controller.enqueue(
+            encoder.encode(
+              'data: {"type":"response.output_item.added","output_index":1,"item":{"type":"reasoning","summary":[]}}\n\n',
+            ),
+          )
+        }, 5)
+        finishId = setTimeout(() => {
+          if (keepaliveId !== undefined) clearInterval(keepaliveId)
+          controller.enqueue(
+            encoder.encode(
+              [
+                {
+                  type: 'response.output_item.done',
+                  output_index: 1,
+                  item: { type: 'reasoning', summary: [] },
+                },
+                {
+                  type: 'response.output_item.done',
+                  output_index: 2,
+                  item: {
+                    type: 'message',
+                    status: 'completed',
+                    content: [{ type: 'output_text', text: 'final' }],
+                  },
+                },
+                {
+                  type: 'response.completed',
+                  response: { status: 'completed' },
+                },
+              ]
+                .map(event => `data: ${JSON.stringify(event)}\n\n`)
+                .join(''),
+            ),
+          )
+          controller.close()
+        }, 60)
+      },
+      cancel() {
+        if (keepaliveId !== undefined) clearInterval(keepaliveId)
+        if (progressId !== undefined) clearTimeout(progressId)
+        if (finishId !== undefined) clearTimeout(finishId)
+      },
+    })
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride: (async () =>
+        new Response(body, { status: 200 })) as unknown as typeof fetch,
+      streamIdleTimeoutMs: 250,
+      terminalEventGraceMs: 25,
+    })
+    const types: unknown[] = []
+
+    for await (const event of stream) types.push(event.type)
+
+    expect(types).toEqual([
+      'response.output_text.done',
+      'response.output_item.added',
+      'response.output_item.done',
+      'response.output_item.done',
+      'response.completed',
+    ])
   })
 
   test('preserves HTTP status so transient responses are retryable', async () => {

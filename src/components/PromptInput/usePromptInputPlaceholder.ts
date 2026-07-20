@@ -48,7 +48,10 @@ export function usePromptInputPlaceholder({
     // Only count user-editable commands — task-notification and isMeta
     // are hidden from the prompt area (see PromptInputQueuedCommands).
     if (
-      queuedCommands.some(isQueuedCommandEditable) &&
+      queuedCommands.some(
+        command =>
+          command.agentId === undefined && isQueuedCommandEditable(command),
+      ) &&
       (getGlobalConfig().queuedCommandUpHintCount || 0) <
         NUM_TIMES_QUEUE_HINT_SHOWN
     ) {

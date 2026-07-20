@@ -118,6 +118,20 @@ export function hasCommandsInQueue(): boolean {
 }
 
 /**
+ * Check whether the queue contains work addressed to one conversation owner.
+ *
+ * The queue is process-global and shared by the main thread and all in-process
+ * subagents. Consumers must not use the global length as a liveness signal:
+ * an item for an exited subagent has no bearing on whether the main thread is
+ * busy (and vice versa).
+ */
+export function hasCommandsAddressedTo(
+  agentId: QueuedCommand['agentId'],
+): boolean {
+  return commandQueue.some(command => command.agentId === agentId)
+}
+
+/**
  * Trigger a re-check by notifying subscribers.
  * Use after async processing completes to ensure remaining commands
  * are picked up by useSyncExternalStore consumers.
@@ -492,7 +506,9 @@ export type PopAllEditableResult = {
 }
 
 /**
- * Pop all editable commands and combine them with current input for editing.
+ * Pop all editable commands addressed to one conversation owner and combine
+ * them with current input for editing. The main REPL uses the default
+ * `agentId === undefined`; private subagent work remains queued.
  * Notification modes (task-notification) are left in the queue
  * to be auto-processed later.
  * Returns object with combined text, cursor offset, and images to restore.
@@ -501,6 +517,7 @@ export type PopAllEditableResult = {
 export function popAllEditable(
   currentInput: string,
   currentCursorOffset: number,
+  agentId: QueuedCommand['agentId'] = undefined,
 ): PopAllEditableResult | undefined {
   if (commandQueue.length === 0) {
     return undefined
@@ -508,7 +525,10 @@ export function popAllEditable(
 
   const { editable = [], nonEditable = [] } = objectGroupBy(
     [...commandQueue],
-    cmd => (isQueuedCommandEditable(cmd) ? 'editable' : 'nonEditable'),
+    cmd =>
+      cmd.agentId === agentId && isQueuedCommandEditable(cmd)
+        ? 'editable'
+        : 'nonEditable',
   )
 
   if (editable.length === 0) {

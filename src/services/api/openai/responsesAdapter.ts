@@ -83,6 +83,7 @@ type AnthropicUsage = {
 const IMAGE_CONTENT_OMITTED_PLACEHOLDER =
   'image content omitted because you do not support image input'
 export const CHATGPT_CODEX_STREAM_IDLE_TIMEOUT_MS = 300_000
+export const CHATGPT_CODEX_TERMINAL_EVENT_GRACE_MS = 60_000
 
 function textFromContent(content: unknown): string {
   if (typeof content === 'string') return content
@@ -425,15 +426,85 @@ function parseSSEFrame(frame: string): Record<string, unknown> | undefined {
     : undefined
 }
 
+function isResponsesTerminalEvent(event: Record<string, unknown>): boolean {
+  return (
+    event.type === 'response.completed' ||
+    event.type === 'response.incomplete' ||
+    event.type === 'response.failed' ||
+    event.type === 'response.error' ||
+    event.type === 'error'
+  )
+}
+
+function isResponsesFinalizedOutputEvent(
+  event: Record<string, unknown>,
+): boolean {
+  const type = event.type
+  if (
+    type === 'response.output_text.done' ||
+    type === 'response.refusal.done' ||
+    type === 'response.function_call_arguments.done'
+  ) {
+    return true
+  }
+  if (type !== 'response.output_item.done') return false
+  const item = event.item
+  return !(
+    item &&
+    typeof item === 'object' &&
+    (item as Record<string, unknown>).type === 'reasoning'
+  )
+}
+
+function isResponsesGenerationProgress(
+  event: Record<string, unknown>,
+): boolean {
+  const type = event.type
+  if (typeof type !== 'string') return false
+  if (type.endsWith('.added') || type.endsWith('.delta')) {
+    return true
+  }
+  if (
+    type.startsWith('response.reasoning_') ||
+    (type !== 'response.in_progress' && type.endsWith('.in_progress'))
+  ) {
+    return true
+  }
+  if (type !== 'response.output_item.done') return false
+  const item = event.item
+  return Boolean(
+    item &&
+      typeof item === 'object' &&
+      (item as Record<string, unknown>).type === 'reasoning',
+  )
+}
+
 async function* parseSSE(
   response: Response,
   signal: AbortSignal,
   idleTimeoutMs: number,
+  terminalEventGraceMs: number,
 ): AsyncGenerator<Record<string, unknown>, void> {
   if (!response.body) throw new Error('ChatGPT response did not include a body')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  // Raw bytes are not semantic progress: proxies may emit SSE comments or
+  // arbitrary fragments forever after the server has stopped producing a
+  // response. Keep an absolute deadline that only real generation events can
+  // refresh so those transports remain bounded.
+  let streamProgressDeadline = Date.now() + idleTimeoutMs
+  let terminalEventDeadline: number | undefined
+  const createStreamIdleTimeoutError = (): ChatGPTResponsesAPIError =>
+    new ChatGPTResponsesAPIError(
+      `ChatGPT Responses API stream idle timeout after ${idleTimeoutMs}ms`,
+      { code: 'server_error' },
+    )
+  const createTerminalEventTimeoutError = (): ChatGPTResponsesAPIError =>
+    new ChatGPTResponsesAPIError(
+      `ChatGPT Responses API terminal event timeout after ${terminalEventGraceMs}ms`,
+      { code: 'server_error', retryable: true },
+    )
   const cancelReaderOnAbort = (): void => {
     // The request signal is passed to fetch(), but also cancel the open SSE
     // reader explicitly so an abort-ignoring custom transport cannot keep the
@@ -446,21 +517,39 @@ async function* parseSSE(
   try {
     while (true) {
       let timeoutId: ReturnType<typeof setTimeout> | undefined
-      const idleTimeout = new Promise<never>((_resolve, reject) => {
+      const now = Date.now()
+      const streamProgressRemaining = streamProgressDeadline - now
+      const terminalEventRemaining =
+        terminalEventDeadline === undefined
+          ? undefined
+          : terminalEventDeadline - now
+      const isTerminalEventTimeout =
+        terminalEventRemaining !== undefined &&
+        terminalEventRemaining <= streamProgressRemaining
+      const timeoutMs = isTerminalEventTimeout
+        ? terminalEventRemaining
+        : streamProgressRemaining
+      if (timeoutMs <= 0) {
+        const error = isTerminalEventTimeout
+          ? createTerminalEventTimeoutError()
+          : createStreamIdleTimeoutError()
+        await reader.cancel(error).catch(() => undefined)
+        throw error
+      }
+      const streamTimeout = new Promise<never>((_resolve, reject) => {
         timeoutId = setTimeout(
           () =>
             reject(
-              new ChatGPTResponsesAPIError(
-                `ChatGPT Responses API stream idle timeout after ${idleTimeoutMs}ms`,
-                { code: 'server_error' },
-              ),
+              isTerminalEventTimeout
+                ? createTerminalEventTimeoutError()
+                : createStreamIdleTimeoutError(),
             ),
-          idleTimeoutMs,
+          timeoutMs,
         )
       })
       let readResult
       try {
-        readResult = await Promise.race([reader.read(), idleTimeout])
+        readResult = await Promise.race([reader.read(), streamTimeout])
       } catch (error) {
         await reader.cancel(error).catch(() => undefined)
         throw error
@@ -478,7 +567,23 @@ async function* parseSSE(
         const frame = buffer.slice(0, boundary.index)
         buffer = buffer.slice(boundary.index + boundary[0].length)
         const parsed = parseSSEFrame(frame)
-        if (parsed) yield parsed
+        if (parsed) {
+          const isTerminalEvent = isResponsesTerminalEvent(parsed)
+          if (isTerminalEvent) {
+            terminalEventDeadline = undefined
+          } else if (isResponsesFinalizedOutputEvent(parsed)) {
+            const progressAt = Date.now()
+            streamProgressDeadline = progressAt + idleTimeoutMs
+            terminalEventDeadline = progressAt + terminalEventGraceMs
+          } else if (isResponsesGenerationProgress(parsed)) {
+            streamProgressDeadline = Date.now() + idleTimeoutMs
+            terminalEventDeadline = undefined
+          }
+          yield parsed
+          // Responses terminal events are authoritative. Do not depend on the
+          // HTTP peer closing its body after one has already arrived.
+          if (isTerminalEvent) return
+        }
         boundary = /\r?\n\r?\n/.exec(buffer)
       }
     }
@@ -1239,6 +1344,8 @@ export async function createChatGPTResponsesStream(params: {
   turnSession?: ChatGPTCodexTurnSession
   /** Test seam; production follows Codex's five-minute stream idle timeout. */
   streamIdleTimeoutMs?: number
+  /** Test seam; production allows one minute for a terminal event after output. */
+  terminalEventGraceMs?: number
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const providerUsagePublication =
     getAPIProvider() === 'openai' &&
@@ -1345,8 +1452,19 @@ export async function createChatGPTResponsesStream(params: {
     params.streamIdleTimeoutMs > 0
       ? params.streamIdleTimeoutMs
       : CHATGPT_CODEX_STREAM_IDLE_TIMEOUT_MS
+  const terminalEventGraceMs =
+    typeof params.terminalEventGraceMs === 'number' &&
+    Number.isFinite(params.terminalEventGraceMs) &&
+    params.terminalEventGraceMs > 0
+      ? params.terminalEventGraceMs
+      : CHATGPT_CODEX_TERMINAL_EVENT_GRACE_MS
   return trackCodexRateLimitEvents(
-    parseSSE(response, params.signal, streamIdleTimeoutMs),
+    parseSSE(
+      response,
+      params.signal,
+      streamIdleTimeoutMs,
+      terminalEventGraceMs,
+    ),
     params.credentialScope,
     providerUsagePublication,
   )

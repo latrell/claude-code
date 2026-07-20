@@ -1118,7 +1118,9 @@ function PromptInput({
     }
 
     // If there's an editable queued command, move it to the input for editing when UP is pressed
-    const hasEditableCommand = queuedCommands.some(isQueuedCommandEditable);
+    const hasEditableCommand = queuedCommands.some(
+      command => command.agentId === undefined && isQueuedCommandEditable(command),
+    );
     if (hasEditableCommand) {
       void popAllCommandsFromQueue();
       return;
@@ -2155,7 +2157,9 @@ function PromptInput({
       }
 
       // If there's an editable queued command, move it to the input for editing when ESC is pressed
-      const hasEditableCommand = queuedCommands.some(isQueuedCommandEditable);
+      const hasEditableCommand = queuedCommands.some(
+        command => command.agentId === undefined && isQueuedCommandEditable(command),
+      );
       if (hasEditableCommand) {
         void popAllCommandsFromQueue();
         return;

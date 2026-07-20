@@ -42,6 +42,10 @@ function hasCommandsInQueue(): boolean {
   return commandQueue.length > 0
 }
 
+function hasCommandsAddressedTo(agentId: QueuedCommand['agentId']): boolean {
+  return commandQueue.some(command => command.agentId === agentId)
+}
+
 function resetCommandQueue(): void {
   commandQueue.length = 0
 }
@@ -51,6 +55,7 @@ function createMessageQueueManagerMock() {
     enqueue,
     enqueuePendingNotification,
     getCommandQueue,
+    hasCommandsAddressedTo,
     hasCommandsInQueue,
     resetCommandQueue,
   }

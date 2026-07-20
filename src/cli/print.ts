@@ -51,7 +51,7 @@ import {
   dequeue,
   dequeueAllMatching,
   enqueue,
-  hasCommandsInQueue,
+  hasCommandsAddressedTo,
   peek,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
@@ -2025,7 +2025,10 @@ function runHeadlessStreaming(
 
   // Abort the current operation when a 'now' priority message arrives.
   subscribeToCommandQueue(() => {
-    if (abortController && getCommandsByMaxPriority('now').length > 0) {
+    if (
+      abortController &&
+      getCommandsByMaxPriority('now').some(cmd => cmd.agentId === undefined)
+    ) {
       abortController.abort('interrupt')
     }
   })
@@ -3420,7 +3423,7 @@ function runHeadlessStreaming(
 
           // If the auto-resume logic pre-enqueued a command, drain it now
           // that initialize has set up systemPrompt, agents, hooks, etc.
-          if (hasCommandsInQueue()) {
+          if (hasCommandsAddressedTo(undefined)) {
             void run()
           }
         } else if (msg.request.subtype === 'set_permission_mode') {
