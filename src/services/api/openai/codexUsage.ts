@@ -12,12 +12,14 @@ import {
 } from './chatgptAuth.js'
 import { getChatGPTCredentialScope } from 'src/utils/model/chatgptModels.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
-import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
+import {
+  beginProviderUsagePublication,
+  invalidateProviderUsagePublications,
+  publishProviderBuckets,
+} from 'src/services/providerUsage/store.js'
 import { CHATGPT_CODEX_PROTOCOL_CLIENT_VERSION } from './codexModels.js'
-import type {
-  BucketKind,
-  ProviderUsageBucket,
-} from 'src/services/providerUsage/types.js'
+import { codexWindowToProviderBucket } from 'src/services/providerUsage/adapters/codex.js'
+import type { ProviderUsageBucket } from 'src/services/providerUsage/types.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -513,11 +515,6 @@ async function safeFetchJSON(
  * Map ChatGPT Codex rate-limit buckets into the unified ProviderUsageBucket
  * shape so the status-line can display them alongside Anthropic/OpenAI data.
  *
- * Kind heuristic:
- * - windowMinutes <= 360 (6 h) → `session`
- * - windowMinutes >= 1440 (1 d) → `weekly`
- * - otherwise → `custom`
- *
  * @param rateLimits Raw Codex rate-limit buckets from the /wham/usage API.
  * @returns ProviderUsageBucket[] suitable for the provider usage store.
  */
@@ -526,23 +523,21 @@ export function mapCodexLimitsToProviderBuckets(
 ): ProviderUsageBucket[] {
   const buckets: ProviderUsageBucket[] = []
   for (const rl of rateLimits) {
-    const utilization = rl.limit > 0 ? rl.used / rl.limit : 0
-    let kind: BucketKind = 'custom'
-    if (rl.windowMinutes !== undefined && rl.windowMinutes > 0) {
-      if (rl.windowMinutes <= 360) {
-        kind = 'session'
-      } else if (rl.windowMinutes >= 1440) {
-        kind = 'weekly'
-      }
-    }
-    buckets.push({
-      kind,
-      // Prefer the un-concatenated labelKey so the display is cleaner;
-      // if absent, use the pre-formatted label from the API response.
-      label: rl.labelKey ?? rl.label,
-      utilization,
-      ...(rl.resetsAtSeconds > 0 ? { resetsAt: rl.resetsAtSeconds } : {}),
-    })
+    const usedPercent = rl.limit > 0 ? (rl.used / rl.limit) * 100 : 0
+    buckets.push(
+      codexWindowToProviderBucket(
+        {
+          usedPercent,
+          ...(rl.windowMinutes !== undefined
+            ? { windowMinutes: rl.windowMinutes }
+            : {}),
+          ...(rl.resetsAtSeconds > 0 ? { resetsAt: rl.resetsAtSeconds } : {}),
+        },
+        // Prefer the un-concatenated labelKey so the display is cleaner;
+        // if absent, use the pre-formatted label from the API response.
+        rl.labelKey ?? rl.label,
+      ),
+    )
   }
   return buckets
 }
@@ -558,11 +553,15 @@ export function mapCodexLimitsToProviderBuckets(
  * Requires OPENAI_AUTH_MODE=chatgpt and a valid ChatGPT access token.
  * Returns null on any failure so that /usage keeps its existing behaviour.
  *
- * Side effect: on success, feeds rate-limit buckets into the provider usage
- * store so the status-line can display them without relying on
- * x-ratelimit-* response headers (which the Codex backend does not emit).
+ * Side effect: on success, seeds the provider usage store from `/wham/usage`.
+ * Later Responses API headers and stream events refresh the same status-line
+ * snapshot during the session.
  */
 let activeUsageGeneration = 0
+
+function normalizeCredentialScope(scope: string | undefined): string {
+  return scope?.trim() || 'default'
+}
 
 /**
  * Prevent every usage request started before this call from publishing into
@@ -575,6 +574,7 @@ let activeUsageGeneration = 0
  */
 export function invalidateCodexUsagePublication(): void {
   activeUsageGeneration += 1
+  invalidateProviderUsagePublications()
   setChatGPTSubscriptionPlan(null)
 }
 
@@ -595,16 +595,21 @@ export async function fetchCodexUsage(
   },
 ): Promise<CodexUsageSnapshot | null> {
   const shouldPublish = authOverrides?.publish ?? true
-  // Reserve publication order before the first await. Auth resolution may
-  // refresh an expired OAuth token over the network; if an older account's
-  // refresh finishes after a newer account switch, completion order must not
-  // make the older request authoritative again.
-  if (shouldPublish) activeUsageGeneration += 1
+  const resolvedCredentialScope = credentialScope ?? getChatGPTCredentialScope()
+  const publishesToActiveAccount =
+    shouldPublish &&
+    normalizeCredentialScope(resolvedCredentialScope) ===
+      normalizeCredentialScope(getChatGPTCredentialScope())
+  // The generation changes only at an explicit main-account switch boundary.
+  // Concurrent requests within the same account are ordered by their provider
+  // publication tokens: only a newer request that actually produces quota
+  // data may supersede an older successful request.
   const requestGeneration = activeUsageGeneration
 
   if (!(authOverrides?.isAuthEnabled ?? isChatGPTAuthEnabled)()) return null
-
-  const resolvedCredentialScope = credentialScope ?? getChatGPTCredentialScope()
+  const providerUsagePublication = publishesToActiveAccount
+    ? beginProviderUsagePublication()
+    : undefined
 
   let auth: ChatGPTAuth
   try {
@@ -638,7 +643,12 @@ export async function fetchCodexUsage(
   const { account, rateLimits } = usageJSON ? parseUsageResponse(usageJSON) : {}
   const { tokenUsage } = profileJSON ? parseProfileResponse(profileJSON) : {}
 
-  if (shouldPublish && activeUsageGeneration === requestGeneration) {
+  if (
+    publishesToActiveAccount &&
+    activeUsageGeneration === requestGeneration &&
+    usageJSON !== null &&
+    providerUsagePublication !== undefined
+  ) {
     // Cache the subscription plan so getContextWindowForModel can auto-adapt
     // the context window for the active ChatGPT Codex account.
     setChatGPTSubscriptionPlan(account?.subscriptionPlan)
@@ -652,12 +662,11 @@ export async function fetchCodexUsage(
     // A successful usage response is authoritative for ChatGPT subscription
     // limits. Replace the whole snapshot, including with an empty list, so a
     // removed window cannot linger in the status line.
-    if (usageJSON !== null) {
-      updateProviderBuckets(
-        'openai',
-        rateLimits ? mapCodexLimitsToProviderBuckets(rateLimits) : [],
-      )
-    }
+    publishProviderBuckets(
+      providerUsagePublication,
+      'openai',
+      rateLimits ? mapCodexLimitsToProviderBuckets(rateLimits) : [],
+    )
   }
 
   if (!account && !rateLimits && !tokenUsage) {

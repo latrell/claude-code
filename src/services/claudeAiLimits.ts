@@ -7,6 +7,7 @@ import { getModelBetas } from '../utils/betas.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'
 import { getSmallFastModel } from '../utils/model/model.js'
+import { getAPIProvider } from '../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from './analytics/index.js'
 import { logEvent } from './analytics/index.js'
@@ -146,6 +147,25 @@ type RawUtilization = {
   seven_day?: RawWindowUtilization
 }
 let rawUtilization: RawUtilization = {}
+let limitsPublicationGeneration = 0
+
+export interface ClaudeAiLimitsPublication {
+  generation: number
+}
+
+/** Capture the active connection generation before starting a quota request. */
+export function beginClaudeAiLimitsPublication(): ClaudeAiLimitsPublication {
+  return { generation: limitsPublicationGeneration }
+}
+
+function canPublishClaudeAiLimits(
+  publication: ClaudeAiLimitsPublication | undefined,
+): boolean {
+  return (
+    publication === undefined ||
+    publication.generation === limitsPublicationGeneration
+  )
+}
 
 export function getRawUtilization(): RawUtilization {
   return rawUtilization
@@ -158,6 +178,7 @@ export function getRawUtilization(): RawUtilization {
  * connection's quota (it treats any rawUtilization as "Anthropic is active").
  */
 export function resetClaudeAiLimits(): void {
+  limitsPublicationGeneration += 1
   rawUtilization = {}
   const defaultLimits: ClaudeAILimits = {
     status: 'allowed',
@@ -242,15 +263,22 @@ export async function checkQuotaStatus(): Promise<void> {
     return
   }
 
+  // The prefetch belongs only to the active first-party main provider. Capture
+  // its generation so `/connect` or `/login` can invalidate it while in flight.
+  if (getAPIProvider() !== 'firstParty') return
+  const publication = beginClaudeAiLimitsPublication()
+
   try {
     // Make a minimal request to check quota
     const raw = await makeTestQuery()
 
     // Update limits based on the response
-    extractQuotaStatusFromHeaders(raw.headers)
+    if (getAPIProvider() === 'firstParty') {
+      extractQuotaStatusFromHeaders(raw.headers, publication)
+    }
   } catch (error) {
-    if (error instanceof APIError) {
-      extractQuotaStatusFromError(error)
+    if (error instanceof APIError && getAPIProvider() === 'firstParty') {
+      extractQuotaStatusFromError(error, publication)
     }
   }
 }
@@ -460,7 +488,9 @@ function cacheExtraUsageDisabledReason(headers: globalThis.Headers): void {
 
 export function extractQuotaStatusFromHeaders(
   headers: globalThis.Headers,
+  publication?: ClaudeAiLimitsPublication,
 ): void {
+  if (!canPublishClaudeAiLimits(publication)) return
   // Check if we need to process rate limits
   const isSubscriber = isClaudeAISubscriber()
 
@@ -496,7 +526,11 @@ export function extractQuotaStatusFromHeaders(
   }
 }
 
-export function extractQuotaStatusFromError(error: APIError): void {
+export function extractQuotaStatusFromError(
+  error: APIError,
+  publication?: ClaudeAiLimitsPublication,
+): void {
+  if (!canPublishClaudeAiLimits(publication)) return
   if (
     !shouldProcessRateLimits(isClaudeAISubscriber()) ||
     error.status !== 429

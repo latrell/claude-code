@@ -49,8 +49,8 @@ function hitRateColor(rate: number | null): 'success' | 'inactive' {
 describe('selectStatusLineProviderBuckets', () => {
   test('keeps only primary and secondary ChatGPT limits when present', () => {
     const buckets: ProviderUsageBucket[] = [
-      { kind: 'session', label: 'Primary rate limit', utilization: 0.42 },
-      { kind: 'weekly', label: 'Secondary rate limit', utilization: 0.15 },
+      { kind: 'session', label: 'Primary rate limit', utilization: 0.42, windowMinutes: 300 },
+      { kind: 'weekly', label: 'Secondary rate limit', utilization: 0.15, windowMinutes: 10080 },
       { kind: 'custom', label: 'GPT-5.3-Codex-Spark0', utilization: 0.8 },
       { kind: 'custom', label: 'GPT-5.3-Codex-Spark0', utilization: 0.2 },
     ];
@@ -62,6 +62,32 @@ describe('selectStatusLineProviderBuckets', () => {
     const buckets: ProviderUsageBucket[] = [
       { kind: 'weekly', label: 'Primary rate limit', utilization: 0.42 },
       { kind: 'custom', label: 'GPT-5.3-Codex-Spark', utilization: 0.8 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0]]);
+  });
+
+  test('shows a non-weekly secondary window before a weekly primary window', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'weekly', label: 'Primary rate limit', utilization: 0.42, windowMinutes: 10080 },
+      { kind: 'custom', label: 'Secondary rate limit', utilization: 0.15, windowMinutes: 43200 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[1], buckets[0]]);
+  });
+
+  test('deduplicates two weekly ChatGPT windows', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'weekly', label: 'Primary rate limit', utilization: 0.42, windowMinutes: 10080 },
+      { kind: 'weekly', label: 'Secondary rate limit', utilization: 0.15, windowMinutes: 10080 },
+    ];
+
+    expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0]]);
+  });
+
+  test('keeps a monthly primary window when it is the only ChatGPT base window', () => {
+    const buckets: ProviderUsageBucket[] = [
+      { kind: 'custom', label: 'Primary rate limit', utilization: 0.42, windowMinutes: 43200 },
     ];
 
     expect(selectStatusLineProviderBuckets('openai', buckets)).toEqual([buckets[0]]);

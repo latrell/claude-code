@@ -29,6 +29,11 @@ import { Ansi, Box, Text } from '@anthropic/ink';
 import { getRawUtilization } from '../services/claudeAiLimits.js';
 import { getProviderUsage, subscribeProviderUsage } from '../services/providerUsage/store.js';
 import type { ProviderUsageBucket } from '../services/providerUsage/types.js';
+import {
+  CODEX_PRIMARY_LIMIT_LABEL,
+  CODEX_SECONDARY_LIMIT_LABEL,
+  getCodexWindowLabel,
+} from '../services/providerUsage/adapters/codex.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
@@ -72,7 +77,7 @@ type CachePillProps = {
   messages: Message[];
 };
 
-const CHATGPT_STATUS_LINE_LIMIT_LABELS = new Set(['Primary rate limit', 'Secondary rate limit']);
+const CHATGPT_STATUS_LINE_LIMIT_LABELS = new Set([CODEX_PRIMARY_LIMIT_LABEL, CODEX_SECONDARY_LIMIT_LABEL]);
 
 const CURSOR_INCLUDED_LABELS = new Set(['Included usage', 'Included API usage', 'Included Auto usage']);
 const CURSOR_ON_DEMAND_LABEL = 'On-demand usage';
@@ -83,7 +88,36 @@ export function selectStatusLineProviderBuckets(
 ): ProviderUsageBucket[] {
   if (providerId === 'openai') {
     const primarySecondaryBuckets = buckets.filter(bucket => CHATGPT_STATUS_LINE_LIMIT_LABELS.has(bucket.label));
-    return primarySecondaryBuckets.length > 0 ? primarySecondaryBuckets : buckets;
+    if (primarySecondaryBuckets.length === 0) return buckets;
+
+    const primary = primarySecondaryBuckets.find(bucket => bucket.label === CODEX_PRIMARY_LIMIT_LABEL);
+    const secondary = primarySecondaryBuckets.find(bucket => bucket.label === CODEX_SECONDARY_LIMIT_LABEL);
+    const isWindow = (bucket: ProviderUsageBucket | undefined, expected: '5h' | 'weekly'): boolean => {
+      if (!bucket) return false;
+      if (bucket.windowMinutes !== undefined) {
+        return getCodexWindowLabel(bucket.windowMinutes, bucket.label === CODEX_SECONDARY_LIMIT_LABEL) === expected;
+      }
+      return expected === '5h' ? bucket.kind === 'session' : bucket.kind === 'weekly';
+    };
+    const hasWeekly = isWindow(primary, 'weekly') || isWindow(secondary, 'weekly');
+
+    // Match Codex's two compact status slots: a 5-hour/non-weekly window
+    // first, followed by the weekly window (or the secondary fallback).
+    const first = isWindow(primary, '5h')
+      ? primary
+      : hasWeekly && isWindow(secondary, '5h')
+        ? secondary
+        : primary && !isWindow(primary, 'weekly')
+          ? primary
+          : isWindow(primary, 'weekly') && secondary && !isWindow(secondary, 'weekly')
+            ? secondary
+            : undefined;
+    const second = isWindow(primary, 'weekly') ? primary : isWindow(secondary, 'weekly') ? secondary : secondary;
+
+    return [first, second].filter(
+      (bucket, index, selected): bucket is ProviderUsageBucket =>
+        bucket !== undefined && selected.indexOf(bucket) === index,
+    );
   }
 
   // Cursor reports several plan/API/auto/on-demand dimensions but the status

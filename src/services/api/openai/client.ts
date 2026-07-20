@@ -1,6 +1,10 @@
 import OpenAI from 'openai'
 import { openaiAdapter } from 'src/services/providerUsage/adapters/openai.js'
-import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
+import {
+  beginProviderUsagePublication,
+  publishProviderBuckets,
+} from 'src/services/providerUsage/store.js'
+import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getProxyFetchOptions, isKeepAliveDisabled } from 'src/utils/proxy.js'
 
 /**
@@ -23,25 +27,47 @@ let cachedClientMaxRetries = 0
  * The cast to `typeof fetch` is safe: OpenAI SDK only calls the function form,
  * not the static `preconnect` method that Bun/Node's `fetch` type declares.
  */
-function wrapFetchForUsage(base: typeof fetch): typeof fetch {
+function wrapFetchForUsage(
+  base: typeof fetch,
+  envOverride?: Record<string, string | undefined>,
+): typeof fetch {
   const wrapped = async (
     ...args: Parameters<typeof fetch>
   ): Promise<Response> => {
+    // Reserve this request in the current main-connection epoch. Reserving is
+    // non-destructive: an older live request remains authoritative unless this
+    // one later produces usable quota headers.
+    const publication = shouldPublishOpenAIUsage(envOverride)
+      ? beginProviderUsagePublication()
+      : undefined
     const res = await base(...args)
-    try {
-      const buckets = openaiAdapter.parseHeaders(res.headers)
-      // Only update when headers carry usable data. The ChatGPT Codex backend
-      // does not return x-ratelimit-* headers – data comes from fetchCodexUsage
-      // instead.  An empty update here would clear Codex-derived buckets.
-      if (buckets.length > 0) {
-        updateProviderBuckets('openai', buckets)
+    // Re-check the runtime at response time as `/connect` or `/login` may have
+    // switched this process to ChatGPT while the old API request was in flight.
+    if (publication !== undefined && shouldPublishOpenAIUsage(envOverride)) {
+      try {
+        const buckets = openaiAdapter.parseHeaders(res.headers)
+        // Only update when headers carry usable standard API quota data.
+        if (buckets.length > 0) {
+          publishProviderBuckets(publication, 'openai', buckets)
+        }
+      } catch {
+        // Ignore — usage tracking must not affect the request path.
       }
-    } catch {
-      // Ignore — usage tracking must not affect the request path.
     }
     return res
   }
   return wrapped as unknown as typeof fetch
+}
+
+/** Only the active main OpenAI-compatible runtime owns the global status line. */
+export function shouldPublishOpenAIUsage(
+  envOverride?: Record<string, string | undefined>,
+): boolean {
+  return (
+    envOverride === undefined &&
+    getAPIProvider() === 'openai' &&
+    process.env.OPENAI_AUTH_MODE?.trim().toLowerCase() !== 'chatgpt'
+  )
 }
 
 export function getOpenAIClient(options?: {
@@ -67,7 +93,7 @@ export function getOpenAIClient(options?: {
   const baseURL = env.OPENAI_BASE_URL
 
   const baseFetch = options?.fetchOverride ?? (globalThis.fetch as typeof fetch)
-  const wrappedFetch = wrapFetchForUsage(baseFetch)
+  const wrappedFetch = wrapFetchForUsage(baseFetch, options?.envOverride)
 
   const client = new OpenAI({
     apiKey,

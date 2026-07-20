@@ -23,14 +23,53 @@ interface StoreCall {
 }
 
 let storeUpdateCalls: StoreCall[] = []
+let storeSnapshot: { providerId: string; buckets: unknown[] } = {
+  providerId: 'unknown',
+  buckets: [],
+}
+let storePublicationEpoch = 0
+let nextStorePublicationSequence = 0
+let latestStorePublicationSequence = 0
 
 mock.module('src/services/providerUsage/store.js', () => ({
-  getProviderUsage: () => ({ providerId: 'unknown', buckets: [] }),
+  getProviderUsage: () => storeSnapshot,
+  beginProviderUsagePublication: () => {
+    nextStorePublicationSequence += 1
+    return {
+      epoch: storePublicationEpoch,
+      sequence: nextStorePublicationSequence,
+    }
+  },
+  publishProviderBuckets: (
+    publication: { epoch: number; sequence: number },
+    providerId: string,
+    buckets: unknown[],
+  ) => {
+    if (
+      publication.epoch !== storePublicationEpoch ||
+      publication.sequence < latestStorePublicationSequence
+    ) {
+      return false
+    }
+    latestStorePublicationSequence = publication.sequence
+    storeUpdateCalls.push({ providerId, buckets })
+    storeSnapshot = { providerId, buckets }
+    return true
+  },
+  invalidateProviderUsagePublications: () => {
+    storePublicationEpoch += 1
+    latestStorePublicationSequence = 0
+  },
   updateProviderBuckets: (providerId: string, buckets: unknown[]) => {
     storeUpdateCalls.push({ providerId, buckets })
+    storeSnapshot = { providerId, buckets }
   },
   subscribeProviderUsage: (() => () => {}) as unknown,
-  resetProviderUsage: () => {},
+  resetProviderUsage: () => {
+    storePublicationEpoch += 1
+    latestStorePublicationSequence = 0
+    storeSnapshot = { providerId: 'unknown', buckets: [] }
+  },
   setProviderBalance: () => {},
 }))
 
@@ -43,6 +82,10 @@ import {
 } from '../codexUsage.js'
 import type { CodexRateLimitBucket } from '../codexUsage.js'
 import type { ProviderUsageBucket } from 'src/services/providerUsage/types.js'
+import {
+  beginProviderUsagePublication,
+  publishProviderBuckets,
+} from 'src/services/providerUsage/store.js'
 import {
   getChatGPTSubscriptionPlan,
   setChatGPTSubscriptionPlan,
@@ -67,6 +110,8 @@ function resetState(): void {
   authFedRAMP = false
   requestedAuthScopes = []
   storeUpdateCalls = []
+  storeSnapshot = { providerId: 'unknown', buckets: [] }
+  setChatGPTSubscriptionPlan(null)
 }
 
 function fetchCodexUsage(signal?: AbortSignal, credentialScope?: string) {
@@ -257,7 +302,7 @@ describe('fetchCodexUsage', () => {
     }
   })
 
-  test('latest publishing request wins when older auth resolves last', async () => {
+  test('connection invalidation keeps the new same-scope account authoritative', async () => {
     const oldAuth = deferred<{
       accessToken: string
       accountId: string
@@ -285,12 +330,15 @@ describe('fetchCodexUsage', () => {
       return Promise.resolve(jsonResponse({}))
     }) as unknown as typeof globalThis.fetch
 
-    const olderRequest = fetchCodexUsageImpl(undefined, 'scope-old', {
+    const olderRequest = fetchCodexUsageImpl(undefined, undefined, {
       isAuthEnabled: () => true,
       getAuth: async () => oldAuth.promise,
       refreshAuth: async () => oldAuth.promise,
     })
-    const newerRequest = fetchCodexUsageImpl(undefined, 'scope-new', {
+    // `/connect` and `/login` synchronously invalidate the old account even
+    // when both credentials use the default scope.
+    invalidateCodexUsagePublication()
+    const newerRequest = fetchCodexUsageImpl(undefined, undefined, {
       isAuthEnabled: () => true,
       getAuth: async () => ({
         accessToken: 'token-new',
@@ -321,6 +369,100 @@ describe('fetchCodexUsage', () => {
     expect(getChatGPTSubscriptionPlan()).toBe('team')
   })
 
+  test('a newer failed request does not silence an older successful snapshot', async () => {
+    const oldAuth = deferred<{
+      accessToken: string
+      accountId: string
+      isFedRAMP: boolean
+    }>()
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      return Promise.resolve(
+        url === `${BASE}/wham/usage`
+          ? jsonResponse({
+              plan_type: 'plus',
+              rate_limit: {
+                primary_window: {
+                  used_percent: 10,
+                  window_minutes: 300,
+                },
+              },
+            })
+          : jsonResponse({}),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const olderRequest = fetchCodexUsageImpl(undefined, undefined, {
+      isAuthEnabled: () => true,
+      getAuth: async () => oldAuth.promise,
+    })
+    const newerRequest = fetchCodexUsageImpl(undefined, undefined, {
+      isAuthEnabled: () => true,
+      getAuth: async () => {
+        throw new Error('temporary auth failure')
+      },
+    })
+
+    expect(await newerRequest).toBeNull()
+    oldAuth.resolve({
+      accessToken: 'token-current',
+      accountId: 'account-current',
+      isFedRAMP: false,
+    })
+    await olderRequest
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    const bucket = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
+    expect(bucket.utilization).toBeCloseTo(0.1, 5)
+    expect(getChatGPTSubscriptionPlan()).toBe('plus')
+  })
+
+  test('a newer usage publisher blocks a delayed /wham snapshot', async () => {
+    const delayedUsage = deferred<Response>()
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      return url === `${BASE}/wham/usage`
+        ? delayedUsage.promise
+        : Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    const request = fetchCodexUsageImpl(undefined, undefined, {
+      isAuthEnabled: () => true,
+      getAuth: async () => ({
+        accessToken: 'token-old',
+        accountId: 'account-old',
+        isFedRAMP: false,
+      }),
+    })
+
+    const newerPublisher = beginProviderUsagePublication()
+    publishProviderBuckets(newerPublisher, 'openai', [
+      {
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.4,
+        windowMinutes: 300,
+      },
+    ])
+    delayedUsage.resolve(
+      jsonResponse({
+        plan_type: 'plus',
+        rate_limit: {
+          primary_window: {
+            used_percent: 10,
+            window_minutes: 300,
+          },
+        },
+      }),
+    )
+    await request
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    expect(
+      (storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket).utilization,
+    ).toBe(0.4)
+  })
+
   test('explicit invalidation blocks an older request before auth resolves', async () => {
     const oldAuth = deferred<{
       accessToken: string
@@ -344,7 +486,7 @@ describe('fetchCodexUsage', () => {
       ),
     ) as unknown as typeof globalThis.fetch
 
-    const olderRequest = fetchCodexUsageImpl(undefined, 'scope-old', {
+    const olderRequest = fetchCodexUsageImpl(undefined, undefined, {
       isAuthEnabled: () => true,
       getAuth: async () => oldAuth.promise,
       refreshAuth: async () => oldAuth.promise,
@@ -363,7 +505,7 @@ describe('fetchCodexUsage', () => {
     expect(getChatGPTSubscriptionPlan()).toBeNull()
   })
 
-  test('non-publishing scoped snapshot leaves global usage state unchanged', async () => {
+  test('non-active scoped snapshot leaves global usage state unchanged', async () => {
     setChatGPTSubscriptionPlan('team')
     globalThis.fetch = mock((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
@@ -395,7 +537,6 @@ describe('fetchCodexUsage', () => {
         accountId: 'account-background',
         isFedRAMP: false,
       }),
-      publish: false,
     })
 
     expect(snapshot?.account?.subscriptionPlan).toBe('free')
@@ -659,6 +800,7 @@ describe('fetchCodexUsage', () => {
 
   test('returns partial snapshot when /wham/profiles/me succeeds but /wham/usage fails', async () => {
     authEnabled = true
+    setChatGPTSubscriptionPlan('team')
 
     globalThis.fetch = mock((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString()
@@ -682,6 +824,7 @@ describe('fetchCodexUsage', () => {
     expect(result!.account).toBeUndefined()
     expect(result!.rateLimits).toBeUndefined()
     expect(result!.tokenUsage?.tokensUsed).toBe(500)
+    expect(getChatGPTSubscriptionPlan()).toBe('team')
   })
 
   // ---------------------------------------------------------------------------
@@ -1039,9 +1182,10 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
     expect(storeUpdateCalls[0]!.buckets).toHaveLength(1)
 
     const bucket = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
-    expect(bucket.kind).toBe('session')
+    expect(bucket.kind).toBe('custom')
     expect(bucket.label).toBe('Primary rate limit')
     expect(bucket.utilization).toBeCloseTo(0.42, 5)
+    expect(bucket.windowMinutes).toBe(180)
     expect(bucket.resetsAt).toBe(1700000000)
   })
 
@@ -1074,6 +1218,7 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
     expect(bucket.kind).toBe('weekly')
     expect(bucket.label).toBe('Primary rate limit')
     expect(bucket.utilization).toBeCloseTo(0.42, 5)
+    expect(bucket.windowMinutes).toBe(10080)
     expect(bucket.resetsAt).toBe(1800000000)
   })
 
@@ -1187,7 +1332,7 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
 
     const b0 = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
     expect(b0.label).toBe('Primary rate limit')
-    expect(b0.kind).toBe('session')
+    expect(b0.kind).toBe('custom')
 
     const b1 = storeUpdateCalls[0]!.buckets[1] as ProviderUsageBucket
     expect(b1.label).toBe('o3')
@@ -1201,7 +1346,7 @@ describe('fetchCodexUsage side-effect: updateProviderBuckets', () => {
 // =============================================================================
 
 describe('mapCodexLimitsToProviderBuckets', () => {
-  test('maps single rate limit bucket with windowMinutes <= 360 to session kind', () => {
+  test('maps a five-hour rate limit to session kind', () => {
     const input: CodexRateLimitBucket[] = [
       {
         label: 'Primary rate limit (300min)',
@@ -1219,9 +1364,10 @@ describe('mapCodexLimitsToProviderBuckets', () => {
     expect(result[0]!.label).toBe('Primary rate limit')
     expect(result[0]!.utilization).toBeCloseTo(0.42, 5)
     expect(result[0]!.resetsAt).toBe(1800000000)
+    expect(result[0]!.windowMinutes).toBe(300)
   })
 
-  test('maps rate limit with windowMinutes >= 1440 to weekly kind', () => {
+  test('does not misclassify a daily limit as weekly', () => {
     const input: CodexRateLimitBucket[] = [
       {
         label: 'Daily limit (1440min)',
@@ -1234,8 +1380,9 @@ describe('mapCodexLimitsToProviderBuckets', () => {
     ]
     const result = mapCodexLimitsToProviderBuckets(input)
     expect(result).toHaveLength(1)
-    expect(result[0]!.kind).toBe('weekly')
+    expect(result[0]!.kind).toBe('custom')
     expect(result[0]!.utilization).toBeCloseTo(0.75, 5)
+    expect(result[0]!.windowMinutes).toBe(1440)
   })
 
   test('maps windowMinutes between 361-1439 to custom kind', () => {

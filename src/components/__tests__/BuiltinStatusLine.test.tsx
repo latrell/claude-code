@@ -19,6 +19,7 @@ import {
   formatCentsCompact,
   formatCountdown,
   formatProviderBucketLabel,
+  formatProviderBucketPercentage,
   statusLineModelName,
 } from '../BuiltinStatusLine.js';
 
@@ -39,14 +40,14 @@ describe('statusLineModelName', () => {
 
 interface BucketDisplay {
   label: string;
-  utilizationPct: number;
+  percentage: string;
   hasResetsAt: boolean;
 }
 
 function mapBucketsForDisplay(buckets: ProviderUsageBucket[]): BucketDisplay[] {
   return buckets.map(b => ({
     label: b.label,
-    utilizationPct: Math.round(b.utilization * 100),
+    percentage: formatProviderBucketPercentage(b),
     hasResetsAt: (b.resetsAt ?? 0) > 0,
   }));
 }
@@ -98,7 +99,7 @@ describe('mapBucketsForDisplay', () => {
     const display = mapBucketsForDisplay(buckets);
     expect(display).toHaveLength(1);
     expect(display[0]!.label).toBe('RPM');
-    expect(display[0]!.utilizationPct).toBe(75);
+    expect(display[0]!.percentage).toBe('75%');
     expect(display[0]!.hasResetsAt).toBe(true);
   });
 
@@ -107,7 +108,7 @@ describe('mapBucketsForDisplay', () => {
     const display = mapBucketsForDisplay(buckets);
     expect(display).toHaveLength(1);
     expect(display[0]!.label).toBe('TPM');
-    expect(display[0]!.utilizationPct).toBe(25);
+    expect(display[0]!.percentage).toBe('25%');
     expect(display[0]!.hasResetsAt).toBe(false);
   });
 
@@ -128,35 +129,52 @@ describe('mapBucketsForDisplay', () => {
 
   test('rounds utilization to integer percentage', () => {
     const buckets: ProviderUsageBucket[] = [{ kind: 'tokens', label: 'TPM', utilization: 0.337 }];
-    expect(mapBucketsForDisplay(buckets)[0]!.utilizationPct).toBe(34);
+    expect(mapBucketsForDisplay(buckets)[0]!.percentage).toBe('34%');
   });
 
   test('maps session-kind (Codex style) bucket', () => {
     const buckets: ProviderUsageBucket[] = [
-      { kind: 'session', label: 'Primary rate limit', utilization: 0.42, resetsAt: 1800000000 },
+      {
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.42,
+        resetsAt: 1800000000,
+        windowMinutes: 300,
+      },
     ];
     const display = mapBucketsForDisplay(buckets);
     expect(display).toHaveLength(1);
     expect(display[0]!.label).toBe('Primary rate limit');
-    expect(display[0]!.utilizationPct).toBe(42);
+    expect(display[0]!.percentage).toBe('42%');
     expect(display[0]!.hasResetsAt).toBe(true);
   });
 
   test('maps weekly-kind (Codex style) bucket', () => {
-    const buckets: ProviderUsageBucket[] = [{ kind: 'weekly', label: 'Daily limit', utilization: 0.75 }];
+    const buckets: ProviderUsageBucket[] = [
+      {
+        kind: 'weekly',
+        label: 'Daily limit',
+        utilization: 0.75,
+      },
+    ];
     const display = mapBucketsForDisplay(buckets);
     expect(display[0]!.label).toBe('Daily limit');
-    expect(display[0]!.utilizationPct).toBe(75);
+    expect(display[0]!.percentage).toBe('75%');
     expect(display[0]!.hasResetsAt).toBe(false);
   });
 
   test('maps custom-kind (Codex style) bucket', () => {
     const buckets: ProviderUsageBucket[] = [
-      { kind: 'custom', label: 'gpt-4.1', utilization: 0.3, resetsAt: 1800100000 },
+      {
+        kind: 'custom',
+        label: 'gpt-4.1',
+        utilization: 0.3,
+        resetsAt: 1800100000,
+      },
     ];
     const display = mapBucketsForDisplay(buckets);
     expect(display[0]!.label).toBe('gpt-4.1');
-    expect(display[0]!.utilizationPct).toBe(30);
+    expect(display[0]!.percentage).toBe('30%');
     expect(display[0]!.hasResetsAt).toBe(true);
   });
 });
@@ -166,14 +184,22 @@ describe('mapBucketsForDisplay', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatProviderBucketLabel (en)', () => {
-  test('uses the window kind for ChatGPT base limit labels', () => {
-    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('Weekly');
-    expect(formatProviderBucketLabel('Secondary rate limit', 'weekly')).toBe('Weekly');
-    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('Session');
+  test('uses role-based fallbacks when ChatGPT window duration is absent', () => {
+    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('usage');
+    expect(formatProviderBucketLabel('Secondary rate limit', 'weekly')).toBe('secondary usage');
+    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('usage');
   });
 
   test('preserves additional limit labels regardless of window kind', () => {
     expect(formatProviderBucketLabel('GPT-5.3-Codex-Spark', 'weekly')).toBe('GPT-5.3-Codex-Spark');
+  });
+
+  test('uses Codex duration labels for subscription limits', () => {
+    expect(formatProviderBucketLabel('Primary rate limit', 'session', 300)).toBe('5h');
+    expect(formatProviderBucketLabel('Secondary rate limit', 'custom', 1440)).toBe('daily');
+    expect(formatProviderBucketLabel('Primary rate limit', 'weekly', 10080)).toBe('weekly');
+    expect(formatProviderBucketLabel('Primary rate limit', 'custom', 43200)).toBe('monthly');
+    expect(formatProviderBucketLabel('Secondary rate limit', 'custom', 120)).toBe('secondary usage');
   });
 
   test('compacts Cursor bucket labels for the status line', () => {
@@ -181,6 +207,43 @@ describe('formatProviderBucketLabel (en)', () => {
     expect(formatProviderBucketLabel('Included API usage')).toBe('API');
     expect(formatProviderBucketLabel('Included Auto usage')).toBe('Auto');
     expect(formatProviderBucketLabel('On-demand usage')).toBe('On-demand');
+  });
+});
+
+describe('formatProviderBucketPercentage', () => {
+  test('shows ChatGPT subscription utilization as used percentage', () => {
+    expect(
+      formatProviderBucketPercentage({
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.4,
+      }),
+    ).toBe('40%');
+    expect(
+      formatProviderBucketPercentage({
+        kind: 'weekly',
+        label: 'Secondary rate limit',
+        utilization: 0.94,
+      }),
+    ).toBe('94%');
+  });
+
+  test('preserves overage and generic provider utilization semantics', () => {
+    expect(
+      formatProviderBucketPercentage({
+        kind: 'custom',
+        label: 'Over limit',
+        utilization: 1.2,
+      }),
+    ).toBe('120%');
+    expect(
+      formatProviderBucketPercentage({
+        kind: 'custom',
+        label: 'Negative provider bug',
+        utilization: -0.2,
+      }),
+    ).toBe('-20%');
+    expect(formatProviderBucketPercentage({ kind: 'requests', label: 'RPM', utilization: 0.4 })).toBe('40%');
   });
 });
 
@@ -234,11 +297,23 @@ describe('Chinese locale', () => {
   });
 
   test('formatProviderBucketLabel uses short Chinese status-line labels', () => {
-    expect(formatProviderBucketLabel('Primary rate limit')).toBe('主限');
-    expect(formatProviderBucketLabel('Secondary rate limit')).toBe('副限');
-    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('每周');
-    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('会话');
+    expect(formatProviderBucketLabel('Primary rate limit')).toBe('用量');
+    expect(formatProviderBucketLabel('Secondary rate limit')).toBe('次级用量');
+    expect(formatProviderBucketLabel('Primary rate limit', 'weekly')).toBe('用量');
+    expect(formatProviderBucketLabel('Primary rate limit', 'session')).toBe('用量');
     expect(formatProviderBucketLabel('RPM')).toBe('请求/分钟');
+  });
+
+  test('localizes Codex duration labels and keeps used percentage', () => {
+    expect(formatProviderBucketLabel('Primary rate limit', 'session', 300)).toBe('5 小时');
+    expect(formatProviderBucketLabel('Secondary rate limit', 'weekly', 10080)).toBe('每周');
+    expect(
+      formatProviderBucketPercentage({
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.4,
+      }),
+    ).toBe('40%');
   });
 
   test('formatProviderBucketLabel uses short Chinese Cursor labels', () => {

@@ -27,7 +27,7 @@ import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settin
 import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
 import type { ProviderLoginConfig } from '../utils/settings/types.js';
 import { writeCCBProviderAuthEnv, type CCBProvider } from '../utils/ccbProviderAuth.js';
-import { setSessionProviderEnvOverlay } from '../services/connections/sessionEnvOverlay.js';
+import { applyMainProviderLoginEnvironment } from '../services/connections/loginEnvironment.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
@@ -194,17 +194,7 @@ export function ConsoleOAuthFlow({
   }, []);
 
   const applyGlobalEnv = useCallback((env: Record<string, string | undefined>) => {
-    // A fresh /login supersedes any session-scoped --provider / /connect
-    // activation — drop its env overlay so managedEnv doesn't re-assert the
-    // old connection's credentials over the ones we're deploying now.
-    setSessionProviderEnvOverlay(null);
-    for (const [k, v] of Object.entries(env)) {
-      if (v === undefined) {
-        delete process.env[k];
-      } else {
-        process.env[k] = v;
-      }
-    }
+    applyMainProviderLoginEnvironment(env);
   }, []);
 
   const textInputColumns = useTerminalSize().columns - PASTE_HERE_MSG.length - 1;
@@ -362,6 +352,10 @@ export function ConsoleOAuthFlow({
         }
         // Reset modelType to anthropic when using OAuth login
         saveProviderConfig({ modelType: 'anthropic' });
+        applyGlobalEnv({
+          OPENAI_AUTH_MODE: undefined,
+          OPENAI_CHATGPT_CREDENTIAL_SCOPE: undefined,
+        });
 
         setOAuthStatus({ state: 'success' });
         void sendNotification(
@@ -387,7 +381,16 @@ export function ConsoleOAuthFlow({
         ssl_error: sslHint !== null,
       });
     }
-  }, [oauthService, setShowPastePrompt, loginWithClaudeAi, mode, orgUUID, saveProviderConfig, terminal]);
+  }, [
+    oauthService,
+    setShowPastePrompt,
+    loginWithClaudeAi,
+    mode,
+    orgUUID,
+    saveProviderConfig,
+    applyGlobalEnv,
+    terminal,
+  ]);
 
   const pendingOAuthStartRef = useRef(false);
 

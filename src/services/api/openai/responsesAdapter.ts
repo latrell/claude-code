@@ -3,17 +3,28 @@ import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta
 import {
   forceRefreshChatGPTAuth,
   getValidChatGPTAuth,
+  isChatGPTAuthEnabled,
   type ChatGPTAuth,
 } from './chatgptAuth.js'
-import { openaiAdapter } from '../../providerUsage/adapters/openai.js'
-import { updateProviderBuckets } from '../../providerUsage/store.js'
+import {
+  hasCodexBaseRateLimitHeaders,
+  parseCodexRateLimitEvent,
+  parseCodexRateLimitHeaders,
+} from '../../providerUsage/adapters/codex.js'
+import {
+  beginProviderUsagePublication,
+  publishProviderBuckets,
+  type ProviderUsagePublication,
+} from '../../providerUsage/store.js'
 import { getProxyFetchOptions } from '../../../utils/proxy.js'
+import { getAPIProvider } from '../../../utils/model/providers.js'
 import {
   chatGPTCodexModelSupportsImages,
   chatGPTCodexModelSupportsParallelToolCalls,
   chatGPTCodexModelUsesResponsesLite,
   getChatGPTCodexModelDefaultVerbosity,
   getChatGPTCodexModelReasoningSummary,
+  getChatGPTCredentialScope,
   type ChatGPTCodexReasoningSummary,
   type ChatGPTCodexVerbosity,
 } from '../../../utils/model/chatgptModels.js'
@@ -856,6 +867,12 @@ export async function* adaptResponsesStreamToAnthropic(
   for await (const event of stream) {
     const type = event.type
 
+    if (type === 'codex.rate_limits') {
+      // Transport metadata is published by createChatGPTResponsesStream,
+      // where the credential scope is still available for ownership checks.
+      continue
+    }
+
     if (
       type === 'response.output_text.delta' ||
       type === 'response.refusal.delta'
@@ -1161,6 +1178,59 @@ export async function* adaptResponsesStreamToAnthropic(
   )
 }
 
+function normalizeCredentialScope(scope: string | undefined): string {
+  return scope?.trim() || 'default'
+}
+
+function canPublishProviderUsage(
+  scope: string | undefined,
+  publication: ProviderUsagePublication | undefined,
+): publication is ProviderUsagePublication {
+  return (
+    publication !== undefined &&
+    getAPIProvider() === 'openai' &&
+    isChatGPTAuthEnabled() &&
+    normalizeCredentialScope(scope) ===
+      normalizeCredentialScope(getChatGPTCredentialScope())
+  )
+}
+
+function isDefaultCodexRateLimitEvent(event: Record<string, unknown>): boolean {
+  const rawLimitId =
+    (typeof event.metered_limit_name === 'string'
+      ? event.metered_limit_name
+      : undefined) ??
+    (typeof event.limit_name === 'string' ? event.limit_name : undefined) ??
+    'codex'
+  return rawLimitId.trim().toLowerCase().replace(/-/g, '_') === 'codex'
+}
+
+async function* trackCodexRateLimitEvents(
+  stream: AsyncIterable<Record<string, unknown>>,
+  credentialScope: string | undefined,
+  publication: ProviderUsagePublication | undefined,
+): AsyncGenerator<Record<string, unknown>, void> {
+  for await (const event of stream) {
+    if (
+      canPublishProviderUsage(credentialScope, publication) &&
+      isDefaultCodexRateLimitEvent(event)
+    ) {
+      try {
+        const buckets = parseCodexRateLimitEvent(event)
+        // Plan/credits-only sparse events must not erase the last complete
+        // window snapshot. Non-default limit ids are intentionally ignored
+        // until the store can merge snapshots by id.
+        if (buckets && buckets.length > 0) {
+          publishProviderBuckets(publication, 'openai', buckets)
+        }
+      } catch {
+        // Usage metadata must never interrupt the assistant response stream.
+      }
+    }
+    yield event
+  }
+}
+
 export async function createChatGPTResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
@@ -1170,6 +1240,13 @@ export async function createChatGPTResponsesStream(params: {
   /** Test seam; production follows Codex's five-minute stream idle timeout. */
   streamIdleTimeoutMs?: number
 }): Promise<AsyncIterable<Record<string, unknown>>> {
+  const providerUsagePublication =
+    getAPIProvider() === 'openai' &&
+    isChatGPTAuthEnabled() &&
+    normalizeCredentialScope(params.credentialScope) ===
+      normalizeCredentialScope(getChatGPTCredentialScope())
+      ? beginProviderUsagePublication()
+      : undefined
   let auth = await getValidChatGPTAuth(params.credentialScope)
   const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const createHeaders = (currentAuth: ChatGPTAuth): Record<string, string> => {
@@ -1231,6 +1308,28 @@ export async function createChatGPTResponsesStream(params: {
     }
     response = await send(auth)
   }
+
+  // Publish the final response's quota headers before handling HTTP errors.
+  // A 429 response carries the most important 100%-used snapshot.
+  if (
+    canPublishProviderUsage(params.credentialScope, providerUsagePublication)
+  ) {
+    try {
+      const codexBuckets = parseCodexRateLimitHeaders(response.headers, {
+        baseOnly: true,
+      })
+      if (
+        codexBuckets !== null &&
+        hasCodexBaseRateLimitHeaders(response.headers)
+      ) {
+        // A valid base family is authoritative even when it parses to an
+        // explicit empty snapshot. Additional-only families never clear it.
+        publishProviderBuckets(providerUsagePublication, 'openai', codexBuckets)
+      }
+    } catch {
+      // Usage tracking must not affect response handling.
+    }
+  }
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     throw parseHTTPError(response, text)
@@ -1240,23 +1339,15 @@ export async function createChatGPTResponsesStream(params: {
     const turnState = response.headers.get('x-codex-turn-state')
     if (turnState !== null) turnSession.turnState = turnState
   }
-  // Feed response headers into the provider usage store so the status-line
-  // can display rate-limit buckets for compatible providers. Only update when
-  // headers carry usable data – the ChatGPT Codex backend does not return
-  // x-ratelimit-* headers; usage data comes from fetchCodexUsage instead.
-  try {
-    const buckets = openaiAdapter.parseHeaders(response.headers)
-    if (buckets.length > 0) {
-      updateProviderBuckets('openai', buckets)
-    }
-  } catch {
-    // Ignore — usage tracking must not break the stream.
-  }
   const streamIdleTimeoutMs =
     typeof params.streamIdleTimeoutMs === 'number' &&
     Number.isFinite(params.streamIdleTimeoutMs) &&
     params.streamIdleTimeoutMs > 0
       ? params.streamIdleTimeoutMs
       : CHATGPT_CODEX_STREAM_IDLE_TIMEOUT_MS
-  return parseSSE(response, params.signal, streamIdleTimeoutMs)
+  return trackCodexRateLimitEvents(
+    parseSSE(response, params.signal, streamIdleTimeoutMs),
+    params.credentialScope,
+    providerUsagePublication,
+  )
 }

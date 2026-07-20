@@ -913,6 +913,13 @@ const zh: Record<string, string> = {
   'Context ': '上下文 ',
   'Session ': '会话 ',
   'Weekly ': '每周 ',
+  '5h': '5 小时',
+  daily: '每日',
+  weekly: '每周',
+  monthly: '每月',
+  annual: '每年',
+  usage: '用量',
+  'secondary usage': '次级用量',
 
   // ── Footer misc ────────────────────────────────────────────────
   '? for shortcuts': '? 查看快捷键',

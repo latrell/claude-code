@@ -19,6 +19,8 @@ export interface ProviderUsageBucket {
   label: string
   utilization: number
   resetsAt?: number
+  /** Window size reported by the provider, used for compact quota labels. */
+  windowMinutes?: number
   /** Spend in USD cents, for dollar-denominated buckets (e.g. Cursor on-demand). */
   usedCents?: number
   /** Spend limit in USD cents. Omitted when the bucket has no monetary limit. */

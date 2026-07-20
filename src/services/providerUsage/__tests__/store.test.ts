@@ -11,7 +11,9 @@
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 import {
+  beginProviderUsagePublication,
   getProviderUsage,
+  publishProviderBuckets,
   updateProviderBuckets,
   resetProviderUsage,
 } from '../store.js'
@@ -107,6 +109,36 @@ describe('providerUsage store', () => {
     const usage = getProviderUsage()
     expect(usage.providerId).toBe('unknown')
     expect(usage.buckets).toEqual([])
+  })
+
+  test('only a successful newer publication supersedes an older publisher', () => {
+    const first = beginProviderUsagePublication()
+    expect(
+      publishProviderBuckets(first, 'openai', [
+        { kind: 'session', label: 'First', utilization: 0.1 },
+      ]),
+    ).toBe(true)
+
+    const second = beginProviderUsagePublication()
+    expect(
+      publishProviderBuckets(first, 'openai', [
+        { kind: 'session', label: 'First', utilization: 0.2 },
+      ]),
+    ).toBe(true)
+    expect(
+      publishProviderBuckets(second, 'openai', [
+        { kind: 'session', label: 'Second', utilization: 0.3 },
+      ]),
+    ).toBe(true)
+    expect(
+      publishProviderBuckets(first, 'openai', [
+        { kind: 'session', label: 'Stale', utilization: 0.9 },
+      ]),
+    ).toBe(false)
+    expect(getProviderUsage().buckets[0]?.label).toBe('Second')
+
+    resetProviderUsage()
+    expect(publishProviderBuckets(second, 'openai', [])).toBe(false)
   })
 
   test('getProviderUsage returns stable reference to current state', () => {

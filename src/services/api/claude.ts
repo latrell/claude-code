@@ -104,6 +104,7 @@ import {
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
 import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
+  beginClaudeAiLimitsPublication,
   currentLimits,
   extractQuotaStatusFromError,
   extractQuotaStatusFromHeaders,
@@ -1113,6 +1114,17 @@ async function* queryModel(
 > {
   const scopedProvider =
     options.providerRuntimeConfig?.provider ?? getAPIProvider()
+  // Only the active main request owns the process-global quota surfaces.
+  // Scoped/agent requests must not replace the status line, and the dynamic
+  // provider check rejects a main response that finishes after `/connect`.
+  const ownsMainProviderUsage = (): boolean =>
+    options.providerRuntimeConfig === undefined &&
+    options.agentId === undefined &&
+    scopedProvider === getAPIProvider()
+  const claudeAiLimitsPublication =
+    scopedProvider === 'firstParty' && ownsMainProviderUsage()
+      ? beginClaudeAiLimitsPublication()
+      : undefined
 
   // Check cheap conditions first — the off-switch await blocks on GrowthBook
   // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
@@ -2596,16 +2608,23 @@ async function* queryModel(
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const resp = streamResponse as unknown as Response | undefined
       if (resp) {
-        extractQuotaStatusFromHeaders(resp.headers)
-        // Non-Anthropic providers that flow through this same client path
-        // (Bedrock) expose their own throttle headers — let their adapter
-        // overwrite the store with its bucket(s). Anthropic's adapter runs
-        // inside extractQuotaStatusFromHeaders.
-        if (scopedProvider === 'bedrock') {
-          updateProviderBuckets(
-            'bedrock',
-            bedrockAdapter.parseHeaders(resp.headers),
-          )
+        if (ownsMainProviderUsage()) {
+          if (
+            scopedProvider === 'firstParty' &&
+            claudeAiLimitsPublication !== undefined
+          ) {
+            extractQuotaStatusFromHeaders(
+              resp.headers,
+              claudeAiLimitsPublication,
+            )
+          } else if (scopedProvider === 'bedrock') {
+            // Bedrock exposes its own throttle headers; scoped requests never
+            // own the global status line.
+            updateProviderBuckets(
+              'bedrock',
+              bedrockAdapter.parseHeaders(resp.headers),
+            )
+          }
         }
         // Store headers for gateway detection
         responseHeaders = resp.headers
@@ -2932,8 +2951,12 @@ async function* queryModel(
           errorModel = fallbackError.retryContext.model
         }
 
-        if (error instanceof APIError) {
-          extractQuotaStatusFromError(error)
+        if (
+          error instanceof APIError &&
+          ownsMainProviderUsage() &&
+          claudeAiLimitsPublication !== undefined
+        ) {
+          extractQuotaStatusFromError(error, claudeAiLimitsPublication)
         }
 
         const requestId =
@@ -2987,8 +3010,12 @@ async function* queryModel(
       }
 
       // Extract quota status from error headers if it's a rate limit error
-      if (error instanceof APIError) {
-        extractQuotaStatusFromError(error)
+      if (
+        error instanceof APIError &&
+        ownsMainProviderUsage() &&
+        claudeAiLimitsPublication !== undefined
+      ) {
+        extractQuotaStatusFromError(error, claudeAiLimitsPublication)
       }
 
       // Extract requestId from stream, error header, or error body

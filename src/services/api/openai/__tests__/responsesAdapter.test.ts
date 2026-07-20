@@ -7,6 +7,7 @@ import {
   clearRemoteChatGPTCodexModelOptions,
   setRemoteChatGPTCodexModelOptions,
 } from '../../../../utils/model/chatgptModels.js'
+import { setProviderCliOverride } from '../../../../utils/model/providers.js'
 import {
   isRetryableCompatError,
   startStreamEagerly,
@@ -19,6 +20,11 @@ import {
   extractUsage,
   type ChatGPTCodexTurnSession,
 } from '../responsesAdapter.js'
+import {
+  getProviderUsage,
+  resetProviderUsage,
+  updateProviderBuckets,
+} from '../../../providerUsage/store.js'
 
 describe('buildResponsesRequest', () => {
   test('includes reasoning effort for ChatGPT Responses requests', () => {
@@ -389,7 +395,11 @@ describe('buildResponsesRequest', () => {
 })
 
 describe('createChatGPTResponsesStream', () => {
-  const envKeys = ['CLAUDE_CONFIG_DIR'] as const
+  const envKeys = [
+    'CLAUDE_CONFIG_DIR',
+    'OPENAI_AUTH_MODE',
+    'OPENAI_CHATGPT_CREDENTIAL_SCOPE',
+  ] as const
   let envSnapshot: Partial<Record<(typeof envKeys)[number], string>>
   let tempDir: string
   let originalFetch: typeof globalThis.fetch
@@ -397,6 +407,9 @@ describe('createChatGPTResponsesStream', () => {
   beforeEach(() => {
     envSnapshot = {
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      OPENAI_AUTH_MODE: process.env.OPENAI_AUTH_MODE,
+      OPENAI_CHATGPT_CREDENTIAL_SCOPE:
+        process.env.OPENAI_CHATGPT_CREDENTIAL_SCOPE,
     }
     originalFetch = globalThis.fetch
     tempDir = join(
@@ -417,6 +430,10 @@ describe('createChatGPTResponsesStream', () => {
       })}\n`,
     )
     process.env.CLAUDE_CONFIG_DIR = tempDir
+    process.env.OPENAI_AUTH_MODE = 'chatgpt'
+    delete process.env.OPENAI_CHATGPT_CREDENTIAL_SCOPE
+    setProviderCliOverride('openai')
+    resetProviderUsage()
   })
 
   afterEach(() => {
@@ -429,6 +446,8 @@ describe('createChatGPTResponsesStream', () => {
         process.env[key] = value
       }
     }
+    setProviderCliOverride(undefined)
+    resetProviderUsage()
     rmSync(tempDir, { recursive: true, force: true })
   })
 
@@ -493,6 +512,603 @@ describe('createChatGPTResponsesStream', () => {
     if (bunTimeout !== undefined) {
       expect(bunTimeout).toBe(false)
     }
+  })
+
+  test('publishes x-codex subscription limits from a successful response', async () => {
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: {
+            'x-codex-primary-used-percent': '40',
+            'x-codex-primary-window-minutes': '300',
+            'x-codex-primary-reset-at': '1800000000',
+            'x-codex-secondary-used-percent': '94',
+            'x-codex-secondary-window-minutes': '10080',
+            'x-codex-secondary-reset-at': '1800500000',
+          },
+        }),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toMatchObject({
+      providerId: 'openai',
+      buckets: [
+        {
+          label: 'Primary rate limit',
+          utilization: 0.4,
+          windowMinutes: 300,
+        },
+        {
+          label: 'Secondary rate limit',
+          utilization: 0.94,
+          windowMinutes: 10080,
+        },
+      ],
+    })
+  })
+
+  test('ignores standard API quota headers on the ChatGPT subscription transport', async () => {
+    const subscriptionBuckets = [
+      {
+        kind: 'session' as const,
+        label: 'Primary rate limit',
+        utilization: 0.25,
+        windowMinutes: 300,
+      },
+    ]
+    updateProviderBuckets('openai', subscriptionBuckets)
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: {
+            'x-ratelimit-limit-requests': '100',
+            'x-ratelimit-remaining-requests': '10',
+            'x-ratelimit-limit-tokens': '1000',
+            'x-ratelimit-remaining-tokens': '100',
+          },
+        }),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({
+      providerId: 'openai',
+      buckets: subscriptionBuckets,
+    })
+  })
+
+  test('does not let scoped ChatGPT quota overwrite a non-ChatGPT main provider', async () => {
+    const rpmBuckets = [
+      {
+        kind: 'requests' as const,
+        label: 'RPM',
+        utilization: 0.25,
+      },
+    ]
+    updateProviderBuckets('openai', rpmBuckets)
+    process.env.OPENAI_AUTH_MODE = 'api-key'
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response(
+          'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":90,"window_minutes":300}}}\n\n',
+          {
+            status: 200,
+            headers: {
+              'x-codex-primary-used-percent': '80',
+              'x-codex-primary-window-minutes': '300',
+            },
+          },
+        ),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'scoped request' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({
+      providerId: 'openai',
+      buckets: rpmBuckets,
+    })
+
+    process.env.OPENAI_AUTH_MODE = 'chatgpt'
+    setProviderCliOverride('anthropic')
+    const anthropicMainStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'scoped request' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of anthropicMainStream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({
+      providerId: 'openai',
+      buckets: rpmBuckets,
+    })
+  })
+
+  test('does not replace base subscription limits with additional-only headers', async () => {
+    const baseBuckets = [
+      {
+        kind: 'session' as const,
+        label: 'Primary rate limit',
+        utilization: 0.25,
+        windowMinutes: 300,
+      },
+    ]
+    updateProviderBuckets('openai', baseBuckets)
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: {
+            'x-codex-spark-limit-name': 'GPT-5.3-Codex-Spark',
+            'x-codex-spark-primary-used-percent': '80',
+            'x-codex-spark-primary-window-minutes': '1440',
+          },
+        }),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({
+      providerId: 'openai',
+      buckets: baseBuckets,
+    })
+  })
+
+  test('clears stale base limits when the base header family is explicitly empty', async () => {
+    updateProviderBuckets('openai', [
+      {
+        kind: 'session',
+        label: 'Primary rate limit',
+        utilization: 0.25,
+        windowMinutes: 300,
+      },
+    ])
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: { 'x-codex-primary-used-percent': '0' },
+        }),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({ providerId: 'openai', buckets: [] })
+  })
+
+  test('publishes exhausted quota headers before throwing a 429 error', async () => {
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { message: 'usage limit reached' } }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-codex-primary-used-percent': '100',
+              'x-codex-primary-window-minutes': '300',
+              'x-codex-primary-reset-at': '1800000000',
+            },
+          },
+        ),
+      ),
+    ) as unknown as typeof fetch
+
+    try {
+      await createChatGPTResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'hello' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: controller.signal,
+        fetchOverride,
+      })
+      expect(true).toBe(false)
+    } catch (error) {
+      expect((error as { status?: number }).status).toBe(429)
+    }
+
+    expect(getProviderUsage().buckets[0]).toMatchObject({
+      label: 'Primary rate limit',
+      utilization: 1,
+    })
+  })
+
+  test('publishes default codex.rate_limits stream events', async () => {
+    const controller = new AbortController()
+    const body = [
+      'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":40,"window_minutes":300,"reset_at":1800000000},"secondary":{"used_percent":94,"window_minutes":10080,"reset_at":1800500000}}}\n\n',
+      'data: {"type":"response.completed","response":{"id":"resp-usage","status":"completed"}}\n\n',
+    ].join('')
+    const fetchOverride = mock(() =>
+      Promise.resolve(new Response(body, { status: 200 })),
+    ) as unknown as typeof fetch
+
+    const rawStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of adaptResponsesStreamToAnthropic(
+      rawStream,
+      'gpt-5.5',
+    )) {
+      // drain
+    }
+
+    expect(getProviderUsage().buckets).toMatchObject([
+      { label: 'Primary rate limit', utilization: 0.4 },
+      { label: 'Secondary rate limit', utilization: 0.94 },
+    ])
+  })
+
+  test('does not replace base limits with a named codex.rate_limits event', async () => {
+    const baseBuckets = [
+      {
+        kind: 'session' as const,
+        label: 'Primary rate limit',
+        utilization: 0.25,
+        windowMinutes: 300,
+      },
+    ]
+    updateProviderBuckets('openai', baseBuckets)
+    const controller = new AbortController()
+    const body = [
+      'data: {"type":"codex.rate_limits","metered_limit_name":"codex_spark","rate_limits":{"primary":{"used_percent":80,"window_minutes":1440}}}\n\n',
+      'data: [DONE]\n\n',
+    ].join('')
+    const fetchOverride = mock(() =>
+      Promise.resolve(new Response(body, { status: 200 })),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({
+      providerId: 'openai',
+      buckets: baseBuckets,
+    })
+  })
+
+  test('does not let an older same-scope stream overwrite a newer response', async () => {
+    const controller = new AbortController()
+    const olderStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'older' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock(() =>
+        Promise.resolve(
+          new Response(
+            'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":80,"window_minutes":300}}}\n\n',
+            { status: 200 },
+          ),
+        ),
+      ) as unknown as typeof fetch,
+    })
+    const newerStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'newer' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock(() =>
+        Promise.resolve(
+          new Response('data: [DONE]\n\n', {
+            status: 200,
+            headers: {
+              'x-codex-primary-used-percent': '40',
+              'x-codex-primary-window-minutes': '300',
+            },
+          }),
+        ),
+      ) as unknown as typeof fetch,
+    })
+
+    for await (const _event of newerStream) {
+      // drain newer first
+    }
+    for await (const _event of olderStream) {
+      // the older stream must no longer own the usage snapshot
+    }
+
+    expect(getProviderUsage().buckets).toMatchObject([
+      { label: 'Primary rate limit', utilization: 0.4 },
+    ])
+  })
+
+  test('a newer response without quota data does not silence the live stream', async () => {
+    const controller = new AbortController()
+    const liveStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'live' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock(() =>
+        Promise.resolve(
+          new Response(
+            'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":80,"window_minutes":300}}}\n\n',
+            { status: 200 },
+          ),
+        ),
+      ) as unknown as typeof fetch,
+    })
+    const noQuotaStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'no quota metadata' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock(() =>
+        Promise.resolve(new Response('data: [DONE]\n\n', { status: 200 })),
+      ) as unknown as typeof fetch,
+    })
+
+    for await (const _event of noQuotaStream) {
+      // drain the newer response first
+    }
+    for await (const _event of liveStream) {
+      // the live source still owns publication until newer data exists
+    }
+
+    expect(getProviderUsage().buckets).toMatchObject([
+      { label: 'Primary rate limit', utilization: 0.8 },
+    ])
+  })
+
+  test('does not let a reset old stream repopulate provider usage', async () => {
+    const controller = new AbortController()
+    const body =
+      'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":80,"window_minutes":300}}}\n\n'
+    const fetchOverride = mock(() =>
+      Promise.resolve(new Response(body, { status: 200 })),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride,
+    })
+    resetProviderUsage()
+    for await (const _event of stream) {
+      // drain after the connection boundary
+    }
+
+    expect(getProviderUsage()).toEqual({ providerId: 'unknown', buckets: [] })
+  })
+
+  test('same-scope account switch keeps only the new subscription usage', async () => {
+    const controller = new AbortController()
+    const requestAccounts: Array<string | null> = []
+    const oldStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'old account' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestAccounts.push(
+          new Headers(init?.headers).get('ChatGPT-Account-Id'),
+        )
+        return Promise.resolve(
+          new Response(
+            'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":80,"window_minutes":300}}}\n\n',
+            { status: 200 },
+          ),
+        )
+      }) as unknown as typeof fetch,
+    })
+
+    // `/connect` clears the global snapshot/publication epoch before the new
+    // account's immediate usage refresh starts.
+    resetProviderUsage()
+    writeFileSync(
+      join(tempDir, 'openai-chatgpt-auth.json'),
+      `${JSON.stringify({
+        auth_mode: 'chatgpt',
+        tokens: {
+          id_token: 'new-id-token',
+          access_token: 'new-access-token',
+          refresh_token: 'new-refresh-token',
+          account_id: 'account-456',
+        },
+      })}\n`,
+    )
+    const newStream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'new account' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: controller.signal,
+      fetchOverride: mock((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestAccounts.push(
+          new Headers(init?.headers).get('ChatGPT-Account-Id'),
+        )
+        return Promise.resolve(
+          new Response('data: [DONE]\n\n', {
+            status: 200,
+            headers: {
+              'x-codex-primary-used-percent': '20',
+              'x-codex-primary-window-minutes': '300',
+            },
+          }),
+        )
+      }) as unknown as typeof fetch,
+    })
+
+    for await (const _event of newStream) {
+      // drain new account first
+    }
+    for await (const _event of oldStream) {
+      // old account must remain unable to repopulate after the switch
+    }
+
+    expect(requestAccounts).toEqual(['account-123', 'account-456'])
+    expect(getProviderUsage().buckets).toMatchObject([
+      { label: 'Primary rate limit', utilization: 0.2 },
+    ])
+  })
+
+  test('does not publish quota from a non-active credential scope', async () => {
+    writeFileSync(
+      join(tempDir, 'openai-chatgpt-auth.subagent.json'),
+      `${JSON.stringify({
+        auth_mode: 'chatgpt',
+        tokens: {
+          id_token: 'sub-id-token',
+          access_token: 'sub-access-token',
+          refresh_token: 'sub-refresh-token',
+          account_id: 'sub-account',
+        },
+      })}\n`,
+    )
+    const controller = new AbortController()
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: {
+            'x-codex-primary-used-percent': '80',
+            'x-codex-primary-window-minutes': '300',
+          },
+        }),
+      ),
+    ) as unknown as typeof fetch
+
+    const stream = await createChatGPTResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+        toolChoice: undefined,
+        credentialScope: 'subagent',
+      }),
+      signal: controller.signal,
+      fetchOverride,
+      credentialScope: 'subagent',
+    })
+    for await (const _event of stream) {
+      // drain
+    }
+
+    expect(getProviderUsage()).toEqual({ providerId: 'unknown', buckets: [] })
   })
 
   test('sends Responses Lite and session-correlation headers for GPT-5.6', async () => {

@@ -6,6 +6,11 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { t } from '../i18n/t.js';
 import { getResolvedLanguage } from '../utils/language.js';
 import type { ProviderUsageBucket } from '../services/providerUsage/types.js';
+import {
+  CODEX_PRIMARY_LIMIT_LABEL,
+  CODEX_SECONDARY_LIMIT_LABEL,
+  getCodexWindowLabel,
+} from '../services/providerUsage/adapters/codex.js';
 
 type RateLimitBucket = {
   utilization: number;
@@ -49,17 +54,18 @@ export function formatCountdown(epochSeconds: number): string {
   return `${minutes}m`;
 }
 
-const CHATGPT_BASE_LIMIT_LABELS = new Set(['Primary rate limit', 'Secondary rate limit']);
+const CHATGPT_BASE_LIMIT_LABELS = new Set([CODEX_PRIMARY_LIMIT_LABEL, CODEX_SECONDARY_LIMIT_LABEL]);
 
-export function formatProviderBucketLabel(label: string, kind?: ProviderUsageBucket['kind']): string {
+export function formatProviderBucketLabel(
+  label: string,
+  _kind?: ProviderUsageBucket['kind'],
+  windowMinutes?: number,
+): string {
   if (CHATGPT_BASE_LIMIT_LABELS.has(label)) {
-    if (kind === 'session') return t('Session ').trim();
-    if (kind === 'weekly') return t('Weekly ').trim();
+    return t(getCodexWindowLabel(windowMinutes, label === CODEX_SECONDARY_LIMIT_LABEL));
   }
 
   if (getResolvedLanguage() === 'zh') {
-    if (label === 'Primary rate limit') return '主限';
-    if (label === 'Secondary rate limit') return '副限';
     if (label === 'Included usage') return '额度';
     if (label === 'Included API usage') return 'API 额度';
     if (label === 'Included Auto usage') return 'Auto 额度';
@@ -71,6 +77,11 @@ export function formatProviderBucketLabel(label: string, kind?: ProviderUsageBuc
   if (label === 'Included Auto usage') return 'Auto';
   if (label === 'On-demand usage') return 'On-demand';
   return t(label);
+}
+
+/** Provider utilization is normalized as the fraction already used. */
+export function formatProviderBucketPercentage(bucket: ProviderUsageBucket): string {
+  return `${Math.round(bucket.utilization * 100)}%`;
 }
 
 /** Compact dollar rendering for the status line: $16.25, $400, $3000. */
@@ -90,15 +101,14 @@ function Separator() {
 }
 
 function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; narrow: boolean }): React.ReactNode {
-  const pct = Math.round(bucket.utilization * 100);
   // Escalating color as a quota approaches/exceeds its limit so a critical
-  // bucket stands out (>=100% keeps showing the real overage percentage).
+  // bucket stands out. Every provider bucket displays utilization already used.
   const pctColor = bucket.utilization >= 1 ? 'error' : bucket.utilization >= 0.8 ? 'warning' : undefined;
   const isDollarBucket = bucket.usedCents !== undefined;
   return (
     <>
       <Separator />
-      <Text dimColor>{formatProviderBucketLabel(bucket.label, bucket.kind)} </Text>
+      <Text dimColor>{formatProviderBucketLabel(bucket.label, bucket.kind, bucket.windowMinutes)} </Text>
       {isDollarBucket ? (
         <Text color={pctColor}>
           {formatCentsCompact(bucket.usedCents ?? 0)}
@@ -107,7 +117,7 @@ function ProviderBucketItem({ bucket, narrow }: { bucket: ProviderUsageBucket; n
           )}
         </Text>
       ) : (
-        <Text color={pctColor}>{pct}%</Text>
+        <Text color={pctColor}>{formatProviderBucketPercentage(bucket)}</Text>
       )}
       {!narrow && bucket.resetsAt !== undefined && bucket.resetsAt > 0 && (
         <Text dimColor> {formatCountdown(bucket.resetsAt)}</Text>
