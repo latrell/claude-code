@@ -130,6 +130,56 @@ describe('processQueueIfReady', () => {
     expect(executed[0]).toEqual(['<task1/>', '<task2/>'])
   })
 
+  test('returns task-notification execution so rejection can be observed', async () => {
+    const failure = new Error('notification continuation failed')
+    enqueuePendingNotification({
+      value: '<task-notification/>',
+      mode: 'task-notification',
+    } as any)
+
+    const result = processQueueIfReady({
+      executeInput: async () => {
+        throw failure
+      },
+    })
+
+    expect(result.processed).toBe(true)
+    if (!result.processed) throw new Error('Expected queued command execution')
+    await expect(result.execution).rejects.toBe(failure)
+  })
+
+  test('preserves a notification when live execution became active after render', async () => {
+    const executed: string[][] = []
+    let executionActive = true
+    enqueuePendingNotification({
+      value: '<task-notification/>',
+      mode: 'task-notification',
+    } as any)
+
+    const executeInput = async (commands: any[]) => {
+      executed.push(commands.map(command => command.value as string))
+    }
+    const isExecutionActive = () => executionActive
+
+    const deferred = processQueueIfReady({
+      executeInput,
+      isExecutionActive,
+    })
+    expect(deferred.processed).toBe(false)
+    expect(executed).toHaveLength(0)
+    expect(hasQueuedCommands()).toBe(true)
+
+    executionActive = false
+    const resumed = processQueueIfReady({
+      executeInput,
+      isExecutionActive,
+    })
+    expect(resumed.processed).toBe(true)
+    if (!resumed.processed) throw new Error('Expected deferred notification')
+    await resumed.execution
+    expect(executed).toEqual([['<task-notification/>']])
+  })
+
   test('does not mix different modes in same batch', () => {
     const executed: string[][] = []
     enqueue({ value: 'hello', mode: 'prompt' } as any)

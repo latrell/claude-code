@@ -156,6 +156,7 @@ function assembleFinalAssistantOutputs(params: {
   }
   stopReason: string | null
   maxTokens: number
+  allowEmptyContent: boolean
 }): (AssistantMessage | SystemAPIErrorMessage)[] {
   const {
     partialMessage,
@@ -165,6 +166,7 @@ function assembleFinalAssistantOutputs(params: {
     usage,
     stopReason,
     maxTokens,
+    allowEmptyContent,
   } = params
   const outputs: (AssistantMessage | SystemAPIErrorMessage)[] = []
 
@@ -173,7 +175,7 @@ function assembleFinalAssistantOutputs(params: {
     .map(k => contentBlocks[Number(k)])
     .filter(Boolean)
 
-  if (allBlocks.length > 0 && partialMessage) {
+  if (partialMessage && (allowEmptyContent || allBlocks.length > 0)) {
     outputs.push({
       message: {
         ...partialMessage,
@@ -559,6 +561,7 @@ export async function* queryModelOpenAI(
               usage,
               stopReason,
               maxTokens,
+              allowEmptyContent: true,
             })) {
               if (output.type === 'assistant') {
                 collectedMessages.push(output)
@@ -623,6 +626,7 @@ export async function* queryModelOpenAI(
         usage,
         stopReason,
         maxTokens,
+        allowEmptyContent: false,
       })) {
         yield output
       }

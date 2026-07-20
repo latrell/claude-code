@@ -21,5 +21,5 @@ test('Agent tool utilities isolated suite passes', () => {
       `Agent tool utilities isolated suite failed (status=${String(result.status)}, signal=${String(result.signal)}, spawnError=${result.error?.message ?? 'none'}):\n${output}`,
     )
   }
-  expect(output).toMatch(/22 pass/)
+  expect(output).toMatch(/24 pass/)
 }, 35_000)

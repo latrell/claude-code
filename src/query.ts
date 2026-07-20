@@ -158,6 +158,7 @@ import { getAPIProvider } from './utils/model/providers.js'
 import { isChatGPTAuthEnabled } from './services/api/openai/chatgptAuth.js'
 import { fetchChatGPTCodexModels } from './services/api/openai/codexModels.js'
 import type { ChatGPTCodexTurnSession } from './services/api/openai/responsesAdapter.js'
+import { MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS } from './services/api/openai/serverContinuation.js'
 import { getChatGPTCredentialScope } from './utils/model/chatgptModels.js'
 import {
   createCacheWarningMessage,
@@ -847,6 +848,7 @@ async function* queryLoop(
   } = params
   const deps = params.deps ?? productionDeps()
   const chatGPTCodexTurnSession = params.chatGPTCodexTurnSession ?? {}
+  let chatGPTCodexServerContinuationCount = 0
 
   // Mutable cross-iteration state. The loop body destructures this at the top
   // of each iteration so reads stay bare-name (`messages`, `toolUseContext`).
@@ -1614,6 +1616,9 @@ async function* queryLoop(
             chatGPTCodexTurnSession.lastResponseEndTurn === false
           if (serverRequestedContinuation) {
             needsFollowUp = true
+            if (toolUseBlocks.length === 0) {
+              chatGPTCodexServerContinuationCount += 1
+            }
           }
           queryCheckpoint('query_api_streaming_end')
 
@@ -1842,6 +1847,23 @@ async function* queryLoop(
     // Execute post-sampling hooks after model response is complete
     const isInputlessCodexServerContinuation =
       serverRequestedContinuation && toolUseBlocks.length === 0
+    if (
+      isInputlessCodexServerContinuation &&
+      chatGPTCodexServerContinuationCount >
+        MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS
+    ) {
+      const error = new Error(
+        `ChatGPT Codex exceeded ${MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS} server continuations`,
+      )
+      const errorMessage = createAssistantAPIErrorMessage({
+        content: error.message,
+        apiError: 'api_error',
+        errorDetails: error.message,
+      })
+      yield errorMessage
+      await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+      return { reason: 'model_error', error }
+    }
     if (assistantMessages.length > 0 && !isInputlessCodexServerContinuation) {
       postSamplingHooks.schedule(
         messagesForQuery.concat(assistantMessages),
@@ -1891,8 +1913,17 @@ async function* queryLoop(
     // here would consume queued user input and inject attachment/memory/skill
     // messages that the official Codex client deliberately leaves for later.
     if (isInputlessCodexServerContinuation) {
+      const continuationMessages = assistantMessages.filter(
+        message =>
+          Array.isArray(message.message?.content) &&
+          message.message.content.length > 0,
+      )
       state = {
-        messages: messagesForQuery.concat(assistantMessages),
+        // Empty Codex completions carry no replayable input. The sticky turn
+        // state header is sufficient for the next sample; retaining empty
+        // assistant messages only grows local history while the Responses
+        // converter drops them from the wire request.
+        messages: messagesForQuery.concat(continuationMessages),
         toolUseContext: { ...toolUseContext, queryTracking },
         autoCompactTracking: tracking,
         maxOutputTokensRecoveryCount: 0,

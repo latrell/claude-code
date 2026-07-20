@@ -6891,6 +6891,7 @@ const zh: Record<string, string> = {
   'Unexpected agent tool result status: {status}':
     '意外的 agent 工具结果状态：{status}',
   'No assistant messages found': '未找到助手消息',
+  'Agent request failed': 'Agent 请求失败',
   'No transcript found for agent ID: {agentId}':
     '未找到 agent ID 为 {agentId} 的会话记录',
   'Artifact upload failed: HTTP {status} (non-JSON body)':

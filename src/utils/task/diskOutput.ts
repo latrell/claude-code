@@ -9,6 +9,7 @@ import {
 } from 'fs/promises'
 import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
+import { logForDebugging } from '../debug.js'
 import { getErrnoCode } from '../errors.js'
 import { readFileRange, tailFile } from '../fsOperations.js'
 import { logError } from '../log.js'
@@ -436,14 +437,25 @@ export function initTaskOutputAsSymlink(
 
         try {
           await symlink(targetPath, outputPath)
-        } catch {
-          await unlink(outputPath)
+        } catch (error) {
+          if (getErrnoCode(error) !== 'EEXIST') throw error
+          try {
+            await unlink(outputPath)
+          } catch (unlinkError) {
+            if (getErrnoCode(unlinkError) !== 'ENOENT') throw unlinkError
+          }
           await symlink(targetPath, outputPath)
         }
 
         return outputPath
       } catch (error) {
-        logError(error)
+        // Symlinks are an optional fast path and commonly require additional
+        // privileges on Windows. Fall back to an ordinary output file without
+        // turning an expected capability failure into a hard-fail exit.
+        logForDebugging(
+          `Task output symlink unavailable for ${taskId}: ${error instanceof Error ? error.message : String(error)}`,
+          { level: 'warn' },
+        )
         return initTaskOutput(taskId)
       }
     })(),

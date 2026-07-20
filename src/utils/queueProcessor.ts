@@ -11,10 +11,26 @@ import {
 
 type ProcessQueueParams = {
   executeInput: (commands: QueuedCommand[]) => Promise<void>
+  /** Re-check synchronous ownership immediately before touching the queue. */
+  isExecutionActive?: () => boolean
 }
 
-type ProcessQueueResult = {
-  processed: boolean
+export type ProcessQueueResult =
+  | { processed: false }
+  | { processed: true; execution: Promise<void> }
+
+function startExecution(
+  executeInput: ProcessQueueParams['executeInput'],
+  commands: QueuedCommand[],
+): Promise<void> {
+  try {
+    // Start synchronously: executeQueuedInput reserves QueryGuard before its
+    // first await, preventing the dequeue-triggered React render from starting
+    // a second queued turn.
+    return executeInput(commands)
+  } catch (error) {
+    return Promise.reject(error)
+  }
 }
 
 /**
@@ -40,7 +56,15 @@ type ProcessQueueResult = {
  */
 export function processQueueIfReady({
   executeInput,
+  isExecutionActive,
 }: ProcessQueueParams): ProcessQueueResult {
+  // A React effect can hold an idle render snapshot after another input has
+  // synchronously acquired QueryGuard. Re-check the live owner here so a stale
+  // effect cannot dequeue and preprocess a coordinator notification.
+  if (isExecutionActive?.()) {
+    return { processed: false }
+  }
+
   // This processor runs on the REPL main thread between turns. Skip anything
   // addressed to a subagent — an unfiltered peek() returning a subagent
   // notification would set targetMode, dequeueAllMatching would find nothing
@@ -67,8 +91,10 @@ export function processQueueIfReady({
   // Bash commands need per-command error isolation, exit codes, and progress UI.
   if (isSlashCommand(next) || next.mode === 'bash') {
     const cmd = dequeue(isExecutableMainThread)!
-    void executeInput([cmd])
-    return { processed: true }
+    return {
+      processed: true,
+      execution: startExecution(executeInput, [cmd]),
+    }
   }
 
   // Drain all non-slash-command items with the same mode at once.
@@ -83,8 +109,10 @@ export function processQueueIfReady({
     return { processed: false }
   }
 
-  void executeInput(commands)
-  return { processed: true }
+  return {
+    processed: true,
+    execution: startExecution(executeInput, commands),
+  }
 }
 
 /**

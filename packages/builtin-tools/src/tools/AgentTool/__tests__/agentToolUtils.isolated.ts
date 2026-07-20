@@ -249,7 +249,9 @@ const { AgentSummaryScope } = await import(
 
 const {
   countToolUses,
+  agentToolResultSchema,
   classifyHandoffIfNeeded,
+  finalizeAgentTool,
   getForegroundAgentTerminalStatus,
   getLastToolUseName,
   publishAgentResultAfterHandoffSafety,
@@ -301,6 +303,60 @@ function makeAssistantMessage(content: any[]): any {
 function makeUserMessage(text: string): any {
   return { type: 'user', message: { content: text } }
 }
+
+const finalizationMetadata = {
+  prompt: 'test prompt',
+  resolvedAgentModel: 'gpt-5.6-luna',
+  isBuiltInAgent: true,
+  startTime: Date.now(),
+  agentType: 'worker',
+  isAsync: true,
+}
+
+describe('finalizeAgentTool', () => {
+  test('normalizes ChatGPT usage into the stable Agent result schema', () => {
+    const result = finalizeAgentTool(
+      [
+        {
+          type: 'assistant',
+          message: {
+            content: [{ type: 'text', text: 'done' }],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 4,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 3,
+            },
+          },
+        } as any,
+      ],
+      'agent-chatgpt',
+      finalizationMetadata,
+    )
+
+    expect(result.usage.server_tool_use).toBeNull()
+    expect(result.usage.service_tier).toBeNull()
+    expect(result.usage.cache_creation).toBeNull()
+    expect(agentToolResultSchema().safeParse(result).success).toBe(true)
+  })
+
+  test('rejects a terminal API error instead of reporting agent completion', () => {
+    expect(() =>
+      finalizeAgentTool(
+        [
+          {
+            type: 'assistant',
+            isApiErrorMessage: true,
+            errorDetails: 'provider continuation failed',
+            message: { content: [{ type: 'text', text: 'API Error' }] },
+          } as any,
+        ],
+        'agent-api-error',
+        finalizationMetadata,
+      ),
+    ).toThrow('provider continuation failed')
+  })
+})
 
 describe('countToolUses', () => {
   test('counts tool_use blocks in messages', () => {

@@ -54,6 +54,7 @@ import {
   createChatGPTResponsesStream,
   type ChatGPTCodexTurnSession,
 } from '../services/api/openai/responsesAdapter.js'
+import { MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS } from '../services/api/openai/serverContinuation.js'
 import {
   startStreamEagerly,
   withCompatRetry,
@@ -465,8 +466,6 @@ type SideQueryUsageDelta = Partial<{
   cache_creation_input_tokens: number | null
   cache_read_input_tokens: number | null
 }>
-
-const MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS = 16
 
 type ChatGPTContinuationMessage = {
   role: 'assistant'

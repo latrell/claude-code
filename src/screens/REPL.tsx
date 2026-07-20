@@ -5159,6 +5159,7 @@ export function REPL({
   useQueueProcessor({
     executeQueuedInput,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
+    onExecutionError: reportAuxiliaryStopFailure,
     queryGuard,
   });
 

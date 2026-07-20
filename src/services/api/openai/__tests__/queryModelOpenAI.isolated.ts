@@ -716,6 +716,20 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
   })
 
+  test('preserves a valid empty completion as an AssistantMessage', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeMessageDelta('end_turn', 0),
+      makeMessageStop(),
+    ]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents)
+
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.message.content).toEqual([])
+    expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
+  })
+
   test('assembled AssistantMessage has stop_reason tool_use', async () => {
     _nextEvents = [
       makeMessageStart(),
@@ -770,6 +784,14 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     // Safety fallback should yield the partial content
     expect(assistantMessages).toHaveLength(1)
     expect(assistantMessages[0]!.message.stop_reason).toBeNull()
+  })
+
+  test('does not turn a transport-only start into an empty completion', async () => {
+    _nextEvents = [makeMessageStart()]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents)
+
+    expect(assistantMessages).toHaveLength(0)
   })
 })
 

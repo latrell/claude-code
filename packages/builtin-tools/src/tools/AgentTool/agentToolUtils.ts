@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { z } from 'zod/v4'
 import { clearInvokedSkillsForAgent } from 'src/bootstrap/state.js'
 import {
@@ -447,6 +448,32 @@ export const agentToolResultSchema = lazySchema(() =>
 
 export type AgentToolResult = z.input<ReturnType<typeof agentToolResultSchema>>
 
+function normalizeAgentToolUsage(
+  usage: Partial<BetaUsage> | undefined,
+): AgentToolResult['usage'] {
+  return {
+    input_tokens: usage?.input_tokens ?? 0,
+    output_tokens: usage?.output_tokens ?? 0,
+    cache_creation_input_tokens: usage?.cache_creation_input_tokens ?? null,
+    cache_read_input_tokens: usage?.cache_read_input_tokens ?? null,
+    server_tool_use: usage?.server_tool_use
+      ? {
+          web_search_requests: usage.server_tool_use.web_search_requests ?? 0,
+          web_fetch_requests: usage.server_tool_use.web_fetch_requests ?? 0,
+        }
+      : null,
+    service_tier: usage?.service_tier ?? null,
+    cache_creation: usage?.cache_creation
+      ? {
+          ephemeral_1h_input_tokens:
+            usage.cache_creation.ephemeral_1h_input_tokens ?? 0,
+          ephemeral_5m_input_tokens:
+            usage.cache_creation.ephemeral_5m_input_tokens ?? 0,
+        }
+      : null,
+  }
+}
+
 export function countToolUses(messages: MessageType[]): number {
   let count = 0
   for (const m of messages) {
@@ -487,6 +514,18 @@ export function finalizeAgentTool(
   if (lastAssistantMessage === undefined) {
     throw new Error(t('No assistant messages found'))
   }
+  if (lastAssistantMessage.isApiErrorMessage) {
+    if (lastAssistantMessage.error instanceof Error) {
+      throw lastAssistantMessage.error
+    }
+    const detail =
+      typeof lastAssistantMessage.errorDetails === 'string'
+        ? lastAssistantMessage.errorDetails
+        : typeof lastAssistantMessage.apiError === 'string'
+          ? lastAssistantMessage.apiError
+          : t('Agent request failed')
+    throw new Error(detail)
+  }
   // Extract text content from the agent's response. If the final assistant
   // message is a pure tool_use block (loop exited mid-turn), fall back to
   // the most recent assistant message that has text content.
@@ -507,11 +546,13 @@ export function finalizeAgentTool(
     }
   }
 
+  const rawUsage = lastAssistantMessage.message?.usage as
+    | Partial<BetaUsage>
+    | undefined
   const totalTokens = getTokenCountFromUsage(
-    lastAssistantMessage.message?.usage as Parameters<
-      typeof getTokenCountFromUsage
-    >[0],
+    rawUsage as Parameters<typeof getTokenCountFromUsage>[0],
   )
+  const usage = normalizeAgentToolUsage(rawUsage)
   const totalToolUseCount = countToolUses(agentMessages)
 
   logEvent('tengu_agent_tool_completed', {
@@ -547,7 +588,7 @@ export function finalizeAgentTool(
     totalDurationMs: Date.now() - startTime,
     totalTokens,
     totalToolUseCount,
-    usage: lastAssistantMessage.message?.usage as AgentToolResult['usage'],
+    usage,
   }
 }
 

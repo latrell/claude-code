@@ -10,6 +10,7 @@ import { processQueueIfReady } from '../utils/queueProcessor.js'
 type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
   hasActiveLocalJsxUI: boolean
+  onExecutionError: (error: unknown) => void
   queryGuard: QueryGuard
 }
 
@@ -28,6 +29,7 @@ type UseQueueProcessorParams = {
 export function useQueueProcessor({
   executeQueuedInput,
   hasActiveLocalJsxUI,
+  onExecutionError,
   queryGuard,
 }: UseQueueProcessorParams): void {
   // Subscribe to the query guard. Re-renders when a query starts or ends
@@ -57,12 +59,22 @@ export function useQueueProcessor({
     // snapshot change), isQueryActive is already true (dispatching) and the
     // guard above returns early. handlePromptSubmit's finally releases the
     // reservation via cancelReservation() (no-op if onQuery already ran end()).
-    processQueueIfReady({ executeInput: executeQueuedInput })
+    const result = processQueueIfReady({
+      executeInput: executeQueuedInput,
+      isExecutionActive: () => queryGuard.isActive,
+    })
+    if (result.processed) {
+      // Coordinator workers complete outside the foreground turn. Their
+      // task-notification starts a fresh model turn here, so its promise must
+      // remain observed just like a directly submitted prompt.
+      void result.execution.catch(onExecutionError)
+    }
   }, [
     queueSnapshot,
     isQueryActive,
     executeQueuedInput,
     hasActiveLocalJsxUI,
+    onExecutionError,
     queryGuard,
   ])
 }

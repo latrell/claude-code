@@ -26,6 +26,7 @@ import {
   getAutonomyRunById,
   startManagedAutonomyFlowFromHeartbeatTask,
 } from '../utils/autonomyRuns'
+import { MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS } from '../services/api/openai/serverContinuation'
 
 let tempDir = ''
 let originalProcessCwd = ''
@@ -120,6 +121,12 @@ function createTextAssistantMessage(
       content: [{ type: 'text', text, citations: null }],
     },
   } as unknown as AssistantMessage
+}
+
+function createEmptyAssistantMessage(id: string): AssistantMessage {
+  const message = createTextAssistantMessage(id, '')
+  message.message.content = []
+  return message
 }
 
 function createToolUseContext(): any {
@@ -265,6 +272,65 @@ describe('query autonomy/provider boundary', () => {
 
     expect(secondResult.value.reason).toBe('completed')
     expect(secondTurnSession).not.toBe(firstTurnSessions[0])
+  })
+
+  test('bounds repeated empty Codex server continuations without growing replay history', async () => {
+    const inputs: any[][] = []
+    let callCount = 0
+    const deps = {
+      uuid: () => 'query-chain-id',
+      microcompact: async (messages: unknown[]) => ({ messages }),
+      autocompact: async () => ({
+        compactionResult: undefined,
+        consecutiveFailures: 0,
+      }),
+      callModel: async function* ({ messages, options }: any) {
+        callCount += 1
+        inputs.push(messages)
+        options.chatGPTCodexTurnSession.lastResponseEndTurn = false
+        yield createEmptyAssistantMessage(`msg_empty_${callCount}`)
+      },
+    }
+
+    const emitted: any[] = []
+    const generator = query({
+      messages: [createUserMessage({ content: 'coordinator notification' })],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool: async (_tool, input) => ({
+        behavior: 'allow',
+        updatedInput: input,
+      }),
+      toolUseContext: createToolUseContext(),
+      querySource: 'sdk',
+      maxTurns: 1,
+      deps: deps as never,
+    })
+    let result = await generator.next()
+    while (!result.done) {
+      emitted.push(result.value)
+      result = await generator.next()
+    }
+
+    expect(callCount).toBe(MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS + 1)
+    expect(result.value.reason).toBe('model_error')
+    expect(
+      emitted.some(
+        message =>
+          message.type === 'assistant' &&
+          message.isApiErrorMessage === true &&
+          JSON.stringify(message.message.content).includes(
+            'server continuations',
+          ),
+      ),
+    ).toBe(true)
+    expect(
+      inputs.every(
+        messages =>
+          messages.filter(message => message.type === 'assistant').length === 0,
+      ),
+    ).toBe(true)
   })
 
   test('provider api-error messages fail a consumed autonomy run instead of advancing the flow', async () => {
