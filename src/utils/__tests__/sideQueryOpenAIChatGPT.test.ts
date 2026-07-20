@@ -14,6 +14,7 @@ type EnvKey =
   | 'OPENAI_AUTH_MODE'
   | 'OPENAI_API_KEY'
   | 'OPENAI_BASE_URL'
+  | 'OPENAI_MODEL'
   | 'CLAUDE_CONFIG_DIR'
 
 type EnvSnapshot = Partial<Record<EnvKey, string>>
@@ -89,6 +90,7 @@ describe('sideQuery ChatGPT auth', () => {
       OPENAI_AUTH_MODE: process.env.OPENAI_AUTH_MODE,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+      OPENAI_MODEL: process.env.OPENAI_MODEL,
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
     }
     tempDir = join(
@@ -113,6 +115,7 @@ describe('sideQuery ChatGPT auth', () => {
     process.env.CLAUDE_CONFIG_DIR = tempDir
     delete process.env.OPENAI_API_KEY
     delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_MODEL
   })
 
   afterEach(() => {
@@ -310,7 +313,17 @@ describe('sideQuery ChatGPT auth', () => {
         delta:
           '{"thinking":"safe print command","shouldBlock":false,"reason":"prints a constant"}',
       },
-      { type: 'response.output_item.done', output_index: 0 },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          call_id: 'call_classifier',
+          name: 'classify_yolo_action',
+          arguments:
+            '{"thinking":"safe print command","shouldBlock":false,"reason":"prints a constant"}',
+        },
+      },
       {
         type: 'response.completed',
         response: {
@@ -372,7 +385,7 @@ describe('sideQuery ChatGPT auth', () => {
       name: 'classify_yolo_action',
     })
     expect(result.model).toBe('gpt-5.5')
-    expect(result.usage.input_tokens).toBe(11)
+    expect(result.usage.input_tokens).toBe(8)
     expect(result.usage.output_tokens).toBe(7)
     expect(result.usage.cache_read_input_tokens).toBe(3)
     expect(result.content).toBeArrayOfSize(1)
@@ -395,6 +408,10 @@ describe('sideQuery ChatGPT auth', () => {
       events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('')
     const failed = toSSE([
       { type: 'response.created', response: { status: 'in_progress' } },
+      {
+        type: 'response.output_text.delta',
+        delta: 'discard this partial attempt',
+      },
       {
         type: 'response.failed',
         response: {
@@ -429,6 +446,139 @@ describe('sideQuery ChatGPT auth', () => {
     expect(callCount).toBe(2)
     const textBlock = result.content.find(block => block.type === 'text')
     expect(textBlock).toMatchObject({ type: 'text', text: 'recovered' })
+  })
+
+  test('ignores stale public OPENAI_MODEL when using ChatGPT Codex', async () => {
+    process.env.OPENAI_MODEL = 'deepseek-stale-public-model'
+    let capturedBody: Record<string, unknown> | undefined
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body ?? '{}')) as Record<
+        string,
+        unknown
+      >
+      return Promise.resolve(
+        new Response(
+          [
+            {
+              type: 'response.output_text.delta',
+              delta: 'ok',
+            },
+            {
+              type: 'response.completed',
+              response: { status: 'completed', usage: {} },
+            },
+          ]
+            .map(event => `data: ${JSON.stringify(event)}\n\n`)
+            .join(''),
+          { status: 200 },
+        ),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    await sideQuery({
+      model: 'gpt-5.6-sol[1m]',
+      messages: [{ role: 'user', content: 'hello' }],
+      querySource: 'model_validation',
+    })
+
+    expect(capturedBody?.model).toBe('gpt-5.6-sol')
+  })
+
+  test('continues an inputless Codex turn with turn state and prior output', async () => {
+    const toSSE = (events: Record<string, unknown>[]) =>
+      events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('')
+    const requests: Array<{
+      headers: Record<string, string>
+      body: Record<string, unknown>
+    }> = []
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/models')) {
+        return Promise.resolve(Response.json({ models: [] }))
+      }
+      requests.push({
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      })
+      const first = requests.length === 1
+      const reasoningItem = {
+        type: 'reasoning',
+        summary: [{ type: 'summary_text', text: 'exact summary' }],
+        content: [{ type: 'reasoning_text', text: 'exact content' }],
+        encrypted_content: 'encrypted-reasoning-1',
+      }
+      return Promise.resolve(
+        new Response(
+          toSSE([
+            ...(first
+              ? [
+                  {
+                    type: 'response.output_item.added',
+                    output_index: 0,
+                    item: reasoningItem,
+                  },
+                  {
+                    type: 'response.output_item.done',
+                    output_index: 0,
+                    item: reasoningItem,
+                  },
+                ]
+              : []),
+            {
+              type: 'response.output_text.delta',
+              delta: first ? 'part one' : 'part two',
+            },
+            {
+              type: 'response.completed',
+              response: {
+                status: 'completed',
+                end_turn: !first,
+                usage: {
+                  input_tokens: first ? 3 : 5,
+                  output_tokens: first ? 2 : 4,
+                },
+              },
+            },
+          ]),
+          {
+            status: 200,
+            headers: first
+              ? { 'x-codex-turn-state': 'turn-state-1' }
+              : undefined,
+          },
+        ),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await sideQuery({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'continue internally' }],
+      querySource: 'model_validation',
+    })
+
+    expect(requests).toBeArrayOfSize(2)
+    expect(requests[1]?.headers['x-codex-turn-state']).toBe('turn-state-1')
+    const secondInput = requests[1]?.body.input as Array<
+      Record<string, unknown>
+    >
+    expect(secondInput).toContainEqual({
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text: 'exact summary' }],
+      content: [{ type: 'reasoning_text', text: 'exact content' }],
+      encrypted_content: 'encrypted-reasoning-1',
+    })
+    expect(secondInput).toContainEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'part one' }],
+    })
+    expect(
+      result.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text),
+    ).toEqual(['part one', 'part two'])
+    expect(result.usage.input_tokens).toBe(8)
+    expect(result.usage.output_tokens).toBe(6)
   })
 })
 

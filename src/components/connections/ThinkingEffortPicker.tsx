@@ -89,11 +89,16 @@ function effortDescription(connection: Connection, selection: ThinkingEffortSele
 
 export function buildThinkingEffortOptions(connection: Connection): OptionWithDescription<string>[] {
   const isDeepSeek = isDeepSeekV4Connection(connection);
+  // The Codex catalog does not advertise a `none` reasoning effort. Offering
+  // Off would therefore claim a wire behavior the ChatGPT backend cannot
+  // honor; omit it while retaining low/medium/high/max compatibility.
+  const standardEfforts =
+    connection.kind === 'chatgpt-oauth' ? STANDARD_EFFORTS.filter(value => value !== 'off') : STANDARD_EFFORTS;
   const values: ThinkingEffortSelection[] = isDeepSeek
     ? ['default', 'off', 'high', connection.kind === 'openai-compat' ? 'max-passthrough' : 'max']
     : [
         'default',
-        ...STANDARD_EFFORTS,
+        ...standardEfforts,
         ...(connection.kind === 'openai-compat'
           ? (['max-compatible', 'max-passthrough'] as const)
           : (['max'] as const)),

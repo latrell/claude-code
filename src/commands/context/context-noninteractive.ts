@@ -29,6 +29,7 @@ type CollectContextDataInput = {
     agentDefinitions: AgentDefinitionsResult
     customSystemPrompt?: string
     appendSystemPrompt?: string
+    providerRuntimeConfig?: ToolUseContext['options']['providerRuntimeConfig']
   }
 }
 
@@ -44,6 +45,7 @@ export async function collectContextData(
       agentDefinitions,
       customSystemPrompt,
       appendSystemPrompt,
+      providerRuntimeConfig,
     },
   } = context
 
@@ -66,12 +68,15 @@ export async function collectContextData(
     tools,
     agentDefinitions,
     undefined, // terminalWidth
-    // analyzeContextUsage only reads options.{customSystemPrompt,appendSystemPrompt}
-    // but its signature declares the full Pick<ToolUseContext, 'options'>.
-    { options: { customSystemPrompt, appendSystemPrompt } } as Pick<
-      ToolUseContext,
-      'options'
-    >,
+    // analyzeContextUsage only reads these option fields, but its signature
+    // declares the full Pick<ToolUseContext, 'options'>.
+    {
+      options: {
+        customSystemPrompt,
+        appendSystemPrompt,
+        providerRuntimeConfig,
+      },
+    } as Pick<ToolUseContext, 'options'>,
     undefined, // mainThreadAgentDefinition
     apiView, // original messages for API usage extraction
   )

@@ -9,14 +9,8 @@ let authEnabled = false
 let authThrows = false
 let authToken = 'test-token'
 let authAccountId: string | undefined = 'acc-123'
-
-mock.module('src/services/api/openai/chatgptAuth.js', () => ({
-  isChatGPTAuthEnabled: (() => authEnabled) as () => boolean,
-  getValidChatGPTAuth: (async () => {
-    if (authThrows) throw new Error('Not logged in')
-    return { accessToken: authToken, accountId: authAccountId }
-  }) as () => Promise<{ accessToken: string; accountId?: string }>,
-}))
+let authFedRAMP = false
+let requestedAuthScopes: Array<string | undefined> = []
 
 // =============================================================================
 // Provider usage store mock — tracks updateProviderBuckets calls so we can
@@ -43,11 +37,16 @@ mock.module('src/services/providerUsage/store.js', () => ({
 // We'll replace fetch per-test below.
 
 import {
-  fetchCodexUsage,
+  fetchCodexUsage as fetchCodexUsageImpl,
+  invalidateCodexUsagePublication,
   mapCodexLimitsToProviderBuckets,
 } from '../codexUsage.js'
 import type { CodexRateLimitBucket } from '../codexUsage.js'
 import type { ProviderUsageBucket } from 'src/services/providerUsage/types.js'
+import {
+  getChatGPTSubscriptionPlan,
+  setChatGPTSubscriptionPlan,
+} from 'src/bootstrap/state.js'
 
 // =============================================================================
 // Helpers
@@ -65,7 +64,32 @@ function resetState(): void {
   authThrows = false
   authToken = 'test-token'
   authAccountId = 'acc-123'
+  authFedRAMP = false
+  requestedAuthScopes = []
   storeUpdateCalls = []
+}
+
+function fetchCodexUsage(signal?: AbortSignal, credentialScope?: string) {
+  return fetchCodexUsageImpl(signal, credentialScope, {
+    isAuthEnabled: () => authEnabled,
+    getAuth: async scope => {
+      requestedAuthScopes.push(scope)
+      if (authThrows) throw new Error('Not logged in')
+      return {
+        accessToken: authToken,
+        accountId: authAccountId,
+        isFedRAMP: authFedRAMP,
+      }
+    },
+    refreshAuth: async scope => {
+      requestedAuthScopes.push(scope)
+      return {
+        accessToken: 'refreshed-token',
+        accountId: authAccountId,
+        isFedRAMP: authFedRAMP,
+      }
+    },
+  })
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -77,6 +101,20 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function textResponse(body: string, status = 200): Response {
   return new Response(body, { status })
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 // =============================================================================
@@ -195,6 +233,174 @@ describe('fetchCodexUsage', () => {
     // Token usage (latest bucket)
     expect(result!.tokenUsage?.tokensUsed).toBe(2345)
     expect(result!.tokenUsage?.date).toBe('2025-07-01')
+  })
+
+  test('uses the requested scope and sends Codex identity headers', async () => {
+    authEnabled = true
+    authFedRAMP = true
+    const headers: Headers[] = []
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+      headers.push(new Headers(init?.headers))
+      return Promise.resolve(jsonResponse({ plan_type: 'plus' }))
+    }) as unknown as typeof globalThis.fetch
+
+    await fetchCodexUsage(undefined, 'work-account')
+
+    expect(requestedAuthScopes).toEqual(['work-account'])
+    expect(headers).toHaveLength(2)
+    for (const requestHeaders of headers) {
+      expect(requestHeaders.get('Authorization')).toBe('Bearer test-token')
+      expect(requestHeaders.get('ChatGPT-Account-Id')).toBe('acc-123')
+      expect(requestHeaders.get('X-OpenAI-Fedramp')).toBe('true')
+      expect(requestHeaders.get('originator')).toBe('claude-code-best')
+      expect(requestHeaders.get('version')).toBeTruthy()
+    }
+  })
+
+  test('latest publishing request wins when older auth resolves last', async () => {
+    const oldAuth = deferred<{
+      accessToken: string
+      accountId: string
+      isFedRAMP: boolean
+    }>()
+
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const authorization = new Headers(init?.headers).get('Authorization')
+      if (url === `${BASE}/wham/usage`) {
+        const isOld = authorization === 'Bearer token-old'
+        return Promise.resolve(
+          jsonResponse({
+            plan_type: isOld ? 'free' : 'team',
+            rate_limit: {
+              primary_window: {
+                used_percent: isOld ? 10 : 20,
+                window_minutes: 180,
+                resets_at: 1700000000,
+              },
+            },
+          }),
+        )
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof globalThis.fetch
+
+    const olderRequest = fetchCodexUsageImpl(undefined, 'scope-old', {
+      isAuthEnabled: () => true,
+      getAuth: async () => oldAuth.promise,
+      refreshAuth: async () => oldAuth.promise,
+    })
+    const newerRequest = fetchCodexUsageImpl(undefined, 'scope-new', {
+      isAuthEnabled: () => true,
+      getAuth: async () => ({
+        accessToken: 'token-new',
+        accountId: 'account-new',
+        isFedRAMP: false,
+      }),
+      refreshAuth: async () => ({
+        accessToken: 'token-new',
+        accountId: 'account-new',
+        isFedRAMP: false,
+      }),
+    })
+
+    await newerRequest
+    expect(storeUpdateCalls).toHaveLength(1)
+    expect(getChatGPTSubscriptionPlan()).toBe('team')
+
+    oldAuth.resolve({
+      accessToken: 'token-old',
+      accountId: 'account-old',
+      isFedRAMP: false,
+    })
+    await olderRequest
+
+    expect(storeUpdateCalls).toHaveLength(1)
+    const bucket = storeUpdateCalls[0]!.buckets[0] as ProviderUsageBucket
+    expect(bucket.utilization).toBeCloseTo(0.2, 5)
+    expect(getChatGPTSubscriptionPlan()).toBe('team')
+  })
+
+  test('explicit invalidation blocks an older request before auth resolves', async () => {
+    const oldAuth = deferred<{
+      accessToken: string
+      accountId: string
+      isFedRAMP: boolean
+    }>()
+    setChatGPTSubscriptionPlan('pro')
+
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        jsonResponse({
+          plan_type: 'free',
+          rate_limit: {
+            primary_window: {
+              used_percent: 90,
+              window_minutes: 180,
+              resets_at: 1700000000,
+            },
+          },
+        }),
+      ),
+    ) as unknown as typeof globalThis.fetch
+
+    const olderRequest = fetchCodexUsageImpl(undefined, 'scope-old', {
+      isAuthEnabled: () => true,
+      getAuth: async () => oldAuth.promise,
+      refreshAuth: async () => oldAuth.promise,
+    })
+
+    invalidateCodexUsagePublication()
+    expect(getChatGPTSubscriptionPlan()).toBeNull()
+    oldAuth.resolve({
+      accessToken: 'token-old',
+      accountId: 'account-old',
+      isFedRAMP: false,
+    })
+    await olderRequest
+
+    expect(storeUpdateCalls).toHaveLength(0)
+    expect(getChatGPTSubscriptionPlan()).toBeNull()
+  })
+
+  test('non-publishing scoped snapshot leaves global usage state unchanged', async () => {
+    setChatGPTSubscriptionPlan('team')
+    globalThis.fetch = mock((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      return Promise.resolve(
+        url === `${BASE}/wham/usage`
+          ? jsonResponse({
+              plan_type: 'free',
+              rate_limit: {
+                primary_window: {
+                  used_percent: 75,
+                  window_minutes: 180,
+                  resets_at: 1700000000,
+                },
+              },
+            })
+          : jsonResponse({}),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const snapshot = await fetchCodexUsageImpl(undefined, 'scope-background', {
+      isAuthEnabled: () => true,
+      getAuth: async () => ({
+        accessToken: 'token-background',
+        accountId: 'account-background',
+        isFedRAMP: false,
+      }),
+      refreshAuth: async () => ({
+        accessToken: 'token-background',
+        accountId: 'account-background',
+        isFedRAMP: false,
+      }),
+      publish: false,
+    })
+
+    expect(snapshot?.account?.subscriptionPlan).toBe('free')
+    expect(storeUpdateCalls).toHaveLength(0)
+    expect(getChatGPTSubscriptionPlan()).toBe('team')
   })
 
   // ---------------------------------------------------------------------------
@@ -493,6 +699,37 @@ describe('fetchCodexUsage', () => {
 
     const result = await fetchCodexUsage()
     expect(result).toBeNull()
+  })
+
+  test('refreshes and retries each usage route once after a 401', async () => {
+    authEnabled = true
+    const authorizations: string[] = []
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get('Authorization')
+      authorizations.push(authorization ?? '')
+      if (authorization === 'Bearer test-token') {
+        return Promise.resolve(new Response('Unauthorized', { status: 401 }))
+      }
+      const url = String(input)
+      return Promise.resolve(
+        url.endsWith('/wham/usage')
+          ? jsonResponse({ plan_type: 'plus' })
+          : jsonResponse({
+              daily_usage_buckets: [{ start_date: '2026-07-20', tokens: 42 }],
+            }),
+      )
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await fetchCodexUsage(undefined, 'work-account')
+
+    expect(result?.account?.subscriptionPlan).toBe('plus')
+    expect(result?.tokenUsage?.tokensUsed).toBe(42)
+    expect(
+      authorizations.filter(value => value === 'Bearer test-token'),
+    ).toHaveLength(2)
+    expect(
+      authorizations.filter(value => value === 'Bearer refreshed-token'),
+    ).toHaveLength(2)
   })
 
   test('returns null when /wham/usage returns 404', async () => {

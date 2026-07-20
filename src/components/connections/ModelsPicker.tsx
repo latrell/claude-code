@@ -10,7 +10,7 @@ import { formatContextWindow, getModelContextWindowForConnection } from '../../s
 import { importLegacyConnections } from '../../services/connections/migrate.js';
 import {
   fetchAndRecordRemoteModels,
-  getStaticModelsForConnection,
+  pickerModelsForConnection,
   supportsRemoteModelList,
   type CatalogModel,
   type RemoteModel,
@@ -59,18 +59,7 @@ type Props = {
 function buildItems(connections: Connection[], remoteModels: Record<string, RemoteModel[]>): ModelPickItem[] {
   const items: ModelPickItem[] = [];
   for (const connection of connections) {
-    const models = [...getStaticModelsForConnection(connection)];
-    const seen = new Set(models.map(m => m.value ?? ''));
-    for (const remote of remoteModels[connection.id] ?? []) {
-      if (seen.has(remote.id)) continue;
-      seen.add(remote.id);
-      models.push({
-        value: remote.id,
-        label: remote.id,
-        description:
-          remote.contextLength !== undefined ? `ctx ${formatContextWindow(remote.contextLength)}` : undefined,
-      });
-    }
+    const models = pickerModelsForConnection(connection, remoteModels[connection.id] ?? []);
     for (const model of models) {
       items.push({
         key: `${connection.id}\u0000${model.value ?? '__default__'}`,

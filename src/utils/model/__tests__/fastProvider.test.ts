@@ -6,11 +6,17 @@ import { setSessionAssignment } from '../../../services/connections/sessionAssig
 import { _invalidateConnectionsCache } from '../../../services/connections/store.js'
 import {
   FAST_CREDENTIAL_SCOPE,
+  getFastModelAndRuntime,
   getFastProviderFromEnv,
   getFastProviderRuntimeConfig,
   setFastProviderCliOverride,
   setFastProviderConfigOverride,
 } from '../fastProvider.js'
+import {
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
+  setRemoteChatGPTCodexModelOptions,
+} from '../chatgptModels.js'
 
 // getFastProviderRuntimeConfig falls back to getConnectionThinkingEffort
 // ('fast'), which reads the real connection registry. Point CLAUDE_CONFIG_DIR
@@ -25,6 +31,9 @@ beforeEach(() => {
   process.env['CLAUDE_CONFIG_DIR'] = tmpDir
   _invalidateConnectionsCache()
   setSessionAssignment('fast', undefined)
+  setFastProviderCliOverride(undefined)
+  setFastProviderConfigOverride(undefined)
+  clearRemoteChatGPTCodexModelOptions()
 })
 
 afterEach(() => {
@@ -35,6 +44,9 @@ afterEach(() => {
   }
   _invalidateConnectionsCache()
   setSessionAssignment('fast', undefined)
+  setFastProviderCliOverride(undefined)
+  setFastProviderConfigOverride(undefined)
+  clearRemoteChatGPTCodexModelOptions()
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -71,6 +83,34 @@ describe('fast provider config', () => {
       env: { OPENAI_API_KEY: 'fast-key' },
       credentialScope: FAST_CREDENTIAL_SCOPE,
     })
+  })
+
+  test('old unpinned scoped ChatGPT config uses that account fast model', () => {
+    setRemoteChatGPTCodexModelOptions(
+      [
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[0]!,
+          value: 'scope-fast-default',
+          priority: 1,
+        },
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[2]!,
+          value: 'gpt-5.6-luna',
+          priority: 2,
+        },
+      ],
+      FAST_CREDENTIAL_SCOPE,
+    )
+    setFastProviderConfigOverride({
+      modelType: 'openai',
+      env: { OPENAI_AUTH_MODE: 'chatgpt' },
+      credentialScope: FAST_CREDENTIAL_SCOPE,
+    })
+    try {
+      expect(getFastModelAndRuntime({}, {}).model).toBe('gpt-5.6-luna')
+    } finally {
+      setFastProviderConfigOverride(undefined)
+    }
   })
 
   test('FAST_ env variables override settings', () => {

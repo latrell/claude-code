@@ -6,11 +6,15 @@ import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
   getCanonicalName,
   getRuntimeMainLoopModel,
-  parseUserSpecifiedModel,
+  parseUserSpecifiedModelForRuntime,
 } from './model.js'
 import { getAPIProvider, type APIProvider } from './providers.js'
 import type { ProviderRuntimeConfig } from './subagentProvider.js'
 import { getInitialSettings } from '../settings/settings.js'
+import {
+  getChatGPTCodexDefaultModel,
+  getChatGPTCredentialScope,
+} from './chatgptModels.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
@@ -69,7 +73,10 @@ export function getAgentModel(
     : undefined
 
   if (subagentModel) {
-    return parseUserSpecifiedModel(subagentModel)
+    return parseUserSpecifiedModelForRuntime(
+      subagentModel,
+      providerRuntimeConfig,
+    )
   }
 
   // Extract Bedrock region prefix from parent model to inherit for subagents.
@@ -99,7 +106,10 @@ export function getAgentModel(
     if (aliasMatchesParentTier(toolSpecifiedModel, parentModel)) {
       return parentModel
     }
-    const model = parseUserSpecifiedModel(toolSpecifiedModel)
+    const model = parseUserSpecifiedModelForRuntime(
+      toolSpecifiedModel,
+      providerRuntimeConfig,
+    )
     return applyParentRegionPrefix(model, toolSpecifiedModel)
   }
 
@@ -116,7 +126,10 @@ export function getAgentModel(
   if (aliasMatchesParentTier(agentModelWithExp, parentModel)) {
     return parentModel
   }
-  const model = parseUserSpecifiedModel(agentModelWithExp)
+  const model = parseUserSpecifiedModelForRuntime(
+    agentModelWithExp,
+    providerRuntimeConfig,
+  )
   return applyParentRegionPrefix(model, agentModelWithExp)
 }
 
@@ -157,7 +170,12 @@ function getProviderConfiguredAgentModel(
 
   switch (providerRuntimeConfig.provider) {
     case 'openai':
-      return getOpenAIConfiguredAgentModel(env, requestedModel, parentModel)
+      return getOpenAIConfiguredAgentModel(
+        env,
+        requestedModel,
+        parentModel,
+        providerRuntimeConfig.credentialScope,
+      )
     case 'gemini':
       return getGeminiConfiguredAgentModel(env, requestedModel, parentModel)
     case 'grok':
@@ -171,8 +189,18 @@ function getOpenAIConfiguredAgentModel(
   env: Record<string, string | undefined>,
   requestedModel: string,
   parentModel: string,
+  credentialScope?: string,
 ): string | undefined {
   if (env.OPENAI_MODEL) return env.OPENAI_MODEL
+
+  // Old persisted scoped ChatGPT slots may have neither a pinned model nor a
+  // scope marker in their env. The runtime scope still identifies the account;
+  // never inherit a Claude model from the process-global parent connection.
+  if (env.OPENAI_AUTH_MODE === 'chatgpt' && requestedModel === 'inherit') {
+    return getChatGPTCodexDefaultModel(
+      credentialScope ?? getChatGPTCredentialScope(env),
+    )
+  }
 
   const family = getRequestedModelFamily(requestedModel, parentModel)
   if (!family) return undefined

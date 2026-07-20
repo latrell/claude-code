@@ -2,6 +2,7 @@ import type {
   BetaToolUnion,
   BetaMessage,
   BetaUsage,
+  BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
@@ -24,11 +25,15 @@ import {
   anthropicToolChoiceToOpenAI,
 } from '@ant/model-provider'
 import { isChatGPTAuthEnabled } from './chatgptAuth.js'
+import { fetchChatGPTCodexModels } from './codexModels.js'
+import { getChatGPTCredentialScope } from '../../../utils/model/chatgptModels.js'
 import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createChatGPTResponsesStream,
+  isChatGPTCodexContextLengthError,
 } from './responsesAdapter.js'
+import { PROMPT_TOO_LONG_ERROR_MESSAGE } from '../errors.js'
 import { resolveChatGPTResponsesReasoningEffort } from './reasoningEffort.js'
 import { resolveOpenAICompatibleReasoningEffort } from '../../connections/effortTransport.js'
 import { mapThinkingEffortToEffortValue } from '../../connections/thinkingEffort.js'
@@ -67,6 +72,7 @@ export {
 import { getModelMaxOutputTokens } from '../../../utils/context.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
+import { getSessionId } from '../../../bootstrap/state.js'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
@@ -120,6 +126,16 @@ function isOpenAIConvertibleMessage(
   msg: Message,
 ): msg is AssistantMessage | UserMessage {
   return msg.type === 'assistant' || msg.type === 'user'
+}
+
+/** Resolve the wire model without crossing the API-key/ChatGPT boundary. */
+export function resolveOpenAITransportModel(
+  model: string,
+  env: Record<string, string | undefined>,
+): string {
+  return isChatGPTAuthEnabled(env)
+    ? model.replace(/\[1m\]$/i, '')
+    : resolveOpenAIModel(model, env)
 }
 
 /**
@@ -211,8 +227,25 @@ export async function* queryModelOpenAI(
   try {
     const providerEnv = options.providerRuntimeConfig?.env ?? process.env
 
-    // 1. Resolve model name
-    const openaiModel = resolveOpenAIModel(options.model, providerEnv)
+    // 1. Load the account-authoritative catalog before resolving a default
+    // model. Scoped connections keep their original credential file instead
+    // of copying rotating OAuth credentials into the default slot.
+    const credentialScope =
+      options.providerRuntimeConfig?.credentialScope ??
+      getChatGPTCredentialScope(providerEnv)
+    const usesChatGPTCodex = isChatGPTAuthEnabled(providerEnv)
+    if (usesChatGPTCodex && !options.fetchOverride) {
+      await fetchChatGPTCodexModels({ credentialScope }).catch(error => {
+        logForDebugging(
+          `[OpenAI] ChatGPT Codex model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
+    }
+    // ChatGPT subscription model IDs are already resolved from the
+    // account-authoritative Codex catalog upstream. Never pass them through
+    // the public/OpenAI-compatible mapping, where a stale OPENAI_MODEL or
+    // OPENAI_DEFAULT_* setting could silently route to the wrong protocol.
+    const openaiModel = resolveOpenAITransportModel(options.model, providerEnv)
 
     // 2. Normalize messages using shared preprocessing
     const messagesForAPI = normalizeMessagesForAPI(messages, tools)
@@ -225,6 +258,7 @@ export async function* queryModelOpenAI(
         (async () => getEmptyToolPermissionContext()),
       options.agents || [],
       options.querySource,
+      options.providerRuntimeConfig,
     )
 
     // 4. Build deferred tools set (similar to Anthropic path)
@@ -289,7 +323,10 @@ export async function* queryModelOpenAI(
     const openaiMessages = anthropicMessagesToOpenAI(
       messagesWithDeferredToolList,
       systemPrompt,
-      { enableThinking },
+      {
+        enableThinking,
+        preserveResponsesReasoning: usesChatGPTCodex,
+      },
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
@@ -302,6 +339,7 @@ export async function* queryModelOpenAI(
       openaiModel,
       queryEffortValue,
       providerEnv,
+      credentialScope,
     )
     const chatCompletionsReasoningEffort =
       resolveOpenAICompatibleReasoningEffort(
@@ -361,53 +399,73 @@ export async function* queryModelOpenAI(
     // startStreamEagerly pulls the first adapted event inside the factory so
     // "connection established, died before the model spoke" disconnects are
     // retried too (see the helper's doc comment).
-    const adaptedStream = yield* withCompatRetry(
-      async innerSignal => {
-        if (isChatGPTAuthEnabled(providerEnv)) {
-          return startStreamEagerly(
-            adaptResponsesStreamToAnthropic(
-              await createChatGPTResponsesStream({
-                request: buildResponsesRequest({
-                  model: openaiModel,
-                  messages: openaiMessages,
-                  tools: openaiTools,
-                  toolChoice: openaiToolChoice,
-                  reasoningEffort: responsesReasoningEffort,
-                }),
-                signal: innerSignal,
-                fetchOverride: options.fetchOverride as unknown as typeof fetch,
-                credentialScope: options.providerRuntimeConfig?.credentialScope,
-              }),
-              openaiModel,
-            ),
-          )
-        }
-        return startStreamEagerly(
-          adaptOpenAIStreamToAnthropic(
-            await getOpenAIClient({
-              maxRetries: 0,
-              fetchOverride: options.fetchOverride as unknown as typeof fetch,
-              source: options.querySource,
-              envOverride: options.providerRuntimeConfig?.env,
-            }).chat.completions.create(
-              buildOpenAIRequestBody({
+    let adaptedStream: AsyncIterable<BetaRawMessageStreamEvent>
+    if (usesChatGPTCodex) {
+      // The downstream Anthropic-style stream is append-only: once a delta is
+      // published it cannot be rolled back safely. Buffer each Codex sampling
+      // attempt through its terminal event so a retry after text/reasoning/tool
+      // deltas can discard the failed attempt instead of duplicating content or
+      // executing an incomplete tool. This is the compatibility equivalent of
+      // Codex's item-aware sampling retry loop.
+      const bufferedEvents = yield* withCompatRetry(
+        async innerSignal => {
+          const events: BetaRawMessageStreamEvent[] = []
+          const stream = adaptResponsesStreamToAnthropic(
+            await createChatGPTResponsesStream({
+              request: buildResponsesRequest({
                 model: openaiModel,
                 messages: openaiMessages,
                 tools: openaiTools,
                 toolChoice: openaiToolChoice,
-                enableThinking,
-                maxTokens,
-                temperatureOverride: options.temperatureOverride,
-                reasoningEffort: chatCompletionsReasoningEffort,
-              }) as unknown as ChatCompletionCreateParamsStreaming,
-              { signal: innerSignal },
-            ),
+                reasoningEffort: responsesReasoningEffort,
+                promptCacheKey: getSessionId(),
+                credentialScope,
+              }),
+              signal: innerSignal,
+              fetchOverride: options.fetchOverride as unknown as typeof fetch,
+              credentialScope,
+              turnSession: options.chatGPTCodexTurnSession,
+            }),
             openaiModel,
+            options.chatGPTCodexTurnSession,
+          )
+          for await (const event of stream) events.push(event)
+          return events
+        },
+        { signal, provider: 'openai', maxRetries: 5 },
+      )
+      adaptedStream = (async function* () {
+        yield* bufferedEvents
+      })()
+    } else {
+      adaptedStream = yield* withCompatRetry(
+        async innerSignal =>
+          startStreamEagerly(
+            adaptOpenAIStreamToAnthropic(
+              await getOpenAIClient({
+                maxRetries: 0,
+                fetchOverride: options.fetchOverride as unknown as typeof fetch,
+                source: options.querySource,
+                envOverride: options.providerRuntimeConfig?.env,
+              }).chat.completions.create(
+                buildOpenAIRequestBody({
+                  model: openaiModel,
+                  messages: openaiMessages,
+                  tools: openaiTools,
+                  toolChoice: openaiToolChoice,
+                  enableThinking,
+                  maxTokens,
+                  temperatureOverride: options.temperatureOverride,
+                  reasoningEffort: chatCompletionsReasoningEffort,
+                }) as unknown as ChatCompletionCreateParamsStreaming,
+                { signal: innerSignal },
+              ),
+              openaiModel,
+            ),
           ),
-        )
-      },
-      { signal, provider: 'openai' },
-    )
+        { signal, provider: 'openai' },
+      )
+    }
 
     // 12. Convert OpenAI stream to Anthropic events, then process into
     //     AssistantMessage + StreamEvent (matching the Anthropic path behavior)
@@ -520,7 +578,8 @@ export async function* queryModelOpenAI(
             addToTotalSessionCost(
               costUSD,
               usage as unknown as BetaUsage,
-              options.model,
+              openaiModel,
+              options.providerRuntimeConfig,
             )
           }
           break
@@ -575,6 +634,15 @@ export async function* queryModelOpenAI(
 
     const msg = error instanceof Error ? error.message : String(error)
     logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
+
+    if (isChatGPTCodexContextLengthError(error)) {
+      yield createAssistantAPIErrorMessage({
+        content: PROMPT_TOO_LONG_ERROR_MESSAGE,
+        error: 'invalid_request',
+        errorDetails: msg,
+      })
+      return
+    }
 
     // Distinguish "retries exhausted" from truly unretryable errors
     const prefix = hasExhaustedCompatRetries(error)

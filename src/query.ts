@@ -155,6 +155,10 @@ import {
   isLangfuseEnabled,
 } from './services/langfuse/index.js'
 import { getAPIProvider } from './utils/model/providers.js'
+import { isChatGPTAuthEnabled } from './services/api/openai/chatgptAuth.js'
+import { fetchChatGPTCodexModels } from './services/api/openai/codexModels.js'
+import type { ChatGPTCodexTurnSession } from './services/api/openai/responsesAdapter.js'
+import { getChatGPTCredentialScope } from './utils/model/chatgptModels.js'
 import {
   createCacheWarningMessage,
   getCacheThreshold,
@@ -554,6 +558,8 @@ export type QueryParams = {
   // from cumulative API usage. See configureTaskBudgetParams in claude.ts.
   taskBudget?: { total: number }
   deps?: QueryDeps
+  /** Internal: reuse Codex routing state for same-turn compaction/forks. */
+  chatGPTCodexTurnSession?: ChatGPTCodexTurnSession
 }
 
 // -- query loop state
@@ -588,6 +594,23 @@ export async function* query(
 > {
   const consumedCommandUuids: string[] = []
   const consumedAutonomyCommands: QueuedCommand[] = []
+
+  // Context-window, blocking-limit, auto-compact, and tool-search decisions
+  // happen before queryModelOpenAI gets a chance to refresh the catalog. Make
+  // the account-scoped Codex catalog available first, especially for restored
+  // subagent/fast/sonnet runtimes whose model may not exist in the main account.
+  const providerRuntime = params.toolUseContext.options.providerRuntimeConfig
+  const providerEnv = providerRuntime?.env ?? process.env
+  const provider = providerRuntime?.provider ?? getAPIProvider()
+  if (provider === 'openai' && isChatGPTAuthEnabled(providerEnv)) {
+    const credentialScope =
+      providerRuntime?.credentialScope ?? getChatGPTCredentialScope(providerEnv)
+    await fetchChatGPTCodexModels({ credentialScope }).catch(error => {
+      logForDebugging(
+        `[query] ChatGPT Codex model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    })
+  }
 
   // Create Langfuse trace for this query turn (no-op if not configured).
   // When called as a sub-agent, langfuseTrace is already set by runAgent()
@@ -823,6 +846,7 @@ async function* queryLoop(
     skipCacheWrite,
   } = params
   const deps = params.deps ?? productionDeps()
+  const chatGPTCodexTurnSession = params.chatGPTCodexTurnSession ?? {}
 
   // Mutable cross-iteration state. The loop body destructures this at the top
   // of each iteration so reads stay bare-name (`messages`, `toolUseContext`).
@@ -1082,6 +1106,7 @@ async function* queryLoop(
         systemContext,
         toolUseContext,
         forkContextMessages: messagesForQuery,
+        chatGPTCodexTurnSession,
       },
       querySource,
       tracking,
@@ -1178,6 +1203,7 @@ async function* queryLoop(
     // loop-exit signal. If false after streaming, we're done (modulo stop-hook retry).
     const toolUseBlocks: ToolUseBlock[] = []
     let needsFollowUp = false
+    let serverRequestedContinuation = false
 
     queryCheckpoint('query_setup_start')
     const useStreamingToolExecution = config.gates.streamingToolExecution
@@ -1259,6 +1285,7 @@ async function* queryLoop(
       const { isAtBlockingLimit } = calculateTokenWarningState(
         tokenCountWithEstimation(messagesForQuery) - snipTokensFreed,
         toolUseContext.options.mainLoopModel,
+        toolUseContext.options.providerRuntimeConfig,
       )
       if (isAtBlockingLimit) {
         yield createAssistantAPIErrorMessage({
@@ -1279,7 +1306,10 @@ async function* queryLoop(
         tokenCountWithEstimation(messagesForQuery) - snipTokensFreed
       const estimatedGrowth = estimateMaxTurnGrowth(model)
       const predictiveThreshold =
-        getEffectiveContextWindowSize(model) - estimatedGrowth
+        getEffectiveContextWindowSize(
+          model,
+          toolUseContext.options.providerRuntimeConfig,
+        ) - estimatedGrowth
       if (currentTokens > predictiveThreshold) {
         const predictiveResult = await deps.autocompact(
           messagesForQuery,
@@ -1290,6 +1320,7 @@ async function* queryLoop(
             systemContext,
             toolUseContext,
             forkContextMessages: messagesForQuery,
+            chatGPTCodexTurnSession,
           },
           querySource,
           tracking,
@@ -1333,6 +1364,8 @@ async function* queryLoop(
         attemptWithFallback = false
         try {
           let streamingFallbackOccured = false
+          chatGPTCodexTurnSession.lastResponseEndTurn = undefined
+          serverRequestedContinuation = false
           queryCheckpoint('query_api_streaming_start')
           for await (const message of guardProviderStreamCancellation(
             deps.callModel({
@@ -1400,6 +1433,7 @@ async function* queryLoop(
                 langfuseTrace: toolUseContext.langfuseTrace,
                 providerRuntimeConfig:
                   toolUseContext.options.providerRuntimeConfig,
+                chatGPTCodexTurnSession,
               },
             }),
             toolUseContext.abortController.signal,
@@ -1576,6 +1610,11 @@ async function* queryLoop(
               }
             }
           }
+          serverRequestedContinuation =
+            chatGPTCodexTurnSession.lastResponseEndTurn === false
+          if (serverRequestedContinuation) {
+            needsFollowUp = true
+          }
           queryCheckpoint('query_api_streaming_end')
 
           // Yield deferred microcompact boundary message using actual API-reported
@@ -1620,6 +1659,7 @@ async function* queryLoop(
             toolResults.length = 0
             toolUseBlocks.length = 0
             needsFollowUp = false
+            serverRequestedContinuation = false
 
             // Discard pending results from the failed attempt and create a
             // fresh executor. This prevents orphan tool_results (with old
@@ -1800,7 +1840,9 @@ async function* queryLoop(
     }
 
     // Execute post-sampling hooks after model response is complete
-    if (assistantMessages.length > 0) {
+    const isInputlessCodexServerContinuation =
+      serverRequestedContinuation && toolUseBlocks.length === 0
+    if (assistantMessages.length > 0 && !isInputlessCodexServerContinuation) {
       postSamplingHooks.schedule(
         messagesForQuery.concat(assistantMessages),
         systemPrompt,
@@ -1840,6 +1882,31 @@ async function* queryLoop(
         error:
           lastAssistantMsg.error ?? lastAssistantMsg.apiError ?? 'api_error',
       }
+    }
+
+    // The Codex backend may explicitly request another sample with
+    // response.completed.end_turn=false even though it emitted no tool call.
+    // This is a server continuation inside the same user turn: append only the
+    // assistant output and sample again. Running the ordinary post-tool path
+    // here would consume queued user input and inject attachment/memory/skill
+    // messages that the official Codex client deliberately leaves for later.
+    if (isInputlessCodexServerContinuation) {
+      state = {
+        messages: messagesForQuery.concat(assistantMessages),
+        toolUseContext: { ...toolUseContext, queryTracking },
+        autoCompactTracking: tracking,
+        maxOutputTokensRecoveryCount: 0,
+        hasAttemptedReactiveCompact: false,
+        maxOutputTokensOverride: undefined,
+        pendingToolUseSummary: undefined,
+        stopHookActive,
+        // response.completed.end_turn=false is another sample within the
+        // current user turn, not an autonomous/tool turn. It must not consume
+        // maxTurns (notably compact forks deliberately use maxTurns=1).
+        turnCount,
+        transition: { reason: 'codex_server_continuation' },
+      }
+      continue
     }
 
     if (!needsFollowUp) {
@@ -1911,6 +1978,7 @@ async function* queryLoop(
             systemContext,
             toolUseContext,
             forkContextMessages: messagesForQuery,
+            chatGPTCodexTurnSession,
           },
         })
 

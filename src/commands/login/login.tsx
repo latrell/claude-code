@@ -32,7 +32,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
   return (
     <Login
       authStatus={authStatus}
-      onDone={async success => {
+      onDone={async (success, mainLoopModel) => {
         context.onChangeAPIKey();
         // Signature-bearing blocks (thinking, connector_text) are bound to the API key —
         // strip them so the new key doesn't reject stale signatures.
@@ -62,6 +62,8 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
           // Increment authVersion to trigger re-fetching of auth-dependent data in hooks (e.g., MCP servers)
           context.setAppState(prev => ({
             ...prev,
+            mainLoopModel,
+            mainLoopModelForSession: null,
             authVersion: prev.authVersion + 1,
           }));
         }
@@ -189,7 +191,7 @@ export function Login(props: {
               {removeState.phase === 'error' && <Text color="error">{removeState.message}</Text>}
             </Box>
             <ConsoleOAuthFlow
-              onDone={() => props.onDone(true, mainLoopModel)}
+              onDone={nextMainLoopModel => props.onDone(true, nextMainLoopModel ?? mainLoopModel)}
               startingMessage={props.startingMessage}
             />
           </>

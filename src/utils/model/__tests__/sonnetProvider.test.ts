@@ -12,6 +12,11 @@ import {
   setSonnetProviderCliOverride,
   setSonnetProviderConfigOverride,
 } from '../sonnetProvider.js'
+import {
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
+  setRemoteChatGPTCodexModelOptions,
+} from '../chatgptModels.js'
 import { setProviderCliOverride } from '../providers.js'
 
 // getSonnetProviderRuntimeConfig falls back to getConnectionThinkingEffort
@@ -39,6 +44,7 @@ afterEach(() => {
   }
   _invalidateConnectionsCache()
   setSessionAssignment('sonnet', undefined)
+  clearRemoteChatGPTCodexModelOptions()
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -244,6 +250,16 @@ describe('sonnet provider config', () => {
   })
 
   test('un-pinned scoped ChatGPT connection uses the ChatGPT default model', () => {
+    setRemoteChatGPTCodexModelOptions(
+      [
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[0]!,
+          value: 'scope-sonnet-default',
+          priority: 1,
+        },
+      ],
+      SONNET_CREDENTIAL_SCOPE,
+    )
     setSonnetProviderConfigOverride({
       modelType: 'openai',
       env: { OPENAI_AUTH_MODE: 'chatgpt' },
@@ -252,7 +268,7 @@ describe('sonnet provider config', () => {
     try {
       const resolved = getSonnetModelAndRuntime()
 
-      expect(resolved.model).toBe('gpt-5.6-sol')
+      expect(resolved.model).toBe('scope-sonnet-default')
       expect(resolved.runtime?.provider).toBe('openai')
     } finally {
       setSonnetProviderConfigOverride(undefined)

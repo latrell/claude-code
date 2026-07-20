@@ -59,9 +59,17 @@ function setOauthAccount(value: AccountInfo | undefined) {
   oauthAccount = value
 }
 
-const { importLegacyConnections } = await import('../migrate.js')
-const { _invalidateConnectionsCache, listConnections, upsertConnection } =
-  await import('../store.js')
+const { importLegacyConnections, repairLegacyChatGPTMainCredentialScope } =
+  await import('../migrate.js')
+const {
+  _invalidateConnectionsCache,
+  listConnections,
+  setDefaultAssignment,
+  upsertConnection,
+} = await import('../store.js')
+const { readCCBProviderAuthData } = await import(
+  '../../../utils/ccbProviderAuth.js'
+)
 
 afterAll(() => {
   _useMocks = false
@@ -70,10 +78,14 @@ afterAll(() => {
 
 let tmpDir: string
 let previousConfigDir: string | undefined
+let previousOpenAIEnv: Record<string, string | undefined>
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'ccb-migrate-test-'))
   previousConfigDir = process.env['CLAUDE_CONFIG_DIR']
+  previousOpenAIEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.startsWith('OPENAI_')),
+  )
   process.env['CLAUDE_CONFIG_DIR'] = tmpDir
   _invalidateConnectionsCache()
   resetSettingsCache()
@@ -83,6 +95,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('OPENAI_')) delete process.env[key]
+  }
+  Object.assign(process.env, previousOpenAIEnv)
   if (previousConfigDir === undefined) {
     delete process.env['CLAUDE_CONFIG_DIR']
   } else {
@@ -185,9 +201,8 @@ describe('importLegacyConnections', () => {
   })
 
   test('does not re-import the default ChatGPT slot when a ChatGPT connection exists', () => {
-    // Activating a scoped connection deploys its credential file into the
-    // default slot and writes the chatgpt marker into provider auth. Neither
-    // artifact is a legacy login, so nothing should be imported.
+    // The global marker points at a registry-managed scoped credential, so it
+    // is not an independent legacy login and must not be imported.
     upsertConnection({
       id: 'chatgpt',
       label: 'ChatGPT 订阅',
@@ -206,6 +221,52 @@ describe('importLegacyConnections', () => {
     expect(imported).toBe(0)
     expect(listConnections()).toHaveLength(1)
     expect(listConnections()[0]?.credentialRef).toBe('chatgpt')
+  })
+
+  test('repairs an old global ChatGPT marker to reference its scoped account', () => {
+    upsertConnection({
+      id: 'chatgpt-account-a',
+      label: 'ChatGPT A',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'account-a',
+    })
+    setDefaultAssignment('main', { connectionId: 'chatgpt-account-a' })
+    writeProviderAuth({
+      openai: {
+        env: {
+          OPENAI_AUTH_MODE: 'chatgpt',
+          OPENAI_API_KEY: 'stale-key',
+          OPENAI_BASE_URL: 'https://api.openai.com/v1',
+        },
+      },
+    })
+
+    expect(repairLegacyChatGPTMainCredentialScope()).toBe(true)
+    expect(readCCBProviderAuthData().openai?.env).toEqual({
+      OPENAI_AUTH_MODE: 'chatgpt',
+      OPENAI_CHATGPT_CREDENTIAL_SCOPE: 'account-a',
+    })
+    // Re-applying is idempotent but remains applicable so startup can also
+    // clear stale higher-precedence settings.env values.
+    expect(repairLegacyChatGPTMainCredentialScope()).toBe(true)
+  })
+
+  test('does not rewrite API-key auth when a stale registry default exists', () => {
+    upsertConnection({
+      id: 'chatgpt-account-a',
+      label: 'ChatGPT A',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'account-a',
+    })
+    setDefaultAssignment('main', { connectionId: 'chatgpt-account-a' })
+    writeProviderAuth({
+      openai: { env: { OPENAI_API_KEY: 'current-key' } },
+    })
+
+    expect(repairLegacyChatGPTMainCredentialScope()).toBe(false)
+    expect(readCCBProviderAuthData().openai?.env).toEqual({
+      OPENAI_API_KEY: 'current-key',
+    })
   })
 
   test('imports gemini and grok entries', () => {

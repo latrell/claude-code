@@ -82,7 +82,10 @@ import type { Command } from '../types/command.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { formatCommandsWithinBudget } from '@claude-code-best/builtin-tools/tools/SkillTool/prompt.js'
-import { getContextWindowForModel } from './context.js'
+import {
+  type ContextWindowRuntime,
+  getContextWindowForModel,
+} from './context.js'
 import type { DiscoverySignal } from '../services/skillSearch/signals.js'
 // Conditional require for DCE. All skill-search string literals that would
 // otherwise leak into external builds live inside these modules. The only
@@ -999,6 +1002,7 @@ export async function getAttachments(
               getCompactionReminderAttachment(
                 messages ?? [],
                 toolUseContext.options.mainLoopModel,
+                toolUseContext.options.providerRuntimeConfig,
               ),
             ),
           ),
@@ -1042,6 +1046,7 @@ export async function getAttachments(
             getTokenUsageAttachment(
               messages ?? [],
               toolUseContext.options.mainLoopModel,
+              toolUseContext.options.providerRuntimeConfig,
             ),
           ),
         ),
@@ -2840,6 +2845,7 @@ async function getSkillListingAttachments(
   const contextWindowTokens = getContextWindowForModel(
     toolUseContext.options.mainLoopModel,
     getSdkBetas(),
+    toolUseContext.options.providerRuntimeConfig,
   )
   const content = formatCommandsWithinBudget(newSkills, contextWindowTokens)
 
@@ -3939,12 +3945,13 @@ function getTeamContextAttachment(messages: Message[]): Attachment[] {
 function getTokenUsageAttachment(
   messages: Message[],
   model: string,
+  runtime?: ContextWindowRuntime,
 ): Attachment[] {
   if (!isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT)) {
     return []
   }
 
-  const contextWindow = getEffectiveContextWindowSize(model)
+  const contextWindow = getEffectiveContextWindowSize(model, runtime)
   const usedTokens = tokenCountFromLastAPIResponse(messages)
 
   return [
@@ -4063,6 +4070,7 @@ async function getVerifyPlanReminderAttachment(
 export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
+  runtime?: ContextWindowRuntime,
 ): Attachment[] {
   if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
     return []
@@ -4072,12 +4080,12 @@ export function getCompactionReminderAttachment(
     return []
   }
 
-  const contextWindow = getContextWindowForModel(model, getSdkBetas())
+  const contextWindow = getContextWindowForModel(model, getSdkBetas(), runtime)
   if (contextWindow < 1_000_000) {
     return []
   }
 
-  const effectiveWindow = getEffectiveContextWindowSize(model)
+  const effectiveWindow = getEffectiveContextWindowSize(model, runtime)
   const usedTokens = tokenCountWithEstimation(messages)
   if (usedTokens < effectiveWindow * 0.25) {
     return []

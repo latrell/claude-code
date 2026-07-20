@@ -7,6 +7,10 @@ import { asThinkingEffortTransport } from '../../services/connections/effortTran
 import { getInitialSettings } from '../settings/settings.js'
 import type { ProviderLoginConfig, SettingsJson } from '../settings/types.js'
 import { apiProviderToSettingsProviderKey, getSmallFastModel } from './model.js'
+import {
+  getChatGPTCodexFastModel,
+  getChatGPTCredentialScope,
+} from './chatgptModels.js'
 import { getAPIProvider, type APIProvider } from './providers.js'
 import type { ProviderRuntimeConfig } from './subagentProvider.js'
 import { providerFromModelType } from './subagentProvider.js'
@@ -256,14 +260,27 @@ export function getFastProviderRuntimeConfig(
  * returned together; otherwise the main provider's small fast model with no
  * runtime override (current behaviour).
  */
-export function getFastModelAndRuntime(): {
+export function getFastModelAndRuntime(
+  settings: Pick<
+    SettingsJson,
+    'modelType' | 'fastProvider' | 'providerModels'
+  > = getInitialSettings(),
+  envSource: Record<string, string | undefined> = process.env,
+): {
   model: string
   runtime?: ProviderRuntimeConfig
 } {
-  const runtime = getFastProviderRuntimeConfig()
+  const runtime = getFastProviderRuntimeConfig(settings, envSource)
   if (!runtime) return { model: getSmallFastModel() }
+  const env = runtime.env ?? envSource
+  const fallbackModel =
+    runtime.provider === 'openai' && env.OPENAI_AUTH_MODE === 'chatgpt'
+      ? getChatGPTCodexFastModel(
+          runtime.credentialScope ?? getChatGPTCredentialScope(env),
+        )
+      : getSmallFastModel()
   return {
-    model: runtime.model ?? getSmallFastModel(),
+    model: runtime.model ?? fallbackModel,
     runtime,
   }
 }

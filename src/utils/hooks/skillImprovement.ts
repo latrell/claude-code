@@ -185,7 +185,7 @@ Output <updates>[]</updates> if no updates are needed.`,
       }
     },
 
-    getModel: getSmallFastModel,
+    getModel: () => getSmallFastModel(),
   }
 
   return createApiQueryHook(config)

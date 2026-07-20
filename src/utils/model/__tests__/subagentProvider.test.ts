@@ -11,6 +11,11 @@ import {
   setSubagentProviderCliOverride,
   SUBAGENT_CREDENTIAL_SCOPE,
 } from '../subagentProvider.js'
+import {
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
+  setRemoteChatGPTCodexModelOptions,
+} from '../chatgptModels.js'
 
 // getSubagentProviderRuntimeConfig falls back to getConnectionThinkingEffort
 // ('subagent'), which reads the real connection registry. Point CLAUDE_CONFIG_DIR
@@ -35,6 +40,7 @@ afterEach(() => {
   }
   _invalidateConnectionsCache()
   setSessionAssignment('subagent', undefined)
+  clearRemoteChatGPTCodexModelOptions()
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -155,6 +161,42 @@ describe('subagent provider config', () => {
         process.env.CLAUDE_CODE_SUBAGENT_MODEL = originalSubagentModel
       }
     }
+  })
+
+  test('old unpinned scoped ChatGPT config resolves aliases in that account catalog', () => {
+    setRemoteChatGPTCodexModelOptions(
+      [
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[0]!,
+          value: 'scope-subagent-default',
+          priority: 1,
+        },
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[2]!,
+          value: 'gpt-5.6-luna',
+          priority: 2,
+        },
+      ],
+      SUBAGENT_CREDENTIAL_SCOPE,
+    )
+    const runtime = {
+      provider: 'openai' as const,
+      env: { OPENAI_AUTH_MODE: 'chatgpt' },
+      credentialScope: SUBAGENT_CREDENTIAL_SCOPE,
+    }
+
+    expect(
+      getAgentModel(
+        undefined,
+        'claude-sonnet-5',
+        undefined,
+        'default',
+        runtime,
+      ),
+    ).toBe('scope-subagent-default')
+    expect(
+      getAgentModel(undefined, 'claude-sonnet-5', 'haiku', 'default', runtime),
+    ).toBe('gpt-5.6-luna')
   })
 
   test('maps providerModels subagentModel into runtime config', () => {

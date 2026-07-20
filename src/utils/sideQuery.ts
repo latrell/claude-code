@@ -35,10 +35,12 @@ import { errorMessage } from './errors.js'
 import { getAPIProvider } from './model/providers.js'
 import { getProxyFetchOptions } from './proxy.js'
 import { normalizeModelStringForAPI } from './model/model.js'
+import { getChatGPTCredentialScope } from './model/chatgptModels.js'
 import { getOpenAIClient } from '../services/api/openai/client.js'
 import { openAICompatSupportsThinkingControl } from '../services/api/openai/requestBody.js'
 import { getGrokClient } from '../services/api/grok/client.js'
 import { isChatGPTAuthEnabled } from '../services/api/openai/chatgptAuth.js'
+import { fetchChatGPTCodexModels } from '../services/api/openai/codexModels.js'
 import { resolveChatGPTResponsesReasoningEffort } from '../services/api/openai/reasoningEffort.js'
 import { resolveOpenAICompatibleReasoningEffort } from '../services/connections/effortTransport.js'
 import {
@@ -50,6 +52,7 @@ import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createChatGPTResponsesStream,
+  type ChatGPTCodexTurnSession,
 } from '../services/api/openai/responsesAdapter.js'
 import {
   startStreamEagerly,
@@ -463,6 +466,88 @@ type SideQueryUsageDelta = Partial<{
   cache_read_input_tokens: number | null
 }>
 
+const MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS = 16
+
+type ChatGPTContinuationMessage = {
+  role: 'assistant'
+  content: string
+  responses_reasoning_items?: Array<Record<string, unknown>>
+}
+
+function toChatGPTContinuationMessage(
+  response: BetaMessage,
+): ChatGPTContinuationMessage {
+  const text = response.content
+    .filter(
+      (
+        block,
+      ): block is Extract<BetaMessage['content'][number], { type: 'text' }> =>
+        block.type === 'text',
+    )
+    .map(block => block.text)
+    .join('')
+  const reasoningItems = response.content.flatMap(block => {
+    if (block.type !== 'thinking') return []
+    const blockRecord = block as unknown as Record<string, unknown>
+    const original = blockRecord.responses_reasoning_item as
+      | Record<string, unknown>
+      | undefined
+    if (
+      original?.type === 'reasoning' &&
+      typeof original.encrypted_content === 'string'
+    ) {
+      return [
+        {
+          type: 'reasoning',
+          summary: Array.isArray(original.summary) ? original.summary : [],
+          ...(Array.isArray(original.content)
+            ? { content: original.content }
+            : {}),
+          encrypted_content: original.encrypted_content,
+        },
+      ]
+    }
+    if (!block.signature) return []
+    return [
+      {
+        type: 'reasoning',
+        summary: [],
+        encrypted_content: block.signature,
+      },
+    ]
+  })
+  return {
+    role: 'assistant',
+    content: text,
+    ...(reasoningItems.length > 0
+      ? { responses_reasoning_items: reasoningItems }
+      : {}),
+  }
+}
+
+function combineSideQueryResponses(
+  responses: readonly BetaMessage[],
+): BetaMessage {
+  const last = responses.at(-1)
+  if (!last) throw new Error('ChatGPT Codex returned no response')
+  const sumUsage = (key: keyof SideQueryUsage): number =>
+    responses.reduce((total, response) => {
+      const value = response.usage[key]
+      return total + (typeof value === 'number' ? value : 0)
+    }, 0)
+  return {
+    ...last,
+    content: responses.flatMap(response => response.content),
+    usage: {
+      ...last.usage,
+      input_tokens: sumUsage('input_tokens'),
+      output_tokens: sumUsage('output_tokens'),
+      cache_creation_input_tokens: sumUsage('cache_creation_input_tokens'),
+      cache_read_input_tokens: sumUsage('cache_read_input_tokens'),
+    },
+  } as BetaMessage
+}
+
 function parseToolInput(input: unknown): unknown {
   if (typeof input !== 'string') return input ?? {}
   if (input.trim() === '') return {}
@@ -838,6 +923,8 @@ async function sideQueryViaOpenAICompatible(
   // for provider-scoped reads; a runtime without env inherits the main
   // session's env — same semantics as queryModelOpenAI/Gemini/Grok.
   const scopedEnv = runtime?.env ?? process.env
+  const credentialScope =
+    runtime?.credentialScope ?? getChatGPTCredentialScope(scopedEnv)
   const connectionThinkingEffort = resolveQueryThinkingEffort(runtime)
   const thinkingDisabled =
     thinking === false || connectionThinkingEffort === 'off'
@@ -848,11 +935,26 @@ async function sideQueryViaOpenAICompatible(
       : mapThinkingEffortToEffortValue(connectionThinkingEffort)
   const effortTransport = resolveQueryThinkingEffortTransport(runtime)
 
-  // Resolve model name per provider
+  const usesChatGPTCodex =
+    provider === 'openai' && isChatGPTAuthEnabled(scopedEnv)
+  if (usesChatGPTCodex) {
+    await fetchChatGPTCodexModels({
+      credentialScope,
+    }).catch(error => {
+      logForDebugging(
+        `[sideQuery] ChatGPT Codex model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    })
+  }
+
+  // Resolve the model after the ChatGPT account catalog is available so
+  // provider defaults follow the server's visible priority ordering.
   const openaiModel =
     provider === 'grok'
       ? resolveGrokModel(normalizedModel, scopedEnv)
-      : resolveOpenAIModel(normalizedModel, scopedEnv)
+      : usesChatGPTCodex
+        ? normalizedModel.replace(/\[1m\]$/i, '')
+        : resolveOpenAIModel(normalizedModel, scopedEnv)
 
   // Build system prompt text
   const systemText = extractSystemText(system)
@@ -910,44 +1012,77 @@ async function sideQueryViaOpenAICompatible(
     }
   }
 
-  if (provider === 'openai' && isChatGPTAuthEnabled(scopedEnv)) {
+  if (usesChatGPTCodex) {
     const reasoningEffort = thinkingDisabled
       ? undefined
       : resolveChatGPTResponsesReasoningEffort(
           openaiModel,
           effortValue,
           scopedEnv,
+          credentialScope,
         )
     const requestSignal = signal ?? new AbortController().signal
-    const adaptedStream = await createRetriedSideQueryStream(
-      async innerSignal =>
-        startStreamEagerly(
-          adaptResponsesStreamToAnthropic(
+    const turnSession: ChatGPTCodexTurnSession = {}
+    const continuationMessages: Array<
+      (typeof openaiMessages)[number] | ChatGPTContinuationMessage
+    > = [...openaiMessages]
+    const responses: BetaMessage[] = []
+    for (
+      let continuation = 0;
+      continuation <= MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS;
+      continuation += 1
+    ) {
+      const bufferedEvents = await createRetriedSideQueryStream(
+        async innerSignal => {
+          const events: BetaRawMessageStreamEvent[] = []
+          const stream = adaptResponsesStreamToAnthropic(
             await createChatGPTResponsesStream({
               request: buildResponsesRequest({
                 model: openaiModel,
-                messages: openaiMessages,
+                messages: continuationMessages,
                 tools: openaiTools ?? [],
                 toolChoice: openaiToolChoice,
                 reasoningEffort,
+                promptCacheKey: getSessionId(),
+                credentialScope,
               }),
               signal: innerSignal,
-              credentialScope: runtime?.credentialScope,
+              credentialScope,
+              turnSession,
             }),
             openaiModel,
-          ),
-        ),
-      {
-        signal: requestSignal,
-        provider: 'chatgpt',
-        maxRetries: opts.maxRetries ?? 2,
-      },
-    )
-    const response = await collectAnthropicStreamToBetaMessage(
-      adaptedStream,
-      openaiModel,
-      requestSignal,
-    )
+            turnSession,
+          )
+          for await (const event of stream) events.push(event)
+          return events
+        },
+        {
+          signal: requestSignal,
+          provider: 'chatgpt',
+          maxRetries: opts.maxRetries ?? 5,
+        },
+      )
+      const adaptedStream = (async function* () {
+        yield* bufferedEvents
+      })()
+      const segment = await collectAnthropicStreamToBetaMessage(
+        adaptedStream,
+        openaiModel,
+        requestSignal,
+      )
+      responses.push(segment)
+      const hasToolUse = segment.content.some(
+        block => block.type === 'tool_use',
+      )
+      if (turnSession.lastResponseEndTurn !== false || hasToolUse) break
+      if (continuation === MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS) {
+        throw new Error(
+          `ChatGPT Codex exceeded ${MAX_CHATGPT_CODEX_SERVER_CONTINUATIONS} server continuations`,
+        )
+      }
+      continuationMessages.push(toChatGPTContinuationMessage(segment))
+    }
+    const response = combineSideQueryResponses(responses)
 
     const now = Date.now()
     const requestId = response.id

@@ -18,8 +18,10 @@ const { getModelOptions } = await import('../modelOptions.js')
 const {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
   formatChatGPTCodexContextWindow,
   getChatGPTCodexModelDisplayName,
+  getChatGPTCodexModelEffectiveContextWindow,
 } = await import('../chatgptModels.js')
 
 const envKeys = [
@@ -48,6 +50,7 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
       delete process.env[key]
     }
     setChatGPTSubscriptionPlan(null)
+    clearRemoteChatGPTCodexModelOptions()
     resetSettingsCache()
   })
 
@@ -60,6 +63,7 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
       }
     }
     setChatGPTSubscriptionPlan(null)
+    clearRemoteChatGPTCodexModelOptions()
   })
 
   describe('default ChatGPT Codex model option', () => {
@@ -77,7 +81,7 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
         `(currently ${CHATGPT_CODEX_DEFAULT_MODEL})`,
       )
       expect(defaultOpt!.description).toContain('default ChatGPT Codex')
-      expect(defaultOpt!.description).toContain('ctx 372K')
+      expect(defaultOpt!.description).toContain('ctx 258.4K')
     })
 
     test('descriptionForModel uses the display name', () => {
@@ -104,26 +108,39 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
     test('preserves the exact current roster for API calls', () => {
       enableChatGPTCodexMode()
       const options = getModelOptions()
-      const values = options.map(o => o.value)
+      const chatGPTValues = new Set([
+        null,
+        'gpt-5.6-sol',
+        'gpt-5.6-terra',
+        'gpt-5.6-luna',
+        'gpt-5.5',
+        'gpt-5.3-codex-spark',
+      ])
+      const values = options
+        .map(o => o.value)
+        .filter(value => chatGPTValues.has(value))
       expect(values).toEqual([
         null,
         'gpt-5.6-sol',
         'gpt-5.6-terra',
         'gpt-5.6-luna',
         'gpt-5.5',
-        'gpt-5.4',
-        'gpt-5.4-mini',
-        'gpt-5.3-codex',
         'gpt-5.3-codex-spark',
       ])
     })
 
     test.each(
-      CHATGPT_CODEX_MODEL_OPTIONS.map(option => [option] as const),
+      CHATGPT_CODEX_MODEL_OPTIONS.filter(
+        option => option.visibility === 'list',
+      ).map(option => [option] as const),
     )('$value renders its curated label and context window', model => {
       enableChatGPTCodexMode()
       const option = getModelOptions().find(o => o.value === model.value)
-      const formatted = formatChatGPTCodexContextWindow(model.contextWindow)
+      const effectiveContextWindow = getChatGPTCodexModelEffectiveContextWindow(
+        model.value,
+      )
+      expect(effectiveContextWindow).toBeDefined()
+      const formatted = formatChatGPTCodexContextWindow(effectiveContextWindow!)
 
       expect(option).toBeDefined()
       expect(option!.label).toBe(model.label)
@@ -133,17 +150,18 @@ describe('getChatGPTCodexModelOptions (via getModelOptions)', () => {
       expect(option!.descriptionForModel).not.toContain(`(${model.value})`)
     })
 
-    test('filters gated models and displays effective plan windows', () => {
+    test('uses account visibility and catalog windows for every plan', () => {
       enableChatGPTCodexMode('plus')
       const options = getModelOptions()
 
       expect(
         options.some(option => option.value === 'gpt-5.3-codex-spark'),
-      ).toBe(false)
+      ).toBe(true)
+      expect(options.some(option => option.value === 'gpt-5.4')).toBe(false)
       expect(
         options.find(option => option.value === 'gpt-5.6-sol')?.description,
-      ).toContain('ctx 256K')
-      expect(options[0]?.description).toContain('ctx 256K')
+      ).toContain('ctx 258.4K')
+      expect(options[0]?.description).toContain('ctx 258.4K')
     })
   })
 })

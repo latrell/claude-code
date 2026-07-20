@@ -8,12 +8,20 @@ import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import type { ProviderRuntimeConfig } from './model/subagentProvider.js'
 import {
   getChatGPTCodexContextWindow,
+  getChatGPTCodexModelAutoCompactTokenLimit,
+  getChatGPTCodexModelEffectiveContextWindow,
   getChatGPTCodexModelMaxContextWindow,
+  getChatGPTCredentialScope,
   isChatGPTAuthMode,
 } from './model/chatgptModels.js'
 import { getAPIProvider } from './model/providers.js'
+
+export type ContextWindowRuntime = Readonly<
+  Pick<ProviderRuntimeConfig, 'provider' | 'env' | 'credentialScope'>
+>
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -50,12 +58,22 @@ export function has1mContext(model: string): boolean {
 }
 
 // @[MODEL LAUNCH]: Update this pattern if the new model supports 1M context
-export function modelSupports1M(model: string): boolean {
+export function modelSupports1M(
+  model: string,
+  runtime?: ContextWindowRuntime,
+): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
-    return (getChatGPTCodexModelMaxContextWindow(model) ?? 0) >= 1_000_000
+  const env = runtime?.env ?? process.env
+  const provider = runtime?.provider ?? getAPIProvider()
+  const credentialScope =
+    runtime?.credentialScope ?? getChatGPTCredentialScope(env)
+  if (provider === 'openai' && isChatGPTAuthMode(env)) {
+    return (
+      (getChatGPTCodexModelMaxContextWindow(model, credentialScope) ?? 0) >=
+      1_000_000
+    )
   }
   const canonical = getCanonicalName(model)
   return (
@@ -71,6 +89,7 @@ export function modelSupports1M(model: string): boolean {
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
+  runtime?: ContextWindowRuntime,
 ): number {
   // Allow override via environment variable (ant-only)
   // This takes precedence over all other context window resolution, including 1M detection,
@@ -86,14 +105,27 @@ export function getContextWindowForModel(
     }
   }
 
-  const isChatGPTCodex = getAPIProvider() === 'openai' && isChatGPTAuthMode()
+  const env = runtime?.env ?? process.env
+  const provider = runtime?.provider ?? getAPIProvider()
+  const isChatGPTCodex = provider === 'openai' && isChatGPTAuthMode(env)
+  const chatGPTCredentialScope = isChatGPTCodex
+    ? (runtime?.credentialScope ?? getChatGPTCredentialScope(env))
+    : undefined
 
   // [1m] suffix — explicit client-side opt-in. ChatGPT Codex only honors it
   // when the product catalog advertises a 1M maximum for this exact model;
   // otherwise an unsupported suffix must not bypass the real model window.
   if (has1mContext(model)) {
-    if (!isChatGPTCodex || modelSupports1M(model)) {
+    if (!isChatGPTCodex) {
       return 1_000_000
+    }
+    if (modelSupports1M(model, runtime)) {
+      return (
+        getChatGPTCodexModelEffectiveContextWindow(
+          model,
+          chatGPTCredentialScope,
+        ) ?? 1_000_000
+      )
     }
   }
 
@@ -101,11 +133,34 @@ export function getContextWindowForModel(
   // aliases (sonnet/opus/fable) through to the Cursor model id. This is the
   // authoritative source for Cursor models — without it they fall through to
   // the 200k default even though most support 300k–1M.
-  if (getAPIProvider() === 'cursor') {
+  if (provider === 'cursor') {
     const cursorWindow = getCursorContextWindowForModel(model)
     if (cursorWindow !== undefined) {
       return cursorWindow
     }
+  }
+
+  // ChatGPT's authenticated catalog is account-scoped and authoritative.
+  // Resolve it before the connection registry's global model-id search so a
+  // different account with the same model name cannot supply this window.
+  if (isChatGPTCodex) {
+    const modelWindow = getChatGPTCodexModelEffectiveContextWindow(
+      model,
+      chatGPTCredentialScope,
+    )
+    if (modelWindow !== undefined) return modelWindow
+
+    // A scoped runtime belongs to a different account than the process-global
+    // subscription-plan and connection registries. If its catalog could not
+    // resolve this model, use a neutral safe fallback instead of borrowing the
+    // main account's plan or a same-named connection's window.
+    if (runtime) return MODEL_CONTEXT_WINDOW_DEFAULT
+
+    const planWindow = getChatGPTCodexContextWindow(
+      getChatGPTSubscriptionPlan(),
+    )
+    if (planWindow !== undefined) return planWindow
+    return MODEL_CONTEXT_WINDOW_DEFAULT
   }
 
   // Connection registry (/connect): the connection-level context window
@@ -128,7 +183,10 @@ export function getContextWindowForModel(
     return cap.max_input_tokens
   }
 
-  if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
+  if (
+    betas?.includes(CONTEXT_1M_BETA_HEADER) &&
+    modelSupports1M(model, runtime)
+  ) {
     return 1_000_000
   }
   if (getSonnet1mExpTreatmentEnabled(model)) {
@@ -141,17 +199,21 @@ export function getContextWindowForModel(
     }
   }
 
-  // ChatGPT Codex auth mode: use the model catalog window, capped by the
-  // subscription tier cached from the Codex /wham/usage endpoint.
-  if (isChatGPTCodex) {
-    const plan = getChatGPTSubscriptionPlan()
-    const planWindow = getChatGPTCodexContextWindow(plan, model)
-    if (planWindow !== undefined) {
-      return planWindow
-    }
-  }
-
   return MODEL_CONTEXT_WINDOW_DEFAULT
+}
+
+/** Account-scoped auto-compact limit advertised by the Codex model catalog. */
+export function getModelAutoCompactTokenLimit(
+  model: string,
+  runtime?: ContextWindowRuntime,
+): number | undefined {
+  const env = runtime?.env ?? process.env
+  const provider = runtime?.provider ?? getAPIProvider()
+  if (provider !== 'openai' || !isChatGPTAuthMode(env)) return undefined
+  return getChatGPTCodexModelAutoCompactTokenLimit(
+    model,
+    runtime?.credentialScope ?? getChatGPTCredentialScope(env),
+  )
 }
 
 export function getSonnet1mExpTreatmentEnabled(model: string): boolean {

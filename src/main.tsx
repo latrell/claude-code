@@ -254,12 +254,15 @@ import {
   sessionIdExists,
 } from './utils/sessionStorage.js';
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
+import type { SettingsJson } from './utils/settings/types.js';
 import {
   getInitialSettings,
   getManagedSettingsKeysForLogging,
   getSettingsForSource,
   getSettingsWithErrors,
+  updateSettingsForSource,
 } from './utils/settings/settings.js';
+import { CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS } from './utils/model/chatgptModels.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID, TASK_STATUSES } from './utils/tasks.js';
@@ -301,6 +304,7 @@ import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdo
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
 import { fetchCodexUsage, initializeChatGPTPlan } from 'src/services/api/openai/codexUsage.js';
+import { fetchChatGPTCodexModels } from 'src/services/api/openai/codexModels.js';
 import { startCursorUsagePolling } from 'src/services/api/cursor/cursorUsage.js';
 import { isChatGPTAuthEnabled } from 'src/services/api/openai/chatgptAuth.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
@@ -492,7 +496,7 @@ async function logStartupTelemetry(): Promise<void> {
 
 // @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
 // Bump this when adding a new sync migration so existing users re-run the set.
-const CURRENT_MIGRATION_VERSION = 11;
+const CURRENT_MIGRATION_VERSION = 13;
 function runMigrations(): void {
   if (getGlobalConfig().migrationVersion !== CURRENT_MIGRATION_VERSION) {
     migrateBypassPermissionsAcceptedToSettings();
@@ -503,6 +507,19 @@ function runMigrations(): void {
     migrateSonnet45ToSonnet46();
     migrateOpusToOpus1m();
     migrateReplBridgeEnabledToRemoteControlAtStartup();
+    if (feature('PROVIDER_CONNECTIONS')) {
+      const alignedChatGPT = connectionsMigrateModule?.repairLegacyChatGPTMainCredentialScope();
+      if (alignedChatGPT) {
+        const env: Record<string, undefined> = {};
+        for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+          env[key] = undefined;
+        }
+        const { error } = updateSettingsForSource('userSettings', {
+          env,
+        } as unknown as SettingsJson);
+        if (error) logError(error);
+      }
+    }
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       resetAutoModeOptInForDefaultOffer();
     }
@@ -606,8 +623,9 @@ export async function startDeferredPrefetches(): Promise<void> {
     const { usedCache } = initializeChatGPTPlan();
     if (usedCache) {
       void fetchCodexUsage().catch(() => undefined);
+      await fetchChatGPTCodexModels().catch(() => undefined);
     } else {
-      await fetchCodexUsage().catch(() => undefined);
+      await Promise.all([fetchCodexUsage().catch(() => undefined), fetchChatGPTCodexModels().catch(() => undefined)]);
     }
   }
 
@@ -2949,6 +2967,18 @@ async function run(): Promise<CommanderCommand> {
         } else if (!inputPrompt) {
           inputPrompt = mainThreadAgentDefinition.initialPrompt;
         }
+      }
+
+      // ChatGPT subscription aliases/defaults come from the authenticated
+      // Codex catalog. Load it before resolving an agent frontmatter alias;
+      // refreshing after parseUserSpecifiedModel() would leave the bundled
+      // fallback pinned in AppState for the rest of the session.
+      if (isChatGPTAuthEnabled()) {
+        await fetchChatGPTCodexModels().catch(error => {
+          logForDebugging(
+            `[startup] ChatGPT Codex model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       }
 
       // Compute effective model early so hooks can run in parallel with MCP

@@ -1,6 +1,7 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { setChatGPTSubscriptionPlan } from '../../../bootstrap/state.js'
 import { CHINA_LLM_PROVIDERS } from '../../../utils/chinaLlmProviders.js'
+import { clearRemoteChatGPTCodexModelOptions } from '../../../utils/model/chatgptModels.js'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
 
@@ -11,18 +12,27 @@ const {
   connectionModelDisplayName,
   fetchRemoteModelsForConnection,
   getStaticModelsForConnection,
+  pickerModelsForConnection,
+  supportsRemoteModelList,
 } = await import('../modelCatalog.js')
 import type { Connection } from '../types.js'
 
+beforeEach(() => {
+  clearRemoteChatGPTCodexModelOptions()
+})
+
+afterEach(() => {
+  clearRemoteChatGPTCodexModelOptions()
+  setChatGPTSubscriptionPlan(null)
+})
+
 const CHATGPT_CODEX_MODELS = [
-  ['gpt-5.6-sol', '372K'],
-  ['gpt-5.6-terra', '372K'],
-  ['gpt-5.6-luna', '372K'],
-  ['gpt-5.5', '272K'],
-  ['gpt-5.4', '272K'],
-  ['gpt-5.4-mini', '272K'],
-  ['gpt-5.3-codex', '272K'],
-  ['gpt-5.3-codex-spark', '128K'],
+  ['gpt-5.6-sol', '258.4K'],
+  ['gpt-5.6-terra', '258.4K'],
+  ['gpt-5.6-luna', '258.4K'],
+  ['gpt-5.5', '258.4K'],
+  ['gpt-5.3-codex-spark', '121.6K'],
+  ['gpt-5.2', '258.4K'],
 ] as const
 
 describe('getStaticModelsForConnection', () => {
@@ -141,7 +151,7 @@ describe('getStaticModelsForConnection', () => {
     }
   })
 
-  test('chatgpt-oauth filters gated models and applies plan windows', () => {
+  test('chatgpt-oauth trusts server visibility instead of local plan gates', () => {
     const conn: Connection = {
       id: 'gpt-plus',
       label: 'ChatGPT Plus',
@@ -152,14 +162,41 @@ describe('getStaticModelsForConnection', () => {
     try {
       const models = getStaticModelsForConnection(conn)
       expect(models.some(model => model.value === 'gpt-5.3-codex-spark')).toBe(
-        false,
+        true,
       )
+      expect(models.some(model => model.value === 'gpt-5.4')).toBe(false)
+      expect(models.some(model => model.value === 'gpt-5.4-mini')).toBe(false)
       expect(
         models.find(model => model.value === 'gpt-5.6-sol')?.description,
-      ).toContain('ctx 256K')
+      ).toContain('ctx 258.4K')
     } finally {
       setChatGPTSubscriptionPlan(null)
     }
+  })
+
+  test('chatgpt remote catalog authoritatively replaces fallback picker models', () => {
+    const conn: Connection = {
+      id: 'gpt-account',
+      label: 'ChatGPT Account',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'account-a',
+    }
+    const models = pickerModelsForConnection(conn, [
+      {
+        id: 'account-only-model',
+        label: 'Account Only Model',
+        description: 'Visible for this account',
+        contextLength: 123_000,
+        priority: 1,
+      },
+    ])
+
+    expect(models.map(model => model.value)).toEqual([
+      null,
+      'account-only-model',
+    ])
+    expect(models[1]?.description).toContain('ctx 123K')
+    expect(supportsRemoteModelList('chatgpt-oauth')).toBe(true)
   })
 
   test('cursor exposes the curated default + model list', () => {

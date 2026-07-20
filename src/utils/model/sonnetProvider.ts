@@ -276,6 +276,7 @@ export function getSonnetModelAndRuntime(): {
       getDefaultSonnetModelForProvider(
         runtime.provider,
         runtime.env ?? process.env,
+        runtime.credentialScope,
       ),
     runtime,
   }

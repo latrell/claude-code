@@ -16,6 +16,9 @@ import {
   type ChatGPTDeviceCode,
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
+import { fetchChatGPTCodexModels } from '../services/api/openai/codexModels.js';
+import { getChatGPTCodexDefaultModel } from '../utils/model/chatgptModels.js';
+import { setProviderCliOverride } from '../utils/model/providers.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth.js';
 import { openBrowser } from '../utils/browser.js';
@@ -35,7 +38,7 @@ type ProviderLoginConfigInput = Omit<ProviderLoginConfig, 'env'> & {
 };
 
 type Props = {
-  onDone(): void;
+  onDone(mainLoopModel?: string): void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
   forceLoginMethod?: 'claudeai' | 'console';
@@ -163,17 +166,30 @@ export function ConsoleOAuthFlow({
       writeCCBProviderAuthEnv(config.modelType as CCBProvider, config.env ?? {});
       registerInConnectionRegistry();
       // Still persist modelType in settings.json so getAPIProvider() picks
-      // the right provider on next start — just don't leak env into settings.
-      return updateSettingsForSource('userSettings', {
+      // the right provider on next start. Explicitly delete every supplied
+      // provider key from legacy settings.env; credentials remain isolated in
+      // ccb-provider-auth.json and must not be re-injected after restart.
+      const legacyEnvCleanup = config.env
+        ? Object.fromEntries(Object.keys(config.env).map(key => [key, undefined]))
+        : undefined;
+      const result = updateSettingsForSource('userSettings', {
         modelType: config.modelType,
+        ...(legacyEnvCleanup ? { env: legacyEnvCleanup } : {}),
       } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+      if (!result.error) {
+        setProviderCliOverride(config.modelType as 'openai' | 'gemini' | 'grok');
+      }
+      return result;
     }
 
     const result = updateSettingsForSource('userSettings', {
       modelType: config.modelType,
       ...(env ? { env: config.env } : {}),
     } as unknown as Parameters<typeof updateSettingsForSource>[1]);
-    if (!result.error) registerInConnectionRegistry();
+    if (!result.error) {
+      setProviderCliOverride(config.modelType as 'anthropic' | 'openai' | 'gemini' | 'grok' | 'cursor');
+      registerInConnectionRegistry();
+    }
     return result;
   }, []);
 
@@ -473,7 +489,7 @@ type OAuthStatusMessageProps = {
   pastedCode: string;
   setPastedCode: (value: string) => void;
   cursorOffset: number;
-  onDone: () => void;
+  onDone: (mainLoopModel?: string) => void;
   setCursorOffset: (offset: number) => void;
   textInputColumns: number;
   handleSubmitCode: (value: string, url: string) => void;
@@ -938,6 +954,7 @@ function OAuthStatusMessage({
         const finalVals = { ...openaiDisplayValues, [activeField]: openaiInputValue };
         const env: Record<string, string | undefined> = {
           OPENAI_AUTH_MODE: undefined,
+          OPENAI_CHATGPT_CREDENTIAL_SCOPE: undefined,
         };
 
         // Validate base_url if provided
@@ -1126,8 +1143,30 @@ function OAuthStatusMessage({
             void openBrowser(deviceCode.verificationUrl);
             await completeChatGPTDeviceLogin(deviceCode, controller.signal);
             if (cancelled) return;
-            const env: Record<string, string> = {
+            const env: Record<string, string | undefined> = {
               OPENAI_AUTH_MODE: 'chatgpt',
+              OPENAI_CHATGPT_CREDENTIAL_SCOPE: undefined,
+              OPENAI_API_KEY: undefined,
+              OPENAI_BASE_URL: undefined,
+              OPENAI_MODEL: undefined,
+              OPENAI_DEFAULT_MODEL: undefined,
+              OPENAI_DEFAULT_HAIKU_MODEL: undefined,
+              OPENAI_DEFAULT_SONNET_MODEL: undefined,
+              OPENAI_DEFAULT_OPUS_MODEL: undefined,
+              OPENAI_DEFAULT_HAIKU_MODEL_NAME: undefined,
+              OPENAI_DEFAULT_SONNET_MODEL_NAME: undefined,
+              OPENAI_DEFAULT_OPUS_MODEL_NAME: undefined,
+              OPENAI_DEFAULT_HAIKU_MODEL_DESCRIPTION: undefined,
+              OPENAI_DEFAULT_SONNET_MODEL_DESCRIPTION: undefined,
+              OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION: undefined,
+              OPENAI_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES: undefined,
+              OPENAI_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: undefined,
+              OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES: undefined,
+              OPENAI_SMALL_FAST_MODEL: undefined,
+              OPENAI_ENABLE_THINKING: undefined,
+              OPENAI_MAX_TOKENS: undefined,
+              OPENAI_ORG_ID: undefined,
+              OPENAI_PROJECT_ID: undefined,
             };
             const { error } = saveProviderConfig({
               modelType: 'openai',
@@ -1142,8 +1181,24 @@ function OAuthStatusMessage({
             // entirely (uses createChatGPTResponsesStream) but a stale cached
             // client would still be picked up by sideQuery.
             clearOpenAIClientCache();
+            // The model in AppState belongs to the provider that was active
+            // before /login. Resolve the newly authenticated account's Codex
+            // catalog before closing so a Claude/vendor model slug is never
+            // sent unchanged to the ChatGPT subscription backend.
+            try {
+              await fetchChatGPTCodexModels({ force: true });
+            } catch (catalogError) {
+              // Authentication and model discovery are separate in the
+              // official client. A transient catalog outage must not turn a
+              // successfully stored Codex OAuth login into a failed login;
+              // the bundled catalog remains the offline fallback and the
+              // next request will refresh the account catalog again.
+              logError(catalogError);
+            }
+            if (cancelled) return;
+            const chatGPTDefaultModel = getChatGPTCodexDefaultModel();
             setOAuthStatus({ state: 'success' });
-            void onDone();
+            void onDone(chatGPTDefaultModel);
           } catch (err) {
             if (cancelled) return;
             setOAuthStatus({
@@ -1551,6 +1606,7 @@ function OAuthStatusMessage({
         const baseUrl = resolveChinaProviderBaseURL(provider.id, accessMode);
         const env: Record<string, string | undefined> = {
           OPENAI_AUTH_MODE: undefined,
+          OPENAI_CHATGPT_CREDENTIAL_SCOPE: undefined,
           OPENAI_BASE_URL: baseUrl,
           OPENAI_API_KEY: chinaKeyValue.trim(),
           OPENAI_DEFAULT_SONNET_MODEL: modelId,

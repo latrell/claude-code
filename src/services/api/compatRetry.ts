@@ -101,6 +101,8 @@ const RETRYABLE_NETWORK_CODES = new Set([
 
 const RETRYABLE_PROVIDER_ERROR_CODES = new Set([
   'server_error',
+  'internal_server_error',
+  'internal_error',
   'rate_limit_exceeded',
   'vector_store_timeout',
 ])
@@ -128,6 +130,18 @@ function getErrorCodes(error: unknown): string[] {
 function getErrorStatus(error: unknown): number | undefined {
   const status = getErrorRecord(error)?.status
   return typeof status === 'number' ? status : undefined
+}
+
+function getExplicitRetryable(error: unknown): boolean | undefined {
+  const value = getErrorRecord(error)?.retryable
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function getRetryAfterMs(error: unknown): number {
+  const value = getErrorRecord(error)?.retryAfterMs
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : 0
 }
 
 function getErrorMessage(error: unknown): string {
@@ -208,6 +222,9 @@ export function isRetryableCompatError(error: unknown): boolean {
   ) {
     return false
   }
+
+  const explicitRetryable = getExplicitRetryable(error)
+  if (explicitRetryable !== undefined) return explicitRetryable
 
   // An explicit HTTP client-error status is authoritative. In particular,
   // a nested ECONNRESET or a provider-style `server_error` code must not
@@ -488,7 +505,10 @@ export async function* withCompatRetry<T>(
         break
       }
 
-      const delayMs = getRetryDelay(attempt + 1)
+      const delayMs = Math.max(
+        getRetryDelay(attempt + 1),
+        getRetryAfterMs(error),
+      )
 
       logForDebugging(
         `[${options.provider}] 第 ${attempt + 1}/${maxRetries} 次重试，${Math.round(delayMs / 1000)}s 后重试`,

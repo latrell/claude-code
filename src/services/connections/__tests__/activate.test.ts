@@ -64,6 +64,7 @@ function setOauthAccount(value: AccountInfo | undefined) {
 }
 
 const {
+  _setChatGPTCatalogRefresherForTest,
   _setSettingsWriterForTest,
   activateConnectionForSession,
   activateConnectionGlobally,
@@ -73,6 +74,12 @@ const {
   getSessionAssignment,
   removeConnectionWithRuntimeCleanup,
 } = await import('../activate.js')
+const {
+  CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS,
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
+  setRemoteChatGPTCodexModelOptions,
+} = await import('../../../utils/model/chatgptModels.js')
 
 // Settings writes are captured through the activate.ts test seam and merged
 // into an in-memory object (mirrors updateSettingsForSource's merge for the
@@ -141,6 +148,7 @@ afterAll(() => {
   _useMocks = false
   _setOAuthConfigAccessForTest(null)
   _setSettingsWriterForTest(null)
+  _setChatGPTCatalogRefresherForTest(null)
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
@@ -206,6 +214,8 @@ beforeEach(() => {
   setOauthAccount(undefined)
   userSettingsState = {}
   _setSettingsWriterForTest(writeUserSettingsForTest)
+  _setChatGPTCatalogRefresherForTest(async () => undefined)
+  clearRemoteChatGPTCodexModelOptions()
   setProviderCliOverride(undefined)
   setSubagentProviderConfigOverride(undefined)
   setFastProviderConfigOverride(undefined)
@@ -234,6 +244,7 @@ afterEach(() => {
   setFastProviderConfigOverride(undefined)
   setSonnetProviderConfigOverride(undefined)
   setSessionProviderEnvOverlay(null)
+  clearRemoteChatGPTCodexModelOptions()
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -468,18 +479,22 @@ describe('envForConnection', () => {
     expect(env.CURSOR_DEFAULT_MODEL).toBe('claude-4.5-sonnet')
   })
 
-  test('chatgpt-oauth sets auth mode and clears api key', () => {
+  test('chatgpt-oauth isolates every public OpenAI compatibility setting', () => {
     const env = envForConnection({
       id: 'gpt',
       label: 'ChatGPT',
       kind: 'chatgpt-oauth',
       credentialRef: 'default',
+      tierModels: {
+        haiku: 'stale-public-fast',
+        sonnet: 'stale-public-main',
+        opus: 'stale-public-best',
+      },
     })
     expect(env.OPENAI_AUTH_MODE).toBe('chatgpt')
-    expect(env).toHaveProperty('OPENAI_API_KEY', undefined)
-    expect(env).toHaveProperty('OPENAI_BASE_URL', undefined)
-    // A previous openai-compat activation's default must not leak in
-    expect(env).toHaveProperty('OPENAI_DEFAULT_MODEL', undefined)
+    for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+      expect(env).toHaveProperty(key, undefined)
+    }
   })
 })
 
@@ -742,6 +757,39 @@ describe('activateConnectionForSession (subagent slot)', () => {
     expect(config?.env?.OPENAI_AUTH_MODE).toBe('chatgpt')
   })
 
+  test('chatgpt-oauth: resolves a null model from the account catalog before pinning it', async () => {
+    writeChatGPTAuthFile('gpt-work')
+    const conn: Connection = {
+      id: 'gpt-work',
+      label: 'ChatGPT Work',
+      kind: 'chatgpt-oauth',
+      credentialRef: 'gpt-work',
+    }
+    upsertConnection(conn)
+    let refreshedScope: string | undefined
+    _setChatGPTCatalogRefresherForTest(async scope => {
+      refreshedScope = scope
+      setRemoteChatGPTCodexModelOptions(
+        [
+          {
+            ...CHATGPT_CODEX_MODEL_OPTIONS[0]!,
+            value: 'account-default-model',
+            label: 'Account Default Model',
+          },
+        ],
+        scope,
+      )
+    })
+
+    const result = await activateConnectionForSession(conn, 'subagent', null)
+
+    expect(result.success).toBe(true)
+    expect(refreshedScope).toBe('gpt-work')
+    expect(getSubagentProviderConfig({}, {})?.model).toBe(
+      'account-default-model',
+    )
+  })
+
   test('does not touch process.env or main provider', async () => {
     const conn = openaiConn()
     upsertConnection(conn)
@@ -848,15 +896,16 @@ describe('chatgpt-oauth credential validation', () => {
     expect(result.error).toContain('/connect')
   })
 
-  test('scoped activation deploys the scoped file into the default slot', async () => {
+  test('scoped activation routes the original credential without copying it', async () => {
     writeChatGPTAuthFile('gpt-work')
     const result = await activateConnectionForSession(
       chatgptConn('gpt-work'),
       'main',
     )
     expect(result.success).toBe(true)
-    expect(existsSync(join(tmpDir, 'openai-chatgpt-auth.json'))).toBe(true)
+    expect(existsSync(join(tmpDir, 'openai-chatgpt-auth.json'))).toBe(false)
     expect(process.env.OPENAI_AUTH_MODE).toBe('chatgpt')
+    expect(process.env.OPENAI_CHATGPT_CREDENTIAL_SCOPE).toBe('gpt-work')
   })
 
   test('subagent session activation fails when no credential exists', async () => {
@@ -875,6 +924,35 @@ describe('chatgpt-oauth credential validation', () => {
 })
 
 describe('activateConnectionGlobally', () => {
+  test('ChatGPT main activation purges higher-precedence public API settings', async () => {
+    writeChatGPTAuthFile()
+    const conn = chatgptConn()
+    upsertConnection(conn)
+    userSettingsState = {
+      env: {
+        KEEP_ME: 'yes',
+        OPENAI_API_KEY: 'sk-stale',
+        OPENAI_BASE_URL: 'https://public.example.test/v1',
+        OPENAI_MODEL: 'stale-public-model',
+        OPENAI_DEFAULT_SONNET_MODEL: 'stale-public-sonnet',
+        OPENAI_SMALL_FAST_MODEL: 'stale-public-fast',
+        OPENAI_ENABLE_THINKING: '0',
+      },
+    }
+
+    const result = await activateConnectionGlobally(conn, 'main', 'gpt-5.6-sol')
+
+    expect(result.success).toBe(true)
+    expect(readUserSettings()['env']).toEqual({ KEEP_ME: 'yes' })
+    const providerEnv = readCCBProviderAuthData().openai?.env
+    expect(providerEnv?.OPENAI_AUTH_MODE).toBe('chatgpt')
+    for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+      expect(providerEnv).not.toHaveProperty(key)
+    }
+    expect(process.env.OPENAI_AUTH_MODE).toBe('chatgpt')
+    expect(process.env.OPENAI_MODEL).toBeUndefined()
+  })
+
   test('main slot: persists credentials, modelType, providerModels and default', async () => {
     const conn = openaiConn()
     upsertConnection(conn)

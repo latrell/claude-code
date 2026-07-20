@@ -1,6 +1,7 @@
-import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { chmod, mkdir, open, readFile, rename, unlink } from 'fs/promises'
+import { createHash, randomUUID } from 'crypto'
 import { homedir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { logForDebugging } from 'src/utils/debug.js'
 import { SUBAGENT_CREDENTIAL_SCOPE } from 'src/utils/model/subagentProvider.js'
 
@@ -9,6 +10,7 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const AUTH_FILE = 'openai-chatgpt-auth.json'
 const SUBAGENT_AUTH_FILE = 'openai-chatgpt-auth.subagent.json'
 const REFRESH_SKEW_MS = 5 * 60 * 1000
+const OPAQUE_TOKEN_REFRESH_INTERVAL_MS = 8 * 24 * 60 * 60 * 1000
 
 export type ChatGPTDeviceCode = {
   verificationUrl: string
@@ -22,12 +24,20 @@ export type ChatGPTAuthTokens = {
   accessToken: string
   refreshToken: string
   accountId?: string
+  isFedRAMP?: boolean
   lastRefresh?: string
 }
 
 export type ChatGPTAuth = {
   accessToken: string
   accountId?: string
+  isFedRAMP?: boolean
+  /**
+   * Non-secret identity of the refresh credential that produced this access
+   * token. Used only to reject stale 401 refreshes when opaque tokens do not
+   * carry an account claim.
+   */
+  credentialId?: string
 }
 
 type StoredAuthFile = {
@@ -58,9 +68,9 @@ function authFilePath(scope?: string): string {
 }
 
 /**
- * Resolve the on-disk path of a ChatGPT auth credential file for a scope.
- * Exposed for the connection registry, which copies credential files
- * between scopes when activating a connection.
+ * Resolve the authoritative on-disk ChatGPT credential file for a scope.
+ * Exposed for the connection registry so activations can retain the original
+ * account reference without copying rotating OAuth credentials.
  */
 export function getChatGPTAuthFilePath(scope?: string): string {
   return authFilePath(scope)
@@ -72,11 +82,9 @@ function getClaudeConfigHomeDirLocal(): string {
   ).normalize('NFC')
 }
 
-function codexAuthFilePath(): string {
-  return join(
-    process.env.CODEX_HOME ?? join(process.env.HOME ?? '', '.codex'),
-    'auth.json',
-  )
+export function getCodexChatGPTAuthFilePath(): string {
+  const configuredHome = process.env.CODEX_HOME?.trim()
+  return join(configuredHome || join(homedir(), '.codex'), 'auth.json')
 }
 
 function asString(value: unknown): string | undefined {
@@ -125,6 +133,17 @@ function getTokenExpiryMs(token: string): number | null {
   return typeof exp === 'number' ? exp * 1000 : null
 }
 
+function shouldRefreshTokens(tokens: ChatGPTAuthTokens): boolean {
+  const expiresAt = getTokenExpiryMs(tokens.accessToken)
+  if (expiresAt !== null) return expiresAt <= Date.now() + REFRESH_SKEW_MS
+  if (!tokens.lastRefresh) return false
+  const lastRefresh = Date.parse(tokens.lastRefresh)
+  return (
+    Number.isFinite(lastRefresh) &&
+    lastRefresh < Date.now() - OPAQUE_TOKEN_REFRESH_INTERVAL_MS
+  )
+}
+
 function extractAccountId(tokens: {
   idToken?: string
   accessToken?: string
@@ -139,6 +158,21 @@ function extractAccountId(tokens: {
       asString(claims.chatgpt_account_user_id) ??
       asString(claims.account_id)
     if (accountId) return accountId
+  }
+  return undefined
+}
+
+function extractFedRAMP(tokens: {
+  idToken?: string
+  accessToken?: string
+  isFedRAMP?: boolean
+}): boolean | undefined {
+  if (tokens.isFedRAMP !== undefined) return tokens.isFedRAMP
+  for (const token of [tokens.idToken, tokens.accessToken]) {
+    if (!token) continue
+    const value = getOpenAIAuthClaims(token).chatgpt_account_is_fedramp
+    if (value === true || value === 'true') return true
+    if (value === false || value === 'false') return false
   }
   return undefined
 }
@@ -161,10 +195,36 @@ async function readStoredAuth(path: string): Promise<ChatGPTAuthTokens | null> {
         accessToken,
         accountId: tokens.account_id,
       }),
+      isFedRAMP: extractFedRAMP({ idToken, accessToken }),
       lastRefresh: parsed.last_refresh,
     }
   } catch {
     return null
+  }
+}
+
+const authFileWriteTails = new Map<string, Promise<void>>()
+
+/** Serialize every in-process write to one credential path. */
+async function withAuthFileWriteLock<T>(
+  path: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const previous = authFileWriteTails.get(path) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const tail = previous.catch(() => undefined).then(() => gate)
+  authFileWriteTails.set(path, tail)
+  await previous.catch(() => undefined)
+  try {
+    return await action()
+  } finally {
+    release()
+    if (authFileWriteTails.get(path) === tail) {
+      authFileWriteTails.delete(path)
+    }
   }
 }
 
@@ -173,10 +233,38 @@ async function saveStoredAuth(
   scope?: string,
 ): Promise<void> {
   const path = authFilePath(scope)
-  await mkdir(getClaudeConfigHomeDirLocal(), { recursive: true })
-  const body: StoredAuthFile = {
+  await saveStoredAuthAtPath(tokens, path)
+}
+
+async function saveStoredAuthAtPath(
+  tokens: ChatGPTAuthTokens,
+  path: string,
+): Promise<void> {
+  await withAuthFileWriteLock(path, () =>
+    saveStoredAuthAtPathWithoutLock(tokens, path),
+  )
+}
+
+async function saveStoredAuthAtPathWithoutLock(
+  tokens: ChatGPTAuthTokens,
+  path: string,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  let existing: Record<string, unknown> = {}
+  try {
+    existing = parseJSONRecord(await readFile(path, 'utf8')) ?? {}
+  } catch {
+    // A new credential file has no existing fields to preserve.
+  }
+  const existingTokens =
+    existing.tokens && typeof existing.tokens === 'object'
+      ? (existing.tokens as Record<string, unknown>)
+      : {}
+  const body: Record<string, unknown> = {
+    ...existing,
     auth_mode: 'chatgpt',
     tokens: {
+      ...existingTokens,
       id_token: tokens.idToken,
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
@@ -184,10 +272,22 @@ async function saveStoredAuth(
     },
     last_refresh: new Date().toISOString(),
   }
-  await writeFile(path, `${JSON.stringify(body, null, 2)}\n`, {
-    mode: 0o600,
-  })
-  await chmod(path, 0o600).catch(() => undefined)
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    const handle = await open(temporaryPath, 'wx', 0o600)
+    try {
+      await handle.writeFile(`${JSON.stringify(body, null, 2)}\n`, 'utf8')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    await chmod(temporaryPath, 0o600).catch(() => undefined)
+    await rename(temporaryPath, path)
+    await chmod(path, 0o600).catch(() => undefined)
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => undefined)
+    throw error
+  }
 }
 
 async function postJSON<T>(
@@ -309,6 +409,10 @@ async function exchangeAuthorizationCode(params: {
       idToken: data.id_token,
       accessToken: data.access_token,
     }),
+    isFedRAMP: extractFedRAMP({
+      idToken: data.id_token,
+      accessToken: data.access_token,
+    }),
   }
 }
 
@@ -316,27 +420,38 @@ async function refreshTokens(
   tokens: ChatGPTAuthTokens,
 ): Promise<ChatGPTAuthTokens> {
   type TokenResponse = {
-    id_token: string
-    access_token: string
+    id_token?: string
+    access_token?: string
     refresh_token?: string
   }
-  const body = new URLSearchParams({
+  const data = await postJSON<TokenResponse>(`${ISSUER}/oauth/token`, {
+    client_id: CLIENT_ID,
     grant_type: 'refresh_token',
     refresh_token: tokens.refreshToken,
-    client_id: CLIENT_ID,
-    scope:
-      'openid profile email offline_access api.connectors.read api.connectors.invoke',
   })
-  const data = await postForm<TokenResponse>(`${ISSUER}/oauth/token`, body)
-  return {
+  const idToken = data.id_token ?? tokens.idToken
+  const accessToken = data.access_token ?? tokens.accessToken
+  const refreshedAccountId = extractAccountId({
     idToken: data.id_token,
     accessToken: data.access_token,
+  })
+  if (
+    tokens.accountId &&
+    refreshedAccountId &&
+    tokens.accountId !== refreshedAccountId
+  ) {
+    throw new Error('ChatGPT token refresh returned a different account')
+  }
+  return {
+    idToken,
+    accessToken,
     refreshToken: data.refresh_token ?? tokens.refreshToken,
-    accountId: extractAccountId({
-      idToken: data.id_token,
-      accessToken: data.access_token,
-      accountId: tokens.accountId,
-    }),
+    accountId: refreshedAccountId ?? tokens.accountId,
+    isFedRAMP:
+      extractFedRAMP({
+        idToken: data.id_token,
+        accessToken: data.access_token,
+      }) ?? tokens.isFedRAMP,
   }
 }
 
@@ -358,16 +473,173 @@ export function isChatGPTAuthEnabled(
 }
 
 export async function removeChatGPTAuth(scope?: string): Promise<void> {
-  await unlink(authFilePath(scope)).catch(error => {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-  })
+  const path = authFilePath(scope)
+  await withAuthFileWriteLock(path, () =>
+    unlink(path).catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error
+      }
+    }),
+  )
 }
 
 /** The Codex CLI auth.json fallback only applies to the default scope. */
 function isDefaultScope(scope?: string): boolean {
   return !scope || scope === 'default'
+}
+
+type StoredAuthSource = {
+  path: string
+  tokens: ChatGPTAuthTokens
+}
+
+const pendingTokenRefreshes = new Map<string, Promise<ChatGPTAuthTokens>>()
+
+function storedAccountId(tokens: ChatGPTAuthTokens): string | undefined {
+  return tokens.accountId ?? extractAccountId(tokens)
+}
+
+function storedCredentialId(tokens: ChatGPTAuthTokens): string {
+  return createHash('sha256').update(tokens.refreshToken).digest('hex')
+}
+
+function assertExpectedCredential(
+  tokens: ChatGPTAuthTokens,
+  expectedAccountId: string | undefined,
+  expectedCredentialId: string | undefined,
+): void {
+  if (expectedAccountId) {
+    const actualAccountId = storedAccountId(tokens)
+    if (actualAccountId !== expectedAccountId) {
+      throw new Error(
+        'ChatGPT credentials changed to a different account during token refresh',
+      )
+    }
+    return
+  }
+  if (
+    expectedCredentialId &&
+    storedCredentialId(tokens) !== expectedCredentialId
+  ) {
+    throw new Error(
+      'ChatGPT credentials changed during token refresh while account identity was unavailable',
+    )
+  }
+}
+
+function sameStoredCredential(
+  left: ChatGPTAuthTokens,
+  right: ChatGPTAuthTokens,
+): boolean {
+  return (
+    left.idToken === right.idToken &&
+    left.accessToken === right.accessToken &&
+    left.refreshToken === right.refreshToken &&
+    storedAccountId(left) === storedAccountId(right)
+  )
+}
+
+async function resolveStoredAuthSource(
+  scope?: string,
+): Promise<StoredAuthSource | null> {
+  const scopedPath = authFilePath(scope)
+  const scopedTokens = await readStoredAuth(scopedPath)
+  if (scopedTokens) return { path: scopedPath, tokens: scopedTokens }
+
+  if (isDefaultScope(scope)) {
+    const codexPath = getCodexChatGPTAuthFilePath()
+    const codexTokens = await readStoredAuth(codexPath)
+    if (codexTokens) {
+      logForDebugging('[OpenAI] Using ChatGPT auth from Codex auth.json')
+      return { path: codexPath, tokens: codexTokens }
+    }
+  }
+  return null
+}
+
+function toChatGPTAuth(tokens: ChatGPTAuthTokens): ChatGPTAuth {
+  return {
+    accessToken: tokens.accessToken,
+    accountId: tokens.accountId ?? extractAccountId(tokens),
+    isFedRAMP: extractFedRAMP(tokens),
+    credentialId: storedCredentialId(tokens),
+  }
+}
+
+async function refreshStoredAuthSource(
+  source: StoredAuthSource,
+  rejectedAccessToken?: string,
+  expectedAccountId = storedAccountId(source.tokens),
+  expectedCredentialId = expectedAccountId
+    ? undefined
+    : storedCredentialId(source.tokens),
+): Promise<ChatGPTAuthTokens> {
+  assertExpectedCredential(
+    source.tokens,
+    expectedAccountId,
+    expectedCredentialId,
+  )
+  const refreshIdentity =
+    expectedAccountId ?? `credential:${expectedCredentialId}`
+  const rejectedIdentity = rejectedAccessToken ?? source.tokens.accessToken
+  const rejectedTokenHash = createHash('sha256')
+    .update(rejectedIdentity)
+    .digest('hex')
+  const pendingKey = `${source.path}\0${refreshIdentity}\0${rejectedTokenHash}`
+  const existing = pendingTokenRefreshes.get(pendingKey)
+  if (existing) return existing
+
+  const pending = (async () => {
+    const latest = (await readStoredAuth(source.path)) ?? source.tokens
+    assertExpectedCredential(latest, expectedAccountId, expectedCredentialId)
+    if (
+      rejectedAccessToken !== undefined &&
+      latest.accessToken !== rejectedAccessToken
+    ) {
+      return latest
+    }
+    if (rejectedAccessToken === undefined) {
+      if (!shouldRefreshTokens(latest)) {
+        return latest
+      }
+    }
+    const refreshed = await refreshTokens(latest)
+    // A refresh token may rotate legitimately, so only the stable account
+    // claim can be checked on the newly returned credential. The pre-refresh
+    // credential identity is checked again under the file lock below.
+    if (expectedAccountId) {
+      assertExpectedCredential(refreshed, expectedAccountId, undefined)
+    }
+
+    // The refresh request happens without holding the file lock. Re-check the
+    // authoritative credential only after acquiring it: a login/account switch
+    // that completed while the network request was in flight must win and must
+    // never be overwritten by the stale refresh response.
+    return withAuthFileWriteLock(source.path, async () => {
+      const current = await readStoredAuth(source.path)
+      if (!current) {
+        throw new Error(
+          'ChatGPT credentials were removed during token refresh; refusing to recreate them',
+        )
+      }
+      if (!sameStoredCredential(current, latest)) {
+        assertExpectedCredential(
+          current,
+          expectedAccountId,
+          expectedCredentialId,
+        )
+        return current
+      }
+      await saveStoredAuthAtPathWithoutLock(refreshed, source.path)
+      return refreshed
+    })
+  })().finally(() => {
+    if (pendingTokenRefreshes.get(pendingKey) === pending) {
+      pendingTokenRefreshes.delete(pendingKey)
+    }
+  })
+  pendingTokenRefreshes.set(pendingKey, pending)
+  return pending
 }
 
 /**
@@ -378,35 +650,53 @@ function isDefaultScope(scope?: string): boolean {
  * deleted (e.g. by a later /login into an API-key OpenAI endpoint).
  */
 export async function hasStoredChatGPTAuth(scope?: string): Promise<boolean> {
-  if (await readStoredAuth(authFilePath(scope))) return true
-  if (isDefaultScope(scope)) {
-    return (await readStoredAuth(codexAuthFilePath())) !== null
-  }
-  return false
+  return (await resolveStoredAuthSource(scope)) !== null
 }
 
 export async function getValidChatGPTAuth(
   scope?: string,
 ): Promise<ChatGPTAuth> {
-  let tokens = await readStoredAuth(authFilePath(scope))
-  if (!tokens && isDefaultScope(scope)) {
-    tokens = await readStoredAuth(codexAuthFilePath())
-    if (tokens) {
-      logForDebugging('[OpenAI] Using ChatGPT auth from Codex auth.json')
-    }
-  }
-  if (!tokens) {
+  const source = await resolveStoredAuthSource(scope)
+  if (!source) {
     throw new Error(
       'ChatGPT account is not logged in. Run /login and select ChatGPT account with subscription.',
     )
   }
-  const expiresAt = getTokenExpiryMs(tokens.accessToken)
-  if (expiresAt !== null && expiresAt <= Date.now() + REFRESH_SKEW_MS) {
-    tokens = await refreshTokens(tokens)
-    await saveStoredAuth(tokens, scope)
+  let tokens = source.tokens
+  if (shouldRefreshTokens(tokens)) {
+    tokens = await refreshStoredAuthSource(source)
   }
-  return {
-    accessToken: tokens.accessToken,
-    accountId: tokens.accountId ?? extractAccountId(tokens),
+  return toChatGPTAuth(tokens)
+}
+
+/**
+ * Refresh a credential after the Codex backend rejects its access token.
+ * A changed on-disk token wins, and concurrent callers share one refresh.
+ */
+export async function forceRefreshChatGPTAuth(
+  scope?: string,
+  rejectedAccessToken?: string,
+  expectedAccountId?: string,
+  expectedCredentialId?: string,
+): Promise<ChatGPTAuth> {
+  const source = await resolveStoredAuthSource(scope)
+  if (!source) {
+    throw new Error(
+      'ChatGPT account is not logged in. Run /login and select ChatGPT account with subscription.',
+    )
   }
+  assertExpectedCredential(
+    source.tokens,
+    expectedAccountId,
+    expectedCredentialId,
+  )
+  const rejected = rejectedAccessToken ?? source.tokens.accessToken
+  return toChatGPTAuth(
+    await refreshStoredAuthSource(
+      source,
+      rejected,
+      expectedAccountId,
+      expectedCredentialId,
+    ),
+  )
 }

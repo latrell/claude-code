@@ -15,6 +15,7 @@ import {
 } from 'src/services/analytics/index.js';
 import { clearDumpState } from 'src/services/api/dumpPrompts.js';
 import { guardAsyncIterableCancellation } from 'src/services/api/providerCancellation.js';
+import { localizedStopErrorMessage } from 'src/i18n/stop.js';
 import { t, tf } from 'src/i18n/t.js';
 import {
   completeAgentTask as completeAsyncAgent,
@@ -45,7 +46,7 @@ import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js';
 import { asAgentId } from 'src/types/ids.js';
 import { runWithAgentContext, type SubagentContext } from 'src/utils/agentContext.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
-import { AbortSettlementTimeoutError, waitForBoundedSettlement } from 'src/utils/abortSettlement.js';
+import { AbortSettlementTimeoutError } from 'src/utils/abortSettlement.js';
 import { createCombinedAbortSignal } from 'src/utils/combinedAbortSignal.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/cwd.js';
 import { logForDebugging } from 'src/utils/debug.js';
@@ -76,7 +77,7 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
-import { closeForegroundAgentBeforeBackgrounding } from './foregroundAgentHandoff.js';
+import { settleForegroundAgentHandoff } from './foregroundAgentHandoff.js';
 import {
   agentToolResultSchema,
   classifyHandoffIfNeeded,
@@ -1268,25 +1269,7 @@ export const AgentTool = buildTool({
                             // controller and installed an independent background one.
                             // Wait for the outstanding next() and iterator cleanup to
                             // finish before starting another runAgent instance.
-                            try {
-                              await waitForBoundedSettlement(
-                                closeForegroundAgentBeforeBackgrounding(agentIterator, nextMessagePromise),
-                                {
-                                  signal: foregroundAbortSignal,
-                                  timeoutMs: 10_000,
-                                  abortGraceMs: AGENT_FINALIZER_ABORT_GRACE_MS,
-                                  operation: `Agent ${backgroundedTaskId} foreground handoff`,
-                                },
-                              );
-                            } catch (error) {
-                              if (error instanceof AbortSettlementTimeoutError) {
-                                throw new StopConfirmationError(
-                                  `Agent ${backgroundedTaskId} foreground request did not settle during background handoff`,
-                                  [error],
-                                );
-                              }
-                              throw error;
-                            }
+                            await settleForegroundAgentHandoff(agentIterator, nextMessagePromise, backgroundedTaskId);
                             // Initialize progress tracking from existing messages
                             const tracker = createProgressTracker();
                             const resolveActivity2 = createActivityDescriptionResolver(toolUseContext.options.tools);
@@ -1409,7 +1392,7 @@ export const AgentTool = buildTool({
                               // retry. Publish a failed (not killed/completed)
                               // terminal state so the task cannot stay running
                               // forever on a cached confirmation failure.
-                              const errMsg = errorMessage(error);
+                              const errMsg = localizedStopErrorMessage(error);
                               failAsyncAgent(backgroundedTaskId, errMsg, rootSetAppState);
                               enqueueAgentNotification({
                                 taskId: backgroundedTaskId,
@@ -1791,7 +1774,11 @@ export const AgentTool = buildTool({
                 foregroundFinalizers.push({
                   operation: 'unconfirmed terminal state',
                   finalize: () =>
-                    failAsyncAgent(foregroundTaskId, errorMessage(foregroundLifecycleError), rootSetAppState),
+                    failAsyncAgent(
+                      foregroundTaskId,
+                      localizedStopErrorMessage(foregroundLifecycleError),
+                      rootSetAppState,
+                    ),
                 });
               } else {
                 foregroundFinalizers.push({

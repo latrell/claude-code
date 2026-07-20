@@ -132,9 +132,9 @@ describe('ChatGPT Codex model effort calibration', () => {
   })
 
   test('uses the Codex catalog default for each ChatGPT model', () => {
-    expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('medium')
+    expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('low')
     expect(getDefaultEffortForModel('gpt-5.4')).toBe('medium')
-    expect(getDefaultEffortForModel('gpt-5.3-codex')).toBe('medium')
+    expect(getDefaultEffortForModel('codex-auto-review')).toBe('medium')
     expect(getDefaultEffortForModel('gpt-5.3-codex-spark')).toBe('high')
   })
 
@@ -147,7 +147,7 @@ describe('ChatGPT Codex model effort calibration', () => {
       'gpt-5.5',
       'gpt-5.4',
       'gpt-5.4-mini',
-      'gpt-5.3-codex',
+      'codex-auto-review',
       'gpt-5.3-codex-spark',
     ]) {
       expect(modelSupportsMaxEffort(model)).toBe(false)

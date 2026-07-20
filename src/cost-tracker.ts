@@ -40,6 +40,7 @@ import {
   saveCurrentProjectConfig,
 } from './utils/config.js'
 import {
+  type ContextWindowRuntime,
   getContextWindowForModel,
   getModelMaxOutputTokens,
 } from './utils/context.js'
@@ -104,7 +105,15 @@ export function getStoredSessionCosts(
         model,
         {
           ...usage,
-          contextWindow: getContextWindowForModel(model, getSdkBetas()),
+          // Scoped provider identity is not persisted with legacy cost state.
+          // Preserve the window captured when the request ran; only derive a
+          // main-session fallback for older records that predate this field.
+          contextWindow:
+            typeof usage.contextWindow === 'number' &&
+            Number.isFinite(usage.contextWindow) &&
+            usage.contextWindow > 0
+              ? usage.contextWindow
+              : getContextWindowForModel(model, getSdkBetas()),
           maxOutputTokens: getModelMaxOutputTokens(model).default,
         },
       ]),
@@ -169,6 +178,7 @@ export function saveCurrentSessionCosts(fpsMetrics?: FpsMetrics): void {
           cacheCreationInputTokens: usage.cacheCreationInputTokens,
           webSearchRequests: usage.webSearchRequests,
           costUSD: usage.costUSD,
+          contextWindow: usage.contextWindow,
         },
       ]),
     ),
@@ -262,6 +272,7 @@ function addToTotalModelUsage(
   cost: number,
   usage: Usage,
   model: string,
+  runtime?: ContextWindowRuntime,
 ): ModelUsage {
   const modelUsage = getUsageForModel(model) ?? {
     inputTokens: 0,
@@ -281,7 +292,11 @@ function addToTotalModelUsage(
   modelUsage.webSearchRequests +=
     usage.server_tool_use?.web_search_requests ?? 0
   modelUsage.costUSD += cost
-  modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas())
+  modelUsage.contextWindow = getContextWindowForModel(
+    model,
+    getSdkBetas(),
+    runtime,
+  )
   modelUsage.maxOutputTokens = getModelMaxOutputTokens(model).default
   return modelUsage
 }
@@ -290,8 +305,9 @@ export function addToTotalSessionCost(
   cost: number,
   usage: Usage,
   model: string,
+  runtime?: ContextWindowRuntime,
 ): number {
-  const modelUsage = addToTotalModelUsage(cost, usage, model)
+  const modelUsage = addToTotalModelUsage(cost, usage, model, runtime)
   addToTotalCostState(cost, modelUsage, model)
   if (feature('GOAL')) {
     const { getGoal, updateGoalTokens } =
@@ -346,6 +362,7 @@ export function addToTotalSessionCost(
       advisorCost,
       advisorUsage,
       advisorUsage.model,
+      runtime,
     )
   }
   return totalCost

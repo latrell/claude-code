@@ -1,5 +1,14 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  CHATGPT_CODEX_MODEL_OPTIONS,
+  clearRemoteChatGPTCodexModelOptions,
+  setRemoteChatGPTCodexModelOptions,
+} from '../../../../utils/model/chatgptModels.js'
 import { resolveChatGPTResponsesReasoningEffort } from '../reasoningEffort.js'
+
+afterEach(() => {
+  clearRemoteChatGPTCodexModelOptions()
+})
 
 describe('resolveChatGPTResponsesReasoningEffort', () => {
   test.each([
@@ -14,7 +23,7 @@ describe('resolveChatGPTResponsesReasoningEffort', () => {
     'gpt-5.5',
     'gpt-5.4',
     'gpt-5.4-mini',
-    'gpt-5.3-codex',
+    'codex-auto-review',
     'gpt-5.3-codex-spark',
     'unknown-model',
   ])('maps max to xhigh for %s', model => {
@@ -36,13 +45,13 @@ describe('resolveChatGPTResponsesReasoningEffort', () => {
   })
 
   test.each([
-    ['gpt-5.6-sol', 'medium'],
+    ['gpt-5.6-sol', 'low'],
     ['gpt-5.6-terra', 'medium'],
     ['gpt-5.6-luna', 'medium'],
     ['gpt-5.5', 'medium'],
     ['gpt-5.4', 'medium'],
     ['gpt-5.4-mini', 'medium'],
-    ['gpt-5.3-codex', 'medium'],
+    ['codex-auto-review', 'medium'],
     ['gpt-5.3-codex-spark', 'high'],
     ['unknown-model', 'medium'],
   ] as const)('uses the Codex default for %s', (model, expected) => {
@@ -72,9 +81,42 @@ describe('resolveChatGPTResponsesReasoningEffort', () => {
     ).toBe('max')
   })
 
-  test('never forwards ultra to the Responses backend', () => {
+  test('maps product Ultra to wire Max without forwarding the raw value', () => {
     expect(
       resolveChatGPTResponsesReasoningEffort('gpt-5.6-sol', 'ultra', {}),
-    ).toBe('medium')
+    ).toBe('max')
+    expect(resolveChatGPTResponsesReasoningEffort('gpt-5.5', 'ultra', {})).toBe(
+      'xhigh',
+    )
+  })
+
+  test('resolves effort metadata from the matching credential scope', () => {
+    setRemoteChatGPTCodexModelOptions(
+      [
+        {
+          ...CHATGPT_CODEX_MODEL_OPTIONS[3]!,
+          value: 'scoped-max-model',
+          supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        },
+      ],
+      'work-account',
+    )
+
+    expect(
+      resolveChatGPTResponsesReasoningEffort(
+        'scoped-max-model',
+        'max',
+        {},
+        'work-account',
+      ),
+    ).toBe('max')
+    expect(
+      resolveChatGPTResponsesReasoningEffort(
+        'scoped-max-model',
+        'max',
+        {},
+        'personal-account',
+      ),
+    ).toBe('xhigh')
   })
 })

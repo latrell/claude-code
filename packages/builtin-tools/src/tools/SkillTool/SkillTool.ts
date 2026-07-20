@@ -820,6 +820,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
               mainLoopModel: resolveSkillModelOverride(
                 model,
                 ctx.options.mainLoopModel,
+                ctx.options.providerRuntimeConfig,
               ),
             },
           }

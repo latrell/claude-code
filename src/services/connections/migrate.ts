@@ -16,9 +16,13 @@
 
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { readCCBProviderAuthData } from '../../utils/ccbProviderAuth.js'
+import {
+  readCCBProviderAuthData,
+  writeCCBProviderAuthEnv,
+} from '../../utils/ccbProviderAuth.js'
 import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS } from '../../utils/model/chatgptModels.js'
 import { t } from '../../i18n/t.js'
 import { logError } from '../../utils/log.js'
 import {
@@ -27,7 +31,9 @@ import {
 } from './oauthAccounts.js'
 import {
   deriveConnectionProfile,
+  findConnection,
   generateConnectionId,
+  getDefaultAssignment,
   listConnections,
   upsertConnection,
 } from './store.js'
@@ -132,12 +138,9 @@ function readUserSettingsEnv(): Record<string, string> {
 function collectLegacyCandidates(): Omit<Connection, 'id'>[] {
   const candidates: Omit<Connection, 'id'>[] = []
 
-  // ChatGPT legacy candidates describe the *default* credential slot.
-  // Activating a scoped chatgpt-oauth connection deploys (copies) its
-  // credential file into that slot and marks OPENAI_AUTH_MODE=chatgpt in
-  // provider auth, so once any ChatGPT connection is registered the default
-  // slot is registry-managed state, not a legacy login — importing it again
-  // would duplicate the account under a second connection.
+  // ChatGPT legacy candidates describe the default credential slot. Once any
+  // ChatGPT connection is registered, the auth marker is registry-managed
+  // state and must not be imported again as a duplicate default account.
   const hasChatGPTConnection = listConnections().some(
     c => c.kind === 'chatgpt-oauth',
   )
@@ -322,4 +325,46 @@ export function importLegacyConnections(): { imported: number } {
     logError(err)
   }
   return { imported }
+}
+
+/**
+ * Repair global ChatGPT defaults written by older CCB builds.
+ *
+ * Those builds copied a scoped account's rotating OAuth file into the default
+ * slot and persisted only OPENAI_AUTH_MODE=chatgpt. The connection registry
+ * retained the original credentialRef, so restore that reference in provider
+ * auth and let every request read/refresh the authoritative scoped file.
+ */
+export function repairLegacyChatGPTMainCredentialScope(): boolean {
+  const assignment = getDefaultAssignment('main')
+  if (!assignment) return false
+  const connection = findConnection(assignment.connectionId)
+  if (connection?.kind !== 'chatgpt-oauth') return false
+
+  const providerAuth = readCCBProviderAuthData()
+  const openaiEnv = providerAuth.openai?.env
+  if (openaiEnv?.OPENAI_AUTH_MODE !== 'chatgpt') return false
+
+  const credentialScope =
+    connection.credentialRef && connection.credentialRef !== 'default'
+      ? connection.credentialRef
+      : undefined
+
+  const repairedEnv: Record<string, string | undefined> = {
+    ...openaiEnv,
+    OPENAI_AUTH_MODE: 'chatgpt',
+    OPENAI_CHATGPT_CREDENTIAL_SCOPE: credentialScope,
+  }
+  for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+    repairedEnv[key] = undefined
+    delete process.env[key]
+  }
+  writeCCBProviderAuthEnv('openai', repairedEnv)
+  process.env.OPENAI_AUTH_MODE = 'chatgpt'
+  if (credentialScope) {
+    process.env.OPENAI_CHATGPT_CREDENTIAL_SCOPE = credentialScope
+  } else {
+    delete process.env.OPENAI_CHATGPT_CREDENTIAL_SCOPE
+  }
+  return true
 }

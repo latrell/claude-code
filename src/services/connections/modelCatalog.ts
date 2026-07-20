@@ -18,10 +18,12 @@ import { CHINA_LLM_PROVIDERS } from '../../utils/chinaLlmProviders.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getKnownModelDisplayName } from '../../utils/model/display.js'
 import {
-  CHATGPT_CODEX_MODEL_OPTIONS,
+  formatChatGPTCodexContextWindow,
   getChatGPTCodexContextWindow,
-  isChatGPTCodexModelAvailable,
+  getChatGPTCodexModelOptions,
+  isChatGPTCodexModelVisible,
 } from '../../utils/model/chatgptModels.js'
+import { fetchChatGPTCodexModels } from '../api/openai/codexModels.js'
 import { CURSOR_MODELS } from '../api/cursor/models.js'
 import {
   formatContextWindow,
@@ -39,6 +41,9 @@ export type CatalogModel = {
 /** A model advertised by the provider's model-list endpoint. */
 export type RemoteModel = {
   id: string
+  label?: string
+  description?: string
+  priority?: number
   /** Context window in tokens, when the endpoint reports one. */
   contextLength?: number
 }
@@ -143,15 +148,18 @@ export function getStaticModelsForConnection(
     }
     case 'chatgpt-oauth': {
       const plan = getChatGPTSubscriptionPlan()
-      for (const option of CHATGPT_CODEX_MODEL_OPTIONS) {
-        if (!isChatGPTCodexModelAvailable(option.value, plan)) continue
+      const credentialScope = connection.credentialRef ?? 'default'
+      for (const option of getChatGPTCodexModelOptions(credentialScope)) {
+        if (!isChatGPTCodexModelVisible(option.value, plan, credentialScope)) {
+          continue
+        }
         const contextWindow =
-          getChatGPTCodexContextWindow(plan, option.value) ??
+          getChatGPTCodexContextWindow(plan, option.value, credentialScope) ??
           option.contextWindow
         dedupePush(out, seen, {
           value: option.value,
           label: option.label,
-          description: `${t(option.description)} · ctx ${formatContextWindow(contextWindow)}`,
+          description: `${t(option.description)} · ctx ${formatChatGPTCodexContextWindow(contextWindow)}`,
         })
       }
       break
@@ -259,6 +267,30 @@ export function pickerModelsForConnection(
   connection: Connection,
   remoteModels: RemoteModel[],
 ): CatalogModel[] {
+  if (connection.kind === 'chatgpt-oauth' && remoteModels.length > 0) {
+    return [
+      defaultEntry(),
+      ...[...remoteModels]
+        .sort(
+          (a, b) =>
+            (a.priority ?? Number.MAX_SAFE_INTEGER) -
+              (b.priority ?? Number.MAX_SAFE_INTEGER) ||
+            a.id.localeCompare(b.id),
+        )
+        .map(model => ({
+          value: model.id,
+          label: model.label ?? model.id,
+          description:
+            model.description && model.contextLength !== undefined
+              ? `${model.description} · ctx ${formatContextWindow(model.contextLength)}`
+              : (model.description ??
+                (model.contextLength !== undefined
+                  ? `ctx ${formatContextWindow(model.contextLength)}`
+                  : undefined)),
+        })),
+    ]
+  }
+
   let models = getStaticModelsForConnection(connection)
   const needsExplicitModel =
     (connection.kind === 'openai-compat' ||
@@ -274,11 +306,12 @@ export function pickerModelsForConnection(
     seen.add(model.id)
     models.push({
       value: model.id,
-      label: model.id,
+      label: model.label ?? model.id,
       description:
-        model.contextLength !== undefined
+        model.description ??
+        (model.contextLength !== undefined
           ? `ctx ${formatContextWindow(model.contextLength)}`
-          : undefined,
+          : undefined),
     })
   }
   return models
@@ -290,7 +323,8 @@ export function supportsRemoteModelList(kind: Connection['kind']): boolean {
     kind === 'openai-compat' ||
     kind === 'grok' ||
     kind === 'gemini' ||
-    kind === 'cursor'
+    kind === 'cursor' ||
+    kind === 'chatgpt-oauth'
   )
 }
 
@@ -393,6 +427,33 @@ export async function fetchRemoteModelsForConnection(
   connection: Connection,
   options?: FetchOptions,
 ): Promise<RemoteModel[]> {
+  if (connection.kind === 'chatgpt-oauth') {
+    try {
+      const models = await fetchChatGPTCodexModels({
+        credentialScope: connection.credentialRef ?? 'default',
+        ...(options?.timeoutMs !== undefined
+          ? { timeoutMs: options.timeoutMs }
+          : {}),
+        ...(options?.fetchOverride
+          ? { fetchOverride: options.fetchOverride }
+          : {}),
+      })
+      return models
+        .filter(model => model.visibility === 'list')
+        .map(model => ({
+          id: model.value,
+          label: model.label,
+          description: model.description,
+          priority: model.priority,
+          contextLength: model.contextWindow,
+        }))
+    } catch (err) {
+      logForDebugging(
+        `[connections] ChatGPT Codex model list fetch error for ${connection.id}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return []
+    }
+  }
   if (connection.kind === 'gemini') {
     return fetchGeminiModels(connection, options)
   }

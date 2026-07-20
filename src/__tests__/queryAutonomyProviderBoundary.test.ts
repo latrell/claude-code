@@ -17,6 +17,7 @@ import {
 import { cleanupTempDir, createTempDir } from '../../tests/mocks/file-system'
 import {
   enqueue,
+  getCommandQueue,
   getCommandsByMaxPriority,
   resetCommandQueue,
 } from '../utils/messageQueueManager'
@@ -94,6 +95,33 @@ function createToolUseAssistantMessage(): AssistantMessage {
   } as unknown as AssistantMessage
 }
 
+function createTextAssistantMessage(
+  id: string,
+  text: string,
+): AssistantMessage {
+  return {
+    type: 'assistant',
+    uuid: randomUUID(),
+    timestamp: new Date().toISOString(),
+    requestId: undefined,
+    message: {
+      id,
+      type: 'message',
+      role: 'assistant',
+      model: 'gpt-5.6-sol',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      content: [{ type: 'text', text, citations: null }],
+    },
+  } as unknown as AssistantMessage
+}
+
 function createToolUseContext(): any {
   let inProgressToolUseIds = new Set<string>()
   let responseLength = 0
@@ -144,6 +172,101 @@ function createToolUseContext(): any {
 }
 
 describe('query autonomy/provider boundary', () => {
+  test('continues on Codex end_turn=false without synthetic input and scopes turn state to one query', async () => {
+    enqueue({
+      value: 'queued input must wait for the server continuation to finish',
+      mode: 'prompt',
+      priority: 'next',
+      uuid: randomUUID(),
+    })
+    const firstTurnSessions: object[] = []
+    const compactTurnSessions: object[] = []
+    const firstTurnInputs: any[][] = []
+    let firstTurnCallCount = 0
+    const firstDeps = {
+      uuid: () => 'query-chain-id',
+      microcompact: async (messages: unknown[]) => ({ messages }),
+      autocompact: async (
+        _messages: unknown[],
+        _context: unknown,
+        cacheSafeParams: any,
+      ) => {
+        compactTurnSessions.push(cacheSafeParams.chatGPTCodexTurnSession)
+        return {
+          compactionResult: undefined,
+          consecutiveFailures: 0,
+        }
+      },
+      callModel: async function* ({ messages, options }: any) {
+        firstTurnCallCount += 1
+        firstTurnSessions.push(options.chatGPTCodexTurnSession)
+        firstTurnInputs.push(messages)
+        options.chatGPTCodexTurnSession.lastResponseEndTurn =
+          firstTurnCallCount === 1 ? false : true
+        yield createTextAssistantMessage(
+          `msg_${firstTurnCallCount}`,
+          `response ${firstTurnCallCount}`,
+        )
+      },
+    }
+
+    const firstGenerator = query({
+      messages: [createUserMessage({ content: 'start Codex turn' })],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool: async (_tool, input) => ({
+        behavior: 'allow',
+        updatedInput: input,
+      }),
+      toolUseContext: createToolUseContext(),
+      querySource: 'sdk',
+      maxTurns: 1,
+      deps: firstDeps as never,
+    })
+    let firstResult = await firstGenerator.next()
+    while (!firstResult.done) firstResult = await firstGenerator.next()
+
+    expect(firstResult.value.reason).toBe('completed')
+    expect(firstTurnCallCount).toBe(2)
+    expect(firstTurnSessions[1]).toBe(firstTurnSessions[0])
+    expect(compactTurnSessions[0]).toBe(firstTurnSessions[0])
+    expect(firstTurnInputs[1]?.map(message => message.type)).toEqual([
+      'user',
+      'assistant',
+    ])
+    expect(getCommandQueue()).toHaveLength(1)
+
+    let secondTurnSession: object | undefined
+    const secondDeps = {
+      ...firstDeps,
+      callModel: async function* ({ options }: any) {
+        secondTurnSession = options.chatGPTCodexTurnSession
+        options.chatGPTCodexTurnSession.lastResponseEndTurn = true
+        yield createTextAssistantMessage('msg_next_user_turn', 'done')
+      },
+    }
+    const secondGenerator = query({
+      messages: [createUserMessage({ content: 'next user turn' })],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool: async (_tool, input) => ({
+        behavior: 'allow',
+        updatedInput: input,
+      }),
+      toolUseContext: createToolUseContext(),
+      querySource: 'sdk',
+      maxTurns: 2,
+      deps: secondDeps as never,
+    })
+    let secondResult = await secondGenerator.next()
+    while (!secondResult.done) secondResult = await secondGenerator.next()
+
+    expect(secondResult.value.reason).toBe('completed')
+    expect(secondTurnSession).not.toBe(firstTurnSessions[0])
+  })
+
   test('provider api-error messages fail a consumed autonomy run instead of advancing the flow', async () => {
     const previousDisableAttachments =
       process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
@@ -169,6 +292,7 @@ describe('query autonomy/provider boundary', () => {
       const toolUseContext = createToolUseContext()
 
       let callCount = 0
+      const toolContinuationSessions: object[] = []
       const deps = {
         uuid: () => 'query-chain-id',
         microcompact: async (messages: unknown[]) => ({ messages }),
@@ -176,9 +300,11 @@ describe('query autonomy/provider boundary', () => {
           compactionResult: undefined,
           consecutiveFailures: 0,
         }),
-        callModel: async function* () {
+        callModel: async function* ({ options }: any) {
           callCount += 1
+          toolContinuationSessions.push(options.chatGPTCodexTurnSession)
           if (callCount === 1) {
+            options.chatGPTCodexTurnSession.turnState = 'sticky-tool-turn'
             yield createToolUseAssistantMessage()
             return
           }
@@ -221,6 +347,10 @@ describe('query autonomy/provider boundary', () => {
 
       expect(next.value.reason).toBe('model_error')
       expect(callCount).toBe(2)
+      expect(toolContinuationSessions[1]).toBe(toolContinuationSessions[0])
+      expect(
+        (toolContinuationSessions[1] as { turnState?: string }).turnState,
+      ).toBe('sticky-tool-turn')
       expect(
         emitted.some(
           message =>

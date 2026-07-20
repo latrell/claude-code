@@ -17,6 +17,24 @@ export interface ConvertMessagesOptions {
   /** When true, preserve thinking blocks as reasoning_content on assistant messages
    *  (required for DeepSeek thinking mode with tool calls). */
   enableThinking?: boolean
+  /** Preserve encrypted Responses reasoning items for ChatGPT/Codex replay. */
+  preserveResponsesReasoning?: boolean
+}
+
+type ResponsesReasoningCarrier = ChatCompletionAssistantMessageParam & {
+  responses_reasoning_items?: Array<{
+    type: 'reasoning'
+    summary: unknown[]
+    content?: unknown[]
+    encrypted_content: string
+  }>
+}
+
+type ResponsesToolOutputCarrier = ChatCompletionToolMessageParam & {
+  responses_output_content?: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+  >
 }
 
 /**
@@ -52,7 +70,12 @@ export function anthropicMessagesToOpenAI(
         result.push(...convertInternalUserMessage(msg))
         break
       case 'assistant':
-        result.push(...convertInternalAssistantMessage(msg))
+        result.push(
+          ...convertInternalAssistantMessage(
+            msg,
+            _options?.preserveResponsesReasoning ?? false,
+          ),
+        )
         break
       default:
         break
@@ -138,17 +161,32 @@ function convertToolResult(
   block: BetaToolResultBlockParam,
 ): ChatCompletionToolMessageParam {
   let content: string
+  let responsesOutputContent:
+    | ResponsesToolOutputCarrier['responses_output_content']
+    | undefined
   if (typeof block.content === 'string') {
     content = block.content
   } else if (Array.isArray(block.content)) {
-    content = block.content
-      .map(c => {
-        if (typeof c === 'string') return c
-        if ('text' in c) return c.text
-        return ''
-      })
-      .filter(Boolean)
-      .join('\n')
+    responsesOutputContent = []
+    const textParts: string[] = []
+    for (const item of block.content) {
+      if (typeof item === 'string') {
+        textParts.push(item)
+        responsesOutputContent.push({ type: 'text', text: item })
+      } else if ('text' in item && typeof item.text === 'string') {
+        textParts.push(item.text)
+        responsesOutputContent.push({ type: 'text', text: item.text })
+      } else if ('type' in item && item.type === 'image') {
+        const image = convertImageBlockToOpenAI(
+          item as unknown as Record<string, unknown>,
+        )
+        if (image) responsesOutputContent.push(image)
+      }
+    }
+    content = textParts.join('\n')
+    if (responsesOutputContent.length === 0) {
+      responsesOutputContent = undefined
+    }
   } else {
     content = ''
   }
@@ -157,11 +195,15 @@ function convertToolResult(
     role: 'tool',
     tool_call_id: block.tool_use_id,
     content,
-  } satisfies ChatCompletionToolMessageParam
+    ...(responsesOutputContent && {
+      responses_output_content: responsesOutputContent,
+    }),
+  } satisfies ResponsesToolOutputCarrier
 }
 
 function convertInternalAssistantMessage(
   msg: AssistantMessage,
+  preserveResponsesReasoning: boolean,
 ): ChatCompletionMessageParam[] {
   const content = msg.message.content
 
@@ -188,6 +230,9 @@ function convertInternalAssistantMessage(
     ChatCompletionAssistantMessageParam['tool_calls']
   > = []
   const reasoningParts: string[] = []
+  const responsesReasoningItems: NonNullable<
+    ResponsesReasoningCarrier['responses_reasoning_items']
+  > = []
 
   for (const block of content) {
     if (typeof block === 'string') {
@@ -211,21 +256,53 @@ function convertInternalAssistantMessage(
       // reasoning_content: "" when the model answers directly, and the
       // empty value must be echoed back in the next request — otherwise
       // DeepSeek returns 400 ("reasoning_content ... must be passed back").
-      const thinkingText = (block as unknown as Record<string, unknown>)
-        .thinking
+      const blockRecord = block as unknown as Record<string, unknown>
+      const thinkingText = blockRecord.thinking
       if (typeof thinkingText === 'string') {
         reasoningParts.push(thinkingText)
+      }
+      if (preserveResponsesReasoning) {
+        const responsesItem = blockRecord.responses_reasoning_item as
+          | Record<string, unknown>
+          | undefined
+        if (
+          responsesItem?.type === 'reasoning' &&
+          typeof responsesItem.encrypted_content === 'string'
+        ) {
+          responsesReasoningItems.push({
+            type: 'reasoning',
+            summary: Array.isArray(responsesItem.summary)
+              ? responsesItem.summary
+              : [],
+            ...(Array.isArray(responsesItem.content)
+              ? { content: responsesItem.content }
+              : {}),
+            encrypted_content: responsesItem.encrypted_content,
+          })
+        } else {
+          const signature = blockRecord.signature
+          if (typeof signature === 'string' && signature.length > 0) {
+            responsesReasoningItems.push({
+              type: 'reasoning',
+              summary: [],
+              encrypted_content: signature,
+            })
+          }
+        }
       }
     }
     // Skip redacted_thinking, server_tool_use, etc.
   }
 
-  const result: ChatCompletionAssistantMessageParam = {
+  const result: ResponsesReasoningCarrier = {
     role: 'assistant',
     content: textParts.length > 0 ? textParts.join('\n') : null,
     ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
     ...(reasoningParts.length > 0 && {
       reasoning_content: reasoningParts.join('\n'),
+    }),
+    ...(responsesReasoningItems.length > 0 && {
+      responses_reasoning_items: responsesReasoningItems,
     }),
   }
 

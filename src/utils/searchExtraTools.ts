@@ -31,7 +31,10 @@ import {
 } from './analyzeContext.js'
 import { count } from './array.js'
 import { getMergedBetas } from './betas.js'
-import { getContextWindowForModel } from './context.js'
+import {
+  type ContextWindowRuntime,
+  getContextWindowForModel,
+} from './context.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { jsonStringify } from './slowOperations.js'
@@ -97,9 +100,12 @@ const CHARS_PER_TOKEN = 2.5
 /**
  * Get the token threshold for auto-enabling tool search for a given model.
  */
-function getAutoSearchExtraToolsTokenThreshold(model: string): number {
+function getAutoSearchExtraToolsTokenThreshold(
+  model: string,
+  runtime?: ContextWindowRuntime,
+): number {
   const betas = getMergedBetas(model)
-  const contextWindow = getContextWindowForModel(model, betas)
+  const contextWindow = getContextWindowForModel(model, betas, runtime)
   const percentage = getAutoSearchExtraToolsPercentage() / 100
   return Math.floor(contextWindow * percentage)
 }
@@ -108,9 +114,12 @@ function getAutoSearchExtraToolsTokenThreshold(model: string): number {
  * Get the character threshold for auto-enabling tool search for a given model.
  * Used as fallback when the token counting API is unavailable.
  */
-export function getAutoSearchExtraToolsCharThreshold(model: string): number {
+export function getAutoSearchExtraToolsCharThreshold(
+  model: string,
+  runtime?: ContextWindowRuntime,
+): number {
   return Math.floor(
-    getAutoSearchExtraToolsTokenThreshold(model) * CHARS_PER_TOKEN,
+    getAutoSearchExtraToolsTokenThreshold(model, runtime) * CHARS_PER_TOKEN,
   )
 }
 
@@ -299,6 +308,7 @@ export async function isSearchExtraToolsEnabled(
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
   agents: AgentDefinition[],
   source?: string,
+  runtime?: ContextWindowRuntime,
 ): Promise<boolean> {
   const mcpToolCount = count(tools, t => t.isMcp)
 
@@ -351,6 +361,7 @@ export async function isSearchExtraToolsEnabled(
         getToolPermissionContext,
         agents,
         model,
+        runtime,
       )
 
       if (enabled) {
@@ -678,6 +689,7 @@ async function checkAutoThreshold(
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
   agents: AgentDefinition[],
   model: string,
+  runtime?: ContextWindowRuntime,
 ): Promise<{
   enabled: boolean
   debugDescription: string
@@ -692,7 +704,7 @@ async function checkAutoThreshold(
   )
 
   if (deferredToolTokens !== null) {
-    const threshold = getAutoSearchExtraToolsTokenThreshold(model)
+    const threshold = getAutoSearchExtraToolsTokenThreshold(model, runtime)
     return {
       enabled: deferredToolTokens >= threshold,
       debugDescription:
@@ -709,7 +721,7 @@ async function checkAutoThreshold(
       getToolPermissionContext,
       agents,
     )
-  const charThreshold = getAutoSearchExtraToolsCharThreshold(model)
+  const charThreshold = getAutoSearchExtraToolsCharThreshold(model, runtime)
   return {
     enabled: deferredToolDescriptionChars >= charThreshold,
     debugDescription:

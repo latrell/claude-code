@@ -268,7 +268,8 @@ export async function* queryModelGrok(
         addToTotalSessionCost(
           costUSD,
           usage as unknown as BetaUsage,
-          options.model,
+          grokModel,
+          options.providerRuntimeConfig,
         )
       }
 

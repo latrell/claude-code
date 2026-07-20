@@ -105,6 +105,7 @@ import {
   getMaxOutputTokensForModel,
   queryModelWithStreaming,
 } from '../api/claude.js'
+import type { ChatGPTCodexTurnSession } from '../api/openai/responsesAdapter.js'
 import {
   getPromptTooLongTokenGap,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
@@ -128,6 +129,49 @@ import {
 export const POST_COMPACT_MAX_FILES_TO_RESTORE = 5
 export const POST_COMPACT_TOKEN_BUDGET = 50_000
 export const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000
+const MAX_CHATGPT_CODEX_COMPACT_CONTINUATIONS = 16
+
+function compactResponseHasToolUse(response: AssistantMessage): boolean {
+  const content = response.message.content
+  return (
+    Array.isArray(content) && content.some(block => block.type === 'tool_use')
+  )
+}
+
+function combineCompactResponses(
+  responses: readonly AssistantMessage[],
+): AssistantMessage {
+  const last = responses.at(-1)
+  if (!last) throw new Error('Compact sampling returned no response')
+  if (responses.length === 1) return last
+  const usageKeys = [
+    'input_tokens',
+    'output_tokens',
+    'cache_creation_input_tokens',
+    'cache_read_input_tokens',
+  ] as const
+  const usage = {
+    ...(last.message.usage as unknown as Record<string, unknown>),
+  }
+  for (const key of usageKeys) {
+    usage[key] = responses.reduce((total, response) => {
+      const value = (
+        response.message.usage as unknown as Record<string, unknown>
+      )[key]
+      return total + (typeof value === 'number' ? value : 0)
+    }, 0)
+  }
+  return {
+    ...last,
+    message: {
+      ...last.message,
+      content: responses.flatMap(response =>
+        Array.isArray(response.message.content) ? response.message.content : [],
+      ),
+      usage: usage as unknown as AssistantMessage['message']['usage'],
+    },
+  }
+}
 // Skills can be large (verify=18.7KB, claude-api=20.1KB). Previously re-injected
 // unbounded on every compact → 5-10K tok/compact. Per-skill truncation beats
 // dropping — instructions at the top of a skill file are usually the critical
@@ -1184,6 +1228,8 @@ async function streamCompactSummary({
   preCompactTokenCount: number
   cacheSafeParams: CacheSafeParams
 }): Promise<AssistantMessage> {
+  const compactTurnSession: ChatGPTCodexTurnSession =
+    cacheSafeParams.chatGPTCodexTurnSession ?? {}
   // When prompt cache sharing is enabled, use forked agent to reuse the
   // main conversation's cached prefix (system prompt, tools, context messages).
   // Falls back to regular streaming path on failure.
@@ -1223,7 +1269,10 @@ async function streamCompactSummary({
         // since it doesn't share cache with the main thread.
         const result = await runForkedAgent({
           promptMessages: [summaryRequest],
-          cacheSafeParams,
+          cacheSafeParams: {
+            ...cacheSafeParams,
+            chatGPTCodexTurnSession: compactTurnSession,
+          },
           canUseTool: createCompactCanUseTool(),
           querySource: 'compact',
           forkLabel: 'compact',
@@ -1305,6 +1354,7 @@ async function streamCompactSummary({
         async () => appState.toolPermissionContext,
         context.options.agentDefinitions.activeAgents,
         'compact',
+        context.options.providerRuntimeConfig,
       )
 
       // When tool search is enabled, include SearchExtraToolsTool and MCP tools. They get
@@ -1326,83 +1376,112 @@ async function streamCompactSummary({
           )
         : [FileReadTool]
 
-      const streamingGen = queryModelWithStreaming({
-        messages: normalizeMessagesForAPI(
-          stripImagesFromMessages(
-            stripReinjectedAttachments([
-              ...getMessagesAfterCompactBoundary(messages),
-              summaryRequest,
-            ]),
-          ),
-          context.options.tools,
+      const samplingMessages = normalizeMessagesForAPI(
+        stripImagesFromMessages(
+          stripReinjectedAttachments([
+            ...getMessagesAfterCompactBoundary(messages),
+            summaryRequest,
+          ]),
         ),
-        systemPrompt: asSystemPrompt([
-          'You are a helpful AI assistant tasked with summarizing conversations.',
-        ]),
-        thinkingConfig: { type: 'disabled' as const },
-        tools,
-        signal: context.abortController.signal,
-        options: {
-          async getToolPermissionContext() {
-            const appState = context.getAppState()
-            return appState.toolPermissionContext
+        context.options.tools,
+      )
+      const turnSession = compactTurnSession
+      const responseSegments: AssistantMessage[] = []
+
+      for (
+        let continuation = 0;
+        continuation <= MAX_CHATGPT_CODEX_COMPACT_CONTINUATIONS;
+        continuation += 1
+      ) {
+        let segmentResponse: AssistantMessage | undefined
+        const streamingGen = queryModelWithStreaming({
+          messages: samplingMessages,
+          systemPrompt: asSystemPrompt([
+            'You are a helpful AI assistant tasked with summarizing conversations.',
+          ]),
+          thinkingConfig: { type: 'disabled' as const },
+          tools,
+          signal: context.abortController.signal,
+          options: {
+            async getToolPermissionContext() {
+              const appState = context.getAppState()
+              return appState.toolPermissionContext
+            },
+            model: context.options.mainLoopModel,
+            toolChoice: undefined,
+            isNonInteractiveSession: context.options.isNonInteractiveSession,
+            hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
+            maxOutputTokensOverride: Math.min(
+              COMPACT_MAX_OUTPUT_TOKENS,
+              getMaxOutputTokensForModel(context.options.mainLoopModel),
+            ),
+            querySource: 'compact',
+            agents: context.options.agentDefinitions.activeAgents,
+            mcpTools: [],
+            effortValue: appState.effortValue,
+            langfuseTrace: context.langfuseTrace,
+            providerRuntimeConfig: context.options.providerRuntimeConfig,
+            chatGPTCodexTurnSession: turnSession,
           },
-          model: context.options.mainLoopModel,
-          toolChoice: undefined,
-          isNonInteractiveSession: context.options.isNonInteractiveSession,
-          hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-          maxOutputTokensOverride: Math.min(
-            COMPACT_MAX_OUTPUT_TOKENS,
-            getMaxOutputTokensForModel(context.options.mainLoopModel),
-          ),
-          querySource: 'compact',
-          agents: context.options.agentDefinitions.activeAgents,
-          mcpTools: [],
-          effortValue: appState.effortValue,
-          langfuseTrace: context.langfuseTrace,
-        },
-      })
-      const streamIter = streamingGen[Symbol.asyncIterator]()
-      let next = await streamIter.next()
+        })
+        const streamIter = streamingGen[Symbol.asyncIterator]()
+        let next = await streamIter.next()
 
-      while (!next.done) {
-        const event = next.value as
-          | StreamEvent
-          | AssistantMessage
-          | SystemAPIErrorMessage
-        const streamEvent = event as {
-          type: string
-          event: {
+        while (!next.done) {
+          const event = next.value as
+            | StreamEvent
+            | AssistantMessage
+            | SystemAPIErrorMessage
+          const streamEvent = event as {
             type: string
-            content_block: { type: string }
-            delta: { type: string; text: string }
+            event: {
+              type: string
+              content_block: { type: string }
+              delta: { type: string; text: string }
+            }
           }
+
+          if (
+            !hasStartedStreaming &&
+            streamEvent.type === 'stream_event' &&
+            streamEvent.event.type === 'content_block_start' &&
+            streamEvent.event.content_block.type === 'text'
+          ) {
+            hasStartedStreaming = true
+            context.setStreamMode?.('responding')
+          }
+
+          if (
+            streamEvent.type === 'stream_event' &&
+            streamEvent.event.type === 'content_block_delta' &&
+            streamEvent.event.delta.type === 'text_delta'
+          ) {
+            const charactersStreamed = streamEvent.event.delta.text.length
+            context.setResponseLength?.(length => length + charactersStreamed)
+          }
+
+          if (event.type === 'assistant') {
+            segmentResponse = event as AssistantMessage
+          }
+
+          next = await streamIter.next()
         }
 
+        if (!segmentResponse) break
+        responseSegments.push(segmentResponse)
         if (
-          !hasStartedStreaming &&
-          streamEvent.type === 'stream_event' &&
-          streamEvent.event.type === 'content_block_start' &&
-          streamEvent.event.content_block.type === 'text'
+          turnSession.lastResponseEndTurn !== false ||
+          compactResponseHasToolUse(segmentResponse)
         ) {
-          hasStartedStreaming = true
-          context.setStreamMode?.('responding')
+          response = combineCompactResponses(responseSegments)
+          break
         }
-
-        if (
-          streamEvent.type === 'stream_event' &&
-          streamEvent.event.type === 'content_block_delta' &&
-          streamEvent.event.delta.type === 'text_delta'
-        ) {
-          const charactersStreamed = streamEvent.event.delta.text.length
-          context.setResponseLength?.(length => length + charactersStreamed)
+        if (continuation === MAX_CHATGPT_CODEX_COMPACT_CONTINUATIONS) {
+          throw new Error(
+            `ChatGPT Codex exceeded ${MAX_CHATGPT_CODEX_COMPACT_CONTINUATIONS} compact continuations`,
+          )
         }
-
-        if (event.type === 'assistant') {
-          response = event as AssistantMessage
-        }
-
-        next = await streamIter.next()
+        samplingMessages.push(segmentResponse)
       }
 
       if (response) {

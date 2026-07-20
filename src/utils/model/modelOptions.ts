@@ -37,13 +37,14 @@ import {
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
 import {
-  CHATGPT_CODEX_DEFAULT_MODEL,
-  CHATGPT_CODEX_MODEL_OPTIONS,
   formatChatGPTCodexContextWindow,
+  getChatGPTCodexDefaultModel,
   getChatGPTCodexContextWindow,
   getChatGPTCodexModelDisplayName,
+  getChatGPTCodexModelOptions,
+  getChatGPTCredentialScope,
   isChatGPTAuthMode,
-  isChatGPTCodexModelAvailable,
+  isChatGPTCodexModelVisible,
 } from './chatgptModels.js'
 import { CURSOR_MODELS } from '../../services/api/cursor/models.js'
 import { t, tf } from '../../i18n/t.js'
@@ -514,14 +515,17 @@ function getCursorModelOptions(): ModelOption[] {
   ]
 }
 
-function getChatGPTCodexModelOptions(): ModelOption[] {
+function buildChatGPTCodexModelOptions(): ModelOption[] {
   const plan = getChatGPTSubscriptionPlan()
+  const credentialScope = getChatGPTCredentialScope()
+  const defaultModel = getChatGPTCodexDefaultModel(credentialScope)
   const defaultDisplayName =
-    getChatGPTCodexModelDisplayName(CHATGPT_CODEX_DEFAULT_MODEL) ??
-    CHATGPT_CODEX_DEFAULT_MODEL
+    getChatGPTCodexModelDisplayName(defaultModel, credentialScope) ??
+    defaultModel
   const defaultContextWindow = getChatGPTCodexContextWindow(
     plan,
-    CHATGPT_CODEX_DEFAULT_MODEL,
+    defaultModel,
+    credentialScope,
   )
   const defaultContextSuffix = defaultContextWindow
     ? ` · ctx ${formatChatGPTCodexContextWindow(defaultContextWindow)}`
@@ -540,19 +544,22 @@ function getChatGPTCodexModelOptions(): ModelOption[] {
         { model: defaultDisplayName },
       )}${defaultContextSuffix}`,
     },
-    ...CHATGPT_CODEX_MODEL_OPTIONS.filter(model =>
-      isChatGPTCodexModelAvailable(model.value, plan),
-    ).map(model => {
-      const contextWindow =
-        getChatGPTCodexContextWindow(plan, model.value) ?? model.contextWindow
-      const description = `${t(model.description)} · ctx ${formatChatGPTCodexContextWindow(contextWindow)}`
-      return {
-        value: model.value,
-        label: model.label,
-        description,
-        descriptionForModel: `${description} (${model.label})`,
-      }
-    }),
+    ...getChatGPTCodexModelOptions(credentialScope)
+      .filter(model =>
+        isChatGPTCodexModelVisible(model.value, plan, credentialScope),
+      )
+      .map(model => {
+        const contextWindow =
+          getChatGPTCodexContextWindow(plan, model.value, credentialScope) ??
+          model.contextWindow
+        const description = `${t(model.description)} · ctx ${formatChatGPTCodexContextWindow(contextWindow)}`
+        return {
+          value: model.value,
+          label: model.label,
+          description,
+          descriptionForModel: `${description} (${model.label})`,
+        }
+      }),
   ]
 }
 
@@ -579,7 +586,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   }
 
   if (getAPIProvider() === 'openai' && isChatGPTAuthMode()) {
-    return getChatGPTCodexModelOptions()
+    return buildChatGPTCodexModelOptions()
   }
 
   if (getAPIProvider() === 'cursor') {

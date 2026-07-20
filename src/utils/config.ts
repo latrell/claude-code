@@ -105,6 +105,8 @@ export type ProjectConfig = {
       cacheCreationInputTokens: number
       webSearchRequests: number
       costUSD: number
+      /** Preserve the account-scoped value recorded when the request ran. */
+      contextWindow?: number
     }
   >
   lastSessionMetrics?: Record<string, number>

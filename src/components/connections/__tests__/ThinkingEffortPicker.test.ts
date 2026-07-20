@@ -72,6 +72,14 @@ describe('buildThinkingEffortOptions', () => {
     ])
   })
 
+  test('does not offer unsupported thinking Off for ChatGPT Codex', () => {
+    expect(
+      buildThinkingEffortOptions(
+        connection({ kind: 'chatgpt-oauth', model: 'gpt-5.6-sol' }),
+      ).map(option => option.value),
+    ).toEqual(['default', 'low', 'medium', 'high', 'max'])
+  })
+
   test('an explicit non-DeepSeek model wins over a stale DeepSeek preset', () => {
     expect(
       buildThinkingEffortOptions(

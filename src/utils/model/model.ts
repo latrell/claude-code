@@ -25,6 +25,7 @@ import {
 } from './configs.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
+import type { SettingsJson } from '../settings/types.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import {
   getAPIProvider,
@@ -36,32 +37,41 @@ import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
 import { capitalize } from '../stringUtils.js'
 import {
-  CHATGPT_CODEX_DEFAULT_MODEL,
-  CHATGPT_CODEX_FAST_MODEL,
+  getChatGPTCodexDefaultModel,
+  getChatGPTCodexFastModel,
   getChatGPTCodexModelDisplayName,
+  getChatGPTCredentialScope,
   isChatGPTAuthMode,
 } from './chatgptModels.js'
 import { t, tf } from '../../i18n/t.js'
 import { getKnownModelDisplayName } from './display.js'
+import type { ProviderRuntimeConfig } from './subagentProvider.js'
 
 export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
-export function getSmallFastModel(): ModelName {
-  const provider = getAPIProvider()
-  if (provider === 'openai' && isChatGPTAuthMode()) {
-    return process.env.OPENAI_SMALL_FAST_MODEL ?? CHATGPT_CODEX_FAST_MODEL
+export function getSmallFastModel(
+  settings?: Pick<SettingsJson, 'modelType'>,
+  env: Record<string, string | undefined> = process.env,
+): ModelName {
+  const provider = getAPIProvider(settings, env)
+  if (provider === 'openai' && isChatGPTAuthMode(env)) {
+    // OPENAI_SMALL_FAST_MODEL belongs to the public/OpenAI-compatible
+    // protocol. A host-shell value survives connection activation and may be
+    // a vendor-specific slug, so it must never override the account catalog
+    // while ChatGPT subscription auth is active.
+    return getChatGPTCodexFastModel(getChatGPTCredentialScope(env))
   }
   // Provider-specific small fast model
-  if (provider === 'openai' && process.env.OPENAI_SMALL_FAST_MODEL) {
-    return process.env.OPENAI_SMALL_FAST_MODEL
+  if (provider === 'openai' && env.OPENAI_SMALL_FAST_MODEL) {
+    return env.OPENAI_SMALL_FAST_MODEL
   }
-  if (provider === 'gemini' && process.env.GEMINI_SMALL_FAST_MODEL) {
-    return process.env.GEMINI_SMALL_FAST_MODEL
+  if (provider === 'gemini' && env.GEMINI_SMALL_FAST_MODEL) {
+    return env.GEMINI_SMALL_FAST_MODEL
   }
   // Anthropic-specific or fallback
-  return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
+  return env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -218,7 +228,7 @@ function getProviderPrimaryModel(): ModelName | undefined {
 export function getDefaultModel(): ModelName {
   const provider = getAPIProvider()
   if (provider === 'openai' && isChatGPTAuthMode()) {
-    return CHATGPT_CODEX_DEFAULT_MODEL
+    return getChatGPTCodexDefaultModel(getChatGPTCredentialScope())
   }
   // For OpenAI provider, check OPENAI_DEFAULT_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_MODEL) {
@@ -253,7 +263,7 @@ export function getDefaultModel(): ModelName {
 export function getDefaultOpusModel(): ModelName {
   const provider = getAPIProvider()
   if (provider === 'openai' && isChatGPTAuthMode()) {
-    return CHATGPT_CODEX_DEFAULT_MODEL
+    return getChatGPTCodexDefaultModel(getChatGPTCredentialScope())
   }
   // For OpenAI provider, check OPENAI_DEFAULT_OPUS_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_OPUS_MODEL) {
@@ -294,9 +304,12 @@ export function getDefaultOpusModel(): ModelName {
 export function getDefaultSonnetModelForProvider(
   provider: APIProvider,
   env: Record<string, string | undefined> = process.env,
+  credentialScope?: string,
 ): ModelName {
   if (provider === 'openai' && env.OPENAI_AUTH_MODE === 'chatgpt') {
-    return CHATGPT_CODEX_DEFAULT_MODEL
+    return getChatGPTCodexDefaultModel(
+      credentialScope ?? getChatGPTCredentialScope(env),
+    )
   }
   // For OpenAI provider, check OPENAI_DEFAULT_SONNET_MODEL first
   if (provider === 'openai' && env.OPENAI_DEFAULT_SONNET_MODEL) {
@@ -351,7 +364,7 @@ export function getDefaultSonnetModelForProvider(
 export function getDefaultSonnetModel(): ModelName {
   const provider = getAPIProvider()
   if (provider === 'openai' && isChatGPTAuthMode()) {
-    return CHATGPT_CODEX_DEFAULT_MODEL
+    return getChatGPTCodexDefaultModel(getChatGPTCredentialScope())
   }
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_SONNET_MODEL) {
     return process.env.OPENAI_DEFAULT_SONNET_MODEL
@@ -374,7 +387,7 @@ export function getDefaultSonnetModel(): ModelName {
 export function getDefaultHaikuModel(): ModelName {
   const provider = getAPIProvider()
   if (provider === 'openai' && isChatGPTAuthMode()) {
-    return CHATGPT_CODEX_FAST_MODEL
+    return getChatGPTCodexFastModel(getChatGPTCredentialScope())
   }
   // For OpenAI provider, check OPENAI_DEFAULT_HAIKU_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_HAIKU_MODEL) {
@@ -796,6 +809,41 @@ export function parseUserSpecifiedModel(
 }
 
 /**
+ * Resolve a model alias against an explicit provider runtime.
+ *
+ * Scoped provider slots must not consult the process-global provider when an
+ * old persisted config has no pinned model. In particular, ChatGPT accounts
+ * resolve their Claude-shaped compatibility aliases from that account's
+ * authenticated Codex catalog: Haiku means the account's fast model, while
+ * the other capability aliases mean its server-default model.
+ */
+export function parseUserSpecifiedModelForRuntime(
+  modelInput: ModelName | ModelAlias,
+  runtime?: ProviderRuntimeConfig,
+): ModelName {
+  const env = runtime?.env ?? process.env
+  if (runtime?.provider !== 'openai' || env.OPENAI_AUTH_MODE !== 'chatgpt') {
+    return parseUserSpecifiedModel(modelInput)
+  }
+
+  const trimmed = modelInput.trim()
+  const normalized = trimmed.toLowerCase()
+  const has1mTag = has1mContext(normalized)
+  const modelString = has1mTag
+    ? normalized.replace(/\[1m]$/i, '').trim()
+    : normalized
+  if (!isModelAlias(modelString)) return parseUserSpecifiedModel(modelInput)
+
+  const credentialScope =
+    runtime.credentialScope ?? getChatGPTCredentialScope(env)
+  const resolved =
+    modelString === 'haiku'
+      ? getChatGPTCodexFastModel(credentialScope)
+      : getChatGPTCodexDefaultModel(credentialScope)
+  return resolved + (has1mTag ? '[1m]' : '')
+}
+
+/**
  * Resolves a skill's `model:` frontmatter against the current model, carrying
  * the `[1m]` suffix over when the target family supports it.
  *
@@ -813,13 +861,19 @@ export function parseUserSpecifiedModel(
 export function resolveSkillModelOverride(
   skillModel: string,
   currentModel: string,
+  runtime?: ProviderRuntimeConfig,
 ): string {
   if (has1mContext(skillModel) || !has1mContext(currentModel)) {
     return skillModel
   }
   // modelSupports1M matches on canonical IDs ('claude-opus-4-6', 'claude-sonnet-4');
   // a bare 'opus' alias falls through getCanonicalName unmatched. Resolve first.
-  if (modelSupports1M(parseUserSpecifiedModel(skillModel))) {
+  if (
+    modelSupports1M(
+      parseUserSpecifiedModelForRuntime(skillModel, runtime),
+      runtime,
+    )
+  ) {
     return skillModel + '[1m]'
   }
   return skillModel

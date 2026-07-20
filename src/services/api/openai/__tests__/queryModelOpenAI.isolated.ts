@@ -133,6 +133,7 @@ async function runQueryModel(
   events: BetaRawMessageStreamEvent[] = [],
   envOverrides: Record<string, string | undefined> = {},
   streamFactories: StreamFactory[] = [],
+  optionsOverrides: Record<string, unknown> = {},
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
@@ -142,6 +143,7 @@ async function runQueryModel(
   const defaultEnvOverrides = {
     OPENAI_API_KEY: 'test-key',
     OPENAI_AUTH_MODE: undefined,
+    OPENAI_MODEL: undefined,
   } satisfies Record<string, string | undefined>
   const effectiveEnvOverrides = { ...defaultEnvOverrides, ...envOverrides }
   const saved: Record<string, string | undefined> = {}
@@ -173,6 +175,7 @@ async function runQueryModel(
         mode: 'default',
         isBypassingPermissions: false,
       }),
+      ...optionsOverrides,
     }
 
     for await (const item of queryModelOpenAI(
@@ -214,7 +217,10 @@ let _createCallCount = 0
 let _lastCreateArgs: Record<string, any> | null = null
 
 mock.module('@ant/model-provider', () => ({
-  resolveOpenAIModel: (m: string) => m,
+  resolveOpenAIModel: (
+    m: string,
+    env: Record<string, string | undefined> = {},
+  ) => env.OPENAI_MODEL ?? m,
   adaptOpenAIStreamToAnthropic: (_stream: any, _model: string) =>
     _nextStreamFactories.shift()?.() ?? eventStream(_nextEvents),
   anthropicMessagesToOpenAI: (messages: any[]) =>
@@ -232,6 +238,24 @@ mock.module('@ant/model-provider', () => ({
       },
     })),
   anthropicToolChoiceToOpenAI: () => undefined,
+}))
+
+mock.module('../chatgptAuth.js', () => ({
+  forceRefreshChatGPTAuth: async () => ({
+    accessToken: 'refreshed-test-token',
+    accountId: 'account-test',
+  }),
+  getValidChatGPTAuth: async () => ({
+    accessToken: 'test-token',
+    accountId: 'account-test',
+  }),
+  isChatGPTAuthEnabled: (
+    env: Record<string, string | undefined> = process.env,
+  ) => env.OPENAI_AUTH_MODE === 'chatgpt',
+}))
+
+mock.module('../../errors.js', () => ({
+  PROMPT_TOO_LONG_ERROR_MESSAGE: 'Prompt is too long',
 }))
 
 mock.module('../../../../utils/envUtils.js', () => ({
@@ -580,6 +604,8 @@ mock.module('../../../../utils/messages.js', () => ({
   }),
   createAssistantAPIErrorMessage: (opts: any) => ({
     type: 'assistant',
+    isApiErrorMessage: true,
+    errorDetails: opts.errorDetails,
     message: {
       content: [{ type: 'text', text: opts.content }],
       apiError: opts.apiError,
@@ -1008,6 +1034,121 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
+  })
+})
+
+describe('queryModelOpenAI — ChatGPT model routing boundary', () => {
+  test('ignores stale public OPENAI_MODEL for ChatGPT subscription requests', async () => {
+    const { resolveOpenAITransportModel } = await import('../index.js')
+
+    expect(
+      resolveOpenAITransportModel('gpt-5.6-sol[1m]', {
+        OPENAI_AUTH_MODE: 'chatgpt',
+        OPENAI_MODEL: 'stale-public-api-model',
+      }),
+    ).toBe('gpt-5.6-sol')
+    expect(
+      resolveOpenAITransportModel('anthropic-alias', {
+        OPENAI_MODEL: 'configured-compatible-model',
+      }),
+    ).toBe('configured-compatible-model')
+  })
+
+  test('discards a failed partial attempt before replaying the retry', async () => {
+    let fetchCount = 0
+    const fetchOverride = mock(() => {
+      fetchCount += 1
+      const events =
+        fetchCount === 1
+          ? [
+              {
+                type: 'response.output_text.delta',
+                output_index: 0,
+                delta: 'discarded partial text',
+              },
+              {
+                type: 'response.failed',
+                response: {
+                  error: {
+                    code: 'server_error',
+                    message: 'temporary backend failure',
+                  },
+                },
+              },
+            ]
+          : [
+              {
+                type: 'response.output_text.delta',
+                output_index: 0,
+                delta: 'successful retry text',
+              },
+              {
+                type: 'response.completed',
+                response: { id: 'resp-success', status: 'completed' },
+              },
+            ]
+      const body = events
+        .map(event => `data: ${JSON.stringify(event)}\n\n`)
+        .join('')
+      return Promise.resolve(new Response(body, { status: 200 }))
+    }) as unknown as typeof fetch
+
+    const result = await runQueryModel(
+      [],
+      { OPENAI_AUTH_MODE: 'chatgpt', OPENAI_MODEL: 'stale-public-model' },
+      [],
+      {
+        model: 'gpt-5.6-sol',
+        fetchOverride,
+      },
+    )
+
+    expect(fetchCount).toBe(2)
+    expect(JSON.stringify(result.streamEvents)).toContain(
+      'successful retry text',
+    )
+    expect(JSON.stringify(result.streamEvents)).not.toContain(
+      'discarded partial text',
+    )
+    expect(result.assistantMessages).toHaveLength(1)
+    expect(JSON.stringify(result.assistantMessages[0]!.message)).toContain(
+      'successful retry text',
+    )
+  })
+
+  test('maps Codex context_length_exceeded into reactive-compaction shape', async () => {
+    const fetchOverride = mock(() =>
+      Promise.resolve(
+        new Response(
+          `data: ${JSON.stringify({
+            type: 'response.failed',
+            response: {
+              error: {
+                code: 'context_length_exceeded',
+                message: 'input exceeds the model context window',
+              },
+            },
+          })}\n\n`,
+          { status: 200 },
+        ),
+      ),
+    ) as unknown as typeof fetch
+
+    const result = await runQueryModel(
+      [],
+      { OPENAI_AUTH_MODE: 'chatgpt' },
+      [],
+      { model: 'gpt-5.6-sol', fetchOverride },
+    )
+
+    expect(result.assistantMessages).toHaveLength(1)
+    expect(result.assistantMessages[0]?.isApiErrorMessage).toBe(true)
+    expect(result.assistantMessages[0]?.message.content).toEqual([
+      { type: 'text', text: 'Prompt is too long' },
+    ])
+    expect(result.assistantMessages[0]?.errorDetails).toContain(
+      'input exceeds the model context window',
+    )
   })
 })
 

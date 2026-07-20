@@ -26,19 +26,17 @@
  *   all           → defaults recorded in ccb-connections.json (UI display)
  */
 
-import { copyFileSync } from 'fs'
 import { t, tf } from '../../i18n/t.js'
-import {
-  getChatGPTAuthFilePath,
-  hasStoredChatGPTAuth,
-  removeChatGPTAuth,
-} from '../../services/api/openai/chatgptAuth.js'
+import { hasStoredChatGPTAuth } from '../../services/api/openai/chatgptAuth.js'
+import { fetchChatGPTCodexModels } from '../../services/api/openai/codexModels.js'
+import { invalidateCodexUsagePublication } from '../../services/api/openai/codexUsage.js'
 import { hasStoredCursorOAuth } from '../../services/api/cursor/cursorOAuth.js'
 import { clearOAuthTokenCache } from '../../utils/auth.js'
 import {
   writeCCBProviderAuthEnv,
   type CCBProvider,
 } from '../../utils/ccbProviderAuth.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { apiProviderToSettingsProviderKey } from '../../utils/model/model.js'
 import {
@@ -57,6 +55,12 @@ import {
   SUBAGENT_CREDENTIAL_SCOPE,
   setSubagentProviderConfigOverride,
 } from '../../utils/model/subagentProvider.js'
+import {
+  CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS,
+  CHATGPT_CREDENTIAL_SCOPE_ENV,
+  getChatGPTCodexDefaultModel,
+  getChatGPTCodexFastModel,
+} from '../../utils/model/chatgptModels.js'
 import type {
   ProviderLoginConfig,
   SettingsJson,
@@ -105,8 +109,18 @@ type SettingsWriter = (value: SettingsJson) => { error: Error | null }
 
 let _settingsWriterOverride: SettingsWriter | null = null
 
+type ChatGPTCatalogRefresher = (credentialScope?: string) => Promise<unknown>
+
+let _chatGPTCatalogRefresherOverride: ChatGPTCatalogRefresher | null = null
+
 export function _setSettingsWriterForTest(writer: SettingsWriter | null): void {
   _settingsWriterOverride = writer
+}
+
+export function _setChatGPTCatalogRefresherForTest(
+  refresher: ChatGPTCatalogRefresher | null,
+): void {
+  _chatGPTCatalogRefresherOverride = refresher
 }
 
 function writeUserSettings(value: SettingsJson): { error: Error | null } {
@@ -153,6 +167,7 @@ export function envForConnection(
       // ccb-provider-auth.json) would otherwise be re-injected after a
       // session-scoped openai-compat activation and keep showing ChatGPT.
       env.OPENAI_AUTH_MODE = ''
+      env[CHATGPT_CREDENTIAL_SCOPE_ENV] = undefined
       env.OPENAI_BASE_URL = connection.baseUrl
       env.OPENAI_API_KEY = connection.apiKey
       // The explicitly picked model travels through the main loop model, so
@@ -171,16 +186,14 @@ export function envForConnection(
       break
     }
     case 'chatgpt-oauth': {
+      for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+        env[key] = undefined
+      }
       env.OPENAI_AUTH_MODE = 'chatgpt'
-      env.OPENAI_BASE_URL = undefined
-      env.OPENAI_API_KEY = undefined
-      env.OPENAI_MODEL = undefined
-      // ChatGPT mode resolves its default via CHATGPT_CODEX_DEFAULT_MODEL;
-      // clear any default left behind by an openai-compat activation.
-      env.OPENAI_DEFAULT_MODEL = undefined
-      env.OPENAI_DEFAULT_HAIKU_MODEL = tiers?.haiku
-      env.OPENAI_DEFAULT_SONNET_MODEL = tiers?.sonnet
-      env.OPENAI_DEFAULT_OPUS_MODEL = tiers?.opus
+      env[CHATGPT_CREDENTIAL_SCOPE_ENV] =
+        connection.credentialRef && connection.credentialRef !== 'default'
+          ? connection.credentialRef
+          : undefined
       break
     }
     case 'gemini': {
@@ -327,7 +340,17 @@ async function refreshUsageStoresForConnection(
   } else if (connection.kind === 'chatgpt-oauth') {
     try {
       const { fetchCodexUsage } = await import('../api/openai/codexUsage.js')
-      void fetchCodexUsage().catch(() => undefined)
+      const { fetchChatGPTCodexModels } = await import(
+        '../api/openai/codexModels.js'
+      )
+      const credentialScope =
+        connection.credentialRef && connection.credentialRef !== 'default'
+          ? connection.credentialRef
+          : undefined
+      void fetchCodexUsage(undefined, credentialScope).catch(() => undefined)
+      void fetchChatGPTCodexModels({ credentialScope, force: true }).catch(
+        () => undefined,
+      )
     } catch (err) {
       logError(err)
     }
@@ -362,29 +385,6 @@ async function checkChatGPTCredential(connection: Connection): Promise<{
             'ChatGPT credential for "{label}" is missing. Delete this connection and add it again via /connect.',
             { label: connection.label },
           ),
-  }
-}
-
-/**
- * Switch the ChatGPT credential in the default slot to the connection's
- * scoped credential file. No-op when the connection already uses 'default'.
- */
-async function deployChatGPTCredential(connection: Connection): Promise<{
-  success: boolean
-  error?: string
-}> {
-  const checked = await checkChatGPTCredential(connection)
-  if (!checked.success) return checked
-  const scope = connection.credentialRef ?? 'default'
-  if (scope === 'default') return { success: true }
-  try {
-    // Replace (not merge) the default credential with the scoped one.
-    await removeChatGPTAuth()
-    copyFileSync(getChatGPTAuthFilePath(scope), getChatGPTAuthFilePath())
-    return { success: true }
-  } catch (err) {
-    logError(err)
-    return { success: false, error: t('Failed to deploy ChatGPT credential') }
   }
 }
 
@@ -443,6 +443,35 @@ function resolveActivationModel(
 }
 
 /**
+ * A null ChatGPT model means "use this account's server default". Load the
+ * account catalog before materializing a scoped runtime or persisted config;
+ * otherwise the bundled Sol/Luna fallback becomes pinned before the request-
+ * time catalog refresh can select the real account default.
+ */
+async function refreshChatGPTCatalogForDefault(
+  connection: Connection,
+  resolvedModel: string | null,
+): Promise<void> {
+  if (connection.kind !== 'chatgpt-oauth' || resolvedModel !== null) return
+  const credentialScope =
+    connection.credentialRef && connection.credentialRef !== 'default'
+      ? connection.credentialRef
+      : undefined
+  try {
+    if (_chatGPTCatalogRefresherOverride) {
+      await _chatGPTCatalogRefresherOverride(credentialScope)
+    } else {
+      await fetchChatGPTCodexModels({ credentialScope })
+    }
+  } catch (error) {
+    // Keep the bundled catalog as an offline fallback, matching Codex.
+    logForDebugging(
+      `[connections] ChatGPT Codex model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/**
  * Activate a connection for the current session only (no disk writes except
  * OAuth slot mirrors, which by design live in secure storage).
  */
@@ -461,13 +490,20 @@ export async function activateConnectionForSession(
     const deployed = await deployAnthropicOAuth(connection)
     if (!deployed.success) return deployed
   } else if (connection.kind === 'chatgpt-oauth') {
-    const deployed = await deployChatGPTCredential(connection)
-    if (!deployed.success) return deployed
+    const checked = await checkChatGPTCredential(connection)
+    if (!checked.success) return checked
   } else if (connection.kind === 'cursor') {
     const checked = await checkCursorCredential(connection)
     if (!checked.success) return checked
   }
 
+  await refreshChatGPTCatalogForDefault(connection, resolvedModel)
+
+  // Provider/account switches invalidate any older ChatGPT usage request
+  // before the new env becomes visible. This covers ChatGPT→ChatGPT as well
+  // as ChatGPT→another provider and prevents a slow OAuth refresh from
+  // repopulating the previous account's plan/quota after the switch.
+  invalidateCodexUsagePublication()
   const env = envForConnection(connection, resolvedModel)
   applyEnvToProcess(env)
   // Record the delta so managedEnv re-applies it after every later config
@@ -521,15 +557,27 @@ function setScopedConfigOverride(
 function chatgptSlotConfig(
   connection: Connection,
   model?: string | null,
+  slot: ScopedSlot = 'sonnet',
 ): ProviderLoginConfig {
+  const credentialScope = connection.credentialRef ?? 'default'
+  const resolvedModel =
+    model ??
+    (slot === 'fast'
+      ? getChatGPTCodexFastModel(credentialScope)
+      : getChatGPTCodexDefaultModel(credentialScope))
   return {
     modelType: 'openai',
     connectionId: connection.id,
-    env: { OPENAI_AUTH_MODE: 'chatgpt' },
-    ...(model && { model }),
+    env: {
+      OPENAI_AUTH_MODE: 'chatgpt',
+      ...(credentialScope !== 'default' && {
+        [CHATGPT_CREDENTIAL_SCOPE_ENV]: credentialScope,
+      }),
+    },
+    model: resolvedModel,
     thinkingEffort: connection.thinkingEffort,
     thinkingEffortTransport: connection.thinkingEffortTransport,
-    credentialScope: connection.credentialRef ?? 'default',
+    credentialScope,
   }
 }
 
@@ -591,7 +639,7 @@ function scopedSlotConfig(
     return anthropicOAuthSlotConfig(connection, model, credentialScope)
   }
   if (connection.kind === 'chatgpt-oauth') {
-    return chatgptSlotConfig(connection, model)
+    return chatgptSlotConfig(connection, model, slot)
   }
   return slotLoginConfig(connection, model, credentialScope)
 }
@@ -609,6 +657,8 @@ async function activateScopedSlotForSession(
     const checked = await checkCursorCredential(connection)
     if (!checked.success) return checked
   }
+
+  await refreshChatGPTCatalogForDefault(connection, resolvedModel)
   setScopedConfigOverride(
     slot,
     scopedSlotConfig(connection, slot, resolvedModel),
@@ -647,6 +697,8 @@ export async function activateConnectionGlobally(
   )
   const resolvedModel = resolveActivationModel(connection, model)
 
+  await refreshChatGPTCatalogForDefault(connection, resolvedModel)
+
   try {
     if (slot === 'main') {
       // 1. Credentials into the store the boot chain reads
@@ -659,9 +711,22 @@ export async function activateConnectionGlobally(
         const env = envForConnection(connection, resolvedModel)
         writeCCBProviderAuthEnv(modelType as CCBProvider, env)
       } else if (connection.kind === 'chatgpt-oauth') {
-        const deployed = await deployChatGPTCredential(connection)
-        if (!deployed.success) return deployed
-        writeCCBProviderAuthEnv('openai', { OPENAI_AUTH_MODE: 'chatgpt' })
+        writeCCBProviderAuthEnv(
+          'openai',
+          envForConnection(connection, resolvedModel),
+        )
+        // settings.env is applied before ccb-provider-auth.json and therefore
+        // used to win over the selected ChatGPT account after a restart. Purge
+        // the incompatible public-API settings from that higher-precedence
+        // store as part of the same global activation.
+        const settingsEnv: Record<string, undefined> = {}
+        for (const key of CHATGPT_CODEX_INCOMPATIBLE_OPENAI_ENV_KEYS) {
+          settingsEnv[key] = undefined
+        }
+        const { error } = writeUserSettings({
+          env: settingsEnv,
+        } as unknown as SettingsJson)
+        if (error) return { success: false, error: error.message }
       } else if (connection.kind === 'anthropic-api') {
         const env = envForConnection(connection, resolvedModel)
         const settingsEnv: Record<string, string | undefined> = {}

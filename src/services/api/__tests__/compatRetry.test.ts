@@ -272,6 +272,8 @@ describe('isRetryableCompatError', () => {
   test('Responses 流内瞬态错误码可重试，invalid 错误码不可重试', () => {
     for (const code of [
       'server_error',
+      'internal_server_error',
+      'internal_error',
       'rate_limit_exceeded',
       'vector_store_timeout',
     ]) {
@@ -283,6 +285,26 @@ describe('isRetryableCompatError', () => {
     expect(
       isRetryableCompatError(
         Object.assign(new Error('bad prompt'), { code: 'invalid_prompt' }),
+      ),
+    ).toBe(false)
+  })
+
+  test('Responses 显式 retryable 分类优先于未知错误码', () => {
+    expect(
+      isRetryableCompatError(
+        Object.assign(new Error('future transient error'), {
+          code: 'future_transient_code',
+          retryable: true,
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isRetryableCompatError(
+        Object.assign(new Error('fatal stream error'), {
+          status: 503,
+          code: 'context_length_exceeded',
+          retryable: false,
+        }),
       ),
     ).toBe(false)
   })
@@ -497,6 +519,29 @@ describe('withCompatRetry', () => {
 
     // Should have been called 3 times (initial + 2 retries)
     expect(callCount).toBe(3)
+  })
+
+  test('服务端 retryAfterMs 延迟不被较短的指数退避覆盖', async () => {
+    const error = Object.assign(new Error('rate limited'), {
+      code: 'rate_limit_exceeded',
+      retryable: true,
+      retryAfterMs: 11_054,
+    })
+    const gen = withCompatRetry(
+      async () => {
+        throw error
+      },
+      {
+        maxRetries: 1,
+        signal: new AbortController().signal,
+        provider: 'chatgpt-codex',
+      },
+    )
+
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    expect((progress.value as SystemAPIErrorMessage).retryInMs).toBe(11_054)
+    await gen.return('cancel-test' as never)
   })
 
   test('不可重试错误立即抛出', async () => {

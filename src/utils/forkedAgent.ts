@@ -42,6 +42,7 @@ import { createDenialTrackingState } from './permissions/denialTracking.js'
 import { parseToolListFromCLI } from './permissions/permissionSetup.js'
 import { recordSidechainTranscript } from './sessionStorage.js'
 import type { SystemPrompt } from './systemPromptType.js'
+import type { ChatGPTCodexTurnSession } from '../services/api/openai/responsesAdapter.js'
 import {
   type ContentReplacementState,
   cloneContentReplacementState,
@@ -70,6 +71,8 @@ export type CacheSafeParams = {
   toolUseContext: ToolUseContext
   /** Parent context messages for prompt cache sharing */
   forkContextMessages: Message[]
+  /** Codex routing state when this fork is part of the same active user turn. */
+  chatGPTCodexTurnSession?: ChatGPTCodexTurnSession
 }
 
 // Slot written by handleStopHooks after each turn so post-turn forks
@@ -582,6 +585,7 @@ export async function runForkedAgent({
       maxOutputTokensOverride: maxOutputTokens,
       maxTurns,
       skipCacheWrite,
+      chatGPTCodexTurnSession: cacheSafeParams.chatGPTCodexTurnSession,
     })) {
       // Extract real usage from message_delta stream events (final usage per API call)
       if (message.type === 'stream_event') {

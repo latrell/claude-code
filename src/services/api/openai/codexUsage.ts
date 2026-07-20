@@ -3,8 +3,17 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { setChatGPTSubscriptionPlan } from 'src/bootstrap/state.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { getValidChatGPTAuth, isChatGPTAuthEnabled } from './chatgptAuth.js'
+import {
+  forceRefreshChatGPTAuth,
+  getChatGPTAuthFilePath,
+  getValidChatGPTAuth,
+  isChatGPTAuthEnabled,
+  type ChatGPTAuth,
+} from './chatgptAuth.js'
+import { getChatGPTCredentialScope } from 'src/utils/model/chatgptModels.js'
+import { getProxyFetchOptions } from 'src/utils/proxy.js'
 import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
+import { CHATGPT_CODEX_PROTOCOL_CLIENT_VERSION } from './codexModels.js'
 import type {
   BucketKind,
   ProviderUsageBucket,
@@ -74,10 +83,6 @@ function getClaudeConfigDir(): string {
   ).normalize('NFC')
 }
 
-function getAuthFilePath(): string {
-  return join(getClaudeConfigDir(), 'openai-chatgpt-auth.json')
-}
-
 function readPlanCacheSync(): PlanCacheEntry | null {
   try {
     const raw = readFileSync(getPlanCachePath(), 'utf8')
@@ -119,9 +124,11 @@ function writePlanCacheSync(
  * the network or the token-refresh machinery. Used at startup so the plan
  * cache can be validated synchronously before the first render.
  */
-function extractAccountIdFromAuthFileSync(): string | undefined {
+function extractAccountIdFromAuthFileSync(
+  credentialScope?: string,
+): string | undefined {
   try {
-    const raw = readFileSync(getAuthFilePath(), 'utf8')
+    const raw = readFileSync(getChatGPTAuthFilePath(credentialScope), 'utf8')
     const stored = JSON.parse(raw) as {
       tokens?: { account_id?: string; id_token?: string; access_token?: string }
     }
@@ -190,7 +197,9 @@ function extractAccountIdFromAuthFileSync(): string | undefined {
 export function initializeChatGPTPlan(): { usedCache: boolean } {
   if (!isChatGPTAuthEnabled()) return { usedCache: false }
 
-  const accountId = extractAccountIdFromAuthFileSync()
+  const accountId = extractAccountIdFromAuthFileSync(
+    getChatGPTCredentialScope(),
+  )
   if (!accountId) return { usedCache: false }
 
   const entry = readPlanCacheSync()
@@ -422,8 +431,7 @@ function parseProfileResponse(data: unknown): {
 
 async function codexFetch(
   path: string,
-  token: string,
-  accountId: string | undefined,
+  auth: ChatGPTAuth,
   signal: AbortSignal | undefined,
 ): Promise<Response> {
   const controller = new AbortController()
@@ -435,14 +443,20 @@ async function codexFetch(
 
   try {
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${auth.accessToken}`,
       'User-Agent': 'codex-cli',
+      originator: 'claude-code-best',
+      version: CHATGPT_CODEX_PROTOCOL_CLIENT_VERSION,
     }
-    if (accountId) {
-      headers['ChatGPT-Account-Id'] = accountId
+    if (auth.accountId) {
+      headers['ChatGPT-Account-Id'] = auth.accountId
+    }
+    if (auth.isFedRAMP) {
+      headers['X-OpenAI-Fedramp'] = 'true'
     }
 
     return await fetch(`${BASE_URL}${path}`, {
+      ...getProxyFetchOptions({ forAnthropicAPI: false }),
       headers,
       signal: controller.signal,
     })
@@ -453,12 +467,29 @@ async function codexFetch(
 
 async function safeFetchJSON(
   path: string,
-  token: string,
-  accountId: string | undefined,
+  auth: ChatGPTAuth,
+  credentialScope: string | undefined,
   signal: AbortSignal | undefined,
+  refreshAuth: (
+    credentialScope?: string,
+    rejectedAccessToken?: string,
+    expectedAccountId?: string,
+    expectedCredentialId?: string,
+  ) => Promise<ChatGPTAuth>,
 ): Promise<unknown | null> {
   try {
-    const res = await codexFetch(path, token, accountId, signal)
+    let currentAuth = auth
+    let res = await codexFetch(path, currentAuth, signal)
+    if (res.status === 401 && !signal?.aborted) {
+      await res.body?.cancel().catch(() => undefined)
+      currentAuth = await refreshAuth(
+        credentialScope,
+        currentAuth.accessToken,
+        currentAuth.accountId,
+        currentAuth.credentialId,
+      )
+      res = await codexFetch(path, currentAuth, signal)
+    }
     if (!res.ok) {
       logForDebugging(`[codexUsage] ${path} returned HTTP ${res.status}`)
       return null
@@ -531,51 +562,102 @@ export function mapCodexLimitsToProviderBuckets(
  * store so the status-line can display them without relying on
  * x-ratelimit-* response headers (which the Codex backend does not emit).
  */
+let activeUsageGeneration = 0
+
+/**
+ * Prevent every usage request started before this call from publishing into
+ * the process-global plan / status-line stores.
+ *
+ * Main-provider activation must call this synchronously at the provider switch
+ * boundary, including when switching away from ChatGPT. Merely clearing the
+ * provider-usage store is insufficient: an older in-flight ChatGPT request can
+ * otherwise repopulate it after the switch.
+ */
+export function invalidateCodexUsagePublication(): void {
+  activeUsageGeneration += 1
+  setChatGPTSubscriptionPlan(null)
+}
+
 export async function fetchCodexUsage(
   signal?: AbortSignal,
-  _credentialScope?: string,
+  credentialScope?: string,
+  authOverrides?: {
+    isAuthEnabled?: () => boolean
+    getAuth?: (credentialScope?: string) => Promise<ChatGPTAuth>
+    refreshAuth?: (
+      credentialScope?: string,
+      rejectedAccessToken?: string,
+      expectedAccountId?: string,
+      expectedCredentialId?: string,
+    ) => Promise<ChatGPTAuth>
+    /** False for background/scoped snapshots that must not replace main UI state. */
+    publish?: boolean
+  },
 ): Promise<CodexUsageSnapshot | null> {
-  if (!isChatGPTAuthEnabled()) return null
+  const shouldPublish = authOverrides?.publish ?? true
+  // Reserve publication order before the first await. Auth resolution may
+  // refresh an expired OAuth token over the network; if an older account's
+  // refresh finishes after a newer account switch, completion order must not
+  // make the older request authoritative again.
+  if (shouldPublish) activeUsageGeneration += 1
+  const requestGeneration = activeUsageGeneration
 
-  let auth: { accessToken: string; accountId?: string }
+  if (!(authOverrides?.isAuthEnabled ?? isChatGPTAuthEnabled)()) return null
+
+  const resolvedCredentialScope = credentialScope ?? getChatGPTCredentialScope()
+
+  let auth: ChatGPTAuth
   try {
-    auth = await getValidChatGPTAuth()
+    auth = await (authOverrides?.getAuth ?? getValidChatGPTAuth)(
+      resolvedCredentialScope,
+    )
   } catch {
     logForDebugging('[codexUsage] ChatGPT auth not available')
     return null
   }
 
-  const token = auth.accessToken
   const accountId = auth.accountId
 
   const [usageJSON, profileJSON] = await Promise.all([
-    safeFetchJSON('/wham/usage', token, accountId, signal),
-    safeFetchJSON('/wham/profiles/me', token, accountId, signal),
+    safeFetchJSON(
+      '/wham/usage',
+      auth,
+      resolvedCredentialScope,
+      signal,
+      authOverrides?.refreshAuth ?? forceRefreshChatGPTAuth,
+    ),
+    safeFetchJSON(
+      '/wham/profiles/me',
+      auth,
+      resolvedCredentialScope,
+      signal,
+      authOverrides?.refreshAuth ?? forceRefreshChatGPTAuth,
+    ),
   ])
 
   const { account, rateLimits } = usageJSON ? parseUsageResponse(usageJSON) : {}
   const { tokenUsage } = profileJSON ? parseProfileResponse(profileJSON) : {}
 
-  // Cache the subscription plan so getContextWindowForModel can auto-adapt
-  // the context window for ChatGPT Codex auth-mode sessions.
-  setChatGPTSubscriptionPlan(account?.subscriptionPlan)
+  if (shouldPublish && activeUsageGeneration === requestGeneration) {
+    // Cache the subscription plan so getContextWindowForModel can auto-adapt
+    // the context window for the active ChatGPT Codex account.
+    setChatGPTSubscriptionPlan(account?.subscriptionPlan)
 
-  // Persist plan to disk cache so the next startup can read it synchronously
-  // without a network round-trip. Keyed by accountId so plan changes on
-  // a different account are not accidentally served from stale cache.
-  if (accountId) {
-    writePlanCacheSync(accountId, account?.subscriptionPlan)
-  }
+    // Persist only the active account. An older account's delayed request must
+    // not replace the plan cache after a connection switch.
+    if (accountId) {
+      writePlanCacheSync(accountId, account?.subscriptionPlan)
+    }
 
-  // A successful usage response is authoritative for ChatGPT subscription
-  // limits. Replace the whole snapshot, including with an empty list, so a
-  // removed window (for example the old short-term limit) cannot linger in
-  // the status line. Preserve the last snapshot only when the request fails.
-  if (usageJSON !== null) {
-    updateProviderBuckets(
-      'openai',
-      rateLimits ? mapCodexLimitsToProviderBuckets(rateLimits) : [],
-    )
+    // A successful usage response is authoritative for ChatGPT subscription
+    // limits. Replace the whole snapshot, including with an empty list, so a
+    // removed window cannot linger in the status line.
+    if (usageJSON !== null) {
+      updateProviderBuckets(
+        'openai',
+        rateLimits ? mapCodexLimitsToProviderBuckets(rateLimits) : [],
+      )
+    }
   }
 
   if (!account && !rateLimits && !tokenUsage) {

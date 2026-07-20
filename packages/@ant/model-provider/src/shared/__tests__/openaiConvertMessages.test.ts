@@ -96,7 +96,7 @@ describe('anthropicMessagesToOpenAI', () => {
           },
         ],
       },
-    ])
+    ] as any)
   })
 
   test('converts tool_result to tool message', () => {
@@ -119,6 +119,45 @@ describe('anthropicMessagesToOpenAI', () => {
         content: 'file1.txt\nfile2.txt',
       },
     ])
+  })
+
+  test('preserves structured tool-result images for the Responses adapter', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg([
+          {
+            type: 'tool_result' as const,
+            tool_use_id: 'toolu_image',
+            content: [
+              { type: 'text', text: 'screenshot' },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: 'aGVsbG8=',
+                },
+              },
+            ],
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result).toEqual([
+      {
+        role: 'tool',
+        tool_call_id: 'toolu_image',
+        content: 'screenshot',
+        responses_output_content: [
+          { type: 'text', text: 'screenshot' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,aGVsbG8=' },
+          },
+        ],
+      },
+    ] as any)
   })
 
   test('preserves thinking blocks as reasoning_content', () => {
@@ -487,6 +526,71 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
     const assistant = result.filter(m => m.role === 'assistant')[0] as any
     expect(assistant.reasoning_content).toBe('')
     expect(assistant.content).toBe('Answer.')
+  })
+
+  test('preserves encrypted Responses reasoning only when requested', () => {
+    const messages = [
+      makeUserMsg('question'),
+      makeAssistantMsg([
+        {
+          type: 'thinking' as const,
+          thinking: 'Reasoning summary.',
+          signature: 'encrypted-reasoning-payload',
+        },
+        { type: 'text', text: 'Answer.' },
+      ]),
+    ]
+    const preserved = anthropicMessagesToOpenAI(messages, [] as any, {
+      preserveResponsesReasoning: true,
+    })
+    const omitted = anthropicMessagesToOpenAI(messages, [] as any)
+    const preservedAssistant = preserved.find(
+      message => message.role === 'assistant',
+    ) as any
+    const omittedAssistant = omitted.find(
+      message => message.role === 'assistant',
+    ) as any
+
+    expect(preservedAssistant.responses_reasoning_items).toEqual([
+      {
+        type: 'reasoning',
+        summary: [],
+        encrypted_content: 'encrypted-reasoning-payload',
+      },
+    ])
+    expect(omittedAssistant.responses_reasoning_items).toBeUndefined()
+  })
+
+  test('replays the complete encrypted Responses reasoning item', () => {
+    const responsesReasoningItem = {
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text: 'Reasoning summary.' }],
+      content: [{ type: 'reasoning_text', text: 'Reasoning content.' }],
+      encrypted_content: 'encrypted-reasoning-payload',
+    }
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('question'),
+        makeAssistantMsg([
+          {
+            type: 'thinking',
+            thinking: 'Reasoning summary.',
+            signature: 'encrypted-reasoning-payload',
+            responses_reasoning_item: responsesReasoningItem,
+          } as any,
+          { type: 'text', text: 'Answer.' },
+        ]),
+      ],
+      [] as any,
+      { preserveResponsesReasoning: true },
+    )
+    const assistant = result.find(
+      message => message.role === 'assistant',
+    ) as any
+
+    expect(assistant.responses_reasoning_items).toEqual([
+      responsesReasoningItem,
+    ])
   })
 
   test('omits reasoning_content when no thinking block is present', () => {

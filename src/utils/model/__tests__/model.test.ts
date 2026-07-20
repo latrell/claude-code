@@ -4,7 +4,7 @@ import {
   firstPartyNameToCanonical,
   getProviderScopedModelSetting,
   resolveInitialMainLoopModelSetting,
-} from '../model'
+} from '../model.js'
 
 describe('provider-scoped model settings', () => {
   test('maps API providers to settings provider keys', () => {

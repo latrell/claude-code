@@ -10,8 +10,7 @@ import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
-  AUTOCOMPACT_BUFFER_TOKENS,
-  getEffectiveContextWindowSize,
+  getAutoCompactThreshold,
   isAutoCompactEnabled,
   MANUAL_COMPACT_BUFFER_TOKENS,
 } from '../services/compact/autoCompact.js'
@@ -48,7 +47,10 @@ import type {
 } from '../types/message.js'
 import { toolToAPISchema } from './api.js'
 import { filterInjectedMemoryFiles, getMemoryFiles } from './claudemd.js'
-import { getContextWindowForModel } from './context.js'
+import {
+  type ContextWindowRuntime,
+  getContextWindowForModel,
+} from './context.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -370,6 +372,7 @@ async function countBuiltInToolTokens(
   agentInfo: AgentDefinitionsResult | null,
   model?: string,
   messages?: Message[],
+  runtime?: ContextWindowRuntime,
 ): Promise<{
   builtInToolTokens: number
   deferredBuiltinDetails: DeferredBuiltinTool[]
@@ -397,6 +400,7 @@ async function countBuiltInToolTokens(
     getToolPermissionContext,
     agentInfo?.activeAgents ?? [],
     'analyzeBuiltIn',
+    runtime,
   )
 
   // Separate always-loaded and deferred builtin tools using dynamic isDeferredTool check
@@ -626,6 +630,7 @@ export async function countMcpToolTokens(
   agentInfo: AgentDefinitionsResult | null,
   model: string,
   messages?: Message[],
+  runtime?: ContextWindowRuntime,
 ): Promise<{
   mcpToolTokens: number
   mcpToolDetails: McpTool[]
@@ -684,6 +689,7 @@ export async function countMcpToolTokens(
     getToolPermissionContext,
     agentInfo?.activeAgents ?? [],
     'analyzeMcp',
+    runtime,
   )
 
   // Find MCP tools that have been used in messages (loaded via SearchExtraToolsTool)
@@ -953,8 +959,13 @@ export async function analyzeContextUsage(
     permissionMode: (await getToolPermissionContext()).mode,
     mainLoopModel: model,
   })
+  const providerRuntime = toolUseContext?.options.providerRuntimeConfig
   // Get context window size
-  const contextWindow = getContextWindowForModel(runtimeModel, getSdkBetas())
+  const contextWindow = getContextWindowForModel(
+    runtimeModel,
+    getSdkBetas(),
+    providerRuntime,
+  )
 
   // Build the effective system prompt using the shared utility
   const defaultSystemPrompt = await getSystemPrompt(tools, runtimeModel)
@@ -991,6 +1002,7 @@ export async function analyzeContextUsage(
       agentDefinitions,
       runtimeModel,
       messages,
+      providerRuntime,
     ),
     countMcpToolTokens(
       tools,
@@ -998,6 +1010,7 @@ export async function analyzeContextUsage(
       agentDefinitions,
       runtimeModel,
       messages,
+      providerRuntime,
     ),
     countCustomAgentTokens(agentDefinitions),
     countSlashCommandTokens(tools, getToolPermissionContext, agentDefinitions),
@@ -1023,7 +1036,7 @@ export async function analyzeContextUsage(
   // Check if autocompact is enabled and calculate threshold
   const isAutoCompact = isAutoCompactEnabled()
   const autoCompactThreshold = isAutoCompact
-    ? getEffectiveContextWindowSize(model) - AUTOCOMPACT_BUFFER_TOKENS
+    ? getAutoCompactThreshold(runtimeModel, providerRuntime)
     : undefined
 
   // Create categories

@@ -27,6 +27,7 @@ import {
 } from 'src/utils/model/providers.js'
 import type { ProviderRuntimeConfig } from 'src/utils/model/subagentProvider.js'
 import type { ThinkingEffortTransport } from 'src/services/connections/types.js'
+import type { ChatGPTCodexTurnSession } from './openai/responsesAdapter.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -752,6 +753,8 @@ export type Options = {
   fastMode?: boolean
   advisorModel?: string
   providerRuntimeConfig?: ProviderRuntimeConfig
+  /** Turn-scoped sticky routing and continuation state for ChatGPT Codex. */
+  chatGPTCodexTurnSession?: ChatGPTCodexTurnSession
   addNotification?: (notif: Notification) => void
   // API-side task budget (output_config.task_budget). Distinct from the
   // tokenBudget.ts +500k auto-continue feature — this one is sent to the API
@@ -1209,6 +1212,7 @@ async function* queryModel(
     options.getToolPermissionContext,
     options.agents,
     'query',
+    options.providerRuntimeConfig,
   )
 
   // Precompute once — isDeferredTool does 2 GrowthBook lookups per call
@@ -2447,6 +2451,7 @@ async function* queryModel(
               costUSDForPart,
               usage as unknown as BetaUsage,
               options.model,
+              options.providerRuntimeConfig,
             )
 
             const refusalMessage = getErrorMessageIfRefusal(
@@ -3052,6 +3057,7 @@ async function* queryModel(
         fallbackCost,
         fallbackUsage as unknown as BetaUsage,
         options.model,
+        options.providerRuntimeConfig,
       )
     }
   }
