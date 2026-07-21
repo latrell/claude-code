@@ -9,6 +9,11 @@ export type Terminal =
   | { reason: 'stop_hook_prevented' }
   | { reason: 'hook_stopped' }
   | { reason: 'max_turns'; turnCount: number }
+  | {
+      reason: 'unfinished_tasks'
+      taskIds: string[]
+      noProgressContinuations: number
+    }
 
 export type Continue =
   | { reason: 'collapse_drain_retry'; committed: number }
@@ -18,4 +23,5 @@ export type Continue =
   | { reason: 'stop_hook_blocking' }
   | { reason: 'token_budget_continuation' }
   | { reason: 'codex_server_continuation' }
+  | { reason: 'unfinished_tasks_continuation'; attempt: number }
   | { reason: 'next_turn' }

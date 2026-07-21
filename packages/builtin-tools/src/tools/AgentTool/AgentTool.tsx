@@ -88,6 +88,7 @@ import {
   registerDetachedAgentSummaryStop,
   registerDetachedAgentWorktreeCleanup,
   runAsyncAgentLifecycle,
+  shouldRunAgentAsync,
   waitForAgentWorktreeOperation,
 } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
@@ -721,15 +722,6 @@ export const AgentTool = buildTool({
       promptMessages = [createUserMessage({ content: prompt })];
     }
 
-    const metadata = {
-      prompt,
-      resolvedAgentModel,
-      isBuiltInAgent: isBuiltInAgent(selectedAgent),
-      startTime,
-      agentType: selectedAgent.agentType,
-      isAsync: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled,
-    };
-
     // Use inline env check instead of coordinatorModule to avoid circular
     // dependency issues during test module loading.
     const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE) : false;
@@ -747,14 +739,25 @@ export const AgentTool = buildTool({
     // below (registerAsyncAgentTask + notifyOnCompletion).
     const assistantForceAsync = feature('KAIROS') ? appState.kairosEnabled : false;
 
-    const shouldRunAsync =
-      (run_in_background === true ||
-        selectedAgent.background === true ||
-        isCoordinator ||
-        forceAsync ||
-        assistantForceAsync ||
-        (proactiveModule?.isProactiveActive() ?? false)) &&
-      !isBackgroundTasksDisabled;
+    const shouldRunAsync = shouldRunAgentAsync({
+      runInBackground: run_in_background === true,
+      agentBackground: selectedAgent.background === true,
+      isCoordinator,
+      forceAsync,
+      assistantForceAsync,
+      proactiveActive: proactiveModule?.isProactiveActive() ?? false,
+      backgroundTasksDisabled: isBackgroundTasksDisabled,
+      inProcessTeammate: isInProcessTeammate(),
+    });
+
+    const metadata = {
+      prompt,
+      resolvedAgentModel,
+      isBuiltInAgent: isBuiltInAgent(selectedAgent),
+      startTime,
+      agentType: selectedAgent.agentType,
+      isAsync: shouldRunAsync,
+    };
     // Assemble the worker's tool pool independently of the parent's.
     // Workers always get their tools from assembleToolPool with their own
     // permission mode, so they aren't affected by the parent's tool

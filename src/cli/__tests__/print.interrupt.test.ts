@@ -4,6 +4,7 @@ import { withResolvers } from '../../utils/withResolvers.js'
 import {
   cancelSdkOwnedRuns,
   SdkRunLifecycle,
+  shouldWaitForSdkBackgroundTasks,
   waitForSdkBackgroundTaskPoll,
   waitForSdkStopSettlement,
 } from '../sdkRunLifecycle.js'
@@ -233,6 +234,33 @@ describe('headless SDK interrupt settlement', () => {
     controller.abort('interrupt')
 
     await expect(poll).resolves.toBe(false)
+  })
+
+  test('keeps waiting across a terminal task notification-delivery gap', () => {
+    expect(
+      shouldWaitForSdkBackgroundTasks({
+        hasRunningBackgroundTask: false,
+        hasPendingTaskDelivery: true,
+        hasMainThreadQueued: false,
+      }),
+    ).toBe(true)
+  })
+
+  test('stops waiting only after background work and delivery are drained', () => {
+    expect(
+      shouldWaitForSdkBackgroundTasks({
+        hasRunningBackgroundTask: false,
+        hasPendingTaskDelivery: false,
+        hasMainThreadQueued: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldWaitForSdkBackgroundTasks({
+        hasRunningBackgroundTask: false,
+        hasPendingTaskDelivery: false,
+        hasMainThreadQueued: true,
+      }),
+    ).toBe(true)
   })
 
   test('latches an interrupt before a per-query controller exists', () => {

@@ -85,6 +85,44 @@ type AgentWorktreeResult = {
   worktreeBranch?: string
 }
 
+/**
+ * Resolve whether an Agent invocation may detach from its caller.
+ *
+ * In-process teammates share the leader's process-global queue, while their
+ * query loop only consumes notifications addressed to the teammate. Until
+ * nested notification ownership is represented explicitly, every subagent
+ * they launch must stay synchronous regardless of process-global force modes.
+ */
+export function shouldRunAgentAsync({
+  runInBackground,
+  agentBackground,
+  isCoordinator,
+  forceAsync,
+  assistantForceAsync,
+  proactiveActive,
+  backgroundTasksDisabled,
+  inProcessTeammate,
+}: {
+  runInBackground: boolean
+  agentBackground: boolean
+  isCoordinator: boolean
+  forceAsync: boolean
+  assistantForceAsync: boolean
+  proactiveActive: boolean
+  backgroundTasksDisabled: boolean
+  inProcessTeammate: boolean
+}): boolean {
+  if (backgroundTasksDisabled || inProcessTeammate) return false
+  return (
+    runInBackground ||
+    agentBackground ||
+    isCoordinator ||
+    forceAsync ||
+    assistantForceAsync ||
+    proactiveActive
+  )
+}
+
 export async function stopAgentSummaryScope({
   scope,
   abortSignal,

@@ -29,6 +29,7 @@ const {
   updateTaskState,
   registerTask,
   evictTerminalTask,
+  hasPendingTaskNotificationDelivery,
   POLL_INTERVAL_MS,
   PANEL_GRACE_MS,
 } = await import('../framework.js')
@@ -244,6 +245,76 @@ describe('evictTerminalTask', () => {
 
     // No crash
     expect(Object.keys(getState().tasks)).toHaveLength(0)
+  })
+})
+
+describe('hasPendingTaskNotificationDelivery', () => {
+  test('keeps a completed background agent live until notification enqueue', () => {
+    const state = {
+      tasks: {
+        'task-001': makeTask({
+          status: 'completed',
+          notified: false,
+          isBackgrounded: true,
+        }),
+      },
+    }
+
+    expect(hasPendingTaskNotificationDelivery(state as any)).toBe(true)
+  })
+
+  test('accepts every terminal status awaiting background delivery', () => {
+    for (const status of ['completed', 'failed', 'killed'] as const) {
+      const state = {
+        tasks: {
+          'task-001': makeTask({
+            status,
+            notified: false,
+            isBackgrounded: true,
+          }),
+        },
+      }
+
+      expect(hasPendingTaskNotificationDelivery(state as any)).toBe(true)
+    }
+  })
+
+  test('stops waiting after the notification is enqueued', () => {
+    const state = {
+      tasks: {
+        'task-001': makeTask({
+          status: 'completed',
+          notified: true,
+          isBackgrounded: true,
+        }),
+      },
+    }
+
+    expect(hasPendingTaskNotificationDelivery(state as any)).toBe(false)
+  })
+
+  test('does not treat running, foreground, or teammate tasks as pending delivery', () => {
+    const cases = [
+      makeTask({ status: 'running', notified: false, isBackgrounded: true }),
+      makeTask({
+        status: 'completed',
+        notified: false,
+        isBackgrounded: false,
+      }),
+      makeTask({
+        type: 'in_process_teammate',
+        status: 'completed',
+        notified: false,
+      }),
+    ]
+
+    for (const task of cases) {
+      expect(
+        hasPendingTaskNotificationDelivery({
+          tasks: { [task.id]: task },
+        } as any),
+      ).toBe(false)
+    }
   })
 })
 

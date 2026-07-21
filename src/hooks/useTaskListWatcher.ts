@@ -69,7 +69,11 @@ export function useTaskListWatcher({
 
     const tasks = await listTasks(taskListId)
 
-    // If we have a current task, check if it's been resolved
+    let taskToSubmit: Task | undefined
+
+    // If we have a current task, check if it's been resolved. An unfinished
+    // task must be submitted again after the previous turn goes idle; simply
+    // returning here strands the claim forever when that turn ended early.
     if (currentTaskRef.current !== null) {
       const currentTask = tasks.find(t => t.id === currentTaskRef.current)
       if (!currentTask || currentTask.status === 'completed') {
@@ -77,49 +81,77 @@ export function useTaskListWatcher({
           `[TaskListWatcher] Task #${currentTaskRef.current} is marked complete, ready for next task`,
         )
         currentTaskRef.current = null
+      } else if (currentTask.owner === agentId) {
+        taskToSubmit = currentTask
       } else {
-        // Still working on current task
-        return
+        // Ownership changed externally. Stop treating the stale ref as ours.
+        currentTaskRef.current = null
       }
     }
 
-    // Find an open task with no owner that isn't blocked
-    const availableTask = findAvailableTask(tasks)
-
-    if (!availableTask) {
-      return
-    }
-
-    logForDebugging(
-      `[TaskListWatcher] Found available task #${availableTask.id}: ${availableTask.subject}`,
-    )
-
-    // Claim the task using the task list's agent ID
-    const result = await claimTask(taskListId, availableTask.id, agentId)
-
-    if (!result.success) {
-      logForDebugging(
-        `[TaskListWatcher] Failed to claim task #${availableTask.id}: ${result.reason}`,
+    // Recover an unfinished claim after remount/restart. The ref is local to
+    // this hook, while task ownership is persisted on disk.
+    if (!taskToSubmit) {
+      taskToSubmit = tasks.find(
+        task => task.owner === agentId && task.status !== 'completed',
       )
-      return
+      if (taskToSubmit) {
+        currentTaskRef.current = taskToSubmit.id
+        logForDebugging(
+          `[TaskListWatcher] Resuming owned task #${taskToSubmit.id}: ${taskToSubmit.subject}`,
+        )
+      }
     }
 
-    currentTaskRef.current = availableTask.id
+    if (!taskToSubmit) {
+      // Find an open task with no owner that isn't blocked
+      const availableTask = findAvailableTask(tasks)
+
+      if (!availableTask) {
+        return
+      }
+
+      logForDebugging(
+        `[TaskListWatcher] Found available task #${availableTask.id}: ${availableTask.subject}`,
+      )
+
+      // Claim the task using the task list's agent ID
+      const result = await claimTask(taskListId, availableTask.id, agentId)
+
+      if (!result.success) {
+        logForDebugging(
+          `[TaskListWatcher] Failed to claim task #${availableTask.id}: ${result.reason}`,
+        )
+        return
+      }
+
+      currentTaskRef.current = availableTask.id
+      taskToSubmit = availableTask
+    }
+
+    if (taskToSubmit.status === 'pending') {
+      await updateTask(taskListId, taskToSubmit.id, {
+        status: 'in_progress',
+      })
+    }
 
     // Format the task as a prompt
-    const prompt = formatTaskAsPrompt(availableTask)
+    const prompt = formatTaskAsPrompt(taskToSubmit)
 
     logForDebugging(
-      `[TaskListWatcher] Submitting task #${availableTask.id} as prompt`,
+      `[TaskListWatcher] Submitting task #${taskToSubmit.id} as prompt`,
     )
 
     const submitted = onSubmitTaskRef.current(prompt)
     if (!submitted) {
       logForDebugging(
-        `[TaskListWatcher] Failed to submit task #${availableTask.id}, releasing claim`,
+        `[TaskListWatcher] Failed to submit task #${taskToSubmit.id}, releasing claim`,
       )
-      // Release the claim
-      await updateTask(taskListId, availableTask.id, { owner: undefined })
+      // Release the claim so a later check (or another worker) can retry it.
+      await updateTask(taskListId, taskToSubmit.id, {
+        owner: undefined,
+        status: 'pending',
+      })
       currentTaskRef.current = null
     }
   }

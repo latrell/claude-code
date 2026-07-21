@@ -98,8 +98,10 @@ const _jobClassifier = feature('TEMPLATES')
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   enqueue,
+  getCommandQueue,
   remove as removeFromQueue,
   getCommandsByMaxPriorityBeforeConversationReset,
+  isQueuedCommandEditable,
   isSlashCommand,
 } from './utils/messageQueueManager.js'
 import {
@@ -166,6 +168,16 @@ import {
   isCacheWarningEnabled,
   shouldShowCacheWarning,
 } from './utils/cacheWarning.js'
+import { getTaskListId } from './utils/tasks.js'
+import {
+  buildUnfinishedTaskCoordinationPrompt,
+  buildUnfinishedTaskContinuationPrompt,
+  buildUnfinishedTaskNoProgressError,
+  inspectUnfinishedTasks,
+  isTaskCompletionGuardToolName,
+  MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS,
+  type UnfinishedTaskInspection,
+} from './query/unfinishedTasks.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const snipModule = feature('HISTORY_SNIP')
@@ -527,6 +539,13 @@ function isWithheldMaxOutputTokens(
   return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
 }
 
+function hasQueuedMainThreadUserInput(): boolean {
+  return getCommandQueue().some(
+    command =>
+      command.agentId === undefined && isQueuedCommandEditable(command),
+  )
+}
+
 function getAutonomyTurnOutcome(params: {
   terminal?: Terminal
   thrownError?: unknown
@@ -862,6 +881,9 @@ async function* queryLoop(
   const deps = params.deps ?? productionDeps()
   const chatGPTCodexTurnSession = params.chatGPTCodexTurnSession ?? {}
   let chatGPTCodexServerContinuationCount = 0
+  let taskCompletionGuardActivated = false
+  let taskCompletionGuardSnapshotKey: string | undefined
+  let taskCompletionGuardContinuationCount = 0
 
   // Mutable cross-iteration state. The loop body destructures this at the top
   // of each iteration so reads stay bare-name (`messages`, `toolUseContext`).
@@ -2191,11 +2213,13 @@ async function* queryLoop(
         continue
       }
 
+      let tokenBudgetOwnsCompletion = false
       if (feature('TOKEN_BUDGET')) {
+        const configuredTurnTokenBudget = getCurrentTurnTokenBudget()
         const decision = checkTokenBudget(
           budgetTracker!,
           toolUseContext.agentId,
-          getCurrentTurnTokenBudget(),
+          configuredTurnTokenBudget,
           getTurnOutputTokens(),
         )
 
@@ -2237,6 +2261,122 @@ async function* queryLoop(
             queryChainId: queryChainIdForAnalytics,
             queryDepth: queryTracking.depth,
           })
+        }
+
+        tokenBudgetOwnsCompletion =
+          configuredTurnTokenBudget !== null && configuredTurnTokenBudget > 0
+      }
+
+      if (tokenBudgetOwnsCompletion) {
+        return { reason: 'completed' }
+      }
+
+      if (
+        taskCompletionGuardActivated &&
+        toolUseContext.agentId === undefined &&
+        toolUseContext.getAppState().toolPermissionContext.mode !== 'plan' &&
+        !hasQueuedMainThreadUserInput()
+      ) {
+        const taskListId = getTaskListId()
+        let inspection: UnfinishedTaskInspection
+        try {
+          inspection = inspectUnfinishedTasks(
+            taskListId,
+            await deps.listTasks(taskListId),
+          )
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error)
+          logError(error)
+          const errorMessage = createAssistantAPIErrorMessage({
+            content: `Task completion guard could not inspect TaskList: ${detail}`,
+            apiError: 'api_error',
+            error: 'unknown',
+            errorDetails: detail,
+          })
+          yield errorMessage
+          await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+          return { reason: 'model_error', error }
+        }
+
+        if (toolUseContext.abortController.signal.aborted) {
+          return { reason: 'aborted_streaming' }
+        }
+
+        if (hasQueuedMainThreadUserInput()) {
+          return { reason: 'completed' }
+        }
+
+        if (inspection.hasPublicUnfinishedTasks) {
+          const tasksForGuard =
+            inspection.actionableTasks.length > 0
+              ? inspection.actionableTasks
+              : inspection.unfinishedTasks
+          const nextTurnCount = turnCount + 1
+          if (maxTurns && nextTurnCount > maxTurns) {
+            yield createAttachmentMessage({
+              type: 'max_turns_reached',
+              maxTurns,
+              turnCount: nextTurnCount,
+            })
+            return { reason: 'max_turns', turnCount: nextTurnCount }
+          }
+
+          if (inspection.snapshotKey !== taskCompletionGuardSnapshotKey) {
+            taskCompletionGuardSnapshotKey = inspection.snapshotKey
+            taskCompletionGuardContinuationCount = 0
+          }
+
+          if (
+            taskCompletionGuardContinuationCount >=
+            MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS
+          ) {
+            const content = buildUnfinishedTaskNoProgressError(tasksForGuard)
+            const errorMessage = createAssistantAPIErrorMessage({
+              content,
+              apiError: 'api_error',
+              error: 'unknown',
+              errorDetails: content,
+            })
+            yield errorMessage
+            await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+            return {
+              reason: 'unfinished_tasks',
+              taskIds: tasksForGuard.map(task => task.id),
+              noProgressContinuations: taskCompletionGuardContinuationCount,
+            }
+          }
+
+          taskCompletionGuardContinuationCount++
+          state = {
+            messages: [
+              ...messagesForQuery,
+              ...assistantMessages,
+              createUserMessage({
+                content:
+                  inspection.actionableTasks.length > 0
+                    ? buildUnfinishedTaskContinuationPrompt(
+                        inspection.actionableTasks,
+                      )
+                    : buildUnfinishedTaskCoordinationPrompt(
+                        inspection.unfinishedTasks,
+                      ),
+                isMeta: true,
+              }),
+            ],
+            toolUseContext,
+            autoCompactTracking: tracking,
+            maxOutputTokensRecoveryCount: 0,
+            hasAttemptedReactiveCompact: false,
+            maxOutputTokensOverride: undefined,
+            pendingToolUseSummary: undefined,
+            stopHookActive: undefined,
+            turnCount: nextTurnCount,
+            transition: {
+              reason: 'unfinished_tasks_continuation',
+              attempt: taskCompletionGuardContinuationCount,
+            },
+          }
+          continue
         }
       }
 
@@ -2301,6 +2441,13 @@ async function* queryLoop(
       }
     }
     queryCheckpoint('query_tool_execution_end')
+
+    if (
+      toolUseContext.agentId === undefined &&
+      toolUseBlocks.some(block => isTaskCompletionGuardToolName(block.name))
+    ) {
+      taskCompletionGuardActivated = true
+    }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:

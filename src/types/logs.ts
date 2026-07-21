@@ -183,6 +183,12 @@ export type GoalState = {
   accumulatedActiveMs: number
   blockedAttempts: number
   lastBlockReason: string | null
+  /**
+   * Continuation-turn counter at which the latest blocked attempt was
+   * recorded. Optional so transcripts written before turn-aware blocked
+   * accounting remain readable; a missing value starts a fresh audit.
+   */
+  lastBlockedTurn?: number | null
   createdAt: number
   updatedAt: number
   turnsExecuted: number

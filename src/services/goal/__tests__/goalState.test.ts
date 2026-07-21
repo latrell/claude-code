@@ -158,24 +158,52 @@ describe('updateGoalTokens — accumulates and triggers budget_limited', () => {
 describe('recordBlockedAttempt — CODEX 3-consecutive-attempts audit', () => {
   test('first attempt records but stays active', () => {
     setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
     const r = recordBlockedAttempt('compile error', SESSION)
     expect(r?.status).toBe('active')
     expect(r?.attempts).toBe(1)
   })
 
-  test('three same-reason attempts in a row flip to blocked', () => {
+  test('three consecutive turns with the same reason flip to blocked', () => {
     setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('compile error', SESSION)
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('compile error', SESSION)
+    incrementGoalTurns(SESSION)
     const r = recordBlockedAttempt('compile error', SESSION)
     expect(r?.status).toBe('blocked')
     expect(r?.attempts).toBe(BLOCKED_CONSECUTIVE_THRESHOLD)
   })
 
+  test('multiple calls in one turn count as one attempt', () => {
+    setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
+    recordBlockedAttempt('compile error', SESSION)
+    recordBlockedAttempt('compile error', SESSION)
+    const r = recordBlockedAttempt('compile error', SESSION)
+    expect(r?.status).toBe('active')
+    expect(r?.attempts).toBe(1)
+  })
+
+  test('a skipped turn starts a fresh audit', () => {
+    setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
+    recordBlockedAttempt('compile error', SESSION)
+    incrementGoalTurns(SESSION) // progress: no blocked report this turn
+    incrementGoalTurns(SESSION)
+    const r = recordBlockedAttempt('compile error', SESSION)
+    expect(r?.status).toBe('active')
+    expect(r?.attempts).toBe(1)
+  })
+
   test('different reason resets counter', () => {
     setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('A', SESSION)
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('A', SESSION)
+    incrementGoalTurns(SESSION)
     const r = recordBlockedAttempt('B', SESSION)
     expect(r?.status).toBe('active')
     expect(r?.attempts).toBe(1)
@@ -183,19 +211,53 @@ describe('recordBlockedAttempt — CODEX 3-consecutive-attempts audit', () => {
 
   test('case-insensitive comparison', () => {
     setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('compile error', SESSION)
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('Compile Error', SESSION)
+    incrementGoalTurns(SESSION)
     const r = recordBlockedAttempt('COMPILE ERROR', SESSION)
     expect(r?.status).toBe('blocked')
   })
 
   test('resume resets blocked attempts', () => {
     setGoal('x', { sessionId: SESSION })
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('oops', SESSION)
+    incrementGoalTurns(SESSION)
     recordBlockedAttempt('oops', SESSION)
     pauseGoal(SESSION)
     resumeGoal(SESSION)
     expect(getGoal(SESSION)!.blockedAttempts).toBe(0)
+    expect(getGoal(SESSION)!.lastBlockedTurn).toBeNull()
+  })
+
+  test('resuming a blocked goal starts a fresh blocked audit', () => {
+    setGoal('x', { sessionId: SESSION })
+    for (let turn = 0; turn < BLOCKED_CONSECUTIVE_THRESHOLD; turn++) {
+      incrementGoalTurns(SESSION)
+      recordBlockedAttempt('missing credential', SESSION)
+    }
+    expect(getGoal(SESSION)?.status).toBe('blocked')
+
+    const resumed = resumeGoal(SESSION)
+    expect(resumed?.status).toBe('active')
+    expect(resumed?.blockedAttempts).toBe(0)
+    expect(resumed?.lastBlockReason).toBeNull()
+    expect(resumed?.lastBlockedTurn).toBeNull()
+  })
+
+  test('legacy state without lastBlockedTurn starts a fresh audit', () => {
+    const legacy = setGoal('x', { sessionId: SESSION })
+    legacy.turnsExecuted = 4
+    legacy.blockedAttempts = 2
+    legacy.lastBlockReason = 'compile error'
+    delete legacy.lastBlockedTurn
+
+    const r = recordBlockedAttempt('compile error', SESSION)
+    expect(r?.status).toBe('active')
+    expect(r?.attempts).toBe(1)
+    expect(getGoal(SESSION)?.lastBlockedTurn).toBe(4)
   })
 })
 

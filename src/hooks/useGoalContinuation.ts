@@ -54,9 +54,10 @@ export type UseGoalContinuationOpts = {
   hasActiveLocalJsxUI: boolean
   isInPlanMode: boolean
   isQueryActiveNow?: () => boolean
-  onMaxTurnsReached?: () => void
+  onMaxTurnsReached?: (payload: { maxTurns: number }) => void
   onContinuationEnqueued?: (payload: {
     turn: number
+    maxTurns: number
     objective: string
   }) => void
 }
@@ -150,7 +151,7 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
       const marked = markGoalMaxTurnsReached()
       if (marked) {
         persistCurrentGoal()
-        opts.onMaxTurnsReached?.()
+        opts.onMaxTurnsReached?.({ maxTurns: MAX_GOAL_TURNS })
       }
       logForDebugging(
         `[goal] hook: MAX_GOAL_TURNS (${MAX_GOAL_TURNS}) reached, stopping`,
@@ -179,6 +180,7 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
     })
     opts.onContinuationEnqueued?.({
       turn: turns,
+      maxTurns: MAX_GOAL_TURNS,
       objective: goal.objective,
     })
   }, [

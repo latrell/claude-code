@@ -265,6 +265,7 @@ const {
   publishAgentResultAfterHandoffSafety,
   runAsyncAgentLifecycle,
   registerDetachedAgentSummaryStop,
+  shouldRunAgentAsync,
   stopAgentSummaryScope,
   waitForAgentWorktreeOperation,
 } = await import('../agentToolUtils')
@@ -314,6 +315,63 @@ function makeAssistantMessage(content: any[]): any {
 function makeUserMessage(text: string): any {
   return { type: 'user', message: { content: text } }
 }
+
+describe('shouldRunAgentAsync', () => {
+  const defaults = {
+    runInBackground: false,
+    agentBackground: false,
+    isCoordinator: false,
+    forceAsync: false,
+    assistantForceAsync: false,
+    proactiveActive: false,
+    backgroundTasksDisabled: false,
+    inProcessTeammate: false,
+  }
+
+  test('allows every supported force mode outside an in-process teammate', () => {
+    const forceModes = [
+      'isCoordinator',
+      'forceAsync',
+      'assistantForceAsync',
+      'proactiveActive',
+    ] as const
+
+    for (const mode of forceModes) {
+      expect(shouldRunAgentAsync({ ...defaults, [mode]: true })).toBe(true)
+    }
+  })
+
+  test('keeps in-process teammate subagents synchronous under every force mode', () => {
+    const asyncTriggers = [
+      'runInBackground',
+      'agentBackground',
+      'isCoordinator',
+      'forceAsync',
+      'assistantForceAsync',
+      'proactiveActive',
+    ] as const
+
+    for (const trigger of asyncTriggers) {
+      expect(
+        shouldRunAgentAsync({
+          ...defaults,
+          [trigger]: true,
+          inProcessTeammate: true,
+        }),
+      ).toBe(false)
+    }
+  })
+
+  test('honors the global background-task disable gate', () => {
+    expect(
+      shouldRunAgentAsync({
+        ...defaults,
+        runInBackground: true,
+        backgroundTasksDisabled: true,
+      }),
+    ).toBe(false)
+  })
+})
 
 const finalizationMetadata = {
   prompt: 'test prompt',

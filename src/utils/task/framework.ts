@@ -152,6 +152,26 @@ export function getRunningTasks(state: AppState): TaskState[] {
 }
 
 /**
+ * Check whether a background task reached a terminal state but has not yet
+ * published its model-facing completion notification.
+ *
+ * Local agents may finish model execution before detached worktree cleanup
+ * assembles their notification. Headless callers must keep polling through
+ * that interval even though the task is no longer `running`. Foreground tasks
+ * return their result directly, and in-process teammates use their mailbox
+ * lifecycle instead of task notifications, so neither belongs in this gate.
+ */
+export function hasPendingTaskNotificationDelivery(state: AppState): boolean {
+  const tasks = state.tasks ?? {}
+  return Object.values(tasks).some(task => {
+    if (!isTerminalTaskStatus(task.status) || task.notified) return false
+    if (task.type === 'in_process_teammate') return false
+    if ('isBackgrounded' in task && task.isBackgrounded === false) return false
+    return true
+  })
+}
+
+/**
  * Generate attachments for tasks with new output or status changes.
  * Called by the framework to create push notifications.
  */

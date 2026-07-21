@@ -1050,12 +1050,6 @@ export async function runInProcessTeammate(
   let currentAutonomyRootDir: string | undefined
   let shouldExit = false
 
-  // Try to claim an available task immediately so the UI can show activity
-  // from the very start. The idle loop handles claiming for subsequent tasks.
-  // Use parentSessionId as the task list ID since the leader creates tasks
-  // under its session ID, not the team name.
-  await tryClaimNextTask(identity.parentSessionId, identity.agentName)
-
   try {
     // Add initial prompt to task.messages for display (wrapped with XML)
     updateTaskState(

@@ -6268,10 +6268,8 @@ const zh: Record<string, string> = {
   'new task?': '新任务？',
   '{n} tokens': '{n} token',
   'new task? /clear to save {n} tokens': '新任务？/clear 可节省 {n} token',
-  'Goal auto-continue ({turn}/1): continue advancing "{objective}".':
-    '目标自动继续（{turn}/1）：继续推进“{objective}”。',
-  'Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.':
-    '目标已达到最大继续轮数（1）。运行 /goal continue 重置轮数计数并继续。',
+  'Goal auto-continue ({turn}/{maxTurns}): continue advancing "{objective}".':
+    '目标自动继续（{turn}/{maxTurns}）：继续推进“{objective}”。',
   'Claude Code has been suspended. Run `fg` to bring Claude Code back.':
     'Claude Code 已挂起。运行 `fg` 恢复 Claude Code。',
   'Note: ctrl + z now suspends Claude Code, ctrl + _ undoes input.':

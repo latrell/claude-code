@@ -107,6 +107,25 @@ export async function waitForSdkStopSettlement(
 }
 
 /**
+ * Decide whether a headless generation still owns background work that can
+ * produce another model turn. The pending-delivery input covers the interval
+ * after a task becomes terminal but before its task notification is queued.
+ */
+export function shouldWaitForSdkBackgroundTasks({
+  hasRunningBackgroundTask,
+  hasPendingTaskDelivery,
+  hasMainThreadQueued,
+}: {
+  hasRunningBackgroundTask: boolean
+  hasPendingTaskDelivery: boolean
+  hasMainThreadQueued: boolean
+}): boolean {
+  return (
+    hasRunningBackgroundTask || hasPendingTaskDelivery || hasMainThreadQueued
+  )
+}
+
+/**
  * Wait for the next background-task poll without letting a cancelled SDK
  * generation stay trapped in the waiting_for_agents loop. Returns false as
  * soon as cancellation is observed, including when the signal was already

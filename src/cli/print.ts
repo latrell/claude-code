@@ -13,6 +13,7 @@ import { RemoteIO } from 'src/cli/remoteIO.js'
 import {
   cancelSdkOwnedRuns,
   SdkRunLifecycle,
+  shouldWaitForSdkBackgroundTasks,
   waitForSdkBackgroundTaskPoll,
   waitForSdkStopSettlement,
 } from 'src/cli/sdkRunLifecycle.js'
@@ -372,7 +373,10 @@ import {
   removeTeammateFromTeamFile,
 } from '../utils/swarm/teamHelpers.js'
 import { unassignTeammateTasks } from '../utils/tasks.js'
-import { getRunningTasks } from '../utils/task/framework.js'
+import {
+  getRunningTasks,
+  hasPendingTaskNotificationDelivery,
+} from '../utils/task/framework.js'
 import { isBackgroundTask } from '../tasks/types.js'
 import { stopTask } from '../tasks/stopTask.js'
 import { drainSdkEvents } from '../utils/sdkEventQueue.js'
@@ -2668,14 +2672,25 @@ function runHeadlessStreaming(
           const hasRunningBg = getRunningTasks(state).some(
             t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
           )
+          // A successful local agent becomes terminal before detached
+          // worktree cleanup publishes its completion notification. Keep this
+          // generation alive through that delivery gap without changing the
+          // TUI-visible completed state back to running.
+          const hasPendingTaskDelivery =
+            hasPendingTaskNotificationDelivery(state)
           const hasMainThreadQueued = peek(isMainThread) !== undefined
+          const hasSdkBackgroundWork = shouldWaitForSdkBackgroundTasks({
+            hasRunningBackgroundTask: hasRunningBg,
+            hasPendingTaskDelivery,
+            hasMainThreadQueued,
+          })
           if (runAbortController.signal.aborted) {
             // Background tasks may intentionally outlive a foreground turn,
             // but they must not pin the cancelled SDK generation forever.
             // Their task records remain intact so stop_task or a later
             // interrupt can retry any unconfirmed termination.
             waitingForAgents = false
-          } else if (hasRunningBg || hasMainThreadQueued) {
+          } else if (hasSdkBackgroundWork) {
             waitingForAgents = true
             if (!hasMainThreadQueued) {
               runPhase = 'waiting_for_agents'

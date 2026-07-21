@@ -419,6 +419,7 @@ import {
   removeByFilter,
 } from '../utils/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
+import { usePriorityNowInterrupt } from '../hooks/usePriorityNowInterrupt.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
 import { useSessionBackgrounding } from '../hooks/useSessionBackgrounding.js';
@@ -5471,9 +5472,10 @@ export function REPL({
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     isInPlanMode: toolPermissionContext.mode === 'plan',
     isQueryActiveNow: queryGuard.getSnapshot,
-    onContinuationEnqueued: ({ turn, objective }) => {
-      const visibleGoalTurnInput = tf('Goal auto-continue ({turn}/1): continue advancing "{objective}".', {
+    onContinuationEnqueued: ({ turn, maxTurns, objective }) => {
+      const visibleGoalTurnInput = tf('Goal auto-continue ({turn}/{maxTurns}): continue advancing "{objective}".', {
         turn,
+        maxTurns,
         objective,
       });
       setMessages(oldMessages => [
@@ -5484,10 +5486,13 @@ export function REPL({
         }),
       ]);
     },
-    onMaxTurnsReached: () => {
+    onMaxTurnsReached: ({ maxTurns }) => {
       addNotification({
         key: 'goal-max-turns-reached',
-        text: t('Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.'),
+        text: tf(
+          'Goal reached max continuation turns ({maxTurns}). Run `/goal continue` to reset turn counter and continue.',
+          { maxTurns },
+        ),
         priority: 'immediate',
       });
     },
@@ -5535,13 +5540,13 @@ export function REPL({
     toolPermissionContext.mode,
   ]);
 
-  // Abort the current operation when a 'now' priority message arrives
-  // (e.g. from a chat UI client via UDS).
-  useEffect(() => {
-    if (queuedCommands.some(cmd => cmd.agentId === undefined && cmd.priority === 'now')) {
-      abortControllerRef.current?.abort('interrupt');
-    }
-  }, [queuedCommands]);
+  // Abort the operation that was active when a 'now' priority message arrived
+  // (e.g. from a chat UI client via UDS), without aborting a query that the
+  // queue processor just started for that same command.
+  usePriorityNowInterrupt({
+    abortControllerRef,
+    queueSnapshot: queuedCommands,
+  });
 
   const onInitRef = useRef(onInit);
   onInitRef.current = onInit;

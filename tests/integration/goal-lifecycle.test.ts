@@ -128,27 +128,45 @@ describe('Goal lifecycle: usage limiting', () => {
 })
 
 describe('Goal lifecycle: blocked attempts', () => {
-  test('3 consecutive same-reason attempts transition to blocked', () => {
+  test('3 consecutive same-reason goal turns transition to blocked', () => {
     setGoal('Need credentials', { sessionId: TEST_SESSION })
 
+    incrementGoalTurns(TEST_SESSION)
     const r1 = recordBlockedAttempt('missing API key', TEST_SESSION)!
     expect(r1.status).toBe('active')
     expect(r1.attempts).toBe(1)
 
+    incrementGoalTurns(TEST_SESSION)
     const r2 = recordBlockedAttempt('missing API key', TEST_SESSION)!
     expect(r2.status).toBe('active')
     expect(r2.attempts).toBe(2)
 
+    incrementGoalTurns(TEST_SESSION)
     const r3 = recordBlockedAttempt('missing API key', TEST_SESSION)!
     expect(r3.status).toBe('blocked')
     expect(r3.attempts).toBe(3)
   })
 
+  test('same-turn duplicate blocked updates do not advance the audit', () => {
+    setGoal('Need credentials', { sessionId: TEST_SESSION })
+    incrementGoalTurns(TEST_SESSION)
+
+    recordBlockedAttempt('missing API key', TEST_SESSION)
+    recordBlockedAttempt('missing API key', TEST_SESSION)
+    const result = recordBlockedAttempt('missing API key', TEST_SESSION)!
+
+    expect(result.status).toBe('active')
+    expect(result.attempts).toBe(1)
+  })
+
   test('different reason resets counter', () => {
     setGoal('Flaky thing', { sessionId: TEST_SESSION })
 
+    incrementGoalTurns(TEST_SESSION)
     recordBlockedAttempt('error A', TEST_SESSION)
+    incrementGoalTurns(TEST_SESSION)
     recordBlockedAttempt('error A', TEST_SESSION)
+    incrementGoalTurns(TEST_SESSION)
     const r = recordBlockedAttempt('error B', TEST_SESSION)!
     expect(r.status).toBe('active')
     expect(r.attempts).toBe(1)
@@ -156,7 +174,9 @@ describe('Goal lifecycle: blocked attempts', () => {
 
   test('resume resets blocked attempts', () => {
     setGoal('Was stuck', { sessionId: TEST_SESSION })
+    incrementGoalTurns(TEST_SESSION)
     recordBlockedAttempt('oops', TEST_SESSION)
+    incrementGoalTurns(TEST_SESSION)
     recordBlockedAttempt('oops', TEST_SESSION)
     pauseGoal(TEST_SESSION)
     resumeGoal(TEST_SESSION)

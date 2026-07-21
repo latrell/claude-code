@@ -49,6 +49,7 @@ export function setGoal(
     accumulatedActiveMs: 0,
     blockedAttempts: 0,
     lastBlockReason: null,
+    lastBlockedTurn: null,
     createdAt: now,
     updatedAt: now,
     turnsExecuted: 0,
@@ -91,7 +92,7 @@ export function resumeGoal(sessionId?: string): GoalState | null {
   const id = resolveSessionId(sessionId)
   const goal = goals.get(id)
   if (!goal) return null
-  if (goal.status !== 'paused') {
+  if (goal.status !== 'paused' && goal.status !== 'blocked') {
     return null
   }
   const now = Date.now()
@@ -102,6 +103,7 @@ export function resumeGoal(sessionId?: string): GoalState | null {
   goalLog('RESUME', 'goal resumed, blockedAttempts reset')
   goal.blockedAttempts = 0
   goal.lastBlockReason = null
+  goal.lastBlockedTurn = null
   return goal
 }
 
@@ -134,6 +136,7 @@ export function continueGoalFromMaxTurns(sessionId?: string): GoalState | null {
   goal.pausedAt = null
   goal.blockedAttempts = 0
   goal.lastBlockReason = null
+  goal.lastBlockedTurn = null
   goal.updatedAt = now
   goalLog(
     'CONTINUE',
@@ -216,14 +219,31 @@ export function recordBlockedAttempt(
   const goal = goals.get(id)
   if (!goal || goal.status !== 'active') return null
   const normalised = reason.trim().toLowerCase()
-  if (
-    goal.lastBlockReason !== null &&
-    goal.lastBlockReason.trim().toLowerCase() !== normalised
+  const previousReason = goal.lastBlockReason?.trim().toLowerCase() ?? null
+  const previousTurn = goal.lastBlockedTurn ?? null
+  const currentTurn = goal.turnsExecuted
+
+  // Multiple tool calls in one model turn are one audit attempt. If the model
+  // changes the blocker within that turn, start a new one-turn audit for the
+  // new condition rather than counting both calls.
+  if (previousTurn === currentTurn) {
+    if (previousReason === normalised) {
+      return { status: goal.status, attempts: goal.blockedAttempts }
+    }
+    goal.blockedAttempts = 1
+  } else if (
+    previousTurn !== null &&
+    currentTurn === previousTurn + 1 &&
+    previousReason === normalised
   ) {
-    goal.blockedAttempts = 0
+    goal.blockedAttempts += 1
+  } else {
+    // Missing turn metadata (legacy transcript), a skipped turn, or a changed
+    // blocker cannot prove consecutive blocked turns. Start a fresh audit.
+    goal.blockedAttempts = 1
   }
   goal.lastBlockReason = reason
-  goal.blockedAttempts += 1
+  goal.lastBlockedTurn = currentTurn
   goal.updatedAt = Date.now()
   if (goal.blockedAttempts >= BLOCKED_CONSECUTIVE_THRESHOLD) {
     goal.status = 'blocked'
