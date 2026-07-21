@@ -185,7 +185,7 @@ type AgentCleanupSettlementOptions = {
 /** @internal Exported for deterministic lifecycle tests. */
 export async function settleAgentCleanupSteps(
   steps: readonly AgentCleanupStep[],
-  signal: AbortSignal,
+  _ownerSignal: AbortSignal,
   options: AgentCleanupSettlementOptions = {},
 ): Promise<unknown[]> {
   const failures: unknown[] = []
@@ -202,7 +202,14 @@ export async function settleAgentCleanupSteps(
           pending.push({
             operation: step.operation,
             promise: waitForBoundedSettlement(result, {
-              signal,
+              // Cleanup starts only after the owned Agent execution has
+              // already begun unwinding, so its owner signal is commonly
+              // aborted before this wait is created. Binding the finalizer to
+              // that signal would collapse the full cleanup deadline to the
+              // short abort grace and discard a slightly-late successful
+              // termination. Give cleanup its own absolute deadline instead;
+              // the outer LocalAgentTask Stop barrier remains responsible for
+              // reporting that the Agent itself has not settled promptly.
               timeoutMs,
               abortGraceMs,
               operation: step.operation,
@@ -235,6 +242,23 @@ export async function settleAgentCleanupSteps(
   }
 
   return failures
+}
+
+/**
+ * A rejected cleanup promise is terminal evidence, not proof that its work is
+ * still running. Only the structured cancellation failures used by the stop
+ * stack mean termination remains unconfirmed.
+ *
+ * @internal Exported for deterministic lifecycle tests.
+ */
+export function getUnconfirmedAgentCleanupFailures(
+  failures: readonly unknown[],
+): unknown[] {
+  return failures.filter(
+    failure =>
+      failure instanceof StopConfirmationError ||
+      failure instanceof AbortSettlementTimeoutError,
+  )
 }
 
 /**
@@ -1226,10 +1250,14 @@ export async function* runAgent({
       cleanupSteps,
       agentAbortController.signal,
     )
-    if (stopFailures.length > 0) {
+    const unconfirmedStopFailures =
+      getUnconfirmedAgentCleanupFailures(stopFailures)
+    if (unconfirmedStopFailures.length > 0) {
       cleanupError = new StopConfirmationError(
         `Agent ${agentId} cleanup could not confirm all owned executions stopped`,
-        didRunError ? [runError, ...stopFailures] : stopFailures,
+        didRunError
+          ? [runError, ...unconfirmedStopFailures]
+          : unconfirmedStopFailures,
       )
     }
   }

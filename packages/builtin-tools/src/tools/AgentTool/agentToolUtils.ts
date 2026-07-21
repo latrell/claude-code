@@ -75,6 +75,7 @@ import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 const HANDOFF_CLASSIFIER_TIMEOUT_MS = 30_000
+const AGENT_SUMMARY_FINALIZER_TIMEOUT_MS = 30_000
 const AGENT_FINALIZER_ABORT_GRACE_MS = 2_000
 const HANDOFF_CLASSIFIER_UNAVAILABLE_WARNING =
   "Note: The safety classifier was cancelled but did not settle promptly. Please carefully verify the sub-agent's actions and output before acting on them."
@@ -89,6 +90,7 @@ export async function stopAgentSummaryScope({
   abortSignal,
   taskId,
   allowUnconfirmed = false,
+  timeoutMs = AGENT_SUMMARY_FINALIZER_TIMEOUT_MS,
   abortGraceMs = AGENT_FINALIZER_ABORT_GRACE_MS,
 }: {
   scope: AgentSummaryScope
@@ -96,39 +98,35 @@ export async function stopAgentSummaryScope({
   taskId: string
   allowUnconfirmed?: boolean
   /** @internal Deterministic lifecycle-test override. */
+  timeoutMs?: number
+  /** @internal Deterministic lifecycle-test override. */
   abortGraceMs?: number
 }): Promise<AgentSummaryStopResult> {
-  if (abortSignal.aborted) {
-    try {
-      await waitForAbortSettlement(
-        scope.stopAllExactly(),
-        abortSignal,
-        abortGraceMs,
-        `Agent ${taskId} summary shutdown`,
-      )
-      return 'settled'
-    } catch (error) {
-      if (error instanceof AbortSettlementTimeoutError) {
-        const message = `Agent ${taskId} summary request did not settle after abort`
-        logForDebugging(message, { level: 'warn' })
-        if (allowUnconfirmed) return 'timed_out'
-        throw new StopConfirmationError(message, [error])
-      }
+  try {
+    // Summary shutdown is itself a finalizer. Its owner signal may already be
+    // aborted before this wait begins, so binding to that signal would reduce
+    // the full finalizer deadline to the short abort grace. Dispatch Stop
+    // through stopAllExactly(), then wait under a fresh absolute deadline.
+    await waitForBoundedSettlement(scope.stopAllExactly(), {
+      timeoutMs,
+      abortGraceMs,
+      operation: `Agent ${taskId} summary shutdown`,
+    })
+    return 'settled'
+  } catch (error) {
+    if (error instanceof StopConfirmationError) {
+      if (allowUnconfirmed) return 'timed_out'
       throw error
     }
-  }
+    if (!(error instanceof AbortSettlementTimeoutError)) throw error
 
-  const result = await scope.stopAll()
-  if (result === 'timed_out') {
     const message = `Agent ${taskId} summary request did not settle ${
       abortSignal.aborted ? 'after abort' : 'during finalization'
     }`
     logForDebugging(message, { level: 'warn' })
-    if (!allowUnconfirmed) {
-      throw new StopConfirmationError(message)
-    }
+    if (allowUnconfirmed) return 'timed_out'
+    throw new StopConfirmationError(message, [error])
   }
-  return result
 }
 
 /**
@@ -886,13 +884,11 @@ export async function runAsyncAgentLifecycle({
 }): Promise<void> {
   const summaryScope = new AgentSummaryScope()
   let summariesDetached = false
-  const stopSummaries = (allowUnconfirmed = false) =>
-    stopAgentSummaryScope({
-      scope: summaryScope,
-      abortSignal: abortController.signal,
-      taskId,
-      allowUnconfirmed,
-    })
+  const detachSummaries = (): void => {
+    if (summariesDetached) return
+    summariesDetached = true
+    registerDetachedAgentSummaryStop({ scope: summaryScope, taskId })
+  }
   const agentMessages: MessageType[] = []
   try {
     const tracker = createProgressTracker()
@@ -971,7 +967,7 @@ export async function runAsyncAgentLifecycle({
           (lastMsg.message?.content as ContentItem[]) ?? [],
           '\n',
         ) || 'API error'
-      await stopSummaries()
+      detachSummaries()
       if (abortController.signal.aborted) {
         throw new AbortError()
       }
@@ -996,11 +992,7 @@ export async function runAsyncAgentLifecycle({
 
     // Summary generation is display-only. Dispatch its abort immediately, but
     // let the detached owner prove settlement without holding this Agent open.
-    registerDetachedAgentSummaryStop({
-      scope: summaryScope,
-      taskId,
-    })
-    summariesDetached = true
+    detachSummaries()
 
     let handoffSafetyGate = Promise.resolve<string | null>(null)
     if (classifyHandoff) {
@@ -1049,15 +1041,12 @@ export async function runAsyncAgentLifecycle({
     // now has its own cancellable owner and notification settlement.
     completeAsyncAgent(agentResult, rootSetAppState)
   } catch (caughtError) {
-    let error = caughtError
-    // Do not publish a terminal task state until the summary side query has
-    // received abort and either settled or exhausted its bounded grace. A
-    // timed-out summary during explicit Stop becomes the confirmation error.
-    try {
-      await stopSummaries()
-    } catch (summaryError) {
-      error = summaryError
-    }
+    const error = caughtError
+    // Progress summaries are display-only auxiliary requests. Dispatch their
+    // cancellation and transfer the exact settlement to the detached owner,
+    // but never let summary teardown replace the main stream's success,
+    // failure, or Abort result.
+    detachSummaries()
     if (error instanceof StopConfirmationError) {
       // The main runner has already unwound, so there is no execution left for
       // a later Stop to retry. Report an honest failed terminal state instead
@@ -1141,9 +1130,7 @@ export async function runAsyncAgentLifecycle({
       ...worktreeResult,
     })
   } finally {
-    if (!summariesDetached) {
-      await stopSummaries(true)
-    }
+    detachSummaries()
     clearInvokedSkillsForAgent(agentIdForCleanup)
     clearDumpState(agentIdForCleanup)
   }

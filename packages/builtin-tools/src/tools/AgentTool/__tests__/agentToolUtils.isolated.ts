@@ -20,6 +20,9 @@ let completedAgentResults = 0
 let failedAgentResults = 0
 let failedAgentNotifications = 0
 let completedAgentNotifications = 0
+let killedAgentNotifications = 0
+let failedAgentErrors: string[] = []
+let failedAgentNotificationErrors: string[] = []
 let classifierStarted: (() => void) | undefined
 let classifierImpl: () => Promise<Record<string, unknown>> = async () => ({
   shouldBlock: false,
@@ -160,12 +163,17 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
   },
   createActivityDescriptionResolver: () => ({}),
   createProgressTracker: () => ({}),
-  enqueueAgentNotification: (input: { status?: string }) => {
-    if (input.status === 'failed') failedAgentNotifications++
+  enqueueAgentNotification: (input: { status?: string; error?: string }) => {
+    if (input.status === 'failed') {
+      failedAgentNotifications++
+      if (input.error) failedAgentNotificationErrors.push(input.error)
+    }
     if (input.status === 'completed') completedAgentNotifications++
+    if (input.status === 'killed') killedAgentNotifications++
   },
-  failAgentTask: () => {
+  failAgentTask: (_taskId: string, error: string) => {
     failedAgentResults++
+    failedAgentErrors.push(error)
   },
   getProgressUpdate: () => ({ tokenCount: 0, toolUseCount: 0 }),
   getTokenCountFromTracker: () => 0,
@@ -283,6 +291,9 @@ beforeEach(() => {
   failedAgentResults = 0
   failedAgentNotifications = 0
   completedAgentNotifications = 0
+  killedAgentNotifications = 0
+  failedAgentErrors = []
+  failedAgentNotificationErrors = []
 })
 
 function deferred<T = void>(): {
@@ -456,7 +467,7 @@ describe('getForegroundAgentTerminalStatus', () => {
 })
 
 describe('stopAgentSummaryScope', () => {
-  test('rejects normal completion when summary settlement is unconfirmed', async () => {
+  test('uses the exact summary settlement instead of its timed-out view', async () => {
     const scope = new AgentSummaryScope()
     scope.add({
       stop: async () => 'timed_out',
@@ -469,10 +480,10 @@ describe('stopAgentSummaryScope', () => {
         abortSignal: new AbortController().signal,
         taskId: 'agent-summary-normal-completion',
       }),
-    ).rejects.toBeInstanceOf(StopConfirmationError)
+    ).resolves.toBe('settled')
   })
 
-  test('rejects cancellation confirmation when an aborted summary times out', async () => {
+  test('rejects when the fresh summary finalizer deadline expires', async () => {
     const scope = new AgentSummaryScope()
     scope.add({
       stop: async () => 'timed_out',
@@ -486,9 +497,35 @@ describe('stopAgentSummaryScope', () => {
         scope,
         abortSignal: abortController.signal,
         taskId: 'agent-summary-cancelled',
+        timeoutMs: 1,
         abortGraceMs: 1,
       }),
     ).rejects.toBeInstanceOf(StopConfirmationError)
+  })
+
+  test('accepts delayed summary settlement after its owner was aborted', async () => {
+    const scope = new AgentSummaryScope()
+    let summarySettled = false
+    scope.add({
+      stop: async () => 'timed_out',
+      stopExactly: async () => {
+        await Bun.sleep(25)
+        summarySettled = true
+      },
+    })
+    const abortController = new AbortController()
+    abortController.abort('user stop')
+
+    await expect(
+      stopAgentSummaryScope({
+        scope,
+        abortSignal: abortController.signal,
+        taskId: 'agent-summary-delayed-stop',
+        timeoutMs: 250,
+        abortGraceMs: 1,
+      }),
+    ).resolves.toBe('settled')
+    expect(summarySettled).toBe(true)
   })
 })
 
@@ -576,6 +613,94 @@ describe('runAsyncAgentLifecycle', () => {
     expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
 
     stopSettlement.resolve()
+    await Bun.sleep(1)
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
+  })
+
+  test('does not let summary shutdown replace a primary stream failure', async () => {
+    summaryExactStopImpl = async () => {
+      throw new StopConfirmationError('summary shutdown was unconfirmed')
+    }
+
+    await runAsyncAgentLifecycle({
+      taskId: 'agent-primary-failure',
+      abortController: new AbortController(),
+      makeStream: async function* (onCacheSafeParams) {
+        onCacheSafeParams?.({} as any)
+        yield makeAssistantMessage([{ type: 'text', text: 'partial' }])
+        throw new Error('primary stream failure')
+      },
+      metadata: {
+        prompt: 'test',
+        resolvedAgentModel: 'test-model',
+        isBuiltInAgent: false,
+        startTime: Date.now(),
+        agentType: 'test',
+        isAsync: true,
+      },
+      description: 'test agent',
+      toolUseContext: {
+        options: { tools: [] },
+        toolUseId: 'tool-use-primary-failure',
+        getAppState: () => ({ toolPermissionContext: {} }),
+      } as any,
+      rootSetAppState: noop as any,
+      agentIdForCleanup: 'agent-primary-failure',
+      enableSummarization: true,
+      getWorktreeResult: async () => ({}),
+    })
+
+    expect(failedAgentResults).toBe(1)
+    expect(failedAgentNotifications).toBe(1)
+    expect(failedAgentErrors).toEqual(['Error: primary stream failure'])
+    expect(failedAgentNotificationErrors).toEqual([
+      'Error: primary stream failure',
+    ])
+    expect(killedAgentNotifications).toBe(0)
+    await Promise.resolve()
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
+  })
+
+  test('does not let summary shutdown replace an Abort result', async () => {
+    const exactSummary = deferred()
+    summaryExactStopImpl = () => exactSummary.promise
+    const abortController = new AbortController()
+
+    await runAsyncAgentLifecycle({
+      taskId: 'agent-primary-abort',
+      abortController,
+      makeStream: async function* (onCacheSafeParams) {
+        onCacheSafeParams?.({} as any)
+        yield makeAssistantMessage([{ type: 'text', text: 'partial' }])
+        abortController.abort('user stop')
+        throw new AbortError()
+      },
+      metadata: {
+        prompt: 'test',
+        resolvedAgentModel: 'test-model',
+        isBuiltInAgent: false,
+        startTime: Date.now(),
+        agentType: 'test',
+        isAsync: true,
+      },
+      description: 'test agent',
+      toolUseContext: {
+        options: { tools: [] },
+        toolUseId: 'tool-use-primary-abort',
+        getAppState: () => ({ toolPermissionContext: {} }),
+      } as any,
+      rootSetAppState: noop as any,
+      agentIdForCleanup: 'agent-primary-abort',
+      enableSummarization: true,
+      getWorktreeResult: async () => ({}),
+    })
+
+    expect(failedAgentResults).toBe(0)
+    expect(failedAgentNotifications).toBe(0)
+    expect(killedAgentNotifications).toBe(1)
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
+
+    exactSummary.resolve()
     await Bun.sleep(1)
     expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
   })
@@ -756,6 +881,22 @@ describe('Agent finalizer cancellation confirmation', () => {
         abortGraceMs: 1,
       }),
     ).rejects.toBeInstanceOf(StopConfirmationError)
+  })
+
+  test('lets an independent worktree finalizer settle after its owner was aborted', async () => {
+    const finalizer = new AbortController()
+    const owner = new AbortController()
+    owner.abort('user stop')
+
+    await expect(
+      waitForAgentWorktreeOperation({
+        settlement: Bun.sleep(25).then(() => 'removed'),
+        finalizerSignal: finalizer.signal,
+        ownerSignal: owner.signal,
+        operation: 'delayed worktree cleanup',
+        abortGraceMs: 1,
+      }),
+    ).resolves.toBe('removed')
   })
 
   test('does not complete when the classifier ignores its internal deadline', async () => {

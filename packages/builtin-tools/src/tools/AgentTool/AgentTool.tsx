@@ -8,7 +8,6 @@ import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from 'src/constants/prompts.js';
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js';
 import { AgentSummaryScope, startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -73,7 +72,6 @@ import { getAssistantMessageContentLength } from 'src/utils/tokens.js';
 import { createAgentId } from 'src/utils/uuid.js';
 import { createAgentWorktree, hasWorktreeChanges, removeAgentWorktree } from 'src/utils/worktree.js';
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js';
-import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
@@ -90,7 +88,6 @@ import {
   registerDetachedAgentSummaryStop,
   registerDetachedAgentWorktreeCleanup,
   runAsyncAgentLifecycle,
-  stopAgentSummaryScope,
   waitForAgentWorktreeOperation,
 } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
@@ -164,25 +161,10 @@ const proactiveModule =
     : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-// Progress display constants (for showing background hint)
-const PROGRESS_THRESHOLD_MS = 2000; // Show background hint after 2 seconds
-
 // Check if background tasks are disabled at module load time
 const isBackgroundTasksDisabled =
   // eslint-disable-next-line custom-rules/no-process-env-top-level -- Intentional: schema must be defined at module load
   isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS);
-
-// Auto-background agent tasks after this many ms (0 = disabled)
-// Enabled by env var OR GrowthBook gate (checked lazily since GB may not be ready at module load)
-function getAutoBackgroundMs(): number {
-  if (
-    isEnvTruthy(process.env.CLAUDE_AUTO_BACKGROUND_TASKS) ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_auto_background_agents', false)
-  ) {
-    return 120_000;
-  }
-  return 0;
-}
 
 // Multi-agent type constants are defined inline inside gated blocks to enable dead code elimination
 
@@ -869,9 +851,16 @@ export const AgentTool = buildTool({
         logForDebugging(`Hook-based agent worktree kept at: ${worktreePath}`);
         return { worktreePath };
       }
-      const { signal: finalizerSignal, cleanup: cleanupFinalizerSignal } = createCombinedAbortSignal(abortSignal, {
-        timeoutMs: AGENT_WORKTREE_FINALIZER_TIMEOUT_MS,
-      });
+      // Cleanup commonly begins after its Agent owner was already aborted.
+      // Reusing that pre-aborted signal would collapse the intended 30s
+      // finalizer deadline to the 2s abort grace. Ignore only an abort that
+      // predates cleanup; a later Esc against detached cleanup must still be
+      // forwarded to the git operation immediately.
+      const finalizerParentSignal = abortSignal?.aborted ? undefined : abortSignal;
+      const { signal: finalizerSignal, cleanup: cleanupFinalizerSignal } = createCombinedAbortSignal(
+        finalizerParentSignal,
+        { timeoutMs: AGENT_WORKTREE_FINALIZER_TIMEOUT_MS },
+      );
       try {
         if (headCommit) {
           let changed: boolean;
@@ -1088,17 +1077,17 @@ export const AgentTool = buildTool({
             }
           }
 
-          // Register as foreground task immediately so it can be backgrounded at any time
-          // Skip registration if background tasks are disabled
+          // Register immediately so TaskStop and parent cancellation retain
+          // ownership of this foreground Agent through every finalizer.
           let foregroundTaskId: string | undefined;
-          // Create the background race promise once outside the loop — otherwise
-          // each iteration adds a new .then() reaction to the same pending
-          // promise, accumulating callbacks for the lifetime of the agent.
+          // The legacy foreground-to-background continuation remains below for
+          // a future true iterator-transfer implementation. Product entry
+          // points currently leave this unset: abort-and-restart can repeat
+          // already-applied tool side effects.
           let backgroundPromise: Promise<{ type: 'background' }> | undefined;
           let foregroundAbortController: AbortController | undefined;
           let settleForegroundExecution: (() => void) | undefined;
           let rejectForegroundExecution: ((error: unknown) => void) | undefined;
-          let cancelAutoBackground: (() => void) | undefined;
           if (!isBackgroundTasksDisabled) {
             const registration = registerAgentForeground({
               agentId: syncAgentId,
@@ -1108,7 +1097,6 @@ export const AgentTool = buildTool({
               setAppState: rootSetAppState,
               parentAbortController: toolUseContext.abortController,
               toolUseId: toolUseContext.toolUseId,
-              autoBackgroundMs: getAutoBackgroundMs() || undefined,
             });
             foregroundTaskId = registration.taskId;
             foregroundAbortController = registration.abortController;
@@ -1127,17 +1115,11 @@ export const AgentTool = buildTool({
                 { level: 'error' },
               );
             });
-            backgroundPromise = registration.backgroundSignal.then(() => ({
-              type: 'background' as const,
-            }));
-            cancelAutoBackground = registration.cancelAutoBackground;
           }
           // Foreground registration is disabled in a few modes. Finalizers
           // must still observe the parent request's cancellation in that case.
           const foregroundAbortSignal = foregroundAbortController?.signal ?? toolUseContext.abortController.signal;
 
-          // Track if we've shown the background hint UI
-          let backgroundHintShown = false;
           // Track if the agent was backgrounded (cleanup handled by backgrounded finally)
           let wasBackgrounded = false;
           // Own every summarizer started by this foreground execution. The
@@ -1147,13 +1129,14 @@ export const AgentTool = buildTool({
           let foregroundSummariesDetached = false;
           // const capture for sound type narrowing inside the callback below
           const summaryTaskId = foregroundTaskId;
-          const stopForegroundSummaries = (allowUnconfirmed = false) =>
-            stopAgentSummaryScope({
+          const detachForegroundSummaries = (): void => {
+            if (foregroundSummariesDetached) return;
+            foregroundSummariesDetached = true;
+            registerDetachedAgentSummaryStop({
               scope: foregroundSummaryScope,
-              abortSignal: foregroundAbortSignal,
               taskId: summaryTaskId ?? syncAgentId,
-              allowUnconfirmed,
             });
+          };
 
           // Get async iterator for the agent
           const agentIterator = guardAsyncIterableCancellation(
@@ -1180,7 +1163,6 @@ export const AgentTool = buildTool({
           // Track if an error occurred during iteration
           let syncAgentError: Error | undefined;
           let foregroundLifecycleError: Error | undefined;
-          let agentIterationFailed = false;
           let wasAborted = false;
           let worktreeResult: {
             worktreePath?: string;
@@ -1190,25 +1172,6 @@ export const AgentTool = buildTool({
           try {
             try {
               while (true) {
-                const elapsed = Date.now() - agentStartTime;
-
-                // Show background hint after threshold (but task is already registered)
-                // Skip if background tasks are disabled
-                if (
-                  !isBackgroundTasksDisabled &&
-                  !backgroundHintShown &&
-                  elapsed >= PROGRESS_THRESHOLD_MS &&
-                  toolUseContext.setToolJSX
-                ) {
-                  backgroundHintShown = true;
-                  toolUseContext.setToolJSX({
-                    jsx: <BackgroundHint />,
-                    shouldHidePromptInput: false,
-                    shouldContinueAnimation: true,
-                    showSpinner: true,
-                  });
-                }
-
                 // Race between next message and background signal
                 // If background tasks are disabled, just await the next message directly
                 const nextMessagePromise = agentIterator.next();
@@ -1241,11 +1204,11 @@ export const AgentTool = buildTool({
                     const backgroundedTaskId = foregroundTaskId;
                     const backgroundAbortController = task.abortController;
                     wasBackgrounded = true;
-                    // The foreground controller is intentionally aborted during
-                    // handoff, but its summary request is still owned by this
-                    // agent generation. Do not start a replacement generation
-                    // until termination of the old request is confirmed.
-                    await stopForegroundSummaries();
+                    // Progress summaries are display-only. Transfer their
+                    // exact shutdown promise to the detached owner so a slow
+                    // summary cannot fail the real foreground/background
+                    // execution during handoff.
+                    detachForegroundSummaries();
 
                     // Workload: inherited via ALS at `void` invocation time,
                     // same as the async-from-start path above.
@@ -1257,13 +1220,14 @@ export const AgentTool = buildTool({
                         runWithAgentContext(syncAgentContext, async () => {
                           const backgroundSummaryScope = new AgentSummaryScope();
                           let backgroundSummariesDetached = false;
-                          const stopBackgroundSummaries = (allowUnconfirmed = false) =>
-                            stopAgentSummaryScope({
+                          const detachBackgroundSummaries = (): void => {
+                            if (backgroundSummariesDetached) return;
+                            backgroundSummariesDetached = true;
+                            registerDetachedAgentSummaryStop({
                               scope: backgroundSummaryScope,
-                              abortSignal: backgroundAbortController.signal,
                               taskId: backgroundedTaskId,
-                              allowUnconfirmed,
                             });
+                          };
                           try {
                             // backgroundAgentTask has already aborted the foreground
                             // controller and installed an independent background one.
@@ -1329,11 +1293,7 @@ export const AgentTool = buildTool({
                             }
                             const agentResult = finalizeAgentTool(agentMessages, backgroundedTaskId, metadata);
 
-                            registerDetachedAgentSummaryStop({
-                              scope: backgroundSummaryScope,
-                              taskId: backgroundedTaskId,
-                            });
-                            backgroundSummariesDetached = true;
+                            detachBackgroundSummaries();
 
                             let handoffSafetyGate = Promise.resolve<string | null>(null);
                             if (feature('TRANSCRIPT_CLASSIFIER')) {
@@ -1377,15 +1337,11 @@ export const AgentTool = buildTool({
                             });
                             completeAsyncAgent(agentResult, rootSetAppState);
                           } catch (caughtError) {
-                            let error = caughtError;
-                            // If explicit Stop reaches a summary request that
-                            // ignores abort, preserve that confirmation failure
-                            // instead of falsely reporting the task as killed.
-                            try {
-                              await stopBackgroundSummaries();
-                            } catch (summaryError) {
-                              error = summaryError;
-                            }
+                            const error = caughtError;
+                            // Summary requests are auxiliary display work.
+                            // Their exact cancellation stays Esc-routable, but
+                            // never replaces the main Agent outcome.
+                            detachBackgroundSummaries();
                             if (error instanceof StopConfirmationError) {
                               // The foreground/background runner has unwound;
                               // there is no live execution for another Stop to
@@ -1465,12 +1421,7 @@ export const AgentTool = buildTool({
                               ...worktreeResult,
                             });
                           } finally {
-                            // Idempotent and bounded. Errors were classified in
-                            // the catch path above, so final cleanup cannot mask
-                            // the task's chosen terminal state.
-                            if (!backgroundSummariesDetached) {
-                              await stopBackgroundSummaries(true);
-                            }
+                            detachBackgroundSummaries();
                             clearInvokedSkillsForAgent(syncAgentId);
                             clearDumpState(syncAgentId);
                             // Successful worktree cleanup is detached and owns
@@ -1603,7 +1554,6 @@ export const AgentTool = buildTool({
                 }
               }
             } catch (error) {
-              agentIterationFailed = true;
               // Handle errors from the sync agent loop
               // AbortError should be re-thrown for proper interruption handling
               if (error instanceof StopConfirmationError) {
@@ -1636,21 +1586,12 @@ export const AgentTool = buildTool({
               // Store the error to handle after cleanup
               syncAgentError = toError(error);
             } finally {
-              // Summary abort is delivered synchronously and settlement is
-              // bounded. Explicit Stop remains a confirmation failure when the
-              // request ignores abort; an intentional handoff is allowed to
-              // continue under its replacement controller.
-              if (!wasBackgrounded && !agentIterationFailed && !foregroundAbortSignal.aborted) {
-                registerDetachedAgentSummaryStop({
-                  scope: foregroundSummaryScope,
-                  taskId: summaryTaskId ?? syncAgentId,
-                });
-                foregroundSummariesDetached = true;
-              } else {
-                await stopForegroundSummaries(wasBackgrounded);
-              }
+              // Summary generation is display-only auxiliary work. Dispatch
+              // its Stop synchronously and keep exact settlement detached so
+              // it cannot overwrite completion, failure, or user cancellation.
+              detachForegroundSummaries();
 
-              // Clear the background hint UI
+              // Clear any transient Agent tool UI.
               if (toolUseContext.setToolJSX) {
                 toolUseContext.setToolJSX(null);
               }
@@ -1663,9 +1604,6 @@ export const AgentTool = buildTool({
               if (!wasBackgrounded) {
                 clearDumpState(syncAgentId);
               }
-
-              // Cancel auto-background timer if agent completed before it fired
-              cancelAutoBackground?.();
 
               // Clean up worktree if applicable (in finally to handle abort/error paths)
               // Skip if backgrounded — the background continuation is still running in it
@@ -1754,14 +1692,7 @@ export const AgentTool = buildTool({
               },
             };
           } catch (error) {
-            let lifecycleError = error;
-            if (foregroundSummariesDetached) {
-              try {
-                await stopForegroundSummaries();
-              } catch (summaryError) {
-                lifecycleError = summaryError;
-              }
-            }
+            const lifecycleError = error;
             foregroundLifecycleError = toError(lifecycleError);
             throw lifecycleError;
           } finally {

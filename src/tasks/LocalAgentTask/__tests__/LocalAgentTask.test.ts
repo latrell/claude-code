@@ -68,7 +68,7 @@ const {
   trackLocalAgentExecution,
   updateAgentProgress,
   isLocalAgentTask,
-  LOCAL_AGENT_STOP_ABORT_GRACE_MS,
+  LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS,
 } = await import('../LocalAgentTask.js')
 
 // ─── Helpers ───
@@ -402,8 +402,51 @@ describe('failAgentTask', () => {
 })
 
 describe('killAsyncAgent', () => {
-  test('uses a short post-abort confirmation grace', () => {
-    expect(LOCAL_AGENT_STOP_ABORT_GRACE_MS).toBe(2_000)
+  test('uses an independent absolute settlement deadline', () => {
+    expect(LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS).toBe(35_000)
+  })
+
+  test('does not collapse the absolute deadline when the owner signal is already aborted', async () => {
+    const runner = createDeferred()
+    const { setAppState, getState } = createSetAppState()
+    const task = registerAsyncAgent({
+      agentId: 'absolute-stop-deadline-agent',
+      description: 'Absolute stop deadline agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+    })
+    const tracked = trackLocalAgentExecution({
+      taskId: task.agentId,
+      abortController: task.abortController!,
+      startExecution: () => runner.promise,
+      setAppState: setAppState as any,
+    })
+
+    let stopSettled = false
+    const stopOutcome = killAsyncAgent(task.agentId, setAppState as any).then(
+      value => {
+        stopSettled = true
+        return { status: 'fulfilled' as const, value }
+      },
+      error => {
+        stopSettled = true
+        return { status: 'rejected' as const, error }
+      },
+    )
+
+    // The generic cancellation stack uses a two-second post-abort grace. A
+    // LocalAgentTask stop has its own longer absolute ownership deadline and
+    // must therefore still be waiting after that generic grace has elapsed.
+    await new Promise(resolve => setTimeout(resolve, 2_100))
+    expect(task.abortController!.signal.aborted).toBe(true)
+    expect(stopSettled).toBe(false)
+    expect(getState().tasks[task.agentId].status).toBe('running')
+
+    runner.resolve()
+    await tracked
+    expect(await stopOutcome).toEqual({ status: 'fulfilled', value: 'killed' })
+    expect(getState().tasks[task.agentId].status).toBe('killed')
   })
 
   test('keeps an unconfirmed runner addressable so Stop can be retried', async () => {
@@ -432,7 +475,7 @@ describe('killAsyncAgent', () => {
     })
 
     await expect(stop).rejects.toThrow(
-      `did not settle within ${LOCAL_AGENT_STOP_ABORT_GRACE_MS}ms after abort`,
+      `did not settle within ${LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS}ms after the stop request`,
     )
     expect(getState().tasks[task.agentId].status).toBe('running')
     expect(getState().tasks[task.agentId].error).toBeUndefined()
@@ -510,7 +553,7 @@ describe('killAsyncAgent', () => {
     expect(getState().tasks[task.agentId].result).toBe(result)
   })
 
-  test('rejects Stop when owned cleanup records an unconfirmed failure', async () => {
+  test('treats an explicitly settled failed runner as terminal evidence', async () => {
     const runner = createDeferred()
     const { setAppState, getState } = createSetAppState()
     const task = registerAsyncAgent({
@@ -527,10 +570,7 @@ describe('killAsyncAgent', () => {
       setAppState: setAppState as any,
     })
 
-    const stopError = killAsyncAgent(task.agentId, setAppState as any).then(
-      () => undefined,
-      error => error,
-    )
+    const stop = killAsyncAgent(task.agentId, setAppState as any)
     failAgentTask(
       task.agentId,
       'owned cleanup did not confirm termination',
@@ -539,7 +579,7 @@ describe('killAsyncAgent', () => {
     runner.resolve()
     await tracked
 
-    expect(await stopError).toBeInstanceOf(StopConfirmationError)
+    expect(await stop).toBe('already_terminal')
     expect(getState().tasks[task.agentId].status).toBe('failed')
   })
 
@@ -719,14 +759,14 @@ describe('killAsyncAgent', () => {
     expect(task.status).toBe('completed')
   })
 
-  test('Task kill contract rejects instead of reporting an already-terminal task stopped', async () => {
+  test('Task kill accepts an already-terminal task as proof it is stopped', async () => {
     const { setAppState } = createSetAppState({
       tasks: { 'test-agent-001': makeRunningTask({ status: 'completed' }) },
     })
 
     await expect(
       LocalAgentTask.kill('test-agent-001', setAppState as any),
-    ).rejects.toBeInstanceOf(StopConfirmationError)
+    ).resolves.toBeUndefined()
   })
 
   test('waits for an initial background run to settle before reporting killed', async () => {
@@ -1080,6 +1120,70 @@ describe('foreground agent cancellation', () => {
     // TaskStop still owns and aborts the replacement background controller.
     await killAsyncAgent('test-agent-001', setAppState as any)
     expect(backgroundController.signal.aborted).toBe(true)
+  })
+
+  test('TaskStop in the handoff window waits for the inherited foreground settlement', async () => {
+    const parentAbortController = new AbortController()
+    const { setAppState, getState } = createSetAppState()
+    const registration = registerAgentForeground({
+      agentId: 'handoff-window-agent',
+      description: 'Handoff window agent',
+      prompt: 'do something',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+      parentAbortController,
+    })
+    const foregroundExecution = createDeferred()
+    const trackedForeground = trackLocalAgentExecution({
+      taskId: registration.taskId,
+      abortController: registration.abortController,
+      startExecution: () => foregroundExecution.promise,
+      setAppState: setAppState as any,
+    })
+
+    expect(
+      backgroundAgentTask(
+        registration.taskId,
+        getState as any,
+        setAppState as any,
+      ),
+    ).toBe(true)
+    await registration.backgroundSignal
+    const backgroundController = getState().tasks[registration.taskId]
+      .abortController as AbortController
+
+    // Stop before AgentTool has attached the replacement generation. The
+    // replacement record itself is unattached, but the foreground request is
+    // still owned and must remain part of the stop settlement.
+    let stopSettled = false
+    const stop = killAsyncAgent(registration.taskId, setAppState as any).then(
+      outcome => {
+        stopSettled = true
+        return outcome
+      },
+    )
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(backgroundController.signal.aborted).toBe(true)
+    expect(stopSettled).toBe(false)
+    expect(getState().tasks[registration.taskId].status).toBe('running')
+
+    foregroundExecution.resolve()
+    await trackedForeground
+    expect(await stop).toBe('killed')
+    expect(getState().tasks[registration.taskId].status).toBe('killed')
+
+    let replacementStarted = false
+    await trackLocalAgentExecution({
+      taskId: registration.taskId,
+      abortController: backgroundController,
+      startExecution: () => {
+        replacementStarted = true
+        return Promise.resolve()
+      },
+      setAppState: setAppState as any,
+    })
+    expect(replacementStarted).toBe(false)
   })
 
   test('background handoff waits for the replacement run, not the old foreground generation', async () => {

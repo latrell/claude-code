@@ -2958,7 +2958,11 @@ async function* executeHooks({
 
   // Run all hooks in parallel and wait for all to complete
   try {
-    for await (const result of all(hookPromises)) {
+    for await (const result of all(hookPromises, Infinity, () => {
+      if (!batchAbortController.signal.aborted) {
+        batchAbortController.abort('hook-batch-cancelled')
+      }
+    })) {
       outcomes[result.outcome]++
 
       // Check for preventContinuation early

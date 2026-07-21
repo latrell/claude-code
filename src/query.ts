@@ -488,13 +488,26 @@ export async function settleQueryOwnedRequests({
   const settlementFailures = results.flatMap(result =>
     result.status === 'rejected' ? [result.reason] : [],
   )
-  if (settlementFailures.length === 0) return undefined
+  const unconfirmedFailures = settlementFailures.filter(
+    failure =>
+      failure instanceof StopConfirmationError ||
+      failure instanceof AbortSettlementTimeoutError,
+  )
+  for (const failure of settlementFailures) {
+    if (!unconfirmedFailures.includes(failure) && !isAbortError(failure)) {
+      // A rejected drain is still exact settlement evidence. Preserve the
+      // operational failure for diagnostics without claiming its work may be
+      // alive after the promise has already reached a terminal state.
+      logError(failure)
+    }
+  }
+  if (unconfirmedFailures.length === 0) return undefined
 
   const failures = includeThrownError
-    ? [thrownError, ...settlementFailures]
-    : settlementFailures
+    ? [thrownError, ...unconfirmedFailures]
+    : unconfirmedFailures
   return new StopConfirmationError(
-    `Query cleanup could not confirm ${settlementFailures.length} owned request settlement${settlementFailures.length === 1 ? '' : 's'}`,
+    `Query cleanup could not confirm ${unconfirmedFailures.length} owned request settlement${unconfirmedFailures.length === 1 ? '' : 's'}`,
     failures,
   )
 }

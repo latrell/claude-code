@@ -22,7 +22,7 @@ import {
   waitForBoundedSettlement,
 } from '../utils/abortSettlement.js'
 import { logForDebugging } from '../utils/debug.js'
-import { errorMessage } from '../utils/errors.js'
+import { errorMessage, isAbortError } from '../utils/errors.js'
 import type { REPLHookContext } from '../utils/hooks/postSamplingHooks.js'
 import {
   executeStopHooks,
@@ -242,6 +242,7 @@ export async function* handleStopHooks(
     }
   }
 
+  let interruptionMessageEmitted = false
   try {
     const blockingErrors = []
     const appState = toolUseContext.getAppState()
@@ -265,7 +266,6 @@ export async function* handleStopHooks(
     let stopReason = ''
     let hasOutput = false
     let stopHooksCancelled = false
-    let interruptionMessageEmitted = false
     const hookErrors: string[] = []
     const hookInfos: StopHookInfo[] = []
 
@@ -557,6 +557,12 @@ export async function* handleStopHooks(
     return { blockingErrors: [], preventContinuation: false }
   } catch (error) {
     if (error instanceof StopConfirmationError) throw error
+    if (toolUseContext.abortController.signal.aborted && isAbortError(error)) {
+      if (!interruptionMessageEmitted) {
+        yield createUserInterruptionMessage({ toolUse: false })
+      }
+      return { blockingErrors: [], preventContinuation: true }
+    }
     const durationMs = Date.now() - hookStartTime
     logEvent('tengu_stop_hook_error', {
       duration: durationMs,

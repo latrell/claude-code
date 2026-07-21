@@ -35,9 +35,23 @@ export type AuxiliaryWorkSettlement = Omit<
 type DetachedAuxiliaryEntry = DetachedAuxiliaryWork & {
   id: number
   settled: boolean
+  /** Rejection from the exact settlement promise, not cancellation dispatch. */
+  settlementFailure?: unknown
   failure?: unknown
   failureObserved: boolean
 }
+
+type DetachedAuxiliaryConfirmationSnapshot = {
+  entry: DetachedAuxiliaryEntry
+  settlement: Promise<void>
+  /** Undefined only when this proof was superseded while it was settling. */
+  error?: StopConfirmationError
+}
+
+type DetachedAuxiliaryConfirmationFailure =
+  DetachedAuxiliaryConfirmationSnapshot & {
+    error: StopConfirmationError
+  }
 
 const activeEntries = new Map<number, DetachedAuxiliaryEntry>()
 const changed = createSignal()
@@ -126,12 +140,14 @@ function trackSettlement(
 ): void {
   entry.settlement = settlement
   entry.settled = false
+  entry.settlementFailure = undefined
   entry.failure = undefined
 
   void settlement.then(
     () => {
       if (entry.settlement !== settlement) return
       entry.settled = true
+      entry.settlementFailure = undefined
       removeEntry(entry)
     },
     error => {
@@ -139,9 +155,16 @@ function trackSettlement(
       // Ordinary rejection proves the request ended and only needs reporting.
       // Explicit unconfirmed Stop evidence remains Esc-routable.
       entry.settled = true
+      entry.settlementFailure = error
       observeFailure(entry, error)
-      if (error instanceof StopConfirmationError) changed.emit()
-      else removeEntry(entry)
+      if (error instanceof StopConfirmationError && entry.retrySettlement) {
+        changed.emit()
+      } else {
+        // A terminal StopConfirmationError without a fresh proof cannot be
+        // retried. Report it once through onError/current Stop, then release
+        // the active affordance so it cannot poison every future Esc/session.
+        removeEntry(entry)
+      }
     },
   )
 }
@@ -191,33 +214,93 @@ function observeFailure(entry: DetachedAuxiliaryEntry, error: unknown): void {
 }
 
 function throwTerminationFailures(
-  entries: readonly DetachedAuxiliaryEntry[],
-  results: readonly PromiseSettledResult<void>[],
+  failures: readonly DetachedAuxiliaryConfirmationFailure[],
 ): void {
-  const operationFailures = results.flatMap((result, index) =>
-    result.status === 'rejected'
-      ? [
-          {
-            operation: entries[index]!.operation,
-            error: result.reason,
-            settlementPending: !entries[index]!.settled,
-            canRetrySettlement:
-              !entries[index]!.settled ||
-              entries[index]!.retrySettlement !== undefined,
-          },
-        ]
-      : [],
-  )
+  const operationFailures = failures.flatMap(({ entry, settlement, error }) => {
+    // Another Stop may have installed a fresh exact proof while this call
+    // was still waiting for a different entry. The stale generation cannot
+    // describe the liveness of the replacement.
+    if (entry.settlement !== settlement) return []
+
+    // A timeout wrapper can lose a close race to the exact promise. If that
+    // promise fulfilled (or rejected ordinarily) before aggregation, it is
+    // positive terminal evidence and the earlier timeout is now stale.
+    if (
+      entry.settled &&
+      !(entry.settlementFailure instanceof StopConfirmationError)
+    ) {
+      return []
+    }
+
+    return [
+      {
+        operation: entry.operation,
+        error:
+          entry.settlementFailure instanceof StopConfirmationError
+            ? entry.settlementFailure
+            : error,
+        settlementPending: !entry.settled,
+        canRetrySettlement:
+          !entry.settled || entry.retrySettlement !== undefined,
+      },
+    ]
+  })
   if (operationFailures.length === 0) return
   throw new DetachedAuxiliaryStopConfirmationError(operationFailures)
+}
+
+async function confirmDetachedAuxiliaryEntry(
+  entry: DetachedAuxiliaryEntry,
+  reason: unknown,
+): Promise<DetachedAuxiliaryConfirmationSnapshot | undefined> {
+  const settlement = entry.settlement
+  const cancellationSignal = new AbortController()
+  cancellationSignal.abort(reason)
+
+  try {
+    await waitForAbortSettlement(
+      settlement,
+      cancellationSignal.signal,
+      entry.abortGraceMs ?? DEFAULT_ABORT_SETTLEMENT_GRACE_MS,
+      entry.operation,
+    )
+    if (entry.settlement !== settlement) {
+      return { entry, settlement }
+    }
+    removeEntry(entry)
+    return undefined
+  } catch (error) {
+    if (entry.settlement !== settlement) {
+      return { entry, settlement }
+    }
+    if (error instanceof AbortSettlementTimeoutError) {
+      return {
+        entry,
+        settlement,
+        error: new StopConfirmationError(
+          `${entry.operation} did not confirm termination after cancellation`,
+          [error, ...(entry.failure === undefined ? [] : [entry.failure])],
+        ),
+      }
+    }
+    if (error instanceof StopConfirmationError) {
+      return { entry, settlement, error }
+    }
+    // Other rejection proves the work is no longer running. Report it and
+    // remove the affordance instead of manufacturing a false Stop failure.
+    observeFailure(entry, error)
+    removeEntry(entry)
+    return undefined
+  }
 }
 
 /**
  * Register auxiliary work without making it part of the foreground query
  * loading gate. Successful settlement and ordinary rejection remove the
- * record after reporting. Only an unconfirmed Stop remains Esc-routable, so
- * StopConfirmationError cannot disappear as an unhandled background
- * rejection.
+ * record after reporting. Pending exact settlements and explicitly retryable
+ * confirmation failures remain Esc-routable; a terminal non-retryable
+ * StopConfirmationError is reported once and then released so it cannot
+ * poison every later Stop.
  */
 export function registerDetachedAuxiliaryWork(
   work: DetachedAuxiliaryWork,
@@ -280,39 +363,37 @@ export async function cancelAndWaitForDetachedAuxiliaryWork(
     })
   }
 
-  const confirmations = entries.map(async entry => {
-    const cancellationSignal = new AbortController()
-    cancellationSignal.abort(reason)
+  let failures = await Promise.all(
+    entries.map(entry => confirmDetachedAuxiliaryEntry(entry, reason)),
+  )
 
-    try {
-      await waitForAbortSettlement(
-        entry.settlement,
-        cancellationSignal.signal,
-        entry.abortGraceMs ?? DEFAULT_ABORT_SETTLEMENT_GRACE_MS,
-        entry.operation,
-      )
-      removeEntry(entry)
-    } catch (error) {
-      if (error instanceof AbortSettlementTimeoutError) {
-        throw new StopConfirmationError(
-          `${entry.operation} did not confirm termination after cancellation`,
-          [error, ...(entry.failure === undefined ? [] : [entry.failure])],
-        )
-      }
-      if (error instanceof StopConfirmationError) {
-        // Keep explicit unconfirmed evidence active so later Stop attempts
-        // can retry cancellation and surface the failed proof again.
-        throw error
-      }
-      // Other rejection proves the work is no longer running. Report it and
-      // remove the affordance instead of manufacturing a false Stop failure.
-      observeFailure(entry, error)
-      removeEntry(entry)
-    }
-  })
+  // A concurrent Stop can replace a rejected proof through retrySettlement
+  // while this call is still waiting for another entry. Follow each replacement
+  // until every failure belongs to the currently published generation; never
+  // report an old proof using a newer generation's mutable status.
+  while (true) {
+    const supersededIndexes = failures.flatMap((failure, index) =>
+      failure && failure.entry.settlement !== failure.settlement ? [index] : [],
+    )
+    if (supersededIndexes.length === 0) break
 
-  const results = await Promise.allSettled(confirmations)
-  throwTerminationFailures(entries, results)
+    const replacements = await Promise.all(
+      supersededIndexes.map(index =>
+        confirmDetachedAuxiliaryEntry(entries[index]!, reason),
+      ),
+    )
+    failures = failures.map((failure, index) => {
+      const replacementIndex = supersededIndexes.indexOf(index)
+      return replacementIndex === -1 ? failure : replacements[replacementIndex]
+    })
+  }
+
+  throwTerminationFailures(
+    failures.filter(
+      (failure): failure is DetachedAuxiliaryConfirmationFailure =>
+        failure?.error !== undefined,
+    ),
+  )
 }
 
 /** Test-only reset for module-level ownership state. */

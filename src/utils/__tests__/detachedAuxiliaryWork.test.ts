@@ -159,7 +159,7 @@ describe('detachedAuxiliaryWork', () => {
     expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
   })
 
-  test('StopConfirmationError remains active and visible to repeated Stop', async () => {
+  test('reports a terminal non-retryable StopConfirmationError once and releases it', async () => {
     const failure = new StopConfirmationError('remote Stop unconfirmed')
     const observed: unknown[] = []
     let cancelCount = 0
@@ -175,34 +175,122 @@ describe('detachedAuxiliaryWork', () => {
     })
     await Promise.resolve()
 
-    expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
     const firstStop = cancelAndWaitForDetachedAuxiliaryWork('first Esc').catch(
       error => error,
     )
-    expect(await firstStop).toEqual(
+    await expect(firstStop).resolves.toBeUndefined()
+    await expect(
+      cancelAndWaitForDetachedAuxiliaryWork('second Esc'),
+    ).resolves.toBeUndefined()
+    expect(cancelCount).toBe(0)
+    expect(observed).toEqual([failure])
+  })
+
+  test('surfaces a non-retryable failure from the current Stop then releases it', async () => {
+    const work = deferred()
+    const failure = new StopConfirmationError('remote Stop unconfirmed')
+    let cancelCount = 0
+    registerDetachedAuxiliaryWork({
+      operation: 'current Stop work',
+      settlement: work.promise,
+      cancel: () => {
+        cancelCount += 1
+        work.reject(failure)
+      },
+      onError: () => {},
+      abortGraceMs: 100,
+    })
+
+    const error = await cancelAndWaitForDetachedAuxiliaryWork(
+      'first Esc',
+    ).catch(caught => caught)
+    expect(error).toEqual(
       expect.objectContaining({
         operationFailures: [
           {
-            operation: 'unconfirmed work',
+            operation: 'current Stop work',
             error: failure,
             settlementPending: false,
             canRetrySettlement: false,
           },
         ],
-        operations: ['unconfirmed work'],
-        retryableOperations: [],
-        nonRetryableOperations: ['unconfirmed work'],
         canRetry: false,
         hasPendingSettlement: false,
-        failures: [failure],
       }),
     )
-    expect(hasActiveDetachedAuxiliaryWork()).toBe(true)
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
     await expect(
       cancelAndWaitForDetachedAuxiliaryWork('second Esc'),
-    ).rejects.toBeInstanceOf(DetachedAuxiliaryStopConfirmationError)
-    expect(cancelCount).toBe(2)
-    expect(observed).toEqual([failure])
+    ).resolves.toBeUndefined()
+    expect(cancelCount).toBe(1)
+  })
+
+  test('drops a timeout that loses the aggregation race to exact settlement', async () => {
+    const late = deferred()
+    const blocker = deferred()
+    registerDetachedAuxiliaryWork({
+      operation: 'late exact proof',
+      settlement: late.promise,
+      cancel: () => {},
+      onError: () => {},
+      abortGraceMs: 5,
+    })
+    registerDetachedAuxiliaryWork({
+      operation: 'aggregation blocker',
+      settlement: blocker.promise,
+      cancel: () => {},
+      onError: () => {},
+      abortGraceMs: 100,
+    })
+
+    const stopping = cancelAndWaitForDetachedAuxiliaryWork('Esc')
+    setTimeout(late.resolve, 15)
+    setTimeout(blocker.resolve, 30)
+
+    await expect(stopping).resolves.toBeUndefined()
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
+  })
+
+  test('follows a fresh retry proof instead of reporting a stale generation', async () => {
+    const staleProof = deferred()
+    const freshProof = deferred()
+    const blocker = deferred()
+    let retryCount = 0
+    registerDetachedAuxiliaryWork({
+      operation: 'replaceable proof',
+      settlement: staleProof.promise,
+      cancel: () => {},
+      retrySettlement: () => {
+        retryCount += 1
+        return freshProof.promise
+      },
+      onError: () => {},
+      abortGraceMs: 100,
+    })
+    registerDetachedAuxiliaryWork({
+      operation: 'replacement blocker',
+      settlement: blocker.promise,
+      cancel: () => {},
+      onError: () => {},
+      abortGraceMs: 100,
+    })
+
+    const firstStop = cancelAndWaitForDetachedAuxiliaryWork('first Esc')
+    staleProof.reject(new StopConfirmationError('stale proof failed'))
+    await staleProof.promise.catch(() => {})
+    await Promise.resolve()
+
+    const secondStop = cancelAndWaitForDetachedAuxiliaryWork('second Esc')
+    expect(retryCount).toBe(1)
+    freshProof.resolve()
+    blocker.resolve()
+
+    await expect(Promise.all([firstStop, secondStop])).resolves.toEqual([
+      undefined,
+      undefined,
+    ])
+    expect(hasActiveDetachedAuxiliaryWork()).toBe(false)
   })
 
   test('an abort-ignoring exact promise times out and stays retryable', async () => {

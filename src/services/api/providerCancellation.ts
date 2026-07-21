@@ -40,8 +40,10 @@ export type ProviderStreamGuardOptions = {
 
 /**
  * Consume an async iterator with cancellation checkpoints around every next().
- * Teardown is also bounded: a stuck return() is an unconfirmed Stop, while an
- * already-more-specific next() confirmation error remains authoritative.
+ * Teardown is also bounded: a stuck return() is an unconfirmed Stop. A short
+ * next() timeout remains provisional until the original next() and return()
+ * either settle exactly or exhaust the teardown deadline; nested structured
+ * confirmation failures remain authoritative.
  */
 export async function* guardAsyncIterableCancellation<T>(
   stream: AsyncIterable<T>,
@@ -55,6 +57,12 @@ export async function* guardAsyncIterableCancellation<T>(
   const iterator = stream[Symbol.asyncIterator]()
   let completed = false
   let iterationError: unknown
+  let timedOutNext:
+    | {
+        promise: Promise<IteratorResult<T>>
+        error: StopConfirmationError
+      }
+    | undefined
   let iteratorReturnPromise: Promise<IteratorResult<T>> | undefined
   const requestIteratorReturn = (): Promise<IteratorResult<T>> | undefined => {
     if (!iterator.return) return undefined
@@ -89,14 +97,27 @@ export async function* guardAsyncIterableCancellation<T>(
       }
 
       let next: IteratorResult<T>
+      const nextPromise = Promise.resolve(iterator.next())
       try {
         next = await waitForProviderAbortSettlement(
-          Promise.resolve(iterator.next()),
+          nextPromise,
           signal,
           `${operation} next()`,
           abortGraceMs,
         )
       } catch (error) {
+        // The short abort grace is only a provisional observation. Keep the
+        // original next() promise so iterator teardown can still turn a late,
+        // exact settlement into a confirmed Abort instead of permanently
+        // caching "may still be running".
+        if (
+          error instanceof StopConfirmationError &&
+          error.failures.some(
+            failure => failure instanceof AbortSettlementTimeoutError,
+          )
+        ) {
+          timedOutNext = { promise: nextPromise, error }
+        }
         iterationError = error
         throw error
       }
@@ -131,15 +152,42 @@ export async function* guardAsyncIterableCancellation<T>(
           )
         }
       } else {
+        let teardownConfirmed = false
         try {
           const returning = requestIteratorReturn()!
-          await waitForBoundedSettlement(returning, {
+          const teardownSettlement = timedOutNext
+            ? Promise.all([
+                timedOutNext.promise.catch(error => {
+                  // Any ordinary fulfillment or rejection proves next()
+                  // settled. A nested confirmation error explicitly says the
+                  // owned provider request is still not known to be closed.
+                  if (error instanceof StopConfirmationError) throw error
+                  return { done: true as const, value: undefined }
+                }),
+                returning.catch(error => {
+                  if (error instanceof StopConfirmationError) throw error
+                  return { done: true as const, value: undefined }
+                }),
+              ]).then(() => undefined)
+            : returning
+          await waitForBoundedSettlement(teardownSettlement, {
             signal,
             timeoutMs: returnTimeoutMs,
             abortGraceMs: returnTimeoutMs,
             operation: `${operation} return()`,
           })
+          teardownConfirmed = true
         } catch (returnError) {
+          if (
+            returnError instanceof StopConfirmationError &&
+            returnError !== iterationError
+          ) {
+            // A nested guard's exact settlement can replace this guard's own
+            // provisional timeout with a more authoritative confirmation
+            // failure. Do not hide it behind the earlier observation.
+            // biome-ignore lint/correctness/noUnsafeFinally: nested confirmation is more precise than this guard's provisional timeout.
+            throw returnError
+          }
           if (returnError instanceof AbortSettlementTimeoutError) {
             // A stuck next() already produced the most precise confirmation
             // failure. Do not replace it with a less useful return() timeout.
@@ -159,6 +207,17 @@ export async function* guardAsyncIterableCancellation<T>(
             // biome-ignore lint/correctness/noUnsafeFinally: explicit iterator.return() has no primary error to preserve.
             throw returnError
           }
+        }
+        if (
+          teardownConfirmed &&
+          timedOutNext?.error === iterationError &&
+          signal.aborted
+        ) {
+          // Both the exact in-flight next() and iterator.return() have now
+          // settled. Override only the provisional timeout created by this
+          // guard; a nested StopConfirmationError remains authoritative.
+          // biome-ignore lint/correctness/noUnsafeFinally: exact teardown proof must replace this guard's stale provisional timeout.
+          throw new AbortError(`${operation} was aborted`)
         }
       }
     }

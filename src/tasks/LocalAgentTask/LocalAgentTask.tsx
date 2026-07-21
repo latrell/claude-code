@@ -66,8 +66,11 @@ export function suppressAgentNotification(taskId: string): () => void {
 }
 
 const MAX_RECENT_ACTIVITIES = 5;
-const LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS = 20_000;
-export const LOCAL_AGENT_STOP_ABORT_GRACE_MS = 2_000;
+// runAgent owns cleanup steps under a 30s deadline plus a 2s settlement
+// grace. The task-level barrier must outlive that inner owner; otherwise it
+// can report an unconfirmed Stop while cleanup is still inside its legitimate
+// finalizer window.
+export const LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS = 35_000;
 
 type WaitForLocalAgentStopSettlement = (
   settlement: Promise<void>,
@@ -77,18 +80,15 @@ type WaitForLocalAgentStopSettlement = (
 
 function waitForLocalAgentStopSettlement(
   settlement: Promise<void>,
-  signal: AbortSignal,
+  _signal: AbortSignal,
   taskId: string,
 ): Promise<void> {
   return waitForBoundedSettlement(settlement, {
-    signal,
     timeoutMs: LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS,
-    // killAsyncAgent aborts the controller before entering this wait. Using
-    // the full execution timeout here therefore made every abort-ignoring
-    // agent hold TaskStop (and the UI) for 20 seconds. Give transports the
-    // same short confirmation grace used by the rest of the cancellation
-    // stack while retaining the live execution record for a later retry.
-    abortGraceMs: LOCAL_AGENT_STOP_ABORT_GRACE_MS,
+    // The execution's owner signal is already aborted before TaskStop starts
+    // waiting. Forwarding it here would collapse this absolute deadline to
+    // the generic post-abort grace and report an unconfirmed stop too early.
+    abortGraceMs: 0,
     operation: `Agent task ${taskId} execution settlement`,
   });
 }
@@ -224,6 +224,13 @@ type LocalAgentExecutionRecord = {
   attached: boolean;
   stopRequested: boolean;
   didSettle: boolean;
+  /**
+   * During foreground-to-background handoff, the replacement generation is
+   * registered before AgentTool can attach its runner. Keep the foreground
+   * settlement reachable in that window so TaskStop cannot mistake an
+   * unattached replacement record for proof that all owned work has stopped.
+   */
+  inheritedSettlement?: Promise<void>;
   unconfirmedError?: StopConfirmationError;
   settled: Promise<void>;
   resolveSettled: () => void;
@@ -241,6 +248,7 @@ function beginLocalAgentExecution(
   taskId: string,
   abortController: AbortController,
   setAppState: SetAppState,
+  inheritedSettlement?: Promise<void>,
 ): LocalAgentExecutionRecord {
   const existing = localAgentExecutions.get(taskId);
   if (existing?.abortController === abortController) {
@@ -264,6 +272,7 @@ function beginLocalAgentExecution(
     attached: false,
     stopRequested: false,
     didSettle: false,
+    inheritedSettlement,
     settled,
     resolveSettled,
     rejectSettled,
@@ -563,12 +572,7 @@ export const LocalAgentTask: Task = {
   type: 'local_agent',
 
   async kill(taskId, setAppState) {
-    const outcome = await killAsyncAgent(taskId, setAppState);
-    if (outcome !== 'killed') {
-      throw new StopConfirmationError(
-        `Agent task ${taskId} reached a terminal state before Stop could confirm termination`,
-      );
-    }
+    await killAsyncAgent(taskId, setAppState);
   },
 };
 
@@ -616,10 +620,31 @@ export async function killAsyncAgent(
   abortController.abort();
   unregisterCleanup?.();
 
-  if (execution?.attached) {
+  if (execution) {
+    const stopSettlement = execution.attached
+      ? execution.inheritedSettlement
+        ? Promise.all([execution.inheritedSettlement, execution.settled]).then(() => undefined)
+        : execution.settled
+      : (async () => {
+          // A foreground-to-background transition publishes the replacement
+          // controller before AgentTool can attach the replacement runner.
+          // If Stop lands in that window, first wait for the foreground runner
+          // inherited by this generation, then confirm that the aborted,
+          // never-started replacement is settled as well.
+          await execution.inheritedSettlement;
+          settleLocalAgentExecution(execution);
+          await execution.settled;
+        })();
+    let stopSettlementConfirmed = false;
+    void stopSettlement.then(
+      () => {
+        stopSettlementConfirmed = true;
+      },
+      () => undefined,
+    );
     try {
       await (dependencies.waitForStopSettlement ?? waitForLocalAgentStopSettlement)(
-        execution.settled,
+        stopSettlement,
         abortController.signal,
         taskId,
       );
@@ -630,8 +655,8 @@ export async function killAsyncAgent(
 
       // The deadline and the runner can resolve in the same turn. Prefer the
       // concrete runner settlement if its finally won before this catch runs.
-      if (!execution.didSettle) {
-        const message = `Agent task ${taskId} execution did not settle within ${LOCAL_AGENT_STOP_ABORT_GRACE_MS}ms after abort`;
+      if (!stopSettlementConfirmed) {
+        const message = `Agent task ${taskId} execution did not settle within ${LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS}ms after the stop request`;
         // Do not publish a fake failed terminal state or discard the only
         // settlement handle. The runner may still be alive; retaining both the
         // running task and its execution record lets a second Stop wait again,
@@ -639,10 +664,6 @@ export async function killAsyncAgent(
         throw new StopConfirmationError(message);
       }
     }
-  } else if (execution) {
-    // Registration and execution attachment happen in the same JavaScript
-    // turn. An unattached record therefore represents work that never started.
-    settleLocalAgentExecution(execution);
   } else {
     // Backward-compatible fallback for restored/test-created task state that
     // predates execution tracking: there is no live runner to await.
@@ -663,11 +684,6 @@ export async function killAsyncAgent(
   });
   if (terminalStatus === 'killed') {
     return 'killed';
-  }
-  if (terminalStatus === 'failed' && execution?.stopRequested) {
-    throw new StopConfirmationError(
-      `Agent task ${taskId} termination could not be confirmed (status: ${terminalStatus})`,
-    );
   }
   if (terminalStatus === 'completed' || terminalStatus === 'failed' || terminalStatus === undefined) {
     return 'already_terminal';
@@ -1057,14 +1073,24 @@ export function registerAgentForeground({
 function transitionAgentToBackground(taskId: string, setAppState: SetAppState): boolean {
   const backgroundAbortController = createAbortController();
   let foregroundAbortController: AbortController | undefined;
+  let foregroundExecution: LocalAgentExecutionRecord | undefined;
   let transitioned = false;
 
   setAppState(prev => {
     const task = prev.tasks[taskId];
-    if (!isLocalAgentTask(task) || task.status !== 'running' || task.isBackgrounded) {
+    if (
+      !isLocalAgentTask(task) ||
+      task.status !== 'running' ||
+      task.isBackgrounded ||
+      task.abortController?.signal.aborted
+    ) {
       return prev;
     }
 
+    foregroundExecution = getLocalAgentExecution(taskId, task.abortController);
+    if (foregroundExecution?.stopRequested) {
+      return prev;
+    }
     transitioned = true;
     foregroundAbortController = task.abortController;
     return {
@@ -1084,7 +1110,17 @@ function transitionAgentToBackground(taskId: string, setAppState: SetAppState): 
     return false;
   }
 
-  beginLocalAgentExecution(taskId, backgroundAbortController, setAppState);
+  if (foregroundExecution && !foregroundExecution.attached) {
+    // No foreground runner ever took ownership of this registration. Settle
+    // the stale generation before replacing it so it cannot become an orphan.
+    settleLocalAgentExecution(foregroundExecution);
+  }
+  beginLocalAgentExecution(
+    taskId,
+    backgroundAbortController,
+    setAppState,
+    foregroundExecution?.attached ? foregroundExecution.settled : undefined,
+  );
 
   const resolver = backgroundSignalResolvers.get(taskId);
   if (resolver) {

@@ -119,6 +119,74 @@ describe('guardProviderStreamCancellation', () => {
     expect(returnCalls).toBe(1)
   })
 
+  test('accepts exact teardown that settles after the short abort grace', async () => {
+    const controller = new AbortController()
+    let resolveNext!: (result: IteratorResult<string>) => void
+    let resolveReturn!: (result: IteratorResult<string>) => void
+    let returnCalls = 0
+    const stream: AsyncIterable<string> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () =>
+            new Promise<IteratorResult<string>>(resolve => {
+              resolveNext = resolve
+            }),
+          return: () => {
+            returnCalls++
+            return new Promise<IteratorResult<string>>(resolve => {
+              resolveReturn = resolve
+            })
+          },
+        }
+      },
+    }
+    const guarded = guardProviderStreamCancellation(stream, controller.signal, {
+      abortGraceMs: 5,
+      returnTimeoutMs: 20,
+      operation: 'late exact provider teardown',
+    })
+    const next = guarded.next()
+
+    controller.abort('user-cancel')
+    await Bun.sleep(8)
+    resolveNext({ done: true, value: undefined })
+    resolveReturn({ done: true, value: undefined })
+
+    await expect(next).rejects.toBeInstanceOf(AbortError)
+    expect(returnCalls).toBe(1)
+  })
+
+  test('preserves a nested unconfirmed request during late teardown', async () => {
+    const controller = new AbortController()
+    const nestedError = new StopConfirmationError(
+      'nested provider request is still unconfirmed',
+    )
+    let rejectNext!: (error: unknown) => void
+    const stream: AsyncIterable<string> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () =>
+            new Promise<IteratorResult<string>>((_resolve, reject) => {
+              rejectNext = reject
+            }),
+          return: async () => ({ done: true, value: undefined }),
+        }
+      },
+    }
+    const guarded = guardProviderStreamCancellation(stream, controller.signal, {
+      abortGraceMs: 5,
+      returnTimeoutMs: 20,
+      operation: 'nested provider teardown',
+    })
+    const next = guarded.next()
+
+    controller.abort('user-cancel')
+    await Bun.sleep(8)
+    rejectNext(nestedError)
+
+    await expect(next).rejects.toBe(nestedError)
+  })
+
   test('preserves StopConfirmation through a public model wrapper and the query guard', async () => {
     const controller = new AbortController()
     let returnCalls = 0

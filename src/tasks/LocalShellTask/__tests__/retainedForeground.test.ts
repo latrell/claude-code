@@ -10,7 +10,9 @@ import type { AppState } from '../../../state/AppState'
 import type { ExecResult, ShellCommand } from '../../../utils/ShellCommand'
 import { resetCommandQueue } from '../../../utils/messageQueueManager'
 import {
+  backgroundAll,
   failForegroundAfterConfirmedTermination,
+  hasForegroundTasks,
   registerForeground,
   retainForegroundAfterUnconfirmedStop,
 } from '../LocalShellTask'
@@ -129,5 +131,63 @@ describe('retainForegroundAfterUnconfirmedStop', () => {
     // its pending result settles; the task no longer owns a retry handle.
     expect(cleanup).toHaveBeenCalledTimes(1)
     resetCommandQueue()
+  })
+})
+
+describe('foreground backgrounding safety', () => {
+  test('does not advertise a running Agent as Ctrl+B-backgroundable', () => {
+    const state = {
+      tasks: {
+        'foreground-agent': {
+          id: 'foreground-agent',
+          type: 'local_agent',
+          status: 'running',
+          isBackgrounded: false,
+        },
+      },
+    } as unknown as AppState
+
+    expect(hasForegroundTasks(state)).toBe(false)
+  })
+
+  test('backgroundAll leaves Agents untouched while preserving shell handling', () => {
+    const shellBackground = mock(() => false)
+    const agentController = new AbortController()
+    let state = {
+      tasks: {
+        'foreground-shell': {
+          id: 'foreground-shell',
+          type: 'local_bash',
+          status: 'running',
+          description: 'shell',
+          isBackgrounded: false,
+          shellCommand: { background: shellBackground },
+        },
+        'foreground-agent': {
+          id: 'foreground-agent',
+          type: 'local_agent',
+          status: 'running',
+          isBackgrounded: false,
+          abortController: agentController,
+        },
+      },
+    } as unknown as AppState
+    const setAppState = (updater: (prev: AppState) => AppState): void => {
+      state = updater(state)
+    }
+
+    expect(hasForegroundTasks(state)).toBe(true)
+    backgroundAll(() => state, setAppState)
+
+    expect(shellBackground).toHaveBeenCalledTimes(1)
+    expect(
+      (state.tasks['foreground-agent'] as { isBackgrounded?: boolean })
+        .isBackgrounded,
+    ).toBe(false)
+    expect(
+      (state.tasks['foreground-agent'] as { abortController?: AbortController })
+        .abortController,
+    ).toBe(agentController)
+    expect(agentController.signal.aborted).toBe(false)
   })
 })

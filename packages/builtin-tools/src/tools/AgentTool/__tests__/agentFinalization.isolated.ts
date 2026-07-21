@@ -15,9 +15,11 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 }
 
 const { runForegroundExecutionFinalizers } = await import('../AgentTool.js')
-const { initializeAgentMcpServers, settleAgentCleanupSteps } = await import(
-  '../runAgent.js'
-)
+const {
+  getUnconfirmedAgentCleanupFailures,
+  initializeAgentMcpServers,
+  settleAgentCleanupSteps,
+} = await import('../runAgent.js')
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void
@@ -150,6 +152,47 @@ describe('runAgent cleanup settlement', () => {
 
     expect(failures).toHaveLength(1)
     expect(failures[0]).toBeInstanceOf(AbortSettlementTimeoutError)
+  })
+
+  test('uses a fresh deadline when the Agent owner was already aborted', async () => {
+    const owner = new AbortController()
+    owner.abort('user stop')
+    let cleanupSettled = false
+
+    const failures = await settleAgentCleanupSteps(
+      [
+        {
+          operation: 'late but confirmed cleanup',
+          cleanup: async () => {
+            await Bun.sleep(25)
+            cleanupSettled = true
+          },
+        },
+      ],
+      owner.signal,
+      { timeoutMs: 250, abortGraceMs: 1 },
+    )
+
+    expect(cleanupSettled).toBe(true)
+    expect(failures).toEqual([])
+  })
+
+  test('does not classify an ordinary settled cleanup rejection as still running', () => {
+    const ordinaryFailure = new Error('local cleanup failed')
+    const explicitConfirmationFailure = new StopConfirmationError(
+      'remote request is still active',
+    )
+    const deadlineFailure = new AbortSettlementTimeoutError(
+      'cleanup did not settle',
+    )
+
+    expect(
+      getUnconfirmedAgentCleanupFailures([
+        ordinaryFailure,
+        explicitConfirmationFailure,
+        deadlineFailure,
+      ]),
+    ).toEqual([explicitConfirmationFailure, deadlineFailure])
   })
 
   test('cleans acquired resources when initialization fails midway', async () => {

@@ -192,6 +192,11 @@ async function* runToolsConcurrently(
       markToolUseAsComplete(toolUseContext, toolUse.id)
     }),
     getMaxToolUseConcurrency(),
+    () => {
+      if (!toolUseContext.abortController.signal.aborted) {
+        toolUseContext.abortController.abort('concurrent-tool-batch-cancelled')
+      }
+    },
   )
 }
 

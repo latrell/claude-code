@@ -21,8 +21,6 @@ import type { ShellCommand } from '../../utils/ShellCommand.js';
 import { evictTaskOutput, getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { escapeXml } from '../../utils/xml.js';
-import { backgroundAgentTask, isLocalAgentTask } from '../LocalAgentTask/LocalAgentTask.js';
-import { isMainSessionTask } from '../LocalMainSessionTask.js';
 import { type BashTaskKind, isLocalShellTask, type LocalShellTaskState } from './guards.js';
 import { killTask } from './killShellTasks.js';
 
@@ -513,24 +511,16 @@ function backgroundTask(taskId: string, getAppState: () => AppState, setAppState
 }
 
 /**
- * Background ALL foreground tasks (bash commands and agents).
- * Called when user presses Ctrl+B to background all running tasks.
- */
-/**
- * Check if there are any foreground tasks (bash or agent) that can be backgrounded.
+ * Check if there are any foreground shell tasks that can be backgrounded.
+ * Running Agents cannot be safely converted in place: the current AgentTool
+ * handoff aborts the foreground run and starts a fresh run from the original
+ * prompt, which can repeat already-applied tool side effects. Agents that need
+ * to run in the background must be launched there from the start.
+ *
  * Used to determine whether Ctrl+B should background existing tasks vs. background the session.
  */
 export function hasForegroundTasks(state: AppState): boolean {
-  return Object.values(state.tasks).some(task => {
-    if (isLocalShellTask(task) && !task.isBackgrounded && task.shellCommand) {
-      return true;
-    }
-    // Exclude main session tasks - they display in the main view, not as foreground tasks
-    if (isLocalAgentTask(task) && !task.isBackgrounded && !isMainSessionTask(task)) {
-      return true;
-    }
-    return false;
-  });
+  return Object.values(state.tasks).some(task => isLocalShellTask(task) && !task.isBackgrounded && task.shellCommand);
 }
 
 export function backgroundAll(getAppState: () => AppState, setAppState: SetAppState): void {
@@ -543,15 +533,6 @@ export function backgroundAll(getAppState: () => AppState, setAppState: SetAppSt
   });
   for (const taskId of foregroundBashTaskIds) {
     backgroundTask(taskId, getAppState, setAppState);
-  }
-
-  // Background all foreground agent tasks
-  const foregroundAgentTaskIds = Object.keys(state.tasks).filter(id => {
-    const task = state.tasks[id];
-    return isLocalAgentTask(task) && !task.isBackgrounded;
-  });
-  for (const taskId of foregroundAgentTaskIds) {
-    backgroundAgentTask(taskId, getAppState, setAppState);
   }
 }
 

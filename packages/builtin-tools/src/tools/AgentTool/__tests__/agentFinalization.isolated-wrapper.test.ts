@@ -21,5 +21,5 @@ test('Agent finalization isolated suite passes', () => {
       `Agent finalization isolated suite failed (status=${String(result.status)}, signal=${String(result.signal)}, spawnError=${result.error?.message ?? 'none'}):\n${output}`,
     )
   }
-  expect(output).toMatch(/9 pass/)
+  expect(output).toMatch(/11 pass/)
 }, 35_000)

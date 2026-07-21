@@ -83,7 +83,7 @@ describe('settleQueryOwnedRequests', () => {
     expect(abortReasons).toEqual([originalError])
   })
 
-  test('turns synchronous and asynchronous drain failures into one stop confirmation', async () => {
+  test('treats ordinary synchronous and asynchronous drain rejection as settled', async () => {
     const postSamplingError = new Error('post-sampling failed')
     const promptSuggestionError = new Error('suggestion failed')
 
@@ -98,8 +98,38 @@ describe('settleQueryOwnedRequests', () => {
       abortGraceMs: 20,
     })
 
+    expect(error).toBeUndefined()
+  })
+
+  test('treats AbortError drain rejection as settled cancellation evidence', async () => {
+    const controller = new AbortController()
+    controller.abort('Esc')
+    const abortError = new DOMException('cancelled', 'AbortError')
+
+    const error = await settleQueryOwnedRequests({
+      signal: controller.signal,
+      finishPostSamplingHooks: () => Promise.reject(abortError),
+      abortPostSamplingHooks: () => {},
+      timeoutMs: 1_000,
+      abortGraceMs: 20,
+    })
+
+    expect(error).toBeUndefined()
+  })
+
+  test('preserves explicit unconfirmed drain evidence', async () => {
+    const unconfirmed = new StopConfirmationError('provider still active')
+
+    const error = await settleQueryOwnedRequests({
+      signal: new AbortController().signal,
+      finishPostSamplingHooks: () => Promise.reject(unconfirmed),
+      abortPostSamplingHooks: () => {},
+      timeoutMs: 1_000,
+      abortGraceMs: 20,
+    })
+
     expect(error).toBeInstanceOf(StopConfirmationError)
-    expect(error?.failures).toEqual([postSamplingError, promptSuggestionError])
+    expect(error?.failures).toEqual([unconfirmed])
   })
 
   test('cancels owner-scoped drains when Esc arrives after normal cleanup starts', async () => {
