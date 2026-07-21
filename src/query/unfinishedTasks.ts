@@ -18,11 +18,15 @@ const TASK_COMPLETION_GUARD_TOOL_NAMES = new Set<string>([
   TASK_GET_TOOL_NAME,
 ])
 
+export type GuardedTaskStateItem = TaskStateItem & {
+  taskListId: string
+}
+
 export type UnfinishedTaskInspection = {
   snapshotKey: string
   hasPublicUnfinishedTasks: boolean
-  unfinishedTasks: TaskStateItem[]
-  actionableTasks: TaskStateItem[]
+  unfinishedTasks: GuardedTaskStateItem[]
+  actionableTasks: GuardedTaskStateItem[]
 }
 
 export function isTaskCompletionGuardToolName(name: string): boolean {
@@ -45,9 +49,9 @@ export function inspectUnfinishedTasks(
   const resolvedTaskIds = new Set(
     tasks.filter(task => task.status === 'completed').map(task => task.id),
   )
-  const unfinishedTasks = snapshot.tasks.filter(
-    task => task.status !== 'completed',
-  )
+  const unfinishedTasks = snapshot.tasks
+    .filter(task => task.status !== 'completed')
+    .map(task => ({ ...task, taskListId }))
   const actionableTasks = unfinishedTasks.filter(
     task =>
       !task.owner &&
@@ -70,14 +74,14 @@ function oneLineSubject(subject: string): string {
   return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact
 }
 
-function formatTasks(tasks: TaskStateItem[]): string {
+function formatTasks(tasks: GuardedTaskStateItem[]): string {
   const shown = tasks.slice(0, 5).map(task => {
     const owner = task.owner ? `; owner=${task.owner}` : ''
     const blockers =
       task.blockedBy.length > 0
         ? `; blocked by ${task.blockedBy.map(id => `#${id}`).join(', ')}`
         : ''
-    return `- #${task.id} [${task.status}] ${oneLineSubject(task.subject)}${owner}${blockers}`
+    return `- [TaskList ${JSON.stringify(task.taskListId)}] #${task.id} [${task.status}] ${oneLineSubject(task.subject)}${owner}${blockers}`
   })
   if (tasks.length > shown.length) {
     shown.push(
@@ -88,27 +92,29 @@ function formatTasks(tasks: TaskStateItem[]): string {
 }
 
 export function buildUnfinishedTaskContinuationPrompt(
-  tasks: TaskStateItem[],
+  tasks: GuardedTaskStateItem[],
+  currentTaskListId: string,
 ): string {
   return `The current user request still has actionable unfinished tasks. Continue the work instead of ending the turn.
 
 ${formatTasks(tasks)}
 
-Work only on unassigned, unblocked tasks. Keep TaskList status accurate, and do not give a final answer while actionable tasks remain.`
+Task tools currently address TaskList ${JSON.stringify(currentTaskListId)}. Work only on unassigned, unblocked tasks from that list. Keep TaskList status accurate, and do not give a final answer while actionable tasks remain.`
 }
 
 export function buildUnfinishedTaskCoordinationPrompt(
-  tasks: TaskStateItem[],
+  tasks: GuardedTaskStateItem[],
+  currentTaskListId: string,
 ): string {
   return `The current user request still has unfinished tasks, but none are currently safe for the main thread to execute.
 
 ${formatTasks(tasks)}
 
-Check owners and blockers, then coordinate, wait, or unblock as appropriate. Do not take over assigned work or bypass unresolved blockers, and do not give a final answer while these tasks remain unfinished.`
+Task tools currently address TaskList ${JSON.stringify(currentTaskListId)}. Never apply a same-numbered task ID from another list to the current list. Check owners and blockers, then coordinate, wait, or restore the correct list as appropriate. Do not take over assigned work or bypass unresolved blockers, and do not give a final answer while these tasks remain unfinished.`
 }
 
 export function buildUnfinishedTaskNoProgressError(
-  tasks: TaskStateItem[],
+  tasks: GuardedTaskStateItem[],
 ): string {
   return `Task completion guard stopped after ${MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS} automatic continuations without TaskList progress. Remaining unfinished tasks:\n${formatTasks(tasks)}`
 }

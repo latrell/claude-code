@@ -1,25 +1,12 @@
 import { expect, test } from 'bun:test'
-import { spawnSync } from 'node:child_process'
-import { relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { runIsolatedBunTest } from 'src/testUtils/runIsolatedBunTest.js'
 
-test('speculation lifecycle isolated suite passes', () => {
-  const suitePath = fileURLToPath(
-    new URL('./speculationLifecycle.isolated.ts', import.meta.url),
-  )
-  const suiteArg = `./${relative(process.cwd(), suitePath).replaceAll('\\', '/')}`
-  const result = spawnSync(process.execPath, ['test', suiteArg], {
-    cwd: process.cwd(),
+test('speculation lifecycle isolated suite passes', async () => {
+  const { output } = await runIsolatedBunTest({
+    label: 'Speculation isolated suite',
+    suiteUrl: new URL('./speculationLifecycle.isolated.ts', import.meta.url),
     env: { ...process.env, USER_TYPE: 'ant' },
-    encoding: 'utf8',
-    timeout: 25_000,
+    timeoutMs: 25_000,
   })
-
-  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
-  if (result.error || result.status !== 0 || result.signal !== null) {
-    throw new Error(
-      `Speculation isolated suite failed (status=${String(result.status)}, signal=${String(result.signal)}, spawnError=${result.error?.message ?? 'none'}):\n${output}`,
-    )
-  }
   expect(output).toMatch(/4 pass/)
 }, 30_000)

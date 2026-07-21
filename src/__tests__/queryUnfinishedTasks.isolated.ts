@@ -16,8 +16,14 @@ const { query } = await import('../query')
 const { buildTool, getEmptyToolPermissionContext } = await import('../Tool')
 const { asSystemPrompt } = await import('../utils/systemPromptType')
 const { createUserMessage } = await import('../utils/messages')
-const { enqueue, getCommandQueue, resetCommandQueue } = await import(
-  '../utils/messageQueueManager'
+const {
+  enqueue,
+  enqueuePendingNotification,
+  getCommandQueue,
+  resetCommandQueue,
+} = await import('../utils/messageQueueManager')
+const { clearLeaderTeamName, getTaskListId, setLeaderTeamName } = await import(
+  '../utils/tasks'
 )
 const {
   MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS,
@@ -30,14 +36,21 @@ const { cleanupTempDir, createTempDir } = await import(
 let tempDir = ''
 let originalProcessCwd = ''
 let previousDisableAttachments: string | undefined
+let previousTaskListId: string | undefined
+let previousTeamName: string | undefined
 
 beforeEach(async () => {
   originalProcessCwd = process.cwd()
   previousDisableAttachments = process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+  previousTaskListId = process.env.CLAUDE_CODE_TASK_LIST_ID
+  previousTeamName = process.env.CLAUDE_CODE_TEAM_NAME
   process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS = '1'
+  delete process.env.CLAUDE_CODE_TASK_LIST_ID
+  delete process.env.CLAUDE_CODE_TEAM_NAME
   tempDir = await createTempDir('query-unfinished-tasks-')
   resetStateForTests()
   resetCommandQueue()
+  clearLeaderTeamName()
   setOriginalCwd(tempDir)
   setCwdState(tempDir)
   setProjectRoot(tempDir)
@@ -46,10 +59,21 @@ beforeEach(async () => {
 afterEach(async () => {
   resetStateForTests()
   resetCommandQueue()
+  clearLeaderTeamName()
   if (previousDisableAttachments === undefined) {
     delete process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
   } else {
     process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS = previousDisableAttachments
+  }
+  if (previousTaskListId === undefined) {
+    delete process.env.CLAUDE_CODE_TASK_LIST_ID
+  } else {
+    process.env.CLAUDE_CODE_TASK_LIST_ID = previousTaskListId
+  }
+  if (previousTeamName === undefined) {
+    delete process.env.CLAUDE_CODE_TEAM_NAME
+  } else {
+    process.env.CLAUDE_CODE_TEAM_NAME = previousTeamName
   }
   if (originalProcessCwd) process.chdir(originalProcessCwd)
   if (tempDir) await cleanupTempDir(tempDir)
@@ -195,7 +219,10 @@ function messageText(message: any): string {
 
 type ScenarioParams = {
   responses: (callCount: number, toolUseContext: any) => AssistantMessage
-  listTasks: (inspectionCount: number) => Promise<Task[]> | Task[]
+  listTasks: (
+    inspectionCount: number,
+    taskListId: string,
+  ) => Promise<Task[]> | Task[]
   maxTurns?: number
   mode?: 'default' | 'plan'
   agentId?: string
@@ -205,6 +232,7 @@ async function runScenario(params: ScenarioParams) {
   let callCount = 0
   let inspectionCount = 0
   const inputs: any[][] = []
+  const inspectedTaskListIds: string[] = []
   const toolUseContext = createToolUseContext({
     mode: params.mode,
     agentId: params.agentId,
@@ -216,9 +244,10 @@ async function runScenario(params: ScenarioParams) {
       compactionResult: undefined,
       consecutiveFailures: 0,
     }),
-    listTasks: async () => {
+    listTasks: async (taskListId: string) => {
       inspectionCount++
-      return params.listTasks(inspectionCount)
+      inspectedTaskListIds.push(taskListId)
+      return params.listTasks(inspectionCount, taskListId)
     },
     callModel: async function* ({ messages }: any) {
       callCount++
@@ -253,6 +282,7 @@ async function runScenario(params: ScenarioParams) {
     inputs,
     callCount,
     inspectionCount,
+    inspectedTaskListIds,
   }
 }
 
@@ -382,6 +412,87 @@ describe('query unfinished TaskList completion guard', () => {
     expect(result.terminal.reason).toBe('completed')
     expect(result.inspectionCount).toBe(0)
     expect(getCommandQueue()).toHaveLength(1)
+  })
+
+  test('queued task notification yields to a fresh main-thread turn', async () => {
+    const result = await runScenario({
+      responses: (callCount, _context) => {
+        if (callCount === 2) {
+          enqueuePendingNotification({
+            value: '<task-notification>worker finished</task-notification>',
+            mode: 'task-notification',
+          })
+        }
+        return taskThenText(callCount)
+      },
+      listTasks: () => [createTask('1', 'in_progress', { owner: 'worker-1' })],
+    })
+
+    expect(result.terminal.reason).toBe('completed')
+    expect(result.callCount).toBe(2)
+    expect(result.inspectionCount).toBe(0)
+    expect(getCommandQueue()).toMatchObject([
+      { mode: 'task-notification', priority: 'later' },
+    ])
+  })
+
+  test('inspects every task list touched before a team switch', async () => {
+    const originalTaskListId = getTaskListId()
+    const switchedTaskListId = 'completion-guard-team'
+    const inspectionsByList = new Map<string, number>()
+
+    const result = await runScenario({
+      responses: callCount => {
+        if (callCount === 1) {
+          return createAssistantMessage({
+            id: 'session-task-list',
+            toolName: 'TaskList',
+          })
+        }
+        if (callCount === 2) {
+          setLeaderTeamName(switchedTaskListId)
+          return createAssistantMessage({
+            id: 'team-task-list',
+            toolName: 'TaskList',
+          })
+        }
+        return createAssistantMessage({
+          id: `final-${callCount}`,
+          text: 'All done',
+        })
+      },
+      listTasks: (_inspectionCount, taskListId) => {
+        const count = (inspectionsByList.get(taskListId) ?? 0) + 1
+        inspectionsByList.set(taskListId, count)
+        if (taskListId === originalTaskListId) {
+          return [
+            createTask('old-list-task', count === 1 ? 'pending' : 'completed'),
+          ]
+        }
+        return []
+      },
+    })
+
+    expect(result.terminal.reason).toBe('completed')
+    expect(result.callCount).toBe(4)
+    expect(result.inspectedTaskListIds).toEqual([
+      originalTaskListId,
+      switchedTaskListId,
+      originalTaskListId,
+      switchedTaskListId,
+    ])
+    expect(messageText(result.inputs[3]?.at(-1))).toContain(
+      '#old-list-task [pending]',
+    )
+    expect(messageText(result.inputs[3]?.at(-1))).toContain(
+      `[TaskList ${JSON.stringify(originalTaskListId)}]`,
+    )
+    expect(messageText(result.inputs[3]?.at(-1))).toContain(
+      `Task tools currently address TaskList ${JSON.stringify(switchedTaskListId)}`,
+    )
+    expect(messageText(result.inputs[3]?.at(-1))).toContain(
+      'Never apply a same-numbered task ID from another list',
+    )
   })
 
   test('abort takes priority over the completion guard', async () => {

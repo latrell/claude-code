@@ -103,6 +103,7 @@ import {
   getCommandsByMaxPriorityBeforeConversationReset,
   isQueuedCommandEditable,
   isSlashCommand,
+  peek,
 } from './utils/messageQueueManager.js'
 import {
   type AutonomyTurnOutcome,
@@ -546,6 +547,41 @@ function hasQueuedMainThreadUserInput(): boolean {
   )
 }
 
+function hasQueuedMainThreadTaskNotification(): boolean {
+  return (
+    peek(
+      command =>
+        command.agentId === undefined && command.mode === 'task-notification',
+    ) !== undefined
+  )
+}
+
+function mergeUnfinishedTaskInspections(
+  inspections: Array<{
+    taskListId: string
+    inspection: UnfinishedTaskInspection
+  }>,
+  currentTaskListId: string,
+): UnfinishedTaskInspection {
+  return {
+    snapshotKey: JSON.stringify(
+      inspections.map(({ taskListId, inspection }) => ({
+        taskListId,
+        snapshotKey: inspection.snapshotKey,
+      })),
+    ),
+    hasPublicUnfinishedTasks: inspections.some(
+      ({ inspection }) => inspection.hasPublicUnfinishedTasks,
+    ),
+    unfinishedTasks: inspections.flatMap(
+      ({ inspection }) => inspection.unfinishedTasks,
+    ),
+    actionableTasks: inspections
+      .flatMap(({ inspection }) => inspection.actionableTasks)
+      .filter(task => task.taskListId === currentTaskListId),
+  }
+}
+
 function getAutonomyTurnOutcome(params: {
   terminal?: Terminal
   thrownError?: unknown
@@ -881,7 +917,7 @@ async function* queryLoop(
   const deps = params.deps ?? productionDeps()
   const chatGPTCodexTurnSession = params.chatGPTCodexTurnSession ?? {}
   let chatGPTCodexServerContinuationCount = 0
-  let taskCompletionGuardActivated = false
+  const taskCompletionGuardTaskListIds = new Set<string>()
   let taskCompletionGuardSnapshotKey: string | undefined
   let taskCompletionGuardContinuationCount = 0
 
@@ -2272,17 +2308,36 @@ async function* queryLoop(
       }
 
       if (
-        taskCompletionGuardActivated &&
+        taskCompletionGuardTaskListIds.size > 0 &&
         toolUseContext.agentId === undefined &&
         toolUseContext.getAppState().toolPermissionContext.mode !== 'plan' &&
-        !hasQueuedMainThreadUserInput()
+        !hasQueuedMainThreadUserInput() &&
+        !hasQueuedMainThreadTaskNotification()
       ) {
-        const taskListId = getTaskListId()
+        // Task tools resolve their list implicitly. TeamCreate/TeamDelete can
+        // change that identity during one query, so keep every list touched by
+        // this query instead of inspecting only whichever list is current at
+        // the final assistant turn.
+        const currentTaskListId = getTaskListId()
+        taskCompletionGuardTaskListIds.add(currentTaskListId)
         let inspection: UnfinishedTaskInspection
         try {
-          inspection = inspectUnfinishedTasks(
-            taskListId,
-            await deps.listTasks(taskListId),
+          const inspections: Array<{
+            taskListId: string
+            inspection: UnfinishedTaskInspection
+          }> = []
+          for (const taskListId of taskCompletionGuardTaskListIds) {
+            inspections.push({
+              taskListId,
+              inspection: inspectUnfinishedTasks(
+                taskListId,
+                await deps.listTasks(taskListId),
+              ),
+            })
+          }
+          inspection = mergeUnfinishedTaskInspections(
+            inspections,
+            currentTaskListId,
           )
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error)
@@ -2302,7 +2357,14 @@ async function* queryLoop(
           return { reason: 'aborted_streaming' }
         }
 
-        if (hasQueuedMainThreadUserInput()) {
+        // A queued completion notification needs a fresh main-thread turn in
+        // order to update the public TaskList. Let the queue processor own it;
+        // otherwise the guard's meta continuations can starve a `later`
+        // notification until the no-progress terminal fires.
+        if (
+          hasQueuedMainThreadUserInput() ||
+          hasQueuedMainThreadTaskNotification()
+        ) {
           return { reason: 'completed' }
         }
 
@@ -2356,9 +2418,11 @@ async function* queryLoop(
                   inspection.actionableTasks.length > 0
                     ? buildUnfinishedTaskContinuationPrompt(
                         inspection.actionableTasks,
+                        currentTaskListId,
                       )
                     : buildUnfinishedTaskCoordinationPrompt(
                         inspection.unfinishedTasks,
+                        currentTaskListId,
                       ),
                 isMeta: true,
               }),
@@ -2385,6 +2449,13 @@ async function* queryLoop(
 
     let shouldPreventContinuation = false
     let updatedToolUseContext = toolUseContext
+
+    const taskCompletionGuardToolUsedThisRound =
+      toolUseContext.agentId === undefined &&
+      toolUseBlocks.some(block => isTaskCompletionGuardToolName(block.name))
+    const taskListIdBeforeToolExecution = taskCompletionGuardToolUsedThisRound
+      ? getTaskListId()
+      : undefined
 
     queryCheckpoint('query_tool_execution_start')
 
@@ -2442,11 +2513,11 @@ async function* queryLoop(
     }
     queryCheckpoint('query_tool_execution_end')
 
-    if (
-      toolUseContext.agentId === undefined &&
-      toolUseBlocks.some(block => isTaskCompletionGuardToolName(block.name))
-    ) {
-      taskCompletionGuardActivated = true
+    if (taskListIdBeforeToolExecution !== undefined) {
+      // Capture both sides of the batch. Normally they are identical; keeping
+      // both also covers a Task tool batched with TeamCreate/TeamDelete.
+      taskCompletionGuardTaskListIds.add(taskListIdBeforeToolExecution)
+      taskCompletionGuardTaskListIds.add(getTaskListId())
     }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call

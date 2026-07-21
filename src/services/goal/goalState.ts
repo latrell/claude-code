@@ -27,6 +27,17 @@ function resolveSessionId(sessionId?: string): string {
   return sessionId ?? getSessionId()
 }
 
+/**
+ * Close the current active interval before changing the goal to a non-active
+ * status. Callers pass their transition timestamp so elapsed, pausedAt, and
+ * updatedAt all describe the same instant.
+ */
+function freezeActiveTime(goal: GoalState, now: number): void {
+  if (goal.status !== 'active') return
+  goal.accumulatedActiveMs += now - goal.startTime
+  goal.pausedAt = now
+}
+
 export function setGoal(
   objective: string,
   options?: { tokenBudget?: number; sessionId?: string },
@@ -77,8 +88,7 @@ export function pauseGoal(sessionId?: string): GoalState | null {
   const goal = goals.get(id)
   if (!goal || goal.status !== 'active') return null
   const now = Date.now()
-  goal.accumulatedActiveMs += now - goal.startTime
-  goal.pausedAt = now
+  freezeActiveTime(goal, now)
   goal.status = 'paused'
   goal.updatedAt = now
   goalLog(
@@ -115,8 +125,10 @@ export function markGoalMaxTurnsReached(sessionId?: string): GoalState | null {
   const goal = getGoal(sessionId)
   if (!goal || goal.status !== 'active') return null
   if (goal.turnsExecuted < MAX_GOAL_TURNS) return null
+  const now = Date.now()
+  freezeActiveTime(goal, now)
   goal.status = 'max_turns'
-  goal.updatedAt = Date.now()
+  goal.updatedAt = now
   goalLog('MAX_TURNS', `reached ${MAX_GOAL_TURNS} turns`)
   return goal
 }
@@ -150,9 +162,7 @@ export function completeGoal(sessionId?: string): GoalState | null {
   const goal = goals.get(id)
   if (!goal) return null
   const now = Date.now()
-  if (goal.status === 'active' && goal.pausedAt === null) {
-    goal.accumulatedActiveMs += now - goal.startTime
-  }
+  freezeActiveTime(goal, now)
   goal.status = 'complete'
   goal.updatedAt = now
   goalLog('COMPLETE', `goal achieved`, {
@@ -172,9 +182,11 @@ export function updateGoalTokens(
   if (goal.status !== 'active') return null
   if (!Number.isFinite(delta) || delta <= 0) return goal
   const sanitized = delta
+  const now = Date.now()
   goal.tokensUsed += sanitized
-  goal.updatedAt = Date.now()
+  goal.updatedAt = now
   if (goal.tokenBudget !== null && goal.tokensUsed >= goal.tokenBudget) {
+    freezeActiveTime(goal, now)
     goal.status = 'budget_limited'
     goalLog(
       'BUDGET_LIMITED',
@@ -193,8 +205,10 @@ export function markUsageLimited(sessionId?: string): GoalState | null {
   const id = resolveSessionId(sessionId)
   const goal = goals.get(id)
   if (!goal || goal.status !== 'active') return null
+  const now = Date.now()
+  freezeActiveTime(goal, now)
   goal.status = 'usage_limited'
-  goal.updatedAt = Date.now()
+  goal.updatedAt = now
   return goal
 }
 
@@ -244,8 +258,10 @@ export function recordBlockedAttempt(
   }
   goal.lastBlockReason = reason
   goal.lastBlockedTurn = currentTurn
-  goal.updatedAt = Date.now()
+  const now = Date.now()
+  goal.updatedAt = now
   if (goal.blockedAttempts >= BLOCKED_CONSECUTIVE_THRESHOLD) {
+    freezeActiveTime(goal, now)
     goal.status = 'blocked'
     goalLog('BLOCKED', `3-strike reached! reason="${normalised}"`)
   } else {

@@ -9,6 +9,7 @@ import {
   getLastMainRequestId,
   getOriginalCwd,
   getSessionId,
+  getSessionProjectDir,
   regenerateSessionId,
   resetCostState,
   setHasExitedPlanMode,
@@ -17,6 +18,7 @@ import {
   setLastClassifierRequests,
   setNeedsAutoModeExitAttachment,
   setNeedsPlanModeExitAttachment,
+  switchSession,
 } from '../../bootstrap/state.js'
 import type { SDKStatusMessage } from '../../entrypoints/sdk/coreTypes.js'
 import {
@@ -92,6 +94,7 @@ export async function clearConversation({
   onConversationClear,
   queuedCommand,
   preserveModeTransitionState = false,
+  modeTransitionState: providedModeTransitionState,
 }: {
   setMessages: (updater: (prev: Message[]) => Message[]) => void
   readFileState: FileStateCache
@@ -104,7 +107,28 @@ export async function clearConversation({
   queuedCommand?: QueuedCommand
   /** Internal plan-exit clears carry one-shot transition guidance forward. */
   preserveModeTransitionState?: boolean
+  /**
+   * Captured before the first plan-exit clear attempt. Reusing the same
+   * snapshot across retries prevents a partially-created replacement session
+   * from becoming the source of truth after migration fails.
+   */
+  modeTransitionState?: import('./modeTransitionState.js').ModeTransitionState
 }): Promise<void> {
+  let modeTransitionState:
+    | import('./modeTransitionState.js').ModeTransitionState
+    | null = null
+  if (preserveModeTransitionState) {
+    if (providedModeTransitionState) {
+      modeTransitionState = providedModeTransitionState
+    } else {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { captureModeTransitionState } =
+        require('./modeTransitionState.js') as typeof import('./modeTransitionState.js')
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      modeTransitionState = captureModeTransitionState(getSessionId())
+    }
+  }
+
   // Invalidate session-scoped async UI work before the first await. A title
   // provider may ignore AbortSignal, so callers also guard late callbacks by
   // session/generation after this notification.
@@ -273,14 +297,69 @@ export async function clearConversation({
   // so the new session doesn't inherit the previous session's identity
   clearSessionMetadata()
 
-  // Generate new session ID to provide fresh state
-  // Set the old session as parent for analytics lineage tracking
-  regenerateSessionId({ setCurrentAsParent: true })
-  // Update the environment variable so subprocesses use the new session ID
-  if (process.env.USER_TYPE === 'ant' && process.env.CLAUDE_CODE_SESSION_ID) {
-    process.env.CLAUDE_CODE_SESSION_ID = getSessionId()
+  let restoredModeTransitionGoal = false
+  let endTaskListTransition: (() => void) | undefined
+  const preRegenerationSessionId = getSessionId()
+  const preRegenerationProjectDir = getSessionProjectDir()
+  const preRegenerationEnvSessionId = process.env.CLAUDE_CODE_SESSION_ID
+  if (modeTransitionState?.migrateSessionTaskList) {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { beginSessionTaskListTransition } =
+      require('../../utils/tasks.js') as typeof import('../../utils/tasks.js')
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    endTaskListTransition = beginSessionTaskListTransition(
+      modeTransitionState.sourceSessionId,
+    )
+  }
+  let regeneratedSession = false
+  try {
+    // Generate new session ID to provide fresh state. In-process task writers
+    // remain pinned to the captured source list until its locked migration is
+    // complete, so none can create a conflicting task in the fresh list.
+    regenerateSessionId({ setCurrentAsParent: true })
+    regeneratedSession = true
+    // Update the environment variable so subprocesses use the new session ID
+    if (process.env.USER_TYPE === 'ant' && process.env.CLAUDE_CODE_SESSION_ID) {
+      process.env.CLAUDE_CODE_SESSION_ID = getSessionId()
+    }
+
+    if (modeTransitionState) {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { restoreModeTransitionState } =
+        require('./modeTransitionState.js') as typeof import('./modeTransitionState.js')
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const restored = await restoreModeTransitionState(
+        modeTransitionState,
+        getSessionId(),
+      )
+      restoredModeTransitionGoal = restored.goalRestored
+    }
+  } catch (error) {
+    if (
+      regeneratedSession &&
+      modeTransitionState &&
+      !modeTransitionState.hasRestored
+    ) {
+      switchSession(preRegenerationSessionId, preRegenerationProjectDir)
+      if (preRegenerationEnvSessionId === undefined) {
+        delete process.env.CLAUDE_CODE_SESSION_ID
+      } else {
+        process.env.CLAUDE_CODE_SESSION_ID = preRegenerationEnvSessionId
+      }
+    }
+    throw error
+  } finally {
+    endTaskListTransition?.()
   }
   await resetSessionFilePointer()
+
+  if (restoredModeTransitionGoal) {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { persistCurrentGoal } =
+      require('../../services/goal/goalStorage.js') as typeof import('../../services/goal/goalStorage.js')
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    persistCurrentGoal()
+  }
 
   // Preserved local_agent tasks had their TaskOutput symlink baked against the
   // old session ID at spawn time, but post-clear transcript writes land under

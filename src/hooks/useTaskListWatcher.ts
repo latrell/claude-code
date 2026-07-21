@@ -161,50 +161,80 @@ export function useTaskListWatcher({
   // Schedules a check after DEBOUNCE_MS, collapsing rapid fs events.
   // Shared between the watcher callback and the idle-trigger effect below.
   const scheduleCheckRef = useRef<() => void>(() => {})
+  const watcherGenerationRef = useRef(0)
 
   useEffect(() => {
-    if (!enabled) return
+    const generation = ++watcherGenerationRef.current
+    if (!enabled) {
+      scheduleCheckRef.current = () => {}
+      return () => {
+        if (watcherGenerationRef.current === generation) {
+          watcherGenerationRef.current++
+        }
+      }
+    }
 
-    void ensureTasksDir(taskListId)
-    const tasksDir = getTasksDir(taskListId)
-
+    let disposed = false
     let watcher: FSWatcher | null = null
+    const tasksDir = getTasksDir(taskListId)
+    const isCurrentGeneration = (): boolean =>
+      !disposed && watcherGenerationRef.current === generation
 
     const debouncedCheck = (): void => {
+      if (!isCurrentGeneration()) return
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
-      debounceTimerRef.current = setTimeout(
-        ref => void ref.current(),
-        DEBOUNCE_MS,
-        checkForTasksRef,
-      )
+      const timer = setTimeout(() => {
+        if (debounceTimerRef.current === timer) {
+          debounceTimerRef.current = null
+        }
+        if (!isCurrentGeneration()) return
+        void checkForTasksRef.current()
+      }, DEBOUNCE_MS)
+      debounceTimerRef.current = timer
     }
     scheduleCheckRef.current = debouncedCheck
 
-    try {
-      watcher = watch(tasksDir, debouncedCheck)
-      watcher.unref()
-      logForDebugging(`[TaskListWatcher] Watching for tasks in ${tasksDir}`)
-    } catch (error) {
-      // fs.watch throws synchronously on ENOENT — ensureTasksDir should have
-      // created the dir, but handle the race gracefully
-      logForDebugging(`[TaskListWatcher] Failed to watch ${tasksDir}: ${error}`)
-    }
+    const installWatcher = async (): Promise<void> => {
+      // fs.watch throws synchronously when the directory does not exist. Wait
+      // for the recursive mkdir before installing it so a cold-started empty
+      // task list remains observable after the initial scan.
+      await ensureTasksDir(taskListId)
+      if (!isCurrentGeneration()) return
 
-    // Initial check
-    debouncedCheck()
+      try {
+        watcher = watch(tasksDir, debouncedCheck)
+        watcher.unref()
+        logForDebugging(`[TaskListWatcher] Watching for tasks in ${tasksDir}`)
+      } catch (error) {
+        logForDebugging(
+          `[TaskListWatcher] Failed to watch ${tasksDir}: ${error}`,
+        )
+      }
+
+      // Initial check runs only after directory creation and watcher setup, so
+      // writes racing with installation are either observed by fs.watch or by
+      // this scan.
+      debouncedCheck()
+    }
+    void installWatcher()
 
     return () => {
       // This cleanup only fires when taskListId changes or on unmount —
       // never per-turn. That keeps watcher.close() out of the Bun
       // PathWatcherManager deadlock window.
+      disposed = true
+      if (watcherGenerationRef.current === generation) {
+        watcherGenerationRef.current++
+      }
       scheduleCheckRef.current = () => {}
       if (watcher) {
         watcher.close()
       }
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
       }
     }
   }, [enabled, taskListId])

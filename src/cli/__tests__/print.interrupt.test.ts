@@ -4,6 +4,8 @@ import { withResolvers } from '../../utils/withResolvers.js'
 import {
   cancelSdkOwnedRuns,
   SdkRunLifecycle,
+  shouldDeferHeadlessOutputClose,
+  shouldKeepParkedTaskNotificationRecoverable,
   shouldWaitForSdkBackgroundTasks,
   waitForSdkBackgroundTaskPoll,
   waitForSdkStopSettlement,
@@ -11,6 +13,42 @@ import {
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 describe('headless SDK interrupt settlement', () => {
+  test('keeps output open through notification retry backoff after stdin closes', () => {
+    expect(
+      shouldDeferHeadlessOutputClose({
+        inputClosed: true,
+        hasPendingTaskNotificationDelivery: true,
+      }),
+    ).toBe(true)
+    expect(
+      shouldDeferHeadlessOutputClose({
+        inputClosed: true,
+        hasPendingTaskNotificationDelivery: false,
+      }),
+    ).toBe(false)
+  })
+
+  test('keeps a parked notification recoverable only for an open healthy session', () => {
+    expect(
+      shouldKeepParkedTaskNotificationRecoverable({
+        inputClosed: false,
+        hasAuxiliaryFailures: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldKeepParkedTaskNotificationRecoverable({
+        inputClosed: true,
+        hasAuxiliaryFailures: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldKeepParkedTaskNotificationRecoverable({
+        inputClosed: false,
+        hasAuxiliaryFailures: true,
+      }),
+    ).toBe(false)
+  })
+
   test('cancels and drains every auxiliary SDK request before confirming Stop', async () => {
     const first = new AbortController()
     const second = new AbortController()

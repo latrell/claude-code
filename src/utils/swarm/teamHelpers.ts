@@ -207,6 +207,7 @@ export type TeamFile = {
   createdAt: number
   leadAgentId: string
   leadSessionId?: string // Actual session UUID of the leader (for discovery)
+  restoreTasksToSessionOnDelete?: boolean // TeamCreate moved the implicit session task list into this team
   hiddenPaneIds?: string[] // Pane IDs that are currently hidden from the UI
   teamAllowedPaths?: TeamAllowedPath[] // Paths all teammates can edit without asking
   members: Array<{

@@ -1,7 +1,5 @@
 import { expect, test } from 'bun:test'
-import { spawnSync } from 'child_process'
-import { relative } from 'path'
-import { fileURLToPath } from 'url'
+import { runIsolatedBunTest } from 'src/testUtils/runIsolatedBunTest.js'
 
 /**
  * queryModelOpenAI.isolated.ts intentionally stays outside Bun's automatic
@@ -10,23 +8,11 @@ import { fileURLToPath } from 'url'
  * process so the normal `bun test`/CI command still covers the suite without
  * giving those mocks a chance to pollute sibling files.
  */
-test('queryModelOpenAI isolated suite passes in a separate process', () => {
-  const suitePath = fileURLToPath(
-    new URL('./queryModelOpenAI.isolated.ts', import.meta.url),
-  )
-  const suiteArg = `./${relative(process.cwd(), suitePath).replaceAll('\\', '/')}`
-  const result = spawnSync(process.execPath, ['test', suiteArg], {
-    cwd: process.cwd(),
-    env: process.env,
-    encoding: 'utf8',
-    timeout: 25_000,
+test('queryModelOpenAI isolated suite passes in a separate process', async () => {
+  const { output } = await runIsolatedBunTest({
+    label: 'queryModelOpenAI isolated suite',
+    suiteUrl: new URL('./queryModelOpenAI.isolated.ts', import.meta.url),
+    timeoutMs: 25_000,
   })
-
-  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
-  if (result.error || result.status !== 0 || result.signal !== null) {
-    throw new Error(
-      `queryModelOpenAI isolated suite failed (status=${String(result.status)}, signal=${String(result.signal)}, spawnError=${result.error?.message ?? 'none'}):\n${output}`,
-    )
-  }
   expect(output).toMatch(/[1-9]\d* pass/)
 }, 30_000)

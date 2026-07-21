@@ -2,20 +2,27 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   captureConversationClearQueueBarrier,
+  commitTaskNotificationLease,
   clearCommandQueue,
   clearCommandsForConversationReset,
   dequeue,
   dequeueAllMatching,
+  discardParkedTaskNotificationsAddressedTo,
   enqueue,
   enqueuePendingNotification,
   getCommandsByMaxPriorityBeforeConversationReset,
   hasCommandsAddressedTo,
   hasCommandsInQueue,
+  hasTaskNotificationDeliveryAddressedTo,
   isConversationResetCommand,
   isSlashCommand,
+  leaseTaskNotificationBatch,
   peek,
   popAllEditable,
+  reactivateParkedTaskNotifications,
+  releaseDueTaskNotificationRetries,
   resetCommandQueue,
+  retryTaskNotificationLease,
   stampCommandQueuePosition,
 } from '../messageQueueManager.js'
 
@@ -27,6 +34,23 @@ beforeEach(() => {
 afterEach(() => {
   resetCommandQueue()
 })
+
+function parkTaskNotification(value: string, agentId?: any): void {
+  enqueuePendingNotification({
+    value,
+    mode: 'task-notification',
+    agentId,
+  } as any)
+  const firstLease = leaseTaskNotificationBatch(
+    command => command.agentId === agentId && command.value === value,
+  )
+  expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+  releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+  const retryLease = leaseTaskNotificationBatch(
+    command => command.agentId === agentId && command.value === value,
+  )
+  expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+}
 
 describe('messageQueueManager.isSlashCommand', () => {
   test('treats normal slash commands as slash commands', () => {
@@ -127,6 +151,124 @@ describe('messageQueueManager.hasCommandsAddressedTo', () => {
     })
 
     expect(hasCommandsAddressedTo(undefined)).toBe(true)
+  })
+})
+
+describe('messageQueueManager task notification delivery ownership', () => {
+  test('tracks scheduled, retrying, and parked delivery independent of selectability', () => {
+    enqueuePendingNotification({
+      value: 'main completion',
+      mode: 'task-notification',
+    } as any)
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(false)
+
+    const firstLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+    expect(peek()).toBeUndefined()
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const retryLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+    expect(peek()).toBeUndefined()
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+  })
+
+  test('tracks an active lease until ACK', () => {
+    enqueuePendingNotification({
+      value: 'private completion',
+      mode: 'task-notification',
+      agentId: 'agent-1' as any,
+    })
+    const lease = leaseTaskNotificationBatch(
+      command => command.agentId === ('agent-1' as any),
+    )
+    expect(lease).toBeDefined()
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(true)
+
+    commitTaskNotificationLease(lease!)
+
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(false)
+  })
+
+  test('reset clears queued and actively leased delivery state', () => {
+    enqueuePendingNotification({
+      value: 'queued completion',
+      mode: 'task-notification',
+    } as any)
+    enqueuePendingNotification({
+      value: 'leased completion',
+      mode: 'task-notification',
+      agentId: 'agent-1' as any,
+    })
+    expect(
+      leaseTaskNotificationBatch(
+        command => command.agentId === ('agent-1' as any),
+      ),
+    ).toBeDefined()
+
+    resetCommandQueue()
+
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(false)
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(false)
+  })
+
+  test('internal enqueue does not reactivate parked delivery', () => {
+    parkTaskNotification('parked completion')
+
+    enqueue({
+      value: '<goal-continuation/>',
+      mode: 'prompt',
+      isMeta: true,
+    } as any)
+
+    expect(
+      peek(command => command.mode === 'task-notification'),
+    ).toBeUndefined()
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+  })
+
+  test('main input reactivates only the main owner', () => {
+    parkTaskNotification('main parked')
+    parkTaskNotification('private parked', 'agent-1' as any)
+
+    reactivateParkedTaskNotifications()
+
+    expect(
+      peek(
+        command =>
+          command.mode === 'task-notification' && command.agentId === undefined,
+      )?.value,
+    ).toBe('main parked')
+    expect(
+      peek(
+        command =>
+          command.mode === 'task-notification' &&
+          command.agentId === ('agent-1' as any),
+      ),
+    ).toBeUndefined()
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(true)
+  })
+
+  test('discard removes only parked delivery for the requested owner', () => {
+    parkTaskNotification('main parked')
+    enqueuePendingNotification({
+      value: 'main fresh',
+      mode: 'task-notification',
+    } as any)
+    parkTaskNotification('private parked', 'agent-1' as any)
+
+    expect(discardParkedTaskNotificationsAddressedTo(undefined)).toBe(1)
+
+    expect(
+      peek(
+        command =>
+          command.mode === 'task-notification' && command.agentId === undefined,
+      )?.value,
+    ).toBe('main fresh')
+    expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(true)
+    expect(discardParkedTaskNotificationsAddressedTo(undefined)).toBe(0)
   })
 })
 
@@ -258,6 +400,123 @@ describe('messageQueueManager.clearCommandQueue', () => {
     clearCommandQueue()
     expect(hasCommandsInQueue()).toBe(false)
   })
+
+  test('invalidates an active task-notification lease', () => {
+    enqueuePendingNotification({
+      value: 'leased notification',
+      mode: 'task-notification',
+    } as any)
+    const lease = leaseTaskNotificationBatch(() => true)
+    expect(lease).toBeDefined()
+
+    clearCommandQueue()
+    expect(retryTaskNotificationLease(lease!)).toBe('invalidated')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    expect(hasCommandsInQueue()).toBe(false)
+  })
+
+  test('acks before a fallible post-commit event is published', () => {
+    const eventFailure = new Error('SDK event failed')
+    enqueuePendingNotification({
+      value: 'committed notification',
+      mode: 'task-notification',
+    } as any)
+    const lease = leaseTaskNotificationBatch(() => true)
+    expect(lease).toBeDefined()
+
+    expect(() =>
+      commitTaskNotificationLease(lease!, () => {
+        expect(retryTaskNotificationLease(lease!)).toBe('invalidated')
+        throw eventFailure
+      }),
+    ).toThrow(eventFailure)
+    expect(retryTaskNotificationLease(lease!)).toBe('invalidated')
+    expect(hasCommandsInQueue()).toBe(false)
+  })
+
+  test('reset removes a parked task notification', () => {
+    enqueuePendingNotification({
+      value: 'parked notification',
+      mode: 'task-notification',
+    } as any)
+    const firstLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const retryLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+    expect(hasCommandsInQueue()).toBe(false)
+
+    resetCommandQueue()
+    enqueue({ value: 'new command', mode: 'prompt' } as any)
+    expect(dequeue()?.value).toBe('new command')
+    expect(dequeue()).toBeUndefined()
+  })
+
+  test('fresh direct input can reactivate a parked task notification', () => {
+    enqueuePendingNotification({
+      value: 'parked notification',
+      mode: 'task-notification',
+    } as any)
+    const firstLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const retryLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+    expect(peek()).toBeUndefined()
+
+    reactivateParkedTaskNotifications()
+
+    expect(peek()?.value).toBe('parked notification')
+  })
+
+  test('a new background notification does not reactivate a parked failure', () => {
+    enqueuePendingNotification({
+      value: 'parked notification',
+      mode: 'task-notification',
+    } as any)
+    const firstLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const retryLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+
+    enqueuePendingNotification({
+      value: 'new background notification',
+      mode: 'task-notification',
+    } as any)
+
+    expect(peek()).toBeUndefined()
+    reactivateParkedTaskNotifications()
+    expect(dequeue()?.value).toBe('parked notification')
+    expect(dequeue()?.value).toBe('new background notification')
+  })
+
+  test('parks a mixed-age failed batch instead of silently blocking its retry', () => {
+    enqueuePendingNotification({
+      value: 'older notification',
+      mode: 'task-notification',
+    } as any)
+    const olderLease = leaseTaskNotificationBatch(() => true)
+    expect(retryTaskNotificationLease(olderLease!)).toBe('retry-scheduled')
+
+    enqueuePendingNotification({
+      value: 'newer notification',
+      mode: 'task-notification',
+    } as any)
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const mixedLease = leaseTaskNotificationBatch(() => true)
+    expect(mixedLease?.commands.map(command => command.value)).toEqual([
+      'older notification',
+      'newer notification',
+    ])
+
+    expect(retryTaskNotificationLease(mixedLease!)).toBe('parked')
+    expect(hasCommandsInQueue()).toBe(false)
+
+    reactivateParkedTaskNotifications()
+    expect(dequeue()?.value).toBe('older notification')
+    expect(dequeue()?.value).toBe('newer notification')
+  })
 })
 
 describe('messageQueueManager conversation clear barrier', () => {
@@ -334,6 +593,50 @@ describe('messageQueueManager conversation clear barrier', () => {
     )
 
     expect(dequeue()?.value).toBe('new prompt')
+  })
+
+  test('removes parked and active old notifications without reviving them', () => {
+    enqueuePendingNotification({
+      value: 'old parked notification',
+      mode: 'task-notification',
+    } as any)
+    enqueuePendingNotification({
+      value: 'old active notification',
+      mode: 'task-notification',
+    } as any)
+    const directClear = { value: '/clear', mode: 'prompt' } as any
+    stampCommandQueuePosition(directClear)
+    enqueuePendingNotification({
+      value: 'new notification',
+      mode: 'task-notification',
+    } as any)
+
+    const firstLease = leaseTaskNotificationBatch(
+      command => command.value === 'old parked notification',
+    )
+    expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    const retryLease = leaseTaskNotificationBatch(
+      command => command.value === 'old parked notification',
+    )
+    expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
+
+    const activeLease = leaseTaskNotificationBatch(
+      command => command.value === 'old active notification',
+    )
+    expect(activeLease).toBeDefined()
+    const removed = clearCommandsForConversationReset(
+      captureConversationClearQueueBarrier(directClear),
+    )
+
+    expect(removed.map(command => command.value)).toEqual([
+      'old parked notification',
+      'old active notification',
+    ])
+    expect(retryTaskNotificationLease(activeLease!)).toBe('invalidated')
+    releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+    expect(dequeue()?.value).toBe('new notification')
+    expect(dequeue()).toBeUndefined()
   })
 })
 

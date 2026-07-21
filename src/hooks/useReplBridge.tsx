@@ -27,7 +27,7 @@ import type { Message } from '../types/message.js';
 import { getCwd } from '../utils/cwd.js';
 import { logForDebugging } from '../utils/debug.js';
 import { errorMessage } from '../utils/errors.js';
-import { enqueue } from '../utils/messageQueueManager.js';
+import { enqueue, reactivateParkedTaskNotifications } from '../utils/messageQueueManager.js';
 import { buildSystemInitMessage } from '../utils/messages/systemInit.js';
 import { createBridgeStatusMessage, createSystemMessage } from '../utils/messages.js';
 import { buildTaskStateMessage, getTaskStateSnapshotKey } from '../utils/taskStateMessage.js';
@@ -246,6 +246,7 @@ export function useReplBridge(
                 skipSlashCommands: true,
                 bridgeOrigin: true,
               });
+              reactivateParkedTaskNotifications();
             } catch (e) {
               logForDebugging(`[bridge:repl] handleInboundMessage failed: ${e}`, { level: 'error' });
             }

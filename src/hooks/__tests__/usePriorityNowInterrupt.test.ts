@@ -26,6 +26,7 @@ import { QueryGuard } from '../../utils/QueryGuard.js'
 type HarnessProps = {
   abortControllerRef: RefObject<AbortController | null>
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
+  isInPlanMode?: boolean
   onContinuationEnqueued?: (payload: {
     turn: number
     maxTurns: number
@@ -37,6 +38,7 @@ type HarnessProps = {
 function QueueLifecycleHarness({
   abortControllerRef,
   executeQueuedInput,
+  isInPlanMode = false,
   onContinuationEnqueued,
   queryGuard,
 }: HarnessProps): null {
@@ -63,7 +65,7 @@ function QueueLifecycleHarness({
       command => command.agentId === undefined,
     ).length,
     hasActiveLocalJsxUI: false,
-    isInPlanMode: false,
+    isInPlanMode,
     isQueryActiveNow: queryGuard.getSnapshot,
     onContinuationEnqueued,
   })
@@ -80,7 +82,7 @@ type MountedHarness = {
 
 const mounted: MountedHarness[] = []
 
-function mountHarness(props: HarnessProps): void {
+function mountHarness(props: HarnessProps): Instance {
   const stdout = new PassThrough()
   const stdin = new PassThrough()
   Object.assign(stdout, { columns: 80, rows: 24, isTTY: false })
@@ -92,6 +94,7 @@ function mountHarness(props: HarnessProps): void {
     stdout: stdout as unknown as NodeJS.WriteStream,
   })
   mounted.push({ instance, stdin, stdout })
+  return instance
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -119,6 +122,57 @@ afterEach(() => {
 })
 
 describe('usePriorityNowInterrupt with useQueueProcessor', () => {
+  test('pauses goal continuation in plan mode and resumes after exit', async () => {
+    const queryGuard = new QueryGuard()
+    const abortControllerRef: { current: AbortController | null } = {
+      current: null,
+    }
+    let startedController: AbortController | null = null
+    let releaseExecution: (() => void) | null = null
+    const executionReleased = new Promise<void>(resolve => {
+      releaseExecution = resolve
+    })
+    const executeQueuedInput = async (): Promise<void> => {
+      const generation = queryGuard.tryStart()
+      if (generation === null) throw new Error('query did not start')
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+      startedController = controller
+      await executionReleased
+      queryGuard.end(generation)
+    }
+
+    setGoal('wait until plan mode exits')
+    const instance = mountHarness({
+      abortControllerRef,
+      executeQueuedInput,
+      isInPlanMode: true,
+      queryGuard,
+    })
+
+    await Promise.resolve()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(startedController).toBeNull()
+    expect(getCommandQueueSnapshot()).toHaveLength(0)
+
+    instance.rerender(
+      createElement(QueueLifecycleHarness, {
+        abortControllerRef,
+        executeQueuedInput,
+        isInPlanMode: false,
+        queryGuard,
+      }),
+    )
+    await waitFor(() => startedController !== null)
+
+    expect(startedController!.signal.aborted).toBe(false)
+    expect(getCommandQueueSnapshot()).toHaveLength(0)
+
+    _clearAllGoalsForTesting()
+    releaseExecution!()
+    await waitFor(() => !queryGuard.isActive)
+  })
+
   test('does not abort a goal continuation query started from idle', async () => {
     const queryGuard = new QueryGuard()
     const abortControllerRef: { current: AbortController | null } = {

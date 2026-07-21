@@ -1091,7 +1091,7 @@ const zh: Record<string, string> = {
   'Goal reached max continuation turns ({maxTurns}). Run `/goal continue` to reset turn counter and continue.':
     '目标已达最大连续轮次（{maxTurns}）。运行 `/goal continue` 重置轮次计数并继续。',
   'Goal resumed.': '目标已恢复。',
-  'No paused goal to resume.': '没有可恢复的暂停目标。',
+  'No paused or blocked goal to resume.': '没有可恢复的暂停或受阻目标。',
   'Goal continuation counter reset (0/{maxTurns}). Continuing...':
     '目标连续计数器已重置（0/{maxTurns}）。继续中…',
   'Current goal is not in max-turns state.': '当前目标不处于最大轮次状态。',
@@ -1996,6 +1996,8 @@ const zh: Record<string, string> = {
     '已请求停止，但无法确认一个或多个后台请求已经停止，它们可能仍在运行。请查看调试日志了解详情。',
   'Stop was requested, but a background model request could not be confirmed as stopped. It may still be running. Check the debug log for details.':
     '已请求停止，但无法确认后台模型请求已经停止；它可能仍在运行。请查看调试日志了解详情。',
+  'A background result could not be delivered. Send any message to retry.':
+    '后台任务结果投递失败。发送任意消息即可重试。',
   'Termination could not be confirmed; the request may still be running.':
     '无法确认请求已终止；它可能仍在运行。',
   'Could not stop a background model request: {error}':
@@ -2139,6 +2141,10 @@ const zh: Record<string, string> = {
   'Would you like to proceed?': '是否继续执行？',
   'Claude has written up a plan and is ready to execute. Would you like to proceed?':
     'Claude 已写好计划，准备执行。是否继续执行？',
+  'Failed to prepare the accepted plan for execution: {error}. The plan was not sent; send any message to retry.':
+    '准备已接受的计划以供执行时失败：{error}。计划尚未发送；请发送任意消息重试。',
+  'Failed to start the initial request: {error}. The request was not sent; submit it again.':
+    '启动初始请求失败：{error}。请求尚未发送；请重新提交。',
   'Do you want to make this edit to {file}?': '是否对 {file} 进行此编辑？',
   'Do you want to overwrite {file}?': '是否覆盖 {file}？',
   'Do you want to create {file}?': '是否创建 {file}？',

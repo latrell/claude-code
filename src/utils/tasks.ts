@@ -1,4 +1,13 @@
-import { mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
@@ -6,6 +15,7 @@ import { uniq } from './array.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
+import { pathsEqual } from './file.js'
 import { lazySchema } from './lazySchema.js'
 import * as lockfile from './lockfile.js'
 import { logError } from './log.js'
@@ -23,6 +33,7 @@ const tasksUpdated = createSignal()
  * (matching where tmux/iTerm2 teammates look), not under the session ID.
  */
 let leaderTeamName: string | undefined
+let sessionTaskListTransitionSourceId: string | undefined
 
 /**
  * Sets the leader's team name for task list resolution.
@@ -44,6 +55,34 @@ export function clearLeaderTeamName(): void {
   if (leaderTeamName === undefined) return
   leaderTeamName = undefined
   notifyTasksUpdated()
+}
+
+/**
+ * Keep in-process task writers on the source list while an internal session
+ * regeneration copies that list to the newly generated session ID.
+ */
+export function beginSessionTaskListTransition(
+  sourceTaskListId: string,
+): () => void {
+  if (
+    sessionTaskListTransitionSourceId !== undefined &&
+    sessionTaskListTransitionSourceId !== sourceTaskListId
+  ) {
+    throw new Error(
+      'A different session task-list transition is already active',
+    )
+  }
+  sessionTaskListTransitionSourceId = sourceTaskListId
+  notifyTasksUpdated()
+  let ended = false
+  return () => {
+    if (ended) return
+    ended = true
+    if (sessionTaskListTransitionSourceId === sourceTaskListId) {
+      sessionTaskListTransitionSourceId = undefined
+      notifyTasksUpdated()
+    }
+  }
 }
 
 /**
@@ -130,6 +169,55 @@ async function writeHighWaterMark(
   await writeFile(path, String(value))
 }
 
+function getAtomicTempPath(path: string): string {
+  return `${path}.${process.pid}-${randomUUID()}.tmp`
+}
+
+async function commitAtomicTempFile(
+  tempPath: string,
+  path: string,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(tempPath, path)
+      return
+    } catch (error) {
+      const retryable = ['EACCES', 'EBUSY', 'EPERM'].includes(
+        getErrnoCode(error) ?? '',
+      )
+      if (!retryable || attempt >= 60) throw error
+      // Windows readers may temporarily open the destination without delete
+      // sharing. Retrying rename preserves atomic replacement semantics.
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(2 + attempt, 20)),
+      )
+    }
+  }
+}
+
+async function writeTaskAtomically(path: string, task: Task): Promise<void> {
+  const tempPath = getAtomicTempPath(path)
+  try {
+    await writeFile(tempPath, jsonStringify(task, null, 2))
+    await commitAtomicTempFile(tempPath, path)
+  } finally {
+    await unlink(tempPath).catch(() => {})
+  }
+}
+
+async function copyFileAtomically(
+  source: string,
+  target: string,
+): Promise<void> {
+  const tempPath = getAtomicTempPath(target)
+  try {
+    await copyFile(source, tempPath)
+    await commitAtomicTempFile(tempPath, target)
+  } finally {
+    await unlink(tempPath).catch(() => {})
+  }
+}
+
 export function isTodoV2Enabled(): boolean {
   // Force-enable tasks in non-interactive mode (e.g. SDK users who want Task tools over TodoWrite)
   if (isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TASKS)) {
@@ -146,31 +234,31 @@ export function isTodoV2Enabled(): boolean {
  */
 export async function resetTaskList(taskListId: string): Promise<void> {
   const dir = getTasksDir(taskListId)
-  const lockPath = await ensureTaskListLockFile(taskListId)
-
-  let release: (() => Promise<void>) | undefined
+  const listReleases = await acquireTaskListLocks([taskListId])
   try {
-    // Acquire exclusive lock on the task list
-    release = await lockfile.lock(lockPath, LOCK_OPTIONS)
-
-    // Find the current highest ID and save it to the high water mark file
-    const currentHighest = await findHighestTaskIdFromFiles(taskListId)
-    if (currentHighest > 0) {
-      const existingMark = await readHighWaterMark(taskListId)
-      if (currentHighest > existingMark) {
-        await writeHighWaterMark(taskListId, currentHighest)
-      }
-    }
-
-    // Delete all task files
     let files: string[]
     try {
       files = await readdir(dir)
     } catch {
       files = []
     }
-    for (const file of files) {
-      if (file.endsWith('.json') && !file.startsWith('.')) {
+    const taskFiles = files.filter(
+      file => file.endsWith('.json') && !file.startsWith('.'),
+    )
+    const taskReleases = await acquireExistingTaskFileLocks(
+      taskFiles.map(file => join(dir, file)),
+    )
+    try {
+      // Find the current highest ID and save it to the high water mark file
+      const currentHighest = await findHighestTaskIdFromFiles(taskListId)
+      if (currentHighest > 0) {
+        const existingMark = await readHighWaterMark(taskListId)
+        if (currentHighest > existingMark) {
+          await writeHighWaterMark(taskListId, currentHighest)
+        }
+      }
+
+      for (const file of taskFiles) {
         const filePath = join(dir, file)
         try {
           await unlink(filePath)
@@ -178,12 +266,12 @@ export async function resetTaskList(taskListId: string): Promise<void> {
           // Ignore errors, file may already be deleted
         }
       }
+      notifyTasksUpdated()
+    } finally {
+      await releaseLocks(taskReleases)
     }
-    notifyTasksUpdated()
   } finally {
-    if (release) {
-      await release()
-    }
+    await releaseLocks(listReleases)
   }
 }
 
@@ -206,7 +294,26 @@ export function getTaskListId(): string {
   if (teammateCtx) {
     return teammateCtx.teamName
   }
-  return getTeamName() || leaderTeamName || getSessionId()
+  return (
+    getTeamName() ||
+    process.env.CLAUDE_CODE_TEAM_NAME ||
+    leaderTeamName ||
+    sessionTaskListTransitionSourceId ||
+    getSessionId()
+  )
+}
+
+/**
+ * Whether task tools currently resolve to the implicit per-session list.
+ * Explicit task-list IDs, team lists, and in-process teammate lists must keep
+ * their stable identity when the main conversation regenerates its session ID.
+ */
+export function isUsingSessionScopedTaskList(): boolean {
+  if (process.env.CLAUDE_CODE_TASK_LIST_ID) return false
+  if (getTeammateContext()) return false
+  if (process.env.CLAUDE_CODE_TEAM_NAME) return false
+  if (getTeamName()) return false
+  return leaderTeamName === undefined
 }
 
 /**
@@ -237,6 +344,121 @@ export async function ensureTasksDir(taskListId: string): Promise<void> {
   } catch {
     // Directory already exists or creation failed; callers will surface
     // errors from subsequent operations.
+  }
+}
+
+export type CopyTaskListOptions = {
+  /**
+   * Remove copied task JSON files from the source after every destination
+   * write succeeds. The source high-water mark is retained so a concurrent or
+   * resumed writer can never reuse an ID that was transferred.
+   */
+  removeSourceTasks?: boolean
+}
+
+/**
+ * Copy task state between list identities while holding both list locks.
+ * Internal session transitions leave the source resumable; team lifecycle
+ * transitions can opt into transfer semantics with `removeSourceTasks`.
+ */
+export async function copyTaskListForSessionTransition(
+  sourceTaskListId: string,
+  targetTaskListId: string,
+  options: CopyTaskListOptions = {},
+): Promise<void> {
+  const sourceDir = getTasksDir(sourceTaskListId)
+  const targetDir = getTasksDir(targetTaskListId)
+  if (pathsEqual(sourceDir, targetDir)) return
+
+  const listReleases = await acquireTaskListLocks([
+    sourceTaskListId,
+    targetTaskListId,
+  ])
+  try {
+    const [initialSourceFiles, initialTargetFiles] = await Promise.all([
+      readdir(sourceDir),
+      readdir(targetDir),
+    ])
+    const existingTaskPaths = [
+      ...initialSourceFiles
+        .filter(file => file.endsWith('.json') && !file.startsWith('.'))
+        .map(file => join(sourceDir, file)),
+      ...initialTargetFiles
+        .filter(file => file.endsWith('.json') && !file.startsWith('.'))
+        .map(file => join(targetDir, file)),
+    ]
+    const taskReleases = await acquireExistingTaskFileLocks(existingTaskPaths)
+    try {
+      // Re-read after acquiring legacy per-task locks. New writers also hold
+      // the list locks, while an older writer may have finished/deleted a file
+      // as we waited for its task lock.
+      const [sourceFiles, targetFiles] = await Promise.all([
+        readdir(sourceDir),
+        readdir(targetDir),
+      ])
+      const sourceTaskFiles = sourceFiles.filter(
+        file => file.endsWith('.json') && !file.startsWith('.'),
+      )
+      const targetTaskFiles = new Set(
+        targetFiles.filter(
+          file => file.endsWith('.json') && !file.startsWith('.'),
+        ),
+      )
+      const filesToCopy: string[] = []
+
+      // Never silently overwrite a task created in the regenerated target
+      // list. The in-process transition pin prevents this during normal plan
+      // clears; this check protects cross-process or explicit target writers.
+      for (const file of sourceTaskFiles) {
+        if (!targetTaskFiles.has(file)) {
+          filesToCopy.push(file)
+          continue
+        }
+        const [sourceContent, targetContent] = await Promise.all([
+          readFile(join(sourceDir, file), 'utf-8'),
+          readFile(join(targetDir, file), 'utf-8'),
+        ])
+        if (sourceContent !== targetContent) {
+          throw new Error(
+            `Task list migration conflict for ${file}: source ${sourceTaskListId} and target ${targetTaskListId} contain different tasks with the same ID`,
+          )
+        }
+      }
+
+      await Promise.all(
+        filesToCopy.map(file =>
+          copyFileAtomically(join(sourceDir, file), join(targetDir, file)),
+        ),
+      )
+
+      const [sourceHighWaterMark, targetHighWaterMark] = await Promise.all([
+        readHighWaterMark(sourceTaskListId),
+        readHighWaterMark(targetTaskListId),
+      ])
+      const targetHighestId = Math.max(
+        sourceHighWaterMark,
+        targetHighWaterMark,
+        await findHighestTaskIdFromFiles(targetTaskListId),
+      )
+      if (targetHighestId > targetHighWaterMark) {
+        await writeHighWaterMark(targetTaskListId, targetHighestId)
+      }
+
+      if (options.removeSourceTasks) {
+        const sourceHighestId = await findHighestTaskId(sourceTaskListId)
+        if (sourceHighestId > sourceHighWaterMark) {
+          await writeHighWaterMark(sourceTaskListId, sourceHighestId)
+        }
+        await Promise.all(
+          sourceTaskFiles.map(file => unlink(join(sourceDir, file))),
+        )
+      }
+      notifyTasksUpdated()
+    } finally {
+      await releaseLocks(taskReleases)
+    }
+  } finally {
+    await releaseLocks(listReleases)
   }
 }
 
@@ -297,7 +519,7 @@ export async function createTask(
     const id = String(highestId + 1)
     const task: Task = { id, ...taskData }
     const path = getTaskPath(taskListId, id)
-    await writeFile(path, jsonStringify(task, null, 2))
+    await writeTaskAtomically(path, task)
     notifyTasksUpdated()
     return id
   } finally {
@@ -362,7 +584,7 @@ async function updateTaskUnsafe(
   }
   const updated: Task = { ...existing, ...updates, id: taskId }
   const path = getTaskPath(taskListId, taskId)
-  await writeFile(path, jsonStringify(updated, null, 2))
+  await writeTaskAtomically(path, updated)
   notifyTasksUpdated()
   return updated
 }
@@ -373,20 +595,17 @@ export async function updateTask(
   updates: Partial<Omit<Task, 'id'>>,
 ): Promise<Task | null> {
   const path = getTaskPath(taskListId, taskId)
-
-  // Check existence before locking — proper-lockfile throws if the
-  // target file doesn't exist, and we want a clean null result.
-  const taskBeforeLock = await getTask(taskListId, taskId)
-  if (!taskBeforeLock) {
-    return null
-  }
-
-  let release: (() => Promise<void>) | undefined
+  const listReleases = await acquireTaskListLocks([taskListId])
   try {
-    release = await lockfile.lock(path, LOCK_OPTIONS)
-    return await updateTaskUnsafe(taskListId, taskId, updates)
+    if (!(await getTask(taskListId, taskId))) return null
+    const taskReleases = await acquireExistingTaskFileLocks([path])
+    try {
+      return await updateTaskUnsafe(taskListId, taskId, updates)
+    } finally {
+      await releaseLocks(taskReleases)
+    }
   } finally {
-    await release?.()
+    await releaseLocks(listReleases)
   }
 }
 
@@ -395,48 +614,54 @@ export async function deleteTask(
   taskId: string,
 ): Promise<boolean> {
   const path = getTaskPath(taskListId, taskId)
-
+  const listReleases = await acquireTaskListLocks([taskListId])
   try {
-    // Update high water mark before deleting to prevent ID reuse
-    const numericId = parseInt(taskId, 10)
-    if (!isNaN(numericId)) {
-      const currentMark = await readHighWaterMark(taskListId)
-      if (numericId > currentMark) {
-        await writeHighWaterMark(taskListId, numericId)
-      }
-    }
-
-    // Delete the task file
+    const initialTasks = await listTasks(taskListId)
+    if (!initialTasks.some(task => task.id === taskId)) return false
+    const taskReleases = await acquireExistingTaskFileLocks(
+      initialTasks.map(task => getTaskPath(taskListId, task.id)),
+    )
     try {
+      if (!(await getTask(taskListId, taskId))) return false
+
+      // Update high water mark before deleting to prevent ID reuse
+      const numericId = parseInt(taskId, 10)
+      if (!isNaN(numericId)) {
+        const currentMark = await readHighWaterMark(taskListId)
+        if (numericId > currentMark) {
+          await writeHighWaterMark(taskListId, numericId)
+        }
+      }
+
       await unlink(path)
-    } catch (e) {
-      const code = getErrnoCode(e)
-      if (code === 'ENOENT') {
-        return false
-      }
-      throw e
-    }
 
-    // Remove references to this task from other tasks
-    const allTasks = await listTasks(taskListId)
-    for (const task of allTasks) {
-      const newBlocks = task.blocks.filter(id => id !== taskId)
-      const newBlockedBy = task.blockedBy.filter(id => id !== taskId)
-      if (
-        newBlocks.length !== task.blocks.length ||
-        newBlockedBy.length !== task.blockedBy.length
-      ) {
-        await updateTask(taskListId, task.id, {
-          blocks: newBlocks,
-          blockedBy: newBlockedBy,
-        })
+      // Remove references while the same list/task lock set is still held.
+      for (const initialTask of initialTasks) {
+        if (initialTask.id === taskId) continue
+        const task = await getTask(taskListId, initialTask.id)
+        if (!task) continue
+        const newBlocks = task.blocks.filter(id => id !== taskId)
+        const newBlockedBy = task.blockedBy.filter(id => id !== taskId)
+        if (
+          newBlocks.length !== task.blocks.length ||
+          newBlockedBy.length !== task.blockedBy.length
+        ) {
+          await updateTaskUnsafe(taskListId, task.id, {
+            blocks: newBlocks,
+            blockedBy: newBlockedBy,
+          })
+        }
       }
-    }
 
-    notifyTasksUpdated()
-    return true
+      notifyTasksUpdated()
+      return true
+    } finally {
+      await releaseLocks(taskReleases)
+    }
   } catch {
     return false
+  } finally {
+    await releaseLocks(listReleases)
   }
 }
 
@@ -460,29 +685,36 @@ export async function blockTask(
   fromTaskId: string,
   toTaskId: string,
 ): Promise<boolean> {
-  const [fromTask, toTask] = await Promise.all([
-    getTask(taskListId, fromTaskId),
-    getTask(taskListId, toTaskId),
-  ])
-  if (!fromTask || !toTask) {
-    return false
-  }
+  const listReleases = await acquireTaskListLocks([taskListId])
+  try {
+    const taskReleases = await acquireExistingTaskFileLocks([
+      getTaskPath(taskListId, fromTaskId),
+      getTaskPath(taskListId, toTaskId),
+    ])
+    try {
+      const [fromTask, toTask] = await Promise.all([
+        getTask(taskListId, fromTaskId),
+        getTask(taskListId, toTaskId),
+      ])
+      if (!fromTask || !toTask) return false
 
-  // Update source task: A blocks B
-  if (!fromTask.blocks.includes(toTaskId)) {
-    await updateTask(taskListId, fromTaskId, {
-      blocks: [...fromTask.blocks, toTaskId],
-    })
+      if (!fromTask.blocks.includes(toTaskId)) {
+        await updateTaskUnsafe(taskListId, fromTaskId, {
+          blocks: [...fromTask.blocks, toTaskId],
+        })
+      }
+      if (!toTask.blockedBy.includes(fromTaskId)) {
+        await updateTaskUnsafe(taskListId, toTaskId, {
+          blockedBy: [...toTask.blockedBy, fromTaskId],
+        })
+      }
+      return true
+    } finally {
+      await releaseLocks(taskReleases)
+    }
+  } finally {
+    await releaseLocks(listReleases)
   }
-
-  // Update target task: B is blockedBy A
-  if (!toTask.blockedBy.includes(fromTaskId)) {
-    await updateTask(taskListId, toTaskId, {
-      blockedBy: [...toTask.blockedBy, fromTaskId],
-    })
-  }
-
-  return true
 }
 
 export type ClaimTaskResult = {
@@ -522,6 +754,63 @@ async function ensureTaskListLockFile(taskListId: string): Promise<string> {
   return lockPath
 }
 
+type LockRelease = () => Promise<void>
+
+async function acquireTaskListLocks(
+  taskListIds: string[],
+): Promise<LockRelease[]> {
+  const lockPaths = [
+    ...new Set(await Promise.all(taskListIds.map(ensureTaskListLockFile))),
+  ].sort((a, b) => a.localeCompare(b))
+  const releases: LockRelease[] = []
+  try {
+    for (const lockPath of lockPaths) {
+      releases.push(await lockfile.lock(lockPath, LOCK_OPTIONS))
+    }
+    return releases
+  } catch (error) {
+    await releaseLocks(releases)
+    throw error
+  }
+}
+
+/**
+ * Acquire existing task-file locks after the caller holds every relevant list
+ * lock. This lock hierarchy is shared by all writers and migrations:
+ * list lock(s), then task paths in stable order, never the reverse.
+ */
+async function acquireExistingTaskFileLocks(
+  taskPaths: string[],
+): Promise<LockRelease[]> {
+  const paths = [...new Set(taskPaths)].sort((a, b) => a.localeCompare(b))
+  const releases: LockRelease[] = []
+  try {
+    for (const path of paths) {
+      try {
+        releases.push(await lockfile.lock(path, LOCK_OPTIONS))
+      } catch (error) {
+        if (getErrnoCode(error) !== 'ENOENT') throw error
+      }
+    }
+    return releases
+  } catch (error) {
+    await releaseLocks(releases)
+    throw error
+  }
+}
+
+async function releaseLocks(releases: LockRelease[]): Promise<void> {
+  const results = await Promise.allSettled(
+    releases.reverse().map(release => release()),
+  )
+  const errors = results.flatMap(result =>
+    result.status === 'rejected' ? [result.reason] : [],
+  )
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Failed to release task lock(s)')
+  }
+}
+
 export type ClaimTaskOptions = {
   /**
    * If true, checks whether the agent is already busy (owns other open tasks)
@@ -545,59 +834,57 @@ export async function claimTask(
   options: ClaimTaskOptions = {},
 ): Promise<ClaimTaskResult> {
   const taskPath = getTaskPath(taskListId, taskId)
-
-  // Check existence before locking — proper-lockfile.lock throws if the
-  // target file doesn't exist, and we want a clean task_not_found result.
-  const taskBeforeLock = await getTask(taskListId, taskId)
-  if (!taskBeforeLock) {
-    return { success: false, reason: 'task_not_found' }
-  }
-
-  // If we need to check agent busy status, use task-list-level lock
-  // to prevent TOCTOU race conditions
-  if (options.checkAgentBusy) {
-    return claimTaskWithBusyCheck(taskListId, taskId, claimantAgentId)
-  }
-
-  // Otherwise, use task-level lock (original behavior)
-  let release: (() => Promise<void>) | undefined
+  const listReleases = await acquireTaskListLocks([taskListId])
   try {
-    // Acquire exclusive lock on the task file
-    release = await lockfile.lock(taskPath, LOCK_OPTIONS)
-
-    // Read current task state
-    const task = await getTask(taskListId, taskId)
-    if (!task) {
+    if (!(await getTask(taskListId, taskId))) {
       return { success: false, reason: 'task_not_found' }
     }
+    const taskReleases = await acquireExistingTaskFileLocks([taskPath])
+    try {
+      const allTasks = await listTasks(taskListId)
+      const task = allTasks.find(candidate => candidate.id === taskId)
+      if (!task) return { success: false, reason: 'task_not_found' }
+      if (task.owner && task.owner !== claimantAgentId) {
+        return { success: false, reason: 'already_claimed', task }
+      }
+      if (task.status === 'completed') {
+        return { success: false, reason: 'already_resolved', task }
+      }
 
-    // Check if already claimed by another agent
-    if (task.owner && task.owner !== claimantAgentId) {
-      return { success: false, reason: 'already_claimed', task }
+      const unresolvedTaskIds = new Set(
+        allTasks.filter(t => t.status !== 'completed').map(t => t.id),
+      )
+      const blockedByTasks = task.blockedBy.filter(id =>
+        unresolvedTaskIds.has(id),
+      )
+      if (blockedByTasks.length > 0) {
+        return { success: false, reason: 'blocked', task, blockedByTasks }
+      }
+
+      if (options.checkAgentBusy) {
+        const agentOpenTasks = allTasks.filter(
+          candidate =>
+            candidate.status !== 'completed' &&
+            candidate.owner === claimantAgentId &&
+            candidate.id !== taskId,
+        )
+        if (agentOpenTasks.length > 0) {
+          return {
+            success: false,
+            reason: 'agent_busy',
+            task,
+            busyWithTasks: agentOpenTasks.map(candidate => candidate.id),
+          }
+        }
+      }
+
+      const updated = await updateTaskUnsafe(taskListId, taskId, {
+        owner: claimantAgentId,
+      })
+      return { success: true, task: updated! }
+    } finally {
+      await releaseLocks(taskReleases)
     }
-
-    // Check if already resolved
-    if (task.status === 'completed') {
-      return { success: false, reason: 'already_resolved', task }
-    }
-
-    // Check for unresolved blockers (open or in_progress tasks block)
-    const allTasks = await listTasks(taskListId)
-    const unresolvedTaskIds = new Set(
-      allTasks.filter(t => t.status !== 'completed').map(t => t.id),
-    )
-    const blockedByTasks = task.blockedBy.filter(id =>
-      unresolvedTaskIds.has(id),
-    )
-    if (blockedByTasks.length > 0) {
-      return { success: false, reason: 'blocked', task, blockedByTasks }
-    }
-
-    // Claim the task (already holding taskPath lock — use unsafe variant)
-    const updated = await updateTaskUnsafe(taskListId, taskId, {
-      owner: claimantAgentId,
-    })
-    return { success: true, task: updated! }
   } catch (error) {
     logForDebugging(
       `[Tasks] Failed to claim task ${taskId}: ${errorMessage(error)}`,
@@ -605,89 +892,7 @@ export async function claimTask(
     logError(error)
     return { success: false, reason: 'task_not_found' }
   } finally {
-    if (release) {
-      await release()
-    }
-  }
-}
-
-/**
- * Claims a task with an atomic check for agent busy status.
- * Uses a task-list-level lock to ensure the busy check and claim are atomic.
- */
-async function claimTaskWithBusyCheck(
-  taskListId: string,
-  taskId: string,
-  claimantAgentId: string,
-): Promise<ClaimTaskResult> {
-  const lockPath = await ensureTaskListLockFile(taskListId)
-
-  let release: (() => Promise<void>) | undefined
-  try {
-    // Acquire exclusive lock on the task list
-    release = await lockfile.lock(lockPath, LOCK_OPTIONS)
-
-    // Read all tasks to check agent status and task state atomically
-    const allTasks = await listTasks(taskListId)
-
-    // Find the task we want to claim
-    const task = allTasks.find(t => t.id === taskId)
-    if (!task) {
-      return { success: false, reason: 'task_not_found' }
-    }
-
-    // Check if already claimed by another agent
-    if (task.owner && task.owner !== claimantAgentId) {
-      return { success: false, reason: 'already_claimed', task }
-    }
-
-    // Check if already resolved
-    if (task.status === 'completed') {
-      return { success: false, reason: 'already_resolved', task }
-    }
-
-    // Check for unresolved blockers (open or in_progress tasks block)
-    const unresolvedTaskIds = new Set(
-      allTasks.filter(t => t.status !== 'completed').map(t => t.id),
-    )
-    const blockedByTasks = task.blockedBy.filter(id =>
-      unresolvedTaskIds.has(id),
-    )
-    if (blockedByTasks.length > 0) {
-      return { success: false, reason: 'blocked', task, blockedByTasks }
-    }
-
-    // Check if agent is busy with other unresolved tasks
-    const agentOpenTasks = allTasks.filter(
-      t =>
-        t.status !== 'completed' &&
-        t.owner === claimantAgentId &&
-        t.id !== taskId,
-    )
-    if (agentOpenTasks.length > 0) {
-      return {
-        success: false,
-        reason: 'agent_busy',
-        task,
-        busyWithTasks: agentOpenTasks.map(t => t.id),
-      }
-    }
-
-    // Claim the task
-    const updated = await updateTask(taskListId, taskId, {
-      owner: claimantAgentId,
-    })
-    return { success: true, task: updated! }
-  } catch (error) {
-    logForDebugging(
-      `[Tasks] Failed to claim task ${taskId} with busy check: ${errorMessage(error)}`,
-    )
-    logError(error)
-    return { success: false, reason: 'task_not_found' }
-  } finally {
-    if (release) {
-      await release()
-    }
+    await releaseLocks(listReleases)
   }
 }
 

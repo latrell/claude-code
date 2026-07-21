@@ -32,6 +32,30 @@ import {
 } from '../goalState.js'
 
 const SESSION = 'test-session-id'
+const PREVIOUS_ACTIVE_MS = 400
+const CURRENT_ACTIVE_MS = 1_200
+
+function arrangeActiveTime(goal: ReturnType<typeof setGoal>): number {
+  goal.accumulatedActiveMs = PREVIOUS_ACTIVE_MS
+  goal.startTime -= CURRENT_ACTIVE_MS
+  return goal.startTime
+}
+
+function expectActiveTimeFrozen(
+  goal: ReturnType<typeof setGoal>,
+  expectedStatus: ReturnType<typeof setGoal>['status'],
+  intervalStart: number,
+): void {
+  expect(goal.status).toBe(expectedStatus)
+  const frozenAt = goal.pausedAt
+  expect(frozenAt).not.toBeNull()
+  if (frozenAt === null) throw new Error('goal active time was not frozen')
+  expect(goal.updatedAt).toBe(frozenAt)
+  expect(goal.accumulatedActiveMs).toBe(
+    PREVIOUS_ACTIVE_MS + frozenAt - intervalStart,
+  )
+  expect(getActiveElapsedMs(goal)).toBe(goal.accumulatedActiveMs)
+}
 
 beforeEach(() => {
   _clearAllGoalsForTesting()
@@ -129,10 +153,11 @@ describe('updateGoalTokens — accumulates and triggers budget_limited', () => {
     expect(getGoal(SESSION)?.tokensUsed).toBe(300)
   })
 
-  test('crossing budget transitions to budget_limited', () => {
-    setGoal('x', { tokenBudget: 100, sessionId: SESSION })
+  test('crossing budget freezes active time in budget_limited', () => {
+    const goal = setGoal('x', { tokenBudget: 100, sessionId: SESSION })
+    const intervalStart = arrangeActiveTime(goal)
     updateGoalTokens(150, SESSION)
-    expect(getGoal(SESSION)?.status).toBe('budget_limited')
+    expectActiveTimeFrozen(goal, 'budget_limited', intervalStart)
   })
 
   test('further updates after budget_limited are no-ops (status-guarded)', () => {
@@ -247,6 +272,23 @@ describe('recordBlockedAttempt — CODEX 3-consecutive-attempts audit', () => {
     expect(resumed?.lastBlockedTurn).toBeNull()
   })
 
+  test('blocking freezes active elapsed time and resume preserves it', () => {
+    const goal = setGoal('x', { sessionId: SESSION })
+    const intervalStart = arrangeActiveTime(goal)
+    for (let turn = 0; turn < BLOCKED_CONSECUTIVE_THRESHOLD; turn++) {
+      incrementGoalTurns(SESSION)
+      recordBlockedAttempt('missing credential', SESSION)
+    }
+
+    const blocked = getGoal(SESSION)!
+    const frozenElapsed = getActiveElapsedMs(blocked)
+    expectActiveTimeFrozen(blocked, 'blocked', intervalStart)
+
+    const resumed = resumeGoal(SESSION)!
+    expect(resumed.accumulatedActiveMs).toBe(frozenElapsed)
+    expect(resumed.pausedAt).toBeNull()
+  })
+
   test('legacy state without lastBlockedTurn starts a fresh audit', () => {
     const legacy = setGoal('x', { sessionId: SESSION })
     legacy.turnsExecuted = 4
@@ -262,10 +304,11 @@ describe('recordBlockedAttempt — CODEX 3-consecutive-attempts audit', () => {
 })
 
 describe('completeGoal / clearGoal / markUsageLimited', () => {
-  test('completeGoal transitions to complete', () => {
-    setGoal('x', { sessionId: SESSION })
-    const g = completeGoal(SESSION)
-    expect(g?.status).toBe('complete')
+  test('completeGoal freezes active time in complete', () => {
+    const goal = setGoal('x', { sessionId: SESSION })
+    const intervalStart = arrangeActiveTime(goal)
+    completeGoal(SESSION)
+    expectActiveTimeFrozen(goal, 'complete', intervalStart)
   })
 
   test('clearGoal removes entirely', () => {
@@ -274,10 +317,11 @@ describe('completeGoal / clearGoal / markUsageLimited', () => {
     expect(getGoal(SESSION)).toBeNull()
   })
 
-  test('markUsageLimited transitions active → usage_limited', () => {
-    setGoal('x', { sessionId: SESSION })
+  test('markUsageLimited freezes active time in usage_limited', () => {
+    const goal = setGoal('x', { sessionId: SESSION })
+    const intervalStart = arrangeActiveTime(goal)
     markUsageLimited(SESSION)
-    expect(getGoal(SESSION)?.status).toBe('usage_limited')
+    expectActiveTimeFrozen(goal, 'usage_limited', intervalStart)
   })
 })
 
@@ -295,22 +339,29 @@ describe('incrementGoalTurns', () => {
 })
 
 describe('max_turns lifecycle', () => {
-  test('markGoalMaxTurnsReached flips active goal once cap is reached', () => {
-    setGoal('x', { sessionId: SESSION })
-    const goal = getGoal(SESSION)!
-    goal.turnsExecuted = MAX_GOAL_TURNS
-    const marked = markGoalMaxTurnsReached(SESSION)
-    expect(marked?.status).toBe('max_turns')
-  })
-
-  test('continueGoalFromMaxTurns resets turns and re-activates goal', () => {
-    setGoal('x', { sessionId: SESSION })
-    const goal = getGoal(SESSION)!
+  test('markGoalMaxTurnsReached freezes active time at the cap', () => {
+    const goal = setGoal('x', { sessionId: SESSION })
+    const intervalStart = arrangeActiveTime(goal)
     goal.turnsExecuted = MAX_GOAL_TURNS
     markGoalMaxTurnsReached(SESSION)
+    expectActiveTimeFrozen(goal, 'max_turns', intervalStart)
+  })
+
+  test('continueGoalFromMaxTurns preserves frozen active time', () => {
+    const goal = setGoal('x', { sessionId: SESSION })
+    arrangeActiveTime(goal)
+    goal.turnsExecuted = MAX_GOAL_TURNS
+    markGoalMaxTurnsReached(SESSION)
+    const accumulatedBeforeContinue = goal.accumulatedActiveMs
+    const frozenAt = goal.pausedAt
+
     const resumed = continueGoalFromMaxTurns(SESSION)
     expect(resumed?.status).toBe('active')
     expect(resumed?.turnsExecuted).toBe(0)
+    expect(resumed?.accumulatedActiveMs).toBe(accumulatedBeforeContinue)
+    expect(resumed?.pausedAt).toBeNull()
+    expect(resumed?.startTime).toBe(resumed?.updatedAt)
+    expect(resumed?.startTime).toBeGreaterThanOrEqual(frozenAt ?? 0)
   })
 })
 

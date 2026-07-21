@@ -1467,7 +1467,7 @@ export async function runInProcessTeammate(
         taskId,
         toolUseContext.getAppState,
         setAppState,
-        identity.parentSessionId,
+        identity.teamName,
       )
 
       switch (waitResult.type) {

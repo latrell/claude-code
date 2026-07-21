@@ -3,8 +3,13 @@ import { createAbortController } from '../utils/abortController'
 import { QueryGuard } from '../utils/QueryGuard'
 import { handlePromptSubmit } from '../utils/handlePromptSubmit'
 import {
+  enqueuePendingNotification,
   getCommandQueue,
+  leaseTaskNotificationBatch,
+  peek,
+  releaseDueTaskNotificationRetries,
   resetCommandQueue,
+  retryTaskNotificationLease,
 } from '../utils/messageQueueManager'
 import { cleanupTempDir, createTempDir } from '../../tests/mocks/file-system'
 import {
@@ -43,6 +48,18 @@ function createBaseParams() {
     ) => Promise<boolean>,
     setAppState: mock((_updater: unknown) => {}),
   }
+}
+
+function parkMainTaskNotification(): void {
+  enqueuePendingNotification({
+    value: 'parked completion',
+    mode: 'task-notification',
+  })
+  const firstLease = leaseTaskNotificationBatch(() => true)
+  expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
+  releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
+  const retryLease = leaseTaskNotificationBatch(() => true)
+  expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
 }
 
 describe('handlePromptSubmit', () => {
@@ -105,6 +122,72 @@ describe('handlePromptSubmit', () => {
       preExpansionValue: 'hello',
       mode: 'prompt',
     })
+  })
+
+  test('queued external input reactivates the main owner parked delivery', async () => {
+    parkMainTaskNotification()
+    const params = createBaseParams()
+
+    await handlePromptSubmit({
+      ...params,
+      input: 'fresh user input',
+      mode: 'prompt',
+      pastedContents: {},
+      isExternalLoading: false,
+    })
+
+    expect(peek(command => command.mode === 'task-notification')?.value).toBe(
+      'parked completion',
+    )
+    expect(getCommandQueue()[0]?.value).toBe('parked completion')
+    expect(getCommandQueue()[1]?.value).toBe('fresh user input')
+  })
+
+  test('direct external input reactivates parked delivery after reserving the guard', async () => {
+    parkMainTaskNotification()
+    const params = createBaseParams()
+    params.queryGuard.cancelReservation()
+
+    await expect(
+      handlePromptSubmit({
+        ...params,
+        input: 'fresh direct input',
+        mode: 'prompt',
+        pastedContents: {},
+        isExternalLoading: false,
+      }),
+    ).rejects.toThrow('getToolUseContext should not be called in queued path')
+
+    expect(params.queryGuard.isActive).toBe(false)
+    expect(peek(command => command.mode === 'task-notification')?.value).toBe(
+      'parked completion',
+    )
+  })
+
+  test('queued internal meta input does not reactivate parked delivery', async () => {
+    parkMainTaskNotification()
+    const params = createBaseParams()
+
+    await expect(
+      handlePromptSubmit({
+        ...params,
+        input: '',
+        mode: 'prompt',
+        pastedContents: {},
+        isExternalLoading: false,
+        queuedCommands: [
+          {
+            value: '<goal-continuation/>',
+            mode: 'prompt',
+            isMeta: true,
+          },
+        ],
+      }),
+    ).rejects.toThrow('getToolUseContext should not be called in queued path')
+
+    expect(
+      peek(command => command.mode === 'task-notification'),
+    ).toBeUndefined()
   })
 
   test('preserves bridgeOrigin when a remote slash command is queued during external loading', async () => {

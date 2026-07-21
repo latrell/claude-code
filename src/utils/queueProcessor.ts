@@ -1,23 +1,35 @@
 import type { QueuedCommand } from '../types/textInputTypes.js'
 import {
+  acknowledgeTaskNotificationLease,
   dequeue,
   dequeueAllMatching,
   getCommandQueue,
   hasCommandsInQueue,
   isConversationResetCommand,
   isSlashCommand,
+  leaseTaskNotificationBatch,
   peek,
+  retryTaskNotificationLease,
 } from './messageQueueManager.js'
 
 type ProcessQueueParams = {
   executeInput: (commands: QueuedCommand[]) => Promise<void>
   /** Re-check synchronous ownership immediately before touching the queue. */
   isExecutionActive?: () => boolean
+  /** onQuery generation; REPL appends messages before its first awaited hook. */
+  getExecutionGeneration?: () => number
 }
 
 export type ProcessQueueResult =
   | { processed: false }
   | { processed: true; execution: Promise<void> }
+
+export class TaskNotificationDeliveryParkedError extends Error {
+  constructor(public readonly cause?: unknown) {
+    super('A background result could not be delivered after one retry.')
+    this.name = 'TaskNotificationDeliveryParkedError'
+  }
+}
 
 function startExecution(
   executeInput: ProcessQueueParams['executeInput'],
@@ -57,6 +69,7 @@ function startExecution(
 export function processQueueIfReady({
   executeInput,
   isExecutionActive,
+  getExecutionGeneration,
 }: ProcessQueueParams): ProcessQueueResult {
   // A React effect can hold an idle render snapshot after another input has
   // synchronously acquired QueryGuard. Re-check the live owner here so a stale
@@ -99,6 +112,51 @@ export function processQueueIfReady({
 
   // Drain all non-slash-command items with the same mode at once.
   const targetMode = next.mode
+  if (targetMode === 'task-notification') {
+    const lease = leaseTaskNotificationBatch(
+      cmd =>
+        isExecutableMainThread(cmd) &&
+        !isSlashCommand(cmd) &&
+        cmd.mode === targetMode,
+    )
+    if (!lease) return { processed: false }
+
+    const generationBeforeExecution = getExecutionGeneration?.()
+    const execution = startExecution(executeInput, lease.commands).then(
+      () => {
+        // A task notification always becomes a user message and calls onQuery.
+        // Fulfillment without a generation transition means preprocessing
+        // returned before that handoff, so the lease is still uncommitted.
+        const committed =
+          generationBeforeExecution === undefined ||
+          getExecutionGeneration?.() !== generationBeforeExecution
+        if (committed) {
+          acknowledgeTaskNotificationLease(lease)
+        } else {
+          const disposition = retryTaskNotificationLease(lease)
+          if (disposition === 'parked') {
+            throw new TaskNotificationDeliveryParkedError()
+          }
+        }
+      },
+      error => {
+        const committed =
+          generationBeforeExecution !== undefined &&
+          getExecutionGeneration?.() !== generationBeforeExecution
+        if (committed) {
+          acknowledgeTaskNotificationLease(lease)
+        } else {
+          const disposition = retryTaskNotificationLease(lease)
+          if (disposition === 'parked') {
+            throw new TaskNotificationDeliveryParkedError(error)
+          }
+        }
+        throw error
+      },
+    )
+    return { processed: true, execution }
+  }
+
   const commands = dequeueAllMatching(
     cmd =>
       isExecutableMainThread(cmd) &&

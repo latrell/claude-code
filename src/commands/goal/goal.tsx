@@ -8,7 +8,7 @@
  * `/goal status`       -> alias of bare `/goal`
  * `/goal clear`        -> remove the active goal (persists tombstone)
  * `/goal pause`        -> pause auto-continuation
- * `/goal resume`       -> resume from paused state
+ * `/goal resume`       -> resume from paused or blocked state
  * `/goal continue`     -> reset turn counter after max-turns and continue
  * `/goal complete`     -> mark complete (manual override; tools usually do this)
  * `/goal <objective>`  -> set a new goal; if one is already active and not
@@ -133,7 +133,7 @@ export async function call(
     }
     const g = resumeGoal();
     if (g) persistCurrentGoal();
-    onDone(g ? t('Goal resumed.') : t('No paused goal to resume.'), {
+    onDone(g ? t('Goal resumed.') : t('No paused or blocked goal to resume.'), {
       display: 'system',
       shouldQuery: Boolean(g),
     });

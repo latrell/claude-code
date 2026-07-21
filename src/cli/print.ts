@@ -13,6 +13,8 @@ import { RemoteIO } from 'src/cli/remoteIO.js'
 import {
   cancelSdkOwnedRuns,
   SdkRunLifecycle,
+  shouldDeferHeadlessOutputClose,
+  shouldKeepParkedTaskNotificationRecoverable,
   shouldWaitForSdkBackgroundTasks,
   waitForSdkBackgroundTaskPoll,
   waitForSdkStopSettlement,
@@ -49,14 +51,24 @@ import {
 import type { Message, NormalizedUserMessage } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
+  acknowledgeTaskNotificationLease,
+  commitTaskNotificationLease,
   dequeue,
   dequeueAllMatching,
+  discardParkedTaskNotificationsAddressedTo,
   enqueue,
   hasCommandsAddressedTo,
+  hasTaskNotificationDeliveryAddressedTo,
+  leaseTaskNotificationBatch,
   peek,
+  reactivateParkedTaskNotifications,
+  removeByFilter,
+  retryTaskNotificationLease,
   subscribeToCommandQueue,
+  type TaskNotificationLease,
   getCommandsByMaxPriority,
 } from 'src/utils/messageQueueManager.js'
+import { TaskNotificationDeliveryParkedError } from 'src/utils/queueProcessor.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
 import {
   getSessionState,
@@ -1950,37 +1962,89 @@ function runHeadlessStreaming(
     })
   })
 
-  async function closeHeadlessOutput(): Promise<void> {
-    const failures: unknown[] = []
-    const ownedSettlements = await Promise.allSettled([
-      cancelPushSuggestions('sdk-output-closing'),
-      cancelSessionTitleRequests('sdk-output-closing'),
-    ])
-    for (const result of ownedSettlements) {
-      if (result.status === 'rejected') failures.push(result.reason)
-    }
-    try {
-      await finalizePendingAsyncHooks()
-    } catch (error) {
-      failures.push(error)
-    }
+  let unsubscribeCommandQueue: (() => void) | undefined
+  let headlessOutputClosed = false
+  let headlessOutputCloseInFlight: Promise<void> | undefined
 
-    unsubscribeSkillChanges()
-    unsubscribeAuthStatus?.()
-    statusListeners.delete(rateLimitListener)
-
-    if (failures.length > 0) {
-      output.error(
-        failures.length === 1 && failures[0] instanceof StopConfirmationError
-          ? failures[0]
-          : new StopConfirmationError(
-              'Headless output cleanup could not confirm all owned work settled',
-              failures,
-            ),
+  function discardUnrecoverableParkedTaskNotifications(): void {
+    if (!inputClosed) return
+    const discarded = discardParkedTaskNotificationsAddressedTo(undefined)
+    if (discarded > 0) {
+      logForDebugging(
+        `[print.ts] Discarded ${discarded} parked task notification(s) after external input closed`,
+        { level: 'error' },
       )
-      return
     }
-    output.done()
+  }
+
+  function closeHeadlessOutput(): Promise<void> {
+    if (headlessOutputClosed) return Promise.resolve()
+    if (headlessOutputCloseInFlight) return headlessOutputCloseInFlight
+
+    const attempt = (async () => {
+      discardUnrecoverableParkedTaskNotifications()
+      // Backoff and parked notifications are deliberately absent from peek().
+      // They still own delivery and must keep the stream alive until a retry
+      // commits or the closed-input terminal path explicitly removes them.
+      if (hasTaskNotificationDeliveryAddressedTo(undefined)) return
+
+      const failures: unknown[] = []
+      const ownedSettlements = await Promise.allSettled([
+        cancelPushSuggestions('sdk-output-closing'),
+        cancelSessionTitleRequests('sdk-output-closing'),
+      ])
+      for (const result of ownedSettlements) {
+        if (result.status === 'rejected') failures.push(result.reason)
+      }
+      try {
+        await finalizePendingAsyncHooks()
+      } catch (error) {
+        failures.push(error)
+      }
+
+      // Close the race where a terminal background task enqueues its result
+      // while the owned cleanup above is settling.
+      discardUnrecoverableParkedTaskNotifications()
+      if (
+        failures.length === 0 &&
+        hasTaskNotificationDeliveryAddressedTo(undefined)
+      ) {
+        return
+      }
+
+      headlessOutputClosed = true
+      unsubscribeCommandQueue?.()
+      unsubscribeCommandQueue = undefined
+      unsubscribeSkillChanges()
+      unsubscribeAuthStatus?.()
+      statusListeners.delete(rateLimitListener)
+
+      if (failures.length > 0) {
+        removeByFilter(
+          command =>
+            command.agentId === undefined &&
+            command.mode === 'task-notification',
+        )
+        output.error(
+          failures.length === 1 && failures[0] instanceof StopConfirmationError
+            ? failures[0]
+            : new StopConfirmationError(
+                'Headless output cleanup could not confirm all owned work settled',
+                failures,
+              ),
+        )
+        return
+      }
+      output.done()
+    })()
+
+    const trackedAttempt = attempt.finally(() => {
+      if (headlessOutputCloseInFlight === trackedAttempt) {
+        headlessOutputCloseInFlight = undefined
+      }
+    })
+    headlessOutputCloseInFlight = trackedAttempt
+    return trackedAttempt
   }
 
   // Proactive mode: schedule a tick to keep the model looping autonomously.
@@ -2028,12 +2092,21 @@ function runHeadlessStreaming(
       : undefined
 
   // Abort the current operation when a 'now' priority message arrives.
-  subscribeToCommandQueue(() => {
+  unsubscribeCommandQueue = subscribeToCommandQueue(() => {
+    if (headlessOutputClosed) return
     if (
       abortController &&
       getCommandsByMaxPriority('now').some(cmd => cmd.agentId === undefined)
     ) {
       abortController.abort('interrupt')
+    }
+    // Retry backoff expiry is a queue signal rather than a fresh stdin event,
+    // so it has no caller that can invoke run() on its behalf.
+    if (
+      !running &&
+      peek(command => command.agentId === undefined) !== undefined
+    ) {
+      void run()
     }
   })
 
@@ -2064,58 +2137,59 @@ function runHeadlessStreaming(
     notifySessionStateChanged('running')
     idleTimeout.stop()
 
-    headlessProfilerCheckpoint('run_entry')
-    // TODO(custom-tool-refactor): Should move to the init message, like browser
-
-    await updateSdkMcp()
-    headlessProfilerCheckpoint('after_updateSdkMcp')
-
-    // Resolve deferred plugin installation (CLAUDE_CODE_SYNC_PLUGIN_INSTALL).
-    // The promise was started eagerly so installation overlaps with other init.
-    // Awaiting here guarantees plugins are available before the first ask().
-    // If CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS is set, races against that
-    // deadline and proceeds without plugins on timeout (logging an error).
-    if (pluginInstallPromise) {
-      const timeoutMs = parseInt(
-        process.env.CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS || '',
-        10,
-      )
-      if (timeoutMs > 0) {
-        const timeout = sleep(timeoutMs).then(() => 'timeout' as const)
-        const result = await Promise.race([pluginInstallPromise, timeout])
-        if (result === 'timeout') {
-          logError(
-            new Error(
-              `CLAUDE_CODE_SYNC_PLUGIN_INSTALL: plugin installation timed out after ${timeoutMs}ms`,
-            ),
-          )
-          logEvent('tengu_sync_plugin_install_timeout', {
-            timeout_ms: timeoutMs,
-          })
-        }
-      } else {
-        await pluginInstallPromise
-      }
-      pluginInstallPromise = null
-
-      // Refresh commands, agents, and hooks now that plugins are installed
-      await refreshPluginState()
-
-      // Set up hot-reload for plugin hooks now that the initial install is done.
-      // In sync-install mode, setup.ts skips this to avoid racing with the install.
-      const { setupPluginHookHotReload } = await import(
-        '../utils/plugins/loadPluginHooks.js'
-      )
-      setupPluginHookHotReload()
-    }
-
     // Only main-thread commands (agentId===undefined) — subagent
     // notifications are drained by the subagent's mid-turn gate in query.ts.
-    // Defined outside the try block so it's accessible in the post-finally
-    // queue re-checks at the bottom of run().
+    // Keep these outside the lifecycle try so both its catch and the
+    // post-finally queue checks use the same ownership boundary.
     const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
+    let activeTaskNotificationLease: TaskNotificationLease | undefined
 
     try {
+      headlessProfilerCheckpoint('run_entry')
+      // TODO(custom-tool-refactor): Should move to the init message, like browser
+
+      await updateSdkMcp()
+      headlessProfilerCheckpoint('after_updateSdkMcp')
+
+      // Resolve deferred plugin installation (CLAUDE_CODE_SYNC_PLUGIN_INSTALL).
+      // The promise was started eagerly so installation overlaps with other init.
+      // Awaiting here guarantees plugins are available before the first ask().
+      // If CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS is set, races against that
+      // deadline and proceeds without plugins on timeout (logging an error).
+      if (pluginInstallPromise) {
+        const timeoutMs = parseInt(
+          process.env.CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS || '',
+          10,
+        )
+        if (timeoutMs > 0) {
+          const timeout = sleep(timeoutMs).then(() => 'timeout' as const)
+          const result = await Promise.race([pluginInstallPromise, timeout])
+          if (result === 'timeout') {
+            logError(
+              new Error(
+                `CLAUDE_CODE_SYNC_PLUGIN_INSTALL: plugin installation timed out after ${timeoutMs}ms`,
+              ),
+            )
+            logEvent('tengu_sync_plugin_install_timeout', {
+              timeout_ms: timeoutMs,
+            })
+          }
+        } else {
+          await pluginInstallPromise
+        }
+        pluginInstallPromise = null
+
+        // Refresh commands, agents, and hooks now that plugins are installed
+        await refreshPluginState()
+
+        // Set up hot-reload for plugin hooks now that the initial install is done.
+        // In sync-install mode, setup.ts skips this to avoid racing with the install.
+        const { setupPluginHookHotReload } = await import(
+          '../utils/plugins/loadPluginHooks.js'
+        )
+        setupPluginHookHotReload()
+      }
+
       let command: QueuedCommand | undefined
       let waitingForAgents = false
 
@@ -2124,7 +2198,17 @@ function runHeadlessStreaming(
       // ask() call so messages that queued up during a long turn coalesce
       // into a single follow-up turn instead of N separate turns.
       const drainCommandQueue = async () => {
-        while ((command = dequeue(isMainThread))) {
+        while ((command = peek(isMainThread))) {
+          if (command.mode === 'task-notification') {
+            activeTaskNotificationLease = leaseTaskNotificationBatch(
+              queued => queued === command,
+            )
+            if (!activeTaskNotificationLease) continue
+            command = activeTaskNotificationLease.commands[0]
+          } else {
+            command = dequeue(isMainThread)
+          }
+          if (!command) continue
           if (
             command.mode !== 'prompt' &&
             command.mode !== 'orphaned-permission' &&
@@ -2148,6 +2232,10 @@ function runHeadlessStreaming(
             await claimConsumableQueuedAutonomyCommands(batch)
           batch = queuedAutonomyClaim.attachmentCommands
           if (batch.length === 0) {
+            if (activeTaskNotificationLease) {
+              acknowledgeTaskNotificationLease(activeTaskNotificationLease)
+              activeTaskNotificationLease = undefined
+            }
             continue
           }
           command = batch[0]!
@@ -2207,6 +2295,7 @@ function runHeadlessStreaming(
             notifyCommandLifecycle(uuid, 'started')
           }
 
+          let emitTaskNotificationSdkEvent: (() => void) | undefined
           // Task notifications arrive when background agents complete.
           // Emit an SDK system event for SDK consumers, then fall through
           // to ask() so the model sees the agent result and can act on it.
@@ -2268,27 +2357,29 @@ function runHeadlessStreaming(
             // consumers. Terminal bookends are now emitted directly via
             // emitTaskTerminatedSdk, so skipping statusless events is safe.
             if (statusMatch) {
-              output.enqueue({
-                type: 'system',
-                subtype: 'task_notification',
-                task_id: taskIdMatch?.[1] ?? '',
-                tool_use_id: toolUseIdMatch?.[1],
-                status,
-                output_file: outputFileMatch?.[1] ?? '',
-                summary: summaryMatch?.[1] ?? '',
-                usage:
-                  totalTokensMatch && toolUsesMatch
-                    ? {
-                        total_tokens: parseInt(totalTokensMatch[1]!, 10),
-                        tool_uses: parseInt(toolUsesMatch[1]!, 10),
-                        duration_ms: durationMsMatch
-                          ? parseInt(durationMsMatch[1]!, 10)
-                          : 0,
-                      }
-                    : undefined,
-                session_id: getSessionId(),
-                uuid: randomUUID(),
-              })
+              emitTaskNotificationSdkEvent = () => {
+                output.enqueue({
+                  type: 'system',
+                  subtype: 'task_notification',
+                  task_id: taskIdMatch?.[1] ?? '',
+                  tool_use_id: toolUseIdMatch?.[1],
+                  status,
+                  output_file: outputFileMatch?.[1] ?? '',
+                  summary: summaryMatch?.[1] ?? '',
+                  usage:
+                    totalTokensMatch && toolUsesMatch
+                      ? {
+                          total_tokens: parseInt(totalTokensMatch[1]!, 10),
+                          tool_uses: parseInt(toolUsesMatch[1]!, 10),
+                          duration_ms: durationMsMatch
+                            ? parseInt(durationMsMatch[1]!, 10)
+                            : 0,
+                        }
+                      : undefined,
+                  session_id: getSessionId(),
+                  uuid: randomUUID(),
+                })
+              }
             }
             // No continue -- fall through to ask() so the model processes the result
           }
@@ -2344,15 +2435,15 @@ function runHeadlessStreaming(
           // Per-iteration ALS context so bg agents spawned inside ask()
           // inherit workload across their detached awaits. In-process cron
           // stamps cmd.workload; the SDK --workload flag is options.workload.
-          // const-capture: TS loses `while ((command = dequeue()))` narrowing
-          // inside the closure.
+          // const-capture keeps the selected command stable inside the closure.
           const cmd = command
           let lastResultIsError = false
           try {
             await runWithWorkload(
               cmd.workload ?? options.workload,
               async () => {
-                for await (const message of ask({
+                const taskNotificationLease = activeTaskNotificationLease
+                const askIterator = ask({
                   commands: uniqBy(
                     [...currentCommands, ...appState.mcp.commands],
                     'name',
@@ -2408,6 +2499,26 @@ function runHeadlessStreaming(
                     ),
                   agents: currentAgents,
                   orphanedPermission: cmd.orphanedPermission,
+                  // QueryEngine fires this synchronously immediately after
+                  // mutableMessages.push(...messagesFromUserInput). Before
+                  // that boundary setup failures are retryable; afterward a
+                  // replay would duplicate the conversation transcript.
+                  onPromptCommitted: taskNotificationLease
+                    ? () => {
+                        commitTaskNotificationLease(
+                          taskNotificationLease,
+                          () => {
+                            if (
+                              activeTaskNotificationLease ===
+                              taskNotificationLease
+                            ) {
+                              activeTaskNotificationLease = undefined
+                            }
+                            emitTaskNotificationSdkEvent?.()
+                          },
+                        )
+                      }
+                    : undefined,
                   setSDKStatus: status => {
                     output.enqueue({
                       type: 'system',
@@ -2417,7 +2528,8 @@ function runHeadlessStreaming(
                       uuid: randomUUID(),
                     })
                   },
-                })) {
+                })
+                for await (const message of askIterator) {
                   // Forward messages to bridge incrementally (mid-turn) so
                   // claude.ai sees progress and the connection stays alive
                   // while blocked on permission requests.
@@ -2723,10 +2835,17 @@ function runHeadlessStreaming(
         }
       }
     } catch (error) {
-      let finalError = error
+      const notificationDisposition = activeTaskNotificationLease
+        ? retryTaskNotificationLease(activeTaskNotificationLease)
+        : undefined
+      activeTaskNotificationLease = undefined
+      let finalError =
+        notificationDisposition === 'parked'
+          ? new TaskNotificationDeliveryParkedError(error)
+          : error
       const auxiliarySettlements = await Promise.allSettled([
-        cancelPushSuggestions(error),
-        cancelSessionTitleRequests(error),
+        cancelPushSuggestions(finalError),
+        cancelSessionTitleRequests(finalError),
       ])
       const auxiliaryFailures = auxiliarySettlements.flatMap(result =>
         result.status === 'rejected' ? [result.reason] : [],
@@ -2734,56 +2853,93 @@ function runHeadlessStreaming(
       if (auxiliaryFailures.length > 0) {
         finalError = new StopConfirmationError(
           'SDK run failed and auxiliary request termination was not confirmed',
-          [error, ...auxiliaryFailures],
+          [finalError, ...auxiliaryFailures],
         )
       }
-      // Emit error result message before shutting down
-      // Write directly to structuredIO to ensure immediate delivery
-      try {
-        await structuredIO.write({
-          type: 'result',
-          subtype: 'error_during_execution',
-          duration_ms: 0,
-          duration_api_ms: 0,
-          is_error: true,
-          num_turns: 0,
-          stop_reason: null,
-          session_id: getSessionId(),
-          total_cost_usd: 0,
-          usage: EMPTY_USAGE,
-          modelUsage: {},
-          permission_denials: [],
-          uuid: randomUUID(),
-          errors: [
-            errorMessage(finalError),
-            ...getInMemoryErrors().map(_ => _.error),
-          ],
+      const keepParkedDeliveryRecoverable =
+        notificationDisposition === 'parked' &&
+        shouldKeepParkedTaskNotificationRecoverable({
+          inputClosed,
+          hasAuxiliaryFailures: auxiliaryFailures.length > 0,
         })
-      } catch {
-        // If we can't emit the error result, continue with shutdown anyway
-      }
-      gracefulShutdownSync(1)
-      return
-    } finally {
-      runPhase = 'finally_flush'
-      // Flush pending internal events before going idle
-      await structuredIO.flushInternalEvents()
-      runPhase = 'finally_post_flush'
-      if (!isShuttingDown()) {
-        notifySessionStateChanged('idle')
-        // Drain so the idle session_state_changed SDK event (plus any
-        // terminal task_notification bookends emitted during bg-agent
-        // teardown) reach the output stream before we block on the next
-        // command. The do-while drain above only runs while
-        // waitingForAgents; once we're here the next drain would be the
-        // top of the next run(), which won't come if input is idle.
-        for (const event of drainSdkEvents()) {
-          output.enqueue(event)
+      if (
+        notificationDisposition === 'retry-scheduled' &&
+        auxiliaryFailures.length === 0
+      ) {
+        logForDebugging(
+          `[print.ts] Retrying task notification after pre-query failure: ${errorMessage(error)}`,
+          { level: 'error' },
+        )
+      } else {
+        // Emit the failed turn before either keeping an open session idle or
+        // taking the terminal closed-input/error path.
+        // Write directly to structuredIO to ensure immediate delivery
+        try {
+          await structuredIO.write({
+            type: 'result',
+            subtype: 'error_during_execution',
+            duration_ms: 0,
+            duration_api_ms: 0,
+            is_error: true,
+            num_turns: 0,
+            stop_reason: null,
+            session_id: getSessionId(),
+            total_cost_usd: 0,
+            usage: EMPTY_USAGE,
+            modelUsage: {},
+            permission_denials: [],
+            uuid: randomUUID(),
+            errors: [
+              errorMessage(finalError),
+              ...getInMemoryErrors().map(_ => _.error),
+            ],
+          })
+        } catch {
+          // The terminal branch will still shut down. For an open recoverable
+          // session, retain the parked notification for explicit user retry.
+        }
+        if (keepParkedDeliveryRecoverable) {
+          logForDebugging(
+            '[print.ts] Parked task notification until fresh user input reactivates delivery',
+            { level: 'error' },
+          )
+        } else {
+          if (notificationDisposition !== undefined) {
+            removeByFilter(
+              command =>
+                command.agentId === undefined &&
+                command.mode === 'task-notification',
+            )
+          }
+          gracefulShutdownSync(1)
+          return
         }
       }
-      running = false
-      // Start idle timer when we finish processing and are waiting for input
-      idleTimeout.start()
+    } finally {
+      try {
+        runPhase = 'finally_flush'
+        // Flush pending internal events before going idle
+        await structuredIO.flushInternalEvents()
+        runPhase = 'finally_post_flush'
+        if (!isShuttingDown()) {
+          notifySessionStateChanged('idle')
+          // Drain so the idle session_state_changed SDK event (plus any
+          // terminal task_notification bookends emitted during bg-agent
+          // teardown) reach the output stream before we block on the next
+          // command. The do-while drain above only runs while
+          // waitingForAgents; once we're here the next drain would be the
+          // top of the next run(), which won't come if input is idle.
+          for (const event of drainSdkEvents()) {
+            output.enqueue(event)
+          }
+        }
+      } finally {
+        // Never strand the SDK runner latch because MCP setup or even the
+        // final event flush failed. Future input must be able to start a new
+        // generation (or observe the shutdown requested by the catch above).
+        running = false
+        idleTimeout.start()
+      }
     }
 
     // Proactive tick: if proactive is active and queue is empty, inject a tick
@@ -2987,7 +3143,14 @@ function runHeadlessStreaming(
       }
     }
 
-    if (inputClosed) {
+    discardUnrecoverableParkedTaskNotifications()
+    if (
+      !shouldDeferHeadlessOutputClose({
+        inputClosed,
+        hasPendingTaskNotificationDelivery:
+          hasTaskNotificationDeliveryAddressedTo(undefined),
+      })
+    ) {
       // Check for active swarm that needs shutdown
       const hasActiveSwarm = await (async () => {
         // Wait for any working in-process team members to finish
@@ -4524,6 +4687,7 @@ function runHeadlessStreaming(
                       skipSlashCommands: true,
                       bridgeOrigin: true,
                     })
+                    reactivateParkedTaskNotifications()
                     void run()
                   },
                   onPermissionResponse(response) {
@@ -4750,6 +4914,7 @@ function runHeadlessStreaming(
         priority: (userMsg as { priority?: string })
           .priority as import('src/types/textInputTypes.js').QueuePriority,
       })
+      reactivateParkedTaskNotifications()
       // Increment prompt count for attribution tracking and save snapshot
       // The snapshot persists promptCount so it survives compaction
       if (feature('COMMIT_ATTRIBUTION')) {
@@ -4767,7 +4932,15 @@ function runHeadlessStreaming(
     await abortActiveSideQuestions()
     inputClosed = true
     cronScheduler?.stop()
-    if (!running) {
+    discardUnrecoverableParkedTaskNotifications()
+    if (
+      !running &&
+      !shouldDeferHeadlessOutputClose({
+        inputClosed,
+        hasPendingTaskNotificationDelivery:
+          hasTaskNotificationDeliveryAddressedTo(undefined),
+      })
+    ) {
       await closeHeadlessOutput()
     }
   })()

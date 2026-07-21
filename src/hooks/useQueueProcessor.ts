@@ -5,12 +5,16 @@ import {
   subscribeToCommandQueue,
 } from '../utils/messageQueueManager.js'
 import type { QueryGuard } from '../utils/QueryGuard.js'
-import { processQueueIfReady } from '../utils/queueProcessor.js'
+import {
+  processQueueIfReady,
+  TaskNotificationDeliveryParkedError,
+} from '../utils/queueProcessor.js'
 
 type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
   hasActiveLocalJsxUI: boolean
   onExecutionError: (error: unknown) => void
+  onTaskNotificationDeliveryParked?: () => void
   queryGuard: QueryGuard
 }
 
@@ -30,6 +34,7 @@ export function useQueueProcessor({
   executeQueuedInput,
   hasActiveLocalJsxUI,
   onExecutionError,
+  onTaskNotificationDeliveryParked,
   queryGuard,
 }: UseQueueProcessorParams): void {
   // Subscribe to the query guard. Re-renders when a query starts or ends
@@ -62,12 +67,18 @@ export function useQueueProcessor({
     const result = processQueueIfReady({
       executeInput: executeQueuedInput,
       isExecutionActive: () => queryGuard.isActive,
+      getExecutionGeneration: () => queryGuard.generation,
     })
     if (result.processed) {
       // Coordinator workers complete outside the foreground turn. Their
       // task-notification starts a fresh model turn here, so its promise must
       // remain observed just like a directly submitted prompt.
-      void result.execution.catch(onExecutionError)
+      void result.execution.catch(error => {
+        if (error instanceof TaskNotificationDeliveryParkedError) {
+          onTaskNotificationDeliveryParked?.()
+        }
+        onExecutionError(error)
+      })
     }
   }, [
     queueSnapshot,
@@ -75,6 +86,7 @@ export function useQueueProcessor({
     executeQueuedInput,
     hasActiveLocalJsxUI,
     onExecutionError,
+    onTaskNotificationDeliveryParked,
     queryGuard,
   ])
 }

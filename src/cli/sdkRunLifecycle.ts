@@ -126,6 +126,38 @@ export function shouldWaitForSdkBackgroundTasks({
 }
 
 /**
+ * A queued notification in retry backoff or parked state is intentionally not
+ * selectable, but it still owns future delivery. Closing the SDK output while
+ * that ownership exists would let its retry timer fire against a finished
+ * stream.
+ */
+export function shouldDeferHeadlessOutputClose({
+  inputClosed,
+  hasPendingTaskNotificationDelivery,
+}: {
+  inputClosed: boolean
+  hasPendingTaskNotificationDelivery: boolean
+}): boolean {
+  return !inputClosed || hasPendingTaskNotificationDelivery
+}
+
+/**
+ * A parked notification is recoverable only while the SDK can still receive
+ * fresh user input and no independently-owned cleanup failed. The next user
+ * message can then explicitly reactivate delivery without restarting the
+ * process.
+ */
+export function shouldKeepParkedTaskNotificationRecoverable({
+  inputClosed,
+  hasAuxiliaryFailures,
+}: {
+  inputClosed: boolean
+  hasAuxiliaryFailures: boolean
+}): boolean {
+  return !inputClosed && !hasAuxiliaryFailures
+}
+
+/**
  * Wait for the next background-task poll without letting a cancelled SDK
  * generation stay trapped in the waiting_for_agents loop. Returns false as
  * soon as cancellation is observed, including when the signal was already

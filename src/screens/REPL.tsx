@@ -420,6 +420,7 @@ import {
 } from '../utils/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { usePriorityNowInterrupt } from '../hooks/usePriorityNowInterrupt.js';
+import { requestInitialMessageRetryFromSubmission, runInitialMessageAttempt } from './initialMessageAttempt.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
 import { useSessionBackgrounding } from '../hooks/useSessionBackgrounding.js';
@@ -4156,6 +4157,12 @@ export function REPL({
   // Handle initial message (from CLI args or plan mode exit with context clear)
   // This effect runs when isLoading becomes false and there's a pending message
   const initialMessageRef = useRef(false);
+  const [initialMessageRetryRevision, setInitialMessageRetryRevision] = useState(0);
+  const initialModeTransitionStateRef = useRef<{
+    messageId: string;
+    state: import('../commands/clear/modeTransitionState.js').ModeTransitionState;
+    planSlug?: string;
+  } | null>(null);
   useEffect(() => {
     const pending = initialMessage;
     if (!pending || isLoading || initialMessageRef.current) return;
@@ -4166,9 +4173,20 @@ export function REPL({
     async function processInitialMessage(initialMsg: NonNullable<typeof pending>) {
       // Clear context if requested (plan mode exit)
       if (initialMsg.clearContext) {
+        let capturedTransition = initialModeTransitionStateRef.current;
+        if (capturedTransition?.messageId !== initialMsg.message.uuid) {
+          const { captureModeTransitionState } = await import('../commands/clear/modeTransitionState.js');
+          capturedTransition = {
+            messageId: initialMsg.message.uuid,
+            state: captureModeTransitionState(getSessionId()),
+            planSlug: initialMsg.message.planContent ? getPlanSlug() : undefined,
+          };
+          initialModeTransitionStateRef.current = capturedTransition;
+        }
+
         // Preserve the plan slug before clearing context, so the new session
         // can access the same plan file after regenerateSessionId()
-        const oldPlanSlug = initialMsg.message.planContent ? getPlanSlug() : undefined;
+        const oldPlanSlug = capturedTransition.planSlug;
 
         const { clearConversation } = await import('../commands/clear/conversation.js');
         await clearConversation({
@@ -4181,6 +4199,7 @@ export function REPL({
           setConversationId,
           onConversationClear: resetGeneratedTitleForClear,
           preserveModeTransitionState: true,
+          modeTransitionState: capturedTransition.state,
         });
         bashTools.current.clear();
         bashToolsProcessedIdx.current = 0;
@@ -4190,32 +4209,6 @@ export function REPL({
           setPlanSlug(getSessionId(), oldPlanSlug);
         }
       }
-
-      // Atomically: clear initial message, set permission mode and rules
-      setAppState(prev => {
-        // Build and apply permission updates (mode + allowedPrompts rules)
-        let updatedToolPermissionContext = initialMsg.mode
-          ? applyPermissionUpdates(
-              prev.toolPermissionContext,
-              buildPermissionUpdates(initialMsg.mode, initialMsg.allowedPrompts),
-            )
-          : prev.toolPermissionContext;
-        // For auto, override the mode (buildPermissionUpdates maps
-        // it to 'default' via toExternalPermissionMode) and strip dangerous rules
-        if (feature('TRANSCRIPT_CLASSIFIER') && initialMsg.mode === 'auto') {
-          updatedToolPermissionContext = stripDangerousPermissionsForAutoMode({
-            ...updatedToolPermissionContext,
-            mode: 'auto',
-            prePlanMode: undefined,
-          });
-        }
-
-        return {
-          ...prev,
-          initialMessage: null,
-          toolPermissionContext: updatedToolPermissionContext,
-        };
-      });
 
       // Create file history snapshot for code rewind
       if (fileHistoryEnabled()) {
@@ -4231,6 +4224,31 @@ export function REPL({
       // call. onSubmit calls this internally but the onQuery path below
       // bypasses onSubmit — hoist here so both paths see hook messages.
       await awaitPendingHooks();
+
+      // Commit startup only after every fallible preflight step succeeds. If a
+      // plan-exit clear or SessionStart hook fails, keeping initialMessage lets
+      // the next submission act solely as a retry trigger.
+      setAppState(prev => {
+        let updatedToolPermissionContext = initialMsg.mode
+          ? applyPermissionUpdates(
+              prev.toolPermissionContext,
+              buildPermissionUpdates(initialMsg.mode, initialMsg.allowedPrompts),
+            )
+          : prev.toolPermissionContext;
+        if (feature('TRANSCRIPT_CLASSIFIER') && initialMsg.mode === 'auto') {
+          updatedToolPermissionContext = stripDangerousPermissionsForAutoMode({
+            ...updatedToolPermissionContext,
+            mode: 'auto',
+            prePlanMode: undefined,
+          });
+        }
+
+        return {
+          ...prev,
+          initialMessage: null,
+          toolPermissionContext: updatedToolPermissionContext,
+        };
+      });
 
       // Route all initial prompts through onSubmit to ensure UserPromptSubmit hooks fire
       // TODO: Simplify by always routing through onSubmit once it supports
@@ -4263,6 +4281,10 @@ export function REPL({
         ).catch(error => logError(toError(error)));
       }
 
+      if (initialModeTransitionStateRef.current?.messageId === initialMsg.message.uuid) {
+        initialModeTransitionStateRef.current = null;
+      }
+
       // Reset ref after a delay to allow new initial messages
       setTimeout(
         ref => {
@@ -4273,8 +4295,23 @@ export function REPL({
       );
     }
 
-    void processInitialMessage(pending).catch(error => logError(toError(error)));
-  }, [initialMessage, isLoading, setMessages, setAppState, onQuery, mainLoopModel, tools]);
+    void runInitialMessageAttempt({
+      processingRef: initialMessageRef,
+      attempt: () => processInitialMessage(pending),
+      onFailure: error => {
+        logError(toError(error));
+        const failureText = pending.clearContext
+          ? tf(
+              'Failed to prepare the accepted plan for execution: {error}. The plan was not sent; send any message to retry.',
+              { error: errorMessage(error) },
+            )
+          : tf('Failed to start the initial request: {error}. The request was not sent; submit it again.', {
+              error: errorMessage(error),
+            });
+        setMessages(prev => [...prev, createSystemMessage(failureText, 'error')]);
+      },
+    });
+  }, [initialMessage, initialMessageRetryRevision, isLoading, setMessages, setAppState, onQuery, mainLoopModel, tools]);
 
   const onSubmit = useCallback(
     async (
@@ -4290,6 +4327,22 @@ export function REPL({
       // Re-pin scroll to bottom on submit so the user always sees the new
       // exchange (matches OpenCode's auto-scroll behavior).
       repinScroll();
+
+      if (
+        requestInitialMessageRetryFromSubmission({
+          hasPendingInitialMessage: store.getState().initialMessage !== null,
+          processingRef: initialMessageRef,
+          requestRetry: () => setInitialMessageRetryRevision(revision => revision + 1),
+        })
+      ) {
+        // This input is only the retry signal promised by the visible error;
+        // do not send it through a half-migrated conversation first.
+        setInputValue('');
+        helpers.setCursorOffset(0);
+        helpers.clearBuffer();
+        setPastedContents({});
+        return;
+      }
 
       // Resume loop mode if paused
       if (feature('PROACTIVE') || feature('KAIROS')) {
@@ -5164,10 +5217,25 @@ export function REPL({
     ],
   );
 
+  const notifyTaskNotificationDeliveryParked = useCallback(() => {
+    const text = t('A background result could not be delivered. Send any message to retry.');
+    addNotification({
+      key: 'task-notification-delivery-parked',
+      text,
+      priority: 'immediate',
+      timeoutMs: 15000,
+    });
+    // The footer notification is intentionally brief, but a parked delivery
+    // remains blocked until new input arrives. Keep an actionable error in the
+    // conversation so users returning later do not see an unexplained stop.
+    setMessages(prev => [...prev, createSystemMessage(text, 'error')]);
+  }, [addNotification, setMessages]);
+
   useQueueProcessor({
     executeQueuedInput,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     onExecutionError: reportAuxiliaryStopFailure,
+    onTaskNotificationDeliveryParked: notifyTaskNotificationDeliveryParked,
     queryGuard,
   });
 

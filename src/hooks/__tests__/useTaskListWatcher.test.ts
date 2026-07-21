@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { renderSync, type Instance } from '@anthropic/ink'
+import { existsSync } from 'fs'
+import { writeFile } from 'fs/promises'
 import { createElement } from 'react'
 import { PassThrough } from 'stream'
 
@@ -13,6 +15,8 @@ import {
   claimTask,
   createTask,
   getTask,
+  getTaskPath,
+  getTasksDir,
   updateTask,
 } from '../../utils/tasks.js'
 
@@ -77,6 +81,20 @@ async function createPendingTask(): Promise<string> {
   })
 }
 
+async function createExternalPendingTask(taskId: string): Promise<void> {
+  await writeFile(
+    getTaskPath(TASK_LIST_ID, taskId),
+    JSON.stringify({
+      id: taskId,
+      subject: 'Externally created task',
+      description: 'Detected by the installed filesystem watcher.',
+      status: 'pending',
+      blocks: [],
+      blockedBy: [],
+    }),
+  )
+}
+
 beforeEach(async () => {
   originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   configDir = await createTempDir('task-list-watcher-')
@@ -102,6 +120,31 @@ afterEach(async () => {
 })
 
 describe('useTaskListWatcher unfinished-task recovery', () => {
+  test('observes a task created after mounting an initially empty list', async () => {
+    const prompts: string[] = []
+    mountHarness({
+      isLoading: false,
+      onSubmitTask: prompt => {
+        prompts.push(prompt)
+        return true
+      },
+    })
+
+    await waitFor(() => existsSync(getTasksDir(TASK_LIST_ID)))
+    // Let the initial debounced empty-directory scan settle. The subsequent
+    // write must be observed by the watcher rather than that initial scan.
+    await new Promise(resolve => setTimeout(resolve, 1_200))
+    expect(prompts).toHaveLength(0)
+
+    await createExternalPendingTask('external-1')
+
+    await waitFor(() => prompts.length > 0)
+    expect(prompts[0]).toContain('task #external-1')
+    const claimed = await getTask(TASK_LIST_ID, 'external-1')
+    expect(claimed?.owner).toBe(TASK_LIST_ID)
+    expect(claimed?.status).toBe('in_progress')
+  })
+
   test('submits the same claimed task again after the prior turn goes idle', async () => {
     const taskId = await createPendingTask()
     const prompts: string[] = []

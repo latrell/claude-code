@@ -27,7 +27,12 @@ import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 import { toError } from './errors.js'
 import { logError } from './log.js'
-import { enqueue, stampCommandQueuePosition } from './messageQueueManager.js'
+import {
+  type CommandQueueOwner,
+  enqueue,
+  reactivateParkedTaskNotifications,
+  stampCommandQueuePosition,
+} from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import {
   claimConsumableQueuedAutonomyCommands,
@@ -88,6 +93,8 @@ type BaseExecutionParams = {
 type ExecuteUserInputParams = BaseExecutionParams & {
   resetHistory: () => void
   onInputChange: (value: string) => void
+  /** Present only when this call is dispatching fresh external user input. */
+  externalInputOwner?: Readonly<{ agentId: CommandQueueOwner }>
 }
 
 export type PromptInputHelpers = {
@@ -260,6 +267,9 @@ export async function handlePromptSubmit(
       immediateCommand.type === 'local-jsx' &&
       (queryGuard.isActive || isExternalLoading)
     ) {
+      // This immediate command is still fresh user activity. The active turn
+      // prevents the reactivated delivery from racing ahead of the command.
+      reactivateParkedTaskNotifications()
       logEvent('tengu_immediate_command_executed', {
         commandName:
           immediateCommand.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -353,6 +363,11 @@ export async function handlePromptSubmit(
       uuid,
     })
 
+    // enqueue() is shared by internal automation and deliberately does not
+    // infer user activity. Reactivate only at this accepted external-input
+    // boundary, after the higher-priority user command is safely queued.
+    reactivateParkedTaskNotifications()
+
     onInputChange('')
     setCursorOffset(0)
     setPastedContents({})
@@ -396,6 +411,7 @@ export async function handlePromptSubmit(
     resetHistory,
     canUseTool,
     onInputChange,
+    externalInputOwner: { agentId: cmd.agentId },
   })
 }
 
@@ -423,6 +439,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     resetHistory,
     canUseTool,
     queuedCommands,
+    externalInputOwner,
   } = params
 
   // Note: paste references are already processed before calling this function
@@ -452,6 +469,12 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // guard is already in dispatching (legacy queue-processor path).
     queryGuard.reserve()
     queryCheckpoint('query_process_user_input_start')
+
+    if (externalInputOwner) {
+      // Reserve before publishing the queue wake so a parked notification
+      // cannot win the race against the external turn that reactivated it.
+      reactivateParkedTaskNotifications(externalInputOwner.agentId)
+    }
 
     const newMessages: Message[] = []
     let shouldQuery = false

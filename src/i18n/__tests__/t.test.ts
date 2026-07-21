@@ -229,6 +229,11 @@ describe('t', () => {
     expect(t('Remote request could not be confirmed as stopped.')).toBe(
       '已请求停止，但无法确认远程请求已停止。',
     )
+    expect(
+      t(
+        'A background result could not be delivered. Send any message to retry.',
+      ),
+    ).toBe('后台任务结果投递失败。发送任意消息即可重试。')
 
     const detail = localizedStopErrorMessage(
       new StopConfirmationError(

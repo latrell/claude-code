@@ -71,6 +71,7 @@ import {
   type ProcessUserInputContext,
   processUserInput,
 } from './utils/processUserInput/processUserInput.js'
+import { appendPromptMessagesAndCommit } from './utils/promptCommit.js'
 import { fetchSystemPromptParts } from './utils/queryContext.js'
 import { setCwd } from './utils/Shell.js'
 import {
@@ -163,6 +164,8 @@ export type QueryEngineConfig = {
   setSDKStatus?: (status: SDKStatus) => void
   abortController?: AbortController
   orphanedPermission?: OrphanedPermission
+  /** Runs synchronously after processed prompt messages enter conversation state. */
+  onPromptCommitted?: () => void
   /**
    * Snip-boundary handler: receives each yielded system message plus the
    * current mutableMessages store. Returns undefined if the message is not a
@@ -437,8 +440,14 @@ export class QueryEngine {
       querySource: 'sdk',
     })
 
-    // Push new messages, including user input and any attachments
-    this.mutableMessages.push(...messagesFromUserInput)
+    // Push new messages, including user input and any attachments. Delivery
+    // owners ACK here: everything before this is safe to retry, while anything
+    // after it would duplicate conversation state on redelivery.
+    appendPromptMessagesAndCommit(
+      this.mutableMessages,
+      messagesFromUserInput,
+      this.config.onPromptCommitted,
+    )
 
     // Update params to reflect updates from processing /slash commands
     const messages = [...this.mutableMessages]
@@ -1284,6 +1293,7 @@ export async function* ask({
   agents = [],
   setSDKStatus,
   orphanedPermission,
+  onPromptCommitted,
 }: {
   commands: Command[]
   prompt: string | Array<ContentBlockParam>
@@ -1315,6 +1325,7 @@ export async function* ask({
   agents?: AgentDefinition[]
   setSDKStatus?: (status: SDKStatus) => void
   orphanedPermission?: OrphanedPermission
+  onPromptCommitted?: () => void
 }): AsyncGenerator<SDKMessage, void, unknown> {
   const engine = new QueryEngine({
     cwd,
@@ -1343,6 +1354,7 @@ export async function* ask({
     setSDKStatus,
     abortController,
     orphanedPermission,
+    onPromptCommitted,
     ...(feature('HISTORY_SNIP')
       ? {
           snipReplay: (yielded: Message, store: Message[]) => {

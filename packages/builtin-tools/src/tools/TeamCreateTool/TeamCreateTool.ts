@@ -8,6 +8,7 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
 import { getCwd } from 'src/utils/cwd.js'
+import { pathsEqual } from 'src/utils/file.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import {
   getDefaultMainLoopModel,
@@ -26,7 +27,11 @@ import {
 } from 'src/utils/swarm/teamHelpers.js'
 import { assignTeammateColor } from 'src/utils/swarm/teammateLayoutManager.js'
 import {
+  copyTaskListForSessionTransition,
   ensureTasksDir,
+  getTaskListId,
+  getTasksDir,
+  isUsingSessionScopedTaskList,
   resetTaskList,
   setLeaderTeamName,
 } from 'src/utils/tasks.js'
@@ -152,8 +157,23 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
       )
     }
 
-    // If team already exists, generate a unique name instead of failing
-    const finalTeamName = generateUniqueTeamName(team_name)
+    const sourceTaskListId = getTaskListId()
+    const migrateSessionTaskList = isUsingSessionScopedTaskList()
+
+    // If team already exists, generate a unique name instead of failing. Also
+    // keep the team list physically distinct from the caller's current list;
+    // resetting a colliding explicit/session list would destroy its tasks.
+    let finalTeamName = generateUniqueTeamName(team_name)
+    while (
+      pathsEqual(
+        getTasksDir(sanitizeName(finalTeamName)),
+        getTasksDir(sourceTaskListId),
+      )
+    ) {
+      finalTeamName = generateUniqueTeamName(
+        `${finalTeamName}-${generateWordSlug()}`,
+      )
+    }
 
     // Generate a deterministic agent ID for the team lead
     const leadAgentId = formatAgentId(TEAM_LEAD_NAME, finalTeamName)
@@ -173,6 +193,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
       createdAt: Date.now(),
       leadAgentId,
       leadSessionId: getSessionId(), // Store actual session ID for team discovery
+      restoreTasksToSessionOnDelete: migrateSessionTaskList || undefined,
       members: [
         {
           agentId: leadAgentId,
@@ -197,6 +218,11 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     const taskListId = sanitizeName(finalTeamName)
     await resetTaskList(taskListId)
     await ensureTasksDir(taskListId)
+    if (migrateSessionTaskList) {
+      await copyTaskListForSessionTransition(sourceTaskListId, taskListId, {
+        removeSourceTasks: true,
+      })
+    }
 
     // Register the team name so getTaskListId() returns it for the leader.
     // Without this, the leader falls through to getSessionId() and writes tasks

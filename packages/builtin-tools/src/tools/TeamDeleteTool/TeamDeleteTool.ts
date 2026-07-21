@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { getSessionId } from 'src/bootstrap/state.js'
 import { t, tf } from 'src/i18n/t.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
@@ -11,10 +12,15 @@ import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js'
 import {
   cleanupTeamDirectories,
   readTeamFile,
+  sanitizeName,
   unregisterTeamForSessionCleanup,
 } from 'src/utils/swarm/teamHelpers.js'
 import { clearTeammateColors } from 'src/utils/swarm/teammateLayoutManager.js'
-import { clearLeaderTeamName } from 'src/utils/tasks.js'
+import {
+  clearLeaderTeamName,
+  copyTaskListForSessionTransition,
+  setLeaderTeamName,
+} from 'src/utils/tasks.js'
 import {
   ensureBackendsRegistered,
   getBackendByType,
@@ -208,6 +214,25 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
         }
       }
 
+      let restoredImplicitSessionTaskList = false
+      if (teamFile?.restoreTasksToSessionOnDelete) {
+        const teamTaskListId = sanitizeName(teamName)
+        // Route any new main-thread writes to the destination before moving
+        // the list. Both paths then serialize behind the transfer locks.
+        clearLeaderTeamName()
+        try {
+          await copyTaskListForSessionTransition(
+            teamTaskListId,
+            getSessionId(),
+            { removeSourceTasks: true },
+          )
+          restoredImplicitSessionTaskList = true
+        } catch (error) {
+          setLeaderTeamName(teamTaskListId)
+          throw error
+        }
+      }
+
       await cleanupTeamDirectories(teamName)
       // Already cleaned — don't try again on gracefulShutdown.
       unregisterTeamForSessionCleanup(teamName)
@@ -216,7 +241,7 @@ export const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
       clearTeammateColors()
 
       // Clear leader team name so getTaskListId() falls back to session ID
-      clearLeaderTeamName()
+      if (!restoredImplicitSessionTaskList) clearLeaderTeamName()
 
       logEvent('tengu_team_deleted', {
         team_name:
