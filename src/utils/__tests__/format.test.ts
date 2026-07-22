@@ -61,6 +61,18 @@ describe('formatDuration', () => {
     expect(formatDuration(125000)).toBe('2m 5s')
   })
 
+  test('formats minutes and seconds with Chinese units', () => {
+    expect(formatDuration(21 * 60_000 + 42_000, { language: 'zh' })).toBe(
+      '21分 42秒',
+    )
+  })
+
+  test('formats all duration components with Chinese units', () => {
+    expect(formatDuration(0, { language: 'zh' })).toBe('0秒')
+    expect(formatDuration(3661000, { language: 'zh' })).toBe('1时 1分 1秒')
+    expect(formatDuration(90000000, { language: 'zh' })).toBe('1天 1时 0分')
+  })
+
   test('formats hours', () => {
     expect(formatDuration(3661000)).toBe('1h 1m 1s')
   })
@@ -72,11 +84,23 @@ describe('formatDuration', () => {
   test('hideTrailingZeros removes zero components', () => {
     expect(formatDuration(3600000, { hideTrailingZeros: true })).toBe('1h')
     expect(formatDuration(60000, { hideTrailingZeros: true })).toBe('1m')
+    expect(
+      formatDuration(3600000, {
+        hideTrailingZeros: true,
+        language: 'zh',
+      }),
+    ).toBe('1时')
   })
 
   test('mostSignificantOnly returns largest unit', () => {
     expect(formatDuration(90000000, { mostSignificantOnly: true })).toBe('1d')
     expect(formatDuration(3661000, { mostSignificantOnly: true })).toBe('1h')
+    expect(
+      formatDuration(3661000, {
+        mostSignificantOnly: true,
+        language: 'zh',
+      }),
+    ).toBe('1时')
   })
 })
 

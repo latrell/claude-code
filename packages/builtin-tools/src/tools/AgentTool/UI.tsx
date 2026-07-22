@@ -22,6 +22,7 @@ import { count } from 'src/utils/array.js';
 import { getSearchOrReadFromContent, getSearchReadSummaryText } from 'src/utils/collapseReadSearch.js';
 import { getDisplayPath } from 'src/utils/file.js';
 import { formatDuration, formatNumber } from 'src/utils/format.js';
+import { getResolvedLanguage } from 'src/utils/language.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from 'src/utils/messages.js';
 import type { ModelAlias } from 'src/utils/model/aliases.js';
 import { getMainLoopModel, modelDisplayString, parseUserSpecifiedModel } from 'src/utils/model/model.js';
@@ -360,7 +361,7 @@ export function renderToolResultMessage(
   const toolUsesText =
     totalToolUseCount === 1 ? t('1 tool use') : tf('{count} tool uses', { count: totalToolUseCount });
   const tokensText = tf('{count} tokens', { count: formatNumber(totalTokens) });
-  const result = [toolUsesText, tokensText, formatDuration(totalDurationMs)];
+  const result = [toolUsesText, tokensText, formatDuration(totalDurationMs, { language: getResolvedLanguage() })];
 
   const completionMessage = tf('Done ({result})', { result: result.join(' · ') });
 

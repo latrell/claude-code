@@ -1,7 +1,7 @@
 // Pure display formatters — leaf-safe (no Ink). Width-aware truncation lives in ./truncate.ts.
 
 import { getRelativeTimeFormat, getTimeZone } from './intl.js'
-import { getResolvedLanguage } from './language.js'
+import { getResolvedLanguage, type ResolvedLanguage } from './language.js'
 
 /**
  * BCP-47 locale for date/time display, following the app's resolved UI
@@ -43,20 +43,30 @@ export function formatSecondsShort(ms: number): string {
 
 export function formatDuration(
   ms: number,
-  options?: { hideTrailingZeros?: boolean; mostSignificantOnly?: boolean },
+  options?: {
+    hideTrailingZeros?: boolean
+    mostSignificantOnly?: boolean
+    /** Explicit display language. Omitted to preserve compact English units. */
+    language?: ResolvedLanguage
+  },
 ): string {
+  const units =
+    options?.language === 'zh'
+      ? { day: '天', hour: '时', minute: '分', second: '秒' }
+      : { day: 'd', hour: 'h', minute: 'm', second: 's' }
+
   if (ms < 60000) {
     // Special case for 0
     if (ms === 0) {
-      return '0s'
+      return `0${units.second}`
     }
     // For durations < 1s, show 1 decimal place (e.g., 0.5s)
     if (ms < 1) {
       const s = (ms / 1000).toFixed(1)
-      return `${s}s`
+      return `${s}${units.second}`
     }
     const s = Math.floor(ms / 1000).toString()
-    return `${s}s`
+    return `${s}${units.second}`
   }
 
   let days = Math.floor(ms / 86400000)
@@ -81,27 +91,29 @@ export function formatDuration(
   const hide = options?.hideTrailingZeros
 
   if (options?.mostSignificantOnly) {
-    if (days > 0) return `${days}d`
-    if (hours > 0) return `${hours}h`
-    if (minutes > 0) return `${minutes}m`
-    return `${seconds}s`
+    if (days > 0) return `${days}${units.day}`
+    if (hours > 0) return `${hours}${units.hour}`
+    if (minutes > 0) return `${minutes}${units.minute}`
+    return `${seconds}${units.second}`
   }
 
   if (days > 0) {
-    if (hide && hours === 0 && minutes === 0) return `${days}d`
-    if (hide && minutes === 0) return `${days}d ${hours}h`
-    return `${days}d ${hours}h ${minutes}m`
+    if (hide && hours === 0 && minutes === 0) return `${days}${units.day}`
+    if (hide && minutes === 0)
+      return `${days}${units.day} ${hours}${units.hour}`
+    return `${days}${units.day} ${hours}${units.hour} ${minutes}${units.minute}`
   }
   if (hours > 0) {
-    if (hide && minutes === 0 && seconds === 0) return `${hours}h`
-    if (hide && seconds === 0) return `${hours}h ${minutes}m`
-    return `${hours}h ${minutes}m ${seconds}s`
+    if (hide && minutes === 0 && seconds === 0) return `${hours}${units.hour}`
+    if (hide && seconds === 0)
+      return `${hours}${units.hour} ${minutes}${units.minute}`
+    return `${hours}${units.hour} ${minutes}${units.minute} ${seconds}${units.second}`
   }
   if (minutes > 0) {
-    if (hide && seconds === 0) return `${minutes}m`
-    return `${minutes}m ${seconds}s`
+    if (hide && seconds === 0) return `${minutes}${units.minute}`
+    return `${minutes}${units.minute} ${seconds}${units.second}`
   }
-  return `${seconds}s`
+  return `${seconds}${units.second}`
 }
 
 // `new Intl.NumberFormat` is expensive, so cache formatters for reuse
