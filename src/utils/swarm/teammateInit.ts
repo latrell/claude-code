@@ -101,11 +101,10 @@ export function initializeTeammateHooks(
     'Stop',
     '', // No matcher - applies to all Stop events
     async (messages, _signal) => {
-      // Mark this teammate as idle in the team config (fire and forget)
-      void setMemberActive(teamName, agentName, false)
-
       // Send idle notification to the team leader using agent name (not UUID)
-      // Must await to ensure the write completes before process shutdown
+      // before publishing idle status. The completion guard treats idle as a
+      // liveness boundary, so exposing it first could let the leader finish in
+      // the small window before this mailbox write becomes visible.
       const notification = createIdleNotification(agentName, {
         idleReason: 'available',
         summary: getLastPeerDmSummary(messages),
@@ -116,6 +115,7 @@ export function initializeTeammateHooks(
         timestamp: new Date().toISOString(),
         color: getTeammateColor(),
       })
+      await setMemberActive(teamName, agentName, false)
       logForDebugging(
         `[TeammateInit] Sent idle notification to leader ${leadAgentName}`,
       )

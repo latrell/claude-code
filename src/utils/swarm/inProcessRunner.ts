@@ -77,6 +77,7 @@ import {
 import { count } from '../array.js'
 import { logForDebugging } from '../debug.js'
 import { cloneFileStateCache } from '../fileStateCache.js'
+import { enqueuePendingNotification } from '../messageQueueManager.js'
 import {
   SUBAGENT_REJECT_MESSAGE,
   SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
@@ -1424,17 +1425,6 @@ export async function runInProcessTeammate(
       const wasAlreadyIdle =
         prevTask?.type === 'in_process_teammate' && prevTask.isIdle
 
-      // Mark task as idle (NOT completed) and notify any waiters
-      updateTaskState(
-        taskId,
-        task => {
-          // Call any registered idle callbacks
-          task.onIdleCallbacks?.forEach(cb => cb())
-          return { ...task, isIdle: true, onIdleCallbacks: [] }
-        },
-        setAppState,
-      )
-
       // Note: We do NOT automatically send the teammate's response to the leader.
       // Teammates should use the Teammate tool to communicate with the leader.
       // This matches process-based teammates where output is not visible to the leader.
@@ -1455,6 +1445,19 @@ export async function runInProcessTeammate(
           `[inProcessRunner] Skipping duplicate idle notification for ${identity.agentName}`,
         )
       }
+
+      // Publish the idle state only after its mailbox notification is durable.
+      // The main query uses isIdle as a completion boundary and must never see
+      // idle before it can drain the corresponding teammate message.
+      updateTaskState(
+        taskId,
+        task => {
+          // Call any registered idle callbacks
+          task.onIdleCallbacks?.forEach(cb => cb())
+          return { ...task, isIdle: true, onIdleCallbacks: [] }
+        },
+        setAppState,
+      )
 
       logForDebugging(
         `[inProcessRunner] ${identity.agentId} finished prompt, waiting for next`,
@@ -1662,6 +1665,36 @@ export async function runInProcessTeammate(
       `[inProcessRunner] Agent ${identity.agentId} failed: ${errorMessage}`,
     )
 
+    // Commit a model-facing failure notification before publishing terminal
+    // task state. If the cross-session mailbox itself is unavailable, preserve
+    // the result in the main process queue instead of exposing a delivery gap.
+    const failureNotificationOptions = {
+      idleReason: 'failed' as const,
+      completedStatus: 'failed' as const,
+      failureReason: errorMessage,
+    }
+    try {
+      await sendIdleNotification(
+        identity.agentName,
+        identity.color,
+        identity.teamName,
+        failureNotificationOptions,
+      )
+    } catch (notificationError) {
+      logForDebugging(
+        `[inProcessRunner] Failed to write failure notification for ${identity.agentId}; using the main queue: ${notificationError instanceof Error ? notificationError.message : String(notificationError)}`,
+      )
+      enqueuePendingNotification({
+        value: jsonStringify(
+          createIdleNotification(
+            identity.agentName,
+            failureNotificationOptions,
+          ),
+        ),
+        mode: 'task-notification',
+      })
+    }
+
     // Mark task as failed and notify any waiters
     let alreadyTerminal = false
     let toolUseId: string | undefined
@@ -1711,18 +1744,6 @@ export async function runInProcessTeammate(
         currentAutonomyRootDir,
       )
     }
-
-    // Send idle notification with failure via file-based mailbox
-    await sendIdleNotification(
-      identity.agentName,
-      identity.color,
-      identity.teamName,
-      {
-        idleReason: 'failed',
-        completedStatus: 'failed',
-        failureReason: errorMessage,
-      },
-    )
 
     unregisterPerfettoAgent(identity.agentId)
     if (error instanceof StopConfirmationError) {

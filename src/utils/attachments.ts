@@ -3079,6 +3079,20 @@ export async function* getAttachmentMessages(
 }
 
 /**
+ * Drain only model-facing teammate mailbox messages at a TaskList completion
+ * boundary. The normal attachment pipeline runs after tool batches; the
+ * completion guard also needs this narrow path when a pane teammate becomes
+ * idle without emitting a task-notification command.
+ */
+export async function getTaskCompletionGuardMailboxAttachments(
+  toolUseContext: ToolUseContext,
+  querySource?: QuerySource,
+): Promise<Attachment[]> {
+  if (!isAgentSwarmsEnabled() || querySource === 'session_memory') return []
+  return getTeammateMailboxAttachments(toolUseContext)
+}
+
+/**
  * Generates a file attachment by reading a file with proper validation and truncation.
  * This is the core file reading logic shared between @-mentioned files and post-compact restoration.
  *
@@ -3642,9 +3656,6 @@ async function getTeammateMailboxAttachments(
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
   if (!isAgentSwarmsEnabled()) {
-    return []
-  }
-  if (process.env.USER_TYPE !== 'ant') {
     return []
   }
 

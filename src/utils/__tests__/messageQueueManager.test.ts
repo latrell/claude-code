@@ -13,6 +13,8 @@ import {
   getCommandsByMaxPriorityBeforeConversationReset,
   hasCommandsAddressedTo,
   hasCommandsInQueue,
+  hasParkedTaskNotificationDeliveryAddressedTo,
+  hasRetryingTaskNotificationDeliveryAddressedTo,
   hasTaskNotificationDeliveryAddressedTo,
   isConversationResetCommand,
   isSlashCommand,
@@ -160,18 +162,34 @@ describe('messageQueueManager task notification delivery ownership', () => {
       value: 'main completion',
       mode: 'task-notification',
     } as any)
+    expect(hasRetryingTaskNotificationDeliveryAddressedTo(undefined)).toBe(
+      false,
+    )
+    expect(hasParkedTaskNotificationDeliveryAddressedTo(undefined)).toBe(false)
     expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
     expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(false)
 
     const firstLease = leaseTaskNotificationBatch(() => true)
     expect(retryTaskNotificationLease(firstLease!)).toBe('retry-scheduled')
     expect(peek()).toBeUndefined()
+    expect(hasRetryingTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+    expect(
+      hasRetryingTaskNotificationDeliveryAddressedTo('agent-1' as any),
+    ).toBe(false)
+    expect(hasParkedTaskNotificationDeliveryAddressedTo(undefined)).toBe(false)
     expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
 
     releaseDueTaskNotificationRetries(Number.POSITIVE_INFINITY)
     const retryLease = leaseTaskNotificationBatch(() => true)
     expect(retryTaskNotificationLease(retryLease!)).toBe('parked')
     expect(peek()).toBeUndefined()
+    expect(hasRetryingTaskNotificationDeliveryAddressedTo(undefined)).toBe(
+      false,
+    )
+    expect(hasParkedTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
+    expect(hasParkedTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(
+      false,
+    )
     expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(true)
   })
 
@@ -185,10 +203,20 @@ describe('messageQueueManager task notification delivery ownership', () => {
       command => command.agentId === ('agent-1' as any),
     )
     expect(lease).toBeDefined()
+    expect(
+      hasRetryingTaskNotificationDeliveryAddressedTo('agent-1' as any),
+    ).toBe(false)
+    expect(hasParkedTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(
+      false,
+    )
     expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(true)
+    expect(hasTaskNotificationDeliveryAddressedTo(undefined)).toBe(false)
 
     commitTaskNotificationLease(lease!)
 
+    expect(
+      hasRetryingTaskNotificationDeliveryAddressedTo('agent-1' as any),
+    ).toBe(false)
     expect(hasTaskNotificationDeliveryAddressedTo('agent-1' as any)).toBe(false)
   })
 

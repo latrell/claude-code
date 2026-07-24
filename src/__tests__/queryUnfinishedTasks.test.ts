@@ -8,5 +8,5 @@ test('query unfinished TaskList completion guard isolated suite passes', async (
     timeoutMs: 60_000,
     testArgs: ['--feature', 'TOKEN_BUDGET'],
   })
-  expect(output).toMatch(/14 pass/)
+  expect(output).toMatch(/30 pass/)
 }, 65_000)

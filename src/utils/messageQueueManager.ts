@@ -292,6 +292,44 @@ export function hasCommandsAddressedTo(agentId: CommandQueueOwner): boolean {
 }
 
 /**
+ * Whether one owner has a task notification waiting for an automatic retry.
+ * Parked notifications are intentionally excluded: they can only be revived
+ * by fresh external input, so a query-local completion gate must not wait on
+ * them forever. Active leases are excluded as well because the current turn
+ * may own that lease itself.
+ */
+export function hasRetryingTaskNotificationDeliveryAddressedTo(
+  agentId: CommandQueueOwner,
+): boolean {
+  const now = Date.now()
+  return commandQueue.some(command => {
+    if (command.mode !== 'task-notification' || command.agentId !== agentId) {
+      return false
+    }
+    const metadata = commandMetadataByCommand.get(command)
+    return (
+      metadata?.taskNotificationParked !== true &&
+      metadata?.taskNotificationRetryAt !== undefined &&
+      metadata.taskNotificationRetryAt > now
+    )
+  })
+}
+
+/** Whether one owner's failed task notification is awaiting external input. */
+export function hasParkedTaskNotificationDeliveryAddressedTo(
+  agentId: CommandQueueOwner,
+): boolean {
+  return commandQueue.some(command => {
+    if (command.mode !== 'task-notification' || command.agentId !== agentId) {
+      return false
+    }
+    return (
+      commandMetadataByCommand.get(command)?.taskNotificationParked === true
+    )
+  })
+}
+
+/**
  * Whether one owner still has a task notification anywhere in its delivery
  * lifecycle. Unlike selectable queue reads, this includes retry backoff,
  * parked commands, and commands temporarily removed under an active lease.

@@ -2,7 +2,9 @@ import { randomUUID } from 'crypto'
 import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
+import { getTaskCompletionGuardMailboxAttachments } from '../utils/attachments.js'
 import { listTasks } from '../utils/tasks.js'
+import { getTeammateStatuses } from '../utils/teamDiscovery.js'
 
 // -- deps
 
@@ -29,6 +31,8 @@ export type QueryDeps = {
 
   // -- task completion guard
   listTasks: typeof listTasks
+  getTeammateStatuses: typeof getTeammateStatuses
+  getTaskCompletionGuardMailboxAttachments: typeof getTaskCompletionGuardMailboxAttachments
 
   // -- platform
   uuid: () => string
@@ -40,6 +44,8 @@ export function productionDeps(): QueryDeps {
     microcompact: microcompactMessages,
     autocompact: autoCompactIfNeeded,
     listTasks,
+    getTeammateStatuses,
+    getTaskCompletionGuardMailboxAttachments,
     uuid: randomUUID,
   }
 }

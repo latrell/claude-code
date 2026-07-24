@@ -28,6 +28,7 @@ import {
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
+import { isTerminalTaskStatus } from './Task.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
 import type {
   AssistantMessage,
@@ -82,6 +83,7 @@ import { prependUserContext, appendSystemContext } from './utils/api.js'
 import {
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
+  getAttachments,
   getAttachmentMessages,
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
@@ -101,10 +103,13 @@ import {
   getCommandQueue,
   remove as removeFromQueue,
   getCommandsByMaxPriorityBeforeConversationReset,
+  hasParkedTaskNotificationDeliveryAddressedTo,
+  hasRetryingTaskNotificationDeliveryAddressedTo,
   isQueuedCommandEditable,
   isSlashCommand,
-  peek,
+  subscribeToCommandQueue,
 } from './utils/messageQueueManager.js'
+import { TaskNotificationDeliveryParkedError } from './utils/queueProcessor.js'
 import {
   type AutonomyTurnOutcome,
   claimConsumableQueuedAutonomyCommands,
@@ -170,10 +175,14 @@ import {
   shouldShowCacheWarning,
 } from './utils/cacheWarning.js'
 import { getTaskListId } from './utils/tasks.js'
+import { sleep } from './utils/sleep.js'
+import { hashContent } from './utils/hash.js'
 import {
   buildUnfinishedTaskCoordinationPrompt,
   buildUnfinishedTaskContinuationPrompt,
   buildUnfinishedTaskNoProgressError,
+  getTaskCompletionGuardProgressFingerprint,
+  getTaskCompletionGuardRuntimeState,
   inspectUnfinishedTasks,
   isTaskCompletionGuardToolName,
   MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS,
@@ -547,13 +556,84 @@ function hasQueuedMainThreadUserInput(): boolean {
   )
 }
 
-function hasQueuedMainThreadTaskNotification(): boolean {
-  return (
-    peek(
+type TaskCompletionGuardQueueState = {
+  taskNotifications: QueuedCommand[]
+  requiresTurnHandoff: boolean
+}
+
+function getTaskCompletionGuardQueueState(): TaskCompletionGuardQueueState {
+  const isMainThreadCommand = (command: QueuedCommand) =>
+    command.agentId === undefined
+  let nextBatch: QueuedCommand[] = []
+  for (const priority of ['now', 'next', 'later'] as const) {
+    nextBatch = getCommandsByMaxPriorityBeforeConversationReset(
+      priority,
+      isMainThreadCommand,
+    )
+    if (nextBatch.length > 0) break
+  }
+
+  const nextCommand = nextBatch[0]
+  if (!nextCommand) {
+    return { taskNotifications: [], requiresTurnHandoff: false }
+  }
+  if (nextCommand.mode !== 'task-notification' || isSlashCommand(nextCommand)) {
+    return { taskNotifications: [], requiresTurnHandoff: true }
+  }
+
+  return {
+    taskNotifications: getCommandsByMaxPriorityBeforeConversationReset(
+      'later',
+      isMainThreadCommand,
+    ).filter(
       command =>
-        command.agentId === undefined && command.mode === 'task-notification',
-    ) !== undefined
-  )
+        command.mode === 'task-notification' && !isSlashCommand(command),
+    ),
+    requiresTurnHandoff: false,
+  }
+}
+
+function getTaskCompletionGuardNotificationFingerprint(
+  command: QueuedCommand,
+): string {
+  if (command.uuid) return `notification:${command.uuid}`
+  const content =
+    typeof command.value === 'string'
+      ? command.value
+      : JSON.stringify(command.value)
+  return `notification:${hashContent(content)}`
+}
+
+async function waitForTaskCompletionGuardRuntimeChange(
+  signal: AbortSignal,
+): Promise<void> {
+  let resolveQueueChange: (() => void) | undefined
+  const queueChange = new Promise<void>(resolve => {
+    resolveQueueChange = resolve
+  })
+  const unsubscribe = subscribeToCommandQueue(() => resolveQueueChange?.())
+  try {
+    await Promise.race([sleep(1_000, signal), queueChange])
+  } finally {
+    unsubscribe()
+  }
+}
+
+function findSettledToolResultBlock(
+  messages: readonly (UserMessage | AttachmentMessage)[],
+  toolUseId: string,
+): ToolResultBlockParam | undefined {
+  for (const message of messages) {
+    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
+      continue
+    }
+    const block = message.message.content.find(
+      (content): content is ToolResultBlockParam =>
+        content.type === 'tool_result' && content.tool_use_id === toolUseId,
+    )
+    if (block) return block
+  }
+  return undefined
 }
 
 function mergeUnfinishedTaskInspections(
@@ -572,6 +652,9 @@ function mergeUnfinishedTaskInspections(
     ),
     hasPublicUnfinishedTasks: inspections.some(
       ({ inspection }) => inspection.hasPublicUnfinishedTasks,
+    ),
+    publicTasks: inspections.flatMap(
+      ({ inspection }) => inspection.publicTasks,
     ),
     unfinishedTasks: inspections.flatMap(
       ({ inspection }) => inspection.unfinishedTasks,
@@ -918,8 +1001,13 @@ async function* queryLoop(
   const chatGPTCodexTurnSession = params.chatGPTCodexTurnSession ?? {}
   let chatGPTCodexServerContinuationCount = 0
   const taskCompletionGuardTaskListIds = new Set<string>()
+  const taskCompletionGuardRuntimeTaskIds = new Set<string>()
+  const taskCompletionGuardProgressFingerprints = new Set<string>()
   let taskCompletionGuardSnapshotKey: string | undefined
   let taskCompletionGuardContinuationCount = 0
+  let taskCompletionGuardContinuationAttempt = 0
+  let taskCompletionGuardContinuationInFlight = false
+  let taskCompletionGuardContinuationMadeProgress = false
 
   // Mutable cross-iteration state. The loop body destructures this at the top
   // of each iteration so reads stay bare-name (`messages`, `toolUseContext`).
@@ -963,7 +1051,7 @@ async function* queryLoop(
   )
 
   // eslint-disable-next-line no-constant-condition
-  while (true) {
+  queryLoopIterations: while (true) {
     // Destructure state at the top of each iteration. toolUseContext alone
     // is reassigned within an iteration (queryTracking, messages updates);
     // the rest are read-only between continue sites.
@@ -2311,64 +2399,348 @@ async function* queryLoop(
         taskCompletionGuardTaskListIds.size > 0 &&
         toolUseContext.agentId === undefined &&
         toolUseContext.getAppState().toolPermissionContext.mode !== 'plan' &&
-        !hasQueuedMainThreadUserInput() &&
-        !hasQueuedMainThreadTaskNotification()
+        !hasQueuedMainThreadUserInput()
       ) {
-        // Task tools resolve their list implicitly. TeamCreate/TeamDelete can
-        // change that identity during one query, so keep every list touched by
-        // this query instead of inspecting only whichever list is current at
-        // the final assistant turn.
-        const currentTaskListId = getTaskListId()
-        taskCompletionGuardTaskListIds.add(currentTaskListId)
-        let inspection: UnfinishedTaskInspection
-        try {
-          const inspections: Array<{
-            taskListId: string
-            inspection: UnfinishedTaskInspection
-          }> = []
-          for (const taskListId of taskCompletionGuardTaskListIds) {
-            inspections.push({
-              taskListId,
-              inspection: inspectUnfinishedTasks(
-                taskListId,
-                await deps.listTasks(taskListId),
-              ),
-            })
+        while (true) {
+          if (toolUseContext.abortController.signal.aborted) {
+            return { reason: 'aborted_streaming' }
           }
-          inspection = mergeUnfinishedTaskInspections(
-            inspections,
-            currentTaskListId,
+          if (hasQueuedMainThreadUserInput()) {
+            return { reason: 'completed' }
+          }
+
+          // A completion notification is already committed to this query once
+          // it becomes an attachment. Keep the generator open so REPL/SDK/ACP
+          // do not publish a false success between background completion and
+          // the model turn that consumes that completion.
+          const queueState = getTaskCompletionGuardQueueState()
+          if (queueState.taskNotifications.length > 0) {
+            const nextTurnCount = turnCount + 1
+            if (maxTurns && nextTurnCount > maxTurns) {
+              yield createAttachmentMessage({
+                type: 'max_turns_reached',
+                maxTurns,
+                turnCount: nextTurnCount,
+              })
+              return { reason: 'max_turns', turnCount: nextTurnCount }
+            }
+
+            // Build all ambient attachments before claiming or removing queue
+            // entries. This preserves teammate inbox messages and still lets
+            // us verify every notification's exact queued-command attachment.
+            const builtAttachments = await getAttachments(
+              null,
+              toolUseContext,
+              null,
+              queueState.taskNotifications,
+              messagesForQuery.concat(assistantMessages),
+              querySource,
+            )
+            const notificationAttachments = builtAttachments.filter(
+              attachment =>
+                attachment.type === 'queued_command' &&
+                attachment.commandMode === 'task-notification',
+            )
+            const ambientAttachments = builtAttachments.filter(
+              attachment =>
+                attachment.type !== 'queued_command' ||
+                attachment.commandMode !== 'task-notification',
+            )
+            const notificationMessages: AttachmentMessage[] = []
+            let notificationMadeProgress = ambientAttachments.some(
+              attachment => attachment.type === 'teammate_mailbox',
+            )
+            for (const attachment of ambientAttachments) {
+              const message = createAttachmentMessage(attachment)
+              yield message
+              notificationMessages.push(message)
+            }
+
+            if (
+              notificationAttachments.length !==
+              queueState.taskNotifications.length
+            ) {
+              const error = new Error(
+                'Task completion guard could not build every task-notification attachment',
+              )
+              const errorMessage = createAssistantAPIErrorMessage({
+                content: error.message,
+                apiError: 'api_error',
+                error: 'unknown',
+                errorDetails: error.message,
+              })
+              yield errorMessage
+              await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+              return { reason: 'model_error', error }
+            }
+
+            for (const [
+              index,
+              command,
+            ] of queueState.taskNotifications.entries()) {
+              const notificationAttachment = notificationAttachments[index]
+              if (!notificationAttachment) continue
+
+              const claim = await claimConsumableQueuedAutonomyCommands([
+                command,
+              ])
+              if (claim.staleCommands.length > 0) {
+                removeFromQueue(claim.staleCommands)
+              }
+              if (!claim.attachmentCommands.includes(command)) {
+                continue
+              }
+              if (claim.claimedCommands.includes(command)) {
+                consumedAutonomyCommands.push(command)
+              }
+              if (command.uuid) {
+                consumedCommandUuids.push(command.uuid)
+                notifyCommandLifecycle(command.uuid, 'started')
+              }
+              const notificationMessage = createAttachmentMessage(
+                notificationAttachment,
+              )
+              const notificationFingerprint =
+                getTaskCompletionGuardNotificationFingerprint(command)
+              if (
+                !taskCompletionGuardProgressFingerprints.has(
+                  notificationFingerprint,
+                )
+              ) {
+                taskCompletionGuardProgressFingerprints.add(
+                  notificationFingerprint,
+                )
+                notificationMadeProgress = true
+              }
+              // This is the commit boundary: the exact attachment already
+              // exists, and the following yield publishes it atomically with
+              // removal. If the consumer closes afterward, later commands in
+              // the batch remain untouched and recoverable.
+              removeFromQueue([command])
+              yield notificationMessage
+              notificationMessages.push(notificationMessage)
+            }
+            if (notificationMessages.length === 0) continue
+            if (
+              taskCompletionGuardContinuationInFlight &&
+              notificationMadeProgress
+            ) {
+              taskCompletionGuardContinuationMadeProgress = true
+            }
+
+            state = {
+              messages: messagesForQuery.concat(
+                assistantMessages,
+                notificationMessages,
+              ),
+              toolUseContext,
+              autoCompactTracking: tracking,
+              maxOutputTokensRecoveryCount: 0,
+              hasAttemptedReactiveCompact: false,
+              maxOutputTokensOverride: undefined,
+              pendingToolUseSummary: undefined,
+              stopHookActive: undefined,
+              turnCount: nextTurnCount,
+              transition: { reason: 'next_turn' },
+            }
+            continue queryLoopIterations
+          }
+          if (queueState.requiresTurnHandoff) {
+            return { reason: 'completed' }
+          }
+          const nextMailboxTurnCount = turnCount + 1
+          const mailboxAttachments =
+            (await deps.getTaskCompletionGuardMailboxAttachments?.(
+              toolUseContext,
+              querySource,
+            )) ?? []
+          if (mailboxAttachments.length > 0) {
+            const mailboxMessages = mailboxAttachments.map(
+              createAttachmentMessage,
+            )
+            for (const message of mailboxMessages) yield message
+            // The helper commits mailbox delivery while building these
+            // attachments. Publish them before enforcing maxTurns so the
+            // transcript keeps the result even when no further model call is
+            // allowed, and report max_turns instead of false completion.
+            if (maxTurns && nextMailboxTurnCount > maxTurns) {
+              yield createAttachmentMessage({
+                type: 'max_turns_reached',
+                maxTurns,
+                turnCount: nextMailboxTurnCount,
+              })
+              return {
+                reason: 'max_turns',
+                turnCount: nextMailboxTurnCount,
+              }
+            }
+            if (taskCompletionGuardContinuationInFlight) {
+              taskCompletionGuardContinuationMadeProgress = true
+            }
+            state = {
+              messages: messagesForQuery.concat(
+                assistantMessages,
+                mailboxMessages,
+              ),
+              toolUseContext,
+              autoCompactTracking: tracking,
+              maxOutputTokensRecoveryCount: 0,
+              hasAttemptedReactiveCompact: false,
+              maxOutputTokensOverride: undefined,
+              pendingToolUseSummary: undefined,
+              stopHookActive: undefined,
+              turnCount: nextMailboxTurnCount,
+              transition: { reason: 'next_turn' },
+            }
+            continue queryLoopIterations
+          }
+          if (hasRetryingTaskNotificationDeliveryAddressedTo(undefined)) {
+            await waitForTaskCompletionGuardRuntimeChange(
+              toolUseContext.abortController.signal,
+            )
+            continue
+          }
+          if (hasParkedTaskNotificationDeliveryAddressedTo(undefined)) {
+            const error = new TaskNotificationDeliveryParkedError()
+            const errorMessage = createAssistantAPIErrorMessage({
+              content: error.message,
+              apiError: 'api_error',
+              error: 'unknown',
+              errorDetails: error.message,
+            })
+            yield errorMessage
+            await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+            return { reason: 'model_error', error }
+          }
+
+          // Task tools resolve their list implicitly. TeamCreate/TeamDelete can
+          // change that identity during one query, so keep every list touched
+          // instead of inspecting only the list that happens to be current.
+          const currentTaskListId = getTaskListId()
+          taskCompletionGuardTaskListIds.add(currentTaskListId)
+          let inspection: UnfinishedTaskInspection
+          try {
+            const inspections: Array<{
+              taskListId: string
+              inspection: UnfinishedTaskInspection
+            }> = []
+            for (const taskListId of taskCompletionGuardTaskListIds) {
+              inspections.push({
+                taskListId,
+                inspection: inspectUnfinishedTasks(
+                  taskListId,
+                  await deps.listTasks(taskListId),
+                ),
+              })
+            }
+            inspection = mergeUnfinishedTaskInspections(
+              inspections,
+              currentTaskListId,
+            )
+          } catch (error) {
+            const detail =
+              error instanceof Error ? error.message : String(error)
+            logError(error)
+            const errorMessage = createAssistantAPIErrorMessage({
+              content: `Task completion guard could not inspect TaskList: ${detail}`,
+              apiError: 'api_error',
+              error: 'unknown',
+              errorDetails: detail,
+            })
+            yield errorMessage
+            await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
+            return { reason: 'model_error', error }
+          }
+
+          if (toolUseContext.abortController.signal.aborted) {
+            return { reason: 'aborted_streaming' }
+          }
+          if (hasQueuedMainThreadUserInput()) {
+            return { reason: 'completed' }
+          }
+          const refreshedQueueState = getTaskCompletionGuardQueueState()
+          if (
+            refreshedQueueState.taskNotifications.length > 0 ||
+            refreshedQueueState.requiresTurnHandoff ||
+            hasRetryingTaskNotificationDeliveryAddressedTo(undefined) ||
+            hasParkedTaskNotificationDeliveryAddressedTo(undefined)
+          ) {
+            continue
+          }
+
+          const previousSnapshotKey = taskCompletionGuardSnapshotKey
+          const snapshotChanged = inspection.snapshotKey !== previousSnapshotKey
+          if (snapshotChanged) {
+            taskCompletionGuardSnapshotKey = inspection.snapshotKey
+            taskCompletionGuardContinuationCount = 0
+            taskCompletionGuardProgressFingerprints.clear()
+            taskCompletionGuardContinuationMadeProgress = false
+            taskCompletionGuardContinuationInFlight = false
+            taskCompletionGuardContinuationAttempt = 0
+          }
+
+          const runtimeTasks = toolUseContext.getAppState().tasks ?? {}
+          for (const taskId of taskCompletionGuardRuntimeTaskIds) {
+            const task = runtimeTasks[taskId]
+            if (!task || (isTerminalTaskStatus(task.status) && task.notified)) {
+              taskCompletionGuardRuntimeTaskIds.delete(taskId)
+            }
+          }
+          const guardedOwners = new Set(
+            inspection.publicTasks.flatMap(task =>
+              task.owner ? [task.owner] : [],
+            ),
           )
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
-          logError(error)
-          const errorMessage = createAssistantAPIErrorMessage({
-            content: `Task completion guard could not inspect TaskList: ${detail}`,
-            apiError: 'api_error',
-            error: 'unknown',
-            errorDetails: detail,
-          })
-          yield errorMessage
-          await executeOwnedStopFailureHooks(errorMessage, toolUseContext)
-          return { reason: 'model_error', error }
-        }
+          const runtimeState = getTaskCompletionGuardRuntimeState(
+            runtimeTasks,
+            taskCompletionGuardRuntimeTaskIds,
+            guardedOwners,
+          )
+          let hasRunningExternalTeammate = false
+          for (const taskListId of taskCompletionGuardTaskListIds) {
+            for (const teammate of deps.getTeammateStatuses?.(taskListId) ??
+              []) {
+              if (teammate.status !== 'running') continue
+              // In-process teammates publish exact liveness in AppState. Their
+              // team-file isActive flag is legacy/sticky and can remain true
+              // while the runner is idle. Trust file status only for external
+              // pane backends; old records without either discriminator are
+              // also in-process.
+              if (
+                teammate.backendType === 'in-process' ||
+                (!teammate.tmuxPaneId && !teammate.backendType)
+              ) {
+                continue
+              }
+              hasRunningExternalTeammate = true
+            }
+          }
+          if (!inspection.hasPublicUnfinishedTasks) {
+            if (
+              runtimeState.hasActiveWork ||
+              runtimeState.hasPendingDelivery ||
+              hasRunningExternalTeammate
+            ) {
+              await waitForTaskCompletionGuardRuntimeChange(
+                toolUseContext.abortController.signal,
+              )
+              continue
+            }
+            taskCompletionGuardContinuationInFlight = false
+            break
+          }
+          if (
+            inspection.actionableTasks.length === 0 &&
+            (runtimeState.hasActiveWork ||
+              runtimeState.hasPendingDelivery ||
+              hasRunningExternalTeammate)
+          ) {
+            await waitForTaskCompletionGuardRuntimeChange(
+              toolUseContext.abortController.signal,
+            )
+            continue
+          }
 
-        if (toolUseContext.abortController.signal.aborted) {
-          return { reason: 'aborted_streaming' }
-        }
-
-        // A queued completion notification needs a fresh main-thread turn in
-        // order to update the public TaskList. Let the queue processor own it;
-        // otherwise the guard's meta continuations can starve a `later`
-        // notification until the no-progress terminal fires.
-        if (
-          hasQueuedMainThreadUserInput() ||
-          hasQueuedMainThreadTaskNotification()
-        ) {
-          return { reason: 'completed' }
-        }
-
-        if (inspection.hasPublicUnfinishedTasks) {
           const tasksForGuard =
             inspection.actionableTasks.length > 0
               ? inspection.actionableTasks
@@ -2383,15 +2755,33 @@ async function* queryLoop(
             return { reason: 'max_turns', turnCount: nextTurnCount }
           }
 
-          if (inspection.snapshotKey !== taskCompletionGuardSnapshotKey) {
-            taskCompletionGuardSnapshotKey = inspection.snapshotKey
-            taskCompletionGuardContinuationCount = 0
+          if (!snapshotChanged && taskCompletionGuardContinuationInFlight) {
+            taskCompletionGuardContinuationCount =
+              taskCompletionGuardContinuationMadeProgress
+                ? 0
+                : taskCompletionGuardContinuationCount + 1
           }
+          taskCompletionGuardContinuationMadeProgress = false
 
           if (
             taskCompletionGuardContinuationCount >=
             MAX_UNFINISHED_TASK_NO_PROGRESS_CONTINUATIONS
           ) {
+            // Actionable main-thread work may coexist with a slow background
+            // worker. Let the model use the normal continuation budget for
+            // parallel progress, but never turn that budget into a false
+            // terminal while correlated runtime work is still genuinely
+            // active or its completion notification is being assembled.
+            if (
+              runtimeState.hasActiveWork ||
+              runtimeState.hasPendingDelivery ||
+              hasRunningExternalTeammate
+            ) {
+              await waitForTaskCompletionGuardRuntimeChange(
+                toolUseContext.abortController.signal,
+              )
+              continue
+            }
             const content = buildUnfinishedTaskNoProgressError(tasksForGuard)
             const errorMessage = createAssistantAPIErrorMessage({
               content,
@@ -2408,7 +2798,8 @@ async function* queryLoop(
             }
           }
 
-          taskCompletionGuardContinuationCount++
+          taskCompletionGuardContinuationInFlight = true
+          taskCompletionGuardContinuationAttempt++
           state = {
             messages: [
               ...messagesForQuery,
@@ -2437,10 +2828,10 @@ async function* queryLoop(
             turnCount: nextTurnCount,
             transition: {
               reason: 'unfinished_tasks_continuation',
-              attempt: taskCompletionGuardContinuationCount,
+              attempt: taskCompletionGuardContinuationAttempt,
             },
           }
-          continue
+          continue queryLoopIterations
         }
       }
 
@@ -2518,6 +2909,38 @@ async function* queryLoop(
       // both also covers a Task tool batched with TeamCreate/TeamDelete.
       taskCompletionGuardTaskListIds.add(taskListIdBeforeToolExecution)
       taskCompletionGuardTaskListIds.add(getTaskListId())
+    }
+
+    // Keep finite background work spawned anywhere in this query available to
+    // a later TaskList guard. The Task tool may be called after the worker was
+    // launched, and an actionable continuation may delegate before updating
+    // the public owner. Runtime filtering excludes monitors and other
+    // intentionally long-lived tasks when the completion gate is evaluated.
+    const executedToolUseIds = new Set(toolUseBlocks.map(block => block.id))
+    for (const task of Object.values(
+      updatedToolUseContext.getAppState().tasks ?? {},
+    )) {
+      if (task.toolUseId && executedToolUseIds.has(task.toolUseId)) {
+        taskCompletionGuardRuntimeTaskIds.add(task.id)
+      }
+    }
+
+    if (taskCompletionGuardContinuationInFlight) {
+      for (const block of toolUseBlocks) {
+        const resultBlock = findSettledToolResultBlock(toolResults, block.id)
+        if (!resultBlock || resultBlock.is_error === true) continue
+        const fingerprint = getTaskCompletionGuardProgressFingerprint({
+          toolName: block.name,
+          input: block.input,
+        })
+        if (
+          fingerprint &&
+          !taskCompletionGuardProgressFingerprints.has(fingerprint)
+        ) {
+          taskCompletionGuardProgressFingerprints.add(fingerprint)
+          taskCompletionGuardContinuationMadeProgress = true
+        }
+      }
     }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
