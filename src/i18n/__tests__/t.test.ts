@@ -1,4 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test'
+import figures from 'figures'
+import * as React from 'react'
 // Spread the real module so this process-global mock does not strip the
 // other settings exports for test files loaded later in the same process
 // (see CLAUDE.md cross-file mock pollution rules).
@@ -33,6 +35,42 @@ const {
   getSearchReadOperationTextParts,
   joinActivitySummaryParts,
 } = await import('../../utils/searchReadSummaryText.js')
+const { SpinnerAnimationRow } = await import(
+  '../../components/Spinner/SpinnerAnimationRow.js'
+)
+const { formatTokenBudgetText } = await import(
+  '../../components/Spinner/tokenBudgetText.js'
+)
+const { renderToString } = await import('../../utils/staticRender.js')
+
+async function renderSpinnerTokenStatus(
+  language: string | undefined,
+): Promise<string> {
+  mockLanguage = language
+  const now = Date.now()
+  return renderToString(
+    React.createElement(SpinnerAnimationRow, {
+      mode: 'responding',
+      reducedMotion: true,
+      hasActiveTools: false,
+      responseLengthRef: { current: 5600 },
+      message: language === '简体中文' ? '雷鸣中…' : 'Working…',
+      messageColor: 'claude',
+      shimmerColor: 'claudeShimmer',
+      loadingStartTimeRef: { current: now - 204_000 },
+      totalPausedMsRef: { current: 0 },
+      pauseStartTimeRef: { current: now },
+      verbose: true,
+      columns: 200,
+      hasRunningTeammates: false,
+      teammateTokens: 0,
+      foregroundedTeammate: undefined,
+      thinkingStatus: null,
+      effortSuffix: '',
+    }),
+    200,
+  )
+}
 
 describe('t', () => {
   test('returns key as-is when language is en', () => {
@@ -89,6 +127,7 @@ describe('t', () => {
     expect(t('Unknown error')).toBe('未知错误')
     expect(t('Faster')).toBe('更快')
     expect(t('Smarter')).toBe('更智能')
+    expect(tf('{count} tokens', { count: '1,400' })).toBe('1,400 词元')
   })
 
   test('translates CLI option descriptions', () => {
@@ -500,5 +539,58 @@ describe('tf', () => {
     mockLanguage = undefined
     const result = tf('Enabled: {status}', { status: true })
     expect(result).toBe('Enabled: true')
+  })
+})
+
+describe('SpinnerAnimationRow token status', () => {
+  test('renders an unabridged localized token count in Chinese', async () => {
+    const output = await renderSpinnerTokenStatus('简体中文')
+
+    expect(output).toContain('3分 24秒 · ↓ 1,400 词元')
+    expect(output).not.toContain('1.4k')
+    expect(output).not.toContain('1,400 tokens')
+  })
+
+  test('keeps the unabridged English token label', async () => {
+    const output = await renderSpinnerTokenStatus('English')
+
+    expect(output).toContain('3m 24s · ↓ 1,400 tokens')
+    expect(output).not.toContain('1.4k')
+  })
+})
+
+describe('spinner token budget status', () => {
+  test('localizes the active target while preserving compact numbers', () => {
+    mockLanguage = '简体中文'
+
+    expect(formatTokenBudgetText(1500, 1_000_000_000, 32_000)).toBe(
+      '目标：1.5k / 1.0b（0%）',
+    )
+  })
+
+  test('localizes the completed target status', () => {
+    mockLanguage = '简体中文'
+    expect(formatTokenBudgetText(1_500_000_000, 1_000_000_000, 32_000)).toBe(
+      `目标：已使用 1.5b（最低 1.0b ${figures.tick}）`,
+    )
+  })
+
+  test('localizes the estimated time while preserving compact numbers', () => {
+    mockLanguage = '简体中文'
+
+    expect(formatTokenBudgetText(2000, 3000, 10_000)).toBe(
+      '目标：2.0k / 3.0k（67%） · 约 5秒',
+    )
+  })
+
+  test('keeps the English target status and compact numbers', () => {
+    mockLanguage = 'English'
+
+    expect(formatTokenBudgetText(1500, 1_000_000_000, 32_000)).toBe(
+      'Target: 1.5k / 1.0b (0%)',
+    )
+    expect(formatTokenBudgetText(1_500_000_000, 1_000_000_000, 32_000)).toBe(
+      `Target: 1.5b used (1.0b min ${figures.tick})`,
+    )
   })
 })

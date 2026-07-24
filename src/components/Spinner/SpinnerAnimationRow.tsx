@@ -5,7 +5,7 @@ import { Box, Text, useAnimationFrame, stringWidth, Byline } from '@anthropic/in
 import { toInkColor } from '../../utils/ink.js';
 import { t, tf } from '../../i18n/t.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
-import { formatDuration, formatNumber } from '../../utils/format.js';
+import { formatDuration, formatUnabridgedTokens } from '../../utils/format.js';
 
 import type { Theme } from '../../utils/theme.js';
 
@@ -176,10 +176,9 @@ export function SpinnerAnimationRow({
     foregroundedTeammate && !foregroundedTeammate.isIdle
       ? (foregroundedTeammate.progress?.tokenCount ?? 0)
       : leaderTokens + teammateTokens;
-  const tokenCount = formatNumber(totalTokens);
-  const tokensText = hasRunningTeammates
-    ? tf('{count} tokens', { count: tokenCount })
-    : `${figures.arrowDown} ${tf('{count} tokens', { count: tokenCount })}`;
+  const tokenCount = formatUnabridgedTokens(totalTokens);
+  const tokenLabel = tf('{count} tokens', { count: tokenCount });
+  const tokensText = hasRunningTeammates ? tokenLabel : `${figures.arrowDown} ${tokenLabel}`;
   const tokensWidth = stringWidth(tokensText);
 
   // === Thinking text (may shrink to fit) ===
@@ -252,7 +251,7 @@ export function SpinnerAnimationRow({
       ? [
           <Box flexDirection="row" key="tokens">
             {!hasRunningTeammates && <SpinnerModeGlyph mode={mode} />}
-            <Text dimColor>{tokenCount} tokens</Text>
+            <Text dimColor>{tokenLabel}</Text>
           </Box>,
         ]
       : []),

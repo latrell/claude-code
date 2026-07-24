@@ -681,6 +681,11 @@ const zh: Record<string, string> = {
     '使用 /btw 快速旁路提问，不会中断 Claude 当前工作',
   'Tip: {text}': '提示：{text}',
   'Next: {subject}': '下一步：{subject}',
+  'Target: {tokens} / {budget} ({percent}%){eta}':
+    '目标：{tokens} / {budget}（{percent}%）{eta}',
+  'Target: {tokens} used ({budget} min {check})':
+    '目标：已使用 {tokens}（最低 {budget} {check}）',
+  ' · ~{duration}': ' · 约 {duration}',
   '(esc to interrupt {name})': '（按 Esc 中断 {name}）',
 
   // ── Common spinner verbs ────────────────────────────────────────

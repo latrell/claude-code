@@ -173,6 +173,7 @@ export function formatDuration(
 // `new Intl.NumberFormat` is expensive, so cache formatters for reuse
 let numberFormatterForConsistentDecimals: Intl.NumberFormat | null = null
 let numberFormatterForInconsistentDecimals: Intl.NumberFormat | null = null
+let unabridgedTokenFormatter: Intl.NumberFormat | null = null
 const getNumberFormatter = (
   useConsistentDecimals: boolean,
 ): Intl.NumberFormat => {
@@ -208,6 +209,23 @@ export function formatNumber(number: number): string {
 
 export function formatTokens(count: number): string {
   return formatNumber(count).replace('.0', '')
+}
+
+/**
+ * Formats a token count without compact notation (for example, 1400 ->
+ * "1,400"). This only controls display; it does not change how the count was
+ * measured or estimated.
+ */
+export function formatUnabridgedTokens(count: number): string {
+  if (!unabridgedTokenFormatter) {
+    unabridgedTokenFormatter = new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 0,
+      useGrouping: true,
+    })
+  }
+
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0
+  return unabridgedTokenFormatter.format(safeCount)
 }
 
 type RelativeTimeStyle = 'long' | 'short' | 'narrow'

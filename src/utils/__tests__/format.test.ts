@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   formatFileSize,
   formatDuration,
+  formatUnabridgedTokens,
   formatMillisecondsShort,
   formatNumber,
   formatRetryAfter,
@@ -200,6 +201,21 @@ describe('formatTokens', () => {
 
   test('formats 1500 as 1.5k', () => {
     expect(formatTokens(1500)).toBe('1.5k')
+  })
+})
+
+describe('formatUnabridgedTokens', () => {
+  test('formats full token counts with thousands separators', () => {
+    expect(formatUnabridgedTokens(999)).toBe('999')
+    expect(formatUnabridgedTokens(1000)).toBe('1,000')
+    expect(formatUnabridgedTokens(1400)).toBe('1,400')
+    expect(formatUnabridgedTokens(1234567)).toBe('1,234,567')
+  })
+
+  test('normalizes fractional and invalid token counts', () => {
+    expect(formatUnabridgedTokens(1400.4)).toBe('1,400')
+    expect(formatUnabridgedTokens(-1)).toBe('0')
+    expect(formatUnabridgedTokens(Number.NaN)).toBe('0')
   })
 })
 
