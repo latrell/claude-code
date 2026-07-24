@@ -21,6 +21,40 @@ export type OpenAICompatibleChatCompletionRequest = Omit<
 
 const DEEPSEEK_V4_MAX_DEFAULT_THINKING_TOKEN_BUDGET = 64_000
 const DEEPSEEK_V4_MIN_BUDGETED_OUTPUT_TOKENS = 2_048
+const DEEPSEEK_V4_THINKING_TEMPERATURE = 1
+const DEEPSEEK_V4_SAMPLING_MODEL =
+  /(?:^|[/:])deepseek-v4-(?:flash|pro)(?=$|[/:@-])/i
+
+/**
+ * Sampling policy is intentionally narrower than effort compatibility.
+ * Legacy deepseek-chat / deepseek-reasoner aliases may still point at V3 or
+ * R1 on self-hosted endpoints, while canonical V4 derivatives commonly add a
+ * deployment suffix such as -DSpark or -Abliterated.
+ */
+export function usesDeepSeekV4RecommendedSampling(model: string): boolean {
+  return DEEPSEEK_V4_SAMPLING_MODEL.test(model)
+}
+
+/**
+ * Resolve the temperature sent on the wire.
+ *
+ * Most reasoning APIs own their sampling policy and ignore temperature, so
+ * the existing behavior remains to omit it while thinking. DeepSeek V4's
+ * self-hosted vLLM path is different: it honors the request value, and greedy
+ * decoding can collapse into repeated final-answer loops. Its published model
+ * generation config uses sampling with temperature=1.0, so enforce that safe
+ * default unless a caller explicitly overrides it.
+ */
+export function resolveOpenAIRequestTemperature(params: {
+  enableThinking: boolean
+  isDeepSeekV4: boolean
+  temperatureOverride?: number
+}): number | undefined {
+  const { enableThinking, isDeepSeekV4, temperatureOverride } = params
+  if (!enableThinking) return temperatureOverride
+  if (!isDeepSeekV4) return undefined
+  return temperatureOverride ?? DEEPSEEK_V4_THINKING_TEMPERATURE
+}
 
 /**
  * Bound DeepSeek V4's reasoning phase while reserving room for final text or
@@ -147,6 +181,8 @@ export function buildOpenAIRequestBody(params: {
   enableThinking: boolean
   maxTokens: number
   temperatureOverride?: number
+  /** Whether DeepSeek V4's reasoning-mode sampling contract applies. */
+  isDeepSeekV4?: boolean
   /**
    * OpenAI-compatible `reasoning_effort` string. The resolver normally emits
    * low/medium/high, but explicit passthrough profiles may carry endpoint-
@@ -164,9 +200,15 @@ export function buildOpenAIRequestBody(params: {
     enableThinking,
     maxTokens,
     temperatureOverride,
+    isDeepSeekV4 = false,
     reasoningEffort,
     thinkingTokenBudget,
   } = params
+  const requestTemperature = resolveOpenAIRequestTemperature({
+    enableThinking,
+    isDeepSeekV4,
+    temperatureOverride,
+  })
   return {
     model,
     messages,
@@ -185,8 +227,9 @@ export function buildOpenAIRequestBody(params: {
     ...(thinkingTokenBudget !== undefined && {
       thinking_token_budget: thinkingTokenBudget,
     }),
-    // Enable chain-of-thought output for DeepSeek and MiMo models.
-    // When active, temperature/top_p/presence_penalty/frequency_penalty are ignored.
+    // Enable chain-of-thought output for DeepSeek and MiMo models. Hosted APIs
+    // may own the sampling policy, while self-hosted DeepSeek V4 still honors
+    // the explicit temperature resolved above.
     ...(enableThinking && {
       // Official DeepSeek API format
       thinking: { type: 'enabled' },
@@ -195,11 +238,8 @@ export function buildOpenAIRequestBody(params: {
       // Both DeepSeek self-hosted and MiMo formats in chat_template_kwargs
       chat_template_kwargs: { thinking: true, enable_thinking: true },
     }),
-    // Only send temperature when thinking mode is off (DeepSeek ignores it anyway,
-    // but other providers may respect it)
-    ...(!enableThinking &&
-      temperatureOverride !== undefined && {
-        temperature: temperatureOverride,
-      }),
+    ...(requestTemperature !== undefined && {
+      temperature: requestTemperature,
+    }),
   }
 }

@@ -4,6 +4,7 @@ import {
   buildOpenAIRequestBody,
   openAICompatSupportsThinkingControl,
   resolveOpenAIThinkingTokenBudget,
+  usesDeepSeekV4RecommendedSampling,
 } from '../requestBody.js'
 
 // Re-register envUtils.js with correct isEnvDefinedFalsy and isEnvTruthy to
@@ -259,6 +260,28 @@ describe('openAICompatSupportsThinkingControl', () => {
   })
 })
 
+describe('usesDeepSeekV4RecommendedSampling', () => {
+  test.each([
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'OpenRouter/DeepSeek/deepseek-v4-flash',
+    'deepseek-v4-flash-DSpark',
+    'deepseek-v4-flash-abliterated',
+  ])('recognizes canonical V4 model %s', model => {
+    expect(usesDeepSeekV4RecommendedSampling(model)).toBe(true)
+  })
+
+  test.each([
+    'deepseek-chat',
+    'deepseek-reasoner',
+    'deepseek-v3.2',
+    'deepseek-r1',
+    'deepseek-v4-flashback',
+  ])('does not apply V4 sampling to ambiguous model %s', model => {
+    expect(usesDeepSeekV4RecommendedSampling(model)).toBe(false)
+  })
+})
+
 describe('resolveOpenAIThinkingTokenBudget', () => {
   test('uses half the output budget up to the DeepSeek 64k reasoning ceiling', () => {
     expect(
@@ -399,13 +422,33 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.temperature).toBe(0.7)
   })
 
-  test('excludes temperature when thinking is on even if override is set', () => {
+  test('excludes temperature for non-DeepSeek thinking even if override is set', () => {
     const body = buildOpenAIRequestBody({
       ...baseParams,
       enableThinking: true,
       temperatureOverride: 0.7,
+      isDeepSeekV4: false,
     })
     expect(body.temperature).toBeUndefined()
+  })
+
+  test('uses the published sampling temperature for DeepSeek V4 thinking', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: true,
+      isDeepSeekV4: true,
+    })
+    expect(body.temperature).toBe(1)
+  })
+
+  test('honors an explicit temperature override for DeepSeek V4 thinking', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: true,
+      temperatureOverride: 0,
+      isDeepSeekV4: true,
+    })
+    expect(body.temperature).toBe(0)
   })
 
   test('excludes temperature when thinking is off and no override', () => {

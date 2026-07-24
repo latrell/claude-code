@@ -1059,6 +1059,7 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
+    expect(_lastCreateArgs!.temperature).toBeUndefined()
   })
 
   test('uses the official DeepSeek V4 output limit and a separate reasoning ceiling', async () => {
@@ -1076,6 +1077,7 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(384000)
     expect(_lastCreateArgs!.thinking_token_budget).toBe(64000)
+    expect(_lastCreateArgs!.temperature).toBe(1)
   })
 
   test('honors an explicit DeepSeek output-token override', async () => {

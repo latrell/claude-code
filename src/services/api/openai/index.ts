@@ -54,7 +54,9 @@ import { calculateUSDCost } from '../../../utils/modelCost.js'
 import {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
+  resolveOpenAIRequestTemperature,
   resolveOpenAIThinkingTokenBudget,
+  usesDeepSeekV4RecommendedSampling,
   buildOpenAIRequestBody,
 } from './requestBody.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
@@ -71,7 +73,9 @@ import {
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
+  resolveOpenAIRequestTemperature,
   resolveOpenAIThinkingTokenBudget,
+  usesDeepSeekV4RecommendedSampling,
   buildOpenAIRequestBody,
 }
 import { getModelMaxOutputTokens } from '../../../utils/context.js'
@@ -319,6 +323,8 @@ export async function* queryModelOpenAI(
 
     // 8. Convert messages and tools to OpenAI format
     const enableThinking = isOpenAIThinkingEnabled(openaiModel, providerEnv)
+    const isDeepSeekV4 = isDeepSeekV4ReasoningModel(openaiModel)
+    const useDeepSeekV4Sampling = usesDeepSeekV4RecommendedSampling(openaiModel)
     const openAIConvertibleMessages = messagesForAPI.filter(
       isOpenAIConvertibleMessage,
     )
@@ -397,7 +403,7 @@ export async function* queryModelOpenAI(
     const providerModel = findChinaProviderModel(openaiModel)
     const thinkingTokenBudget = resolveOpenAIThinkingTokenBudget({
       enableThinking,
-      isDeepSeekV4: isDeepSeekV4ReasoningModel(openaiModel),
+      isDeepSeekV4,
       maxTokens,
       maxThinkingTokens: providerModel?.maxThinkingTokens,
       // Connection-scoped env owns credentials/routing, while process env may
@@ -473,6 +479,7 @@ export async function* queryModelOpenAI(
                   enableThinking,
                   maxTokens,
                   temperatureOverride: options.temperatureOverride,
+                  isDeepSeekV4: useDeepSeekV4Sampling,
                   reasoningEffort: chatCompletionsReasoningEffort,
                   thinkingTokenBudget,
                 }) as unknown as ChatCompletionCreateParamsStreaming,
