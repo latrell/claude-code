@@ -852,7 +852,7 @@ describe('createChatGPTResponsesStream', () => {
     const controller = new AbortController()
     const body = [
       'data: {"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":40,"window_minutes":300,"reset_at":1800000000},"secondary":{"used_percent":94,"window_minutes":10080,"reset_at":1800500000}}}\n\n',
-      'data: {"type":"response.completed","response":{"id":"resp-usage","status":"completed"}}\n\n',
+      'data: {"type":"response.completed","response":{"id":"resp-usage","status":"completed","end_turn":false}}\n\n',
     ].join('')
     const fetchOverride = mock(() =>
       Promise.resolve(new Response(body, { status: 200 })),
@@ -1253,7 +1253,7 @@ describe('createChatGPTResponsesStream', () => {
         )
       }
       return new Response(
-        'data: {"type":"response.completed","response":{"id":"resp-retry","status":"completed","end_turn":true}}\n\n',
+        'data: {"type":"response.completed","response":{"id":"resp-retry","status":"completed","end_turn":false}}\n\n',
         { status: 200 },
       )
     }) as typeof fetch
@@ -2136,12 +2136,13 @@ describe('adaptResponsesStreamToAnthropic', () => {
     }
   })
 
-  test('emits a legal message for an empty completed response', async () => {
+  test('emits a legal empty message for an explicit server continuation', async () => {
+    const turnSession: ChatGPTCodexTurnSession = {}
     const rawStream = (async function* () {
       yield { type: 'response.created', response: { status: 'in_progress' } }
       yield {
         type: 'response.completed',
-        response: { status: 'completed' },
+        response: { status: 'completed', end_turn: false },
       }
     })()
     const output = []
@@ -2149,6 +2150,7 @@ describe('adaptResponsesStreamToAnthropic', () => {
     for await (const event of adaptResponsesStreamToAnthropic(
       rawStream,
       'gpt-5.5',
+      turnSession,
     )) {
       output.push(event)
     }
@@ -2158,6 +2160,173 @@ describe('adaptResponsesStreamToAnthropic', () => {
       'message_delta',
       'message_stop',
     ])
+    expect(turnSession.lastResponseEndTurn).toBe(false)
+  })
+
+  test('rejects an empty terminal response unless it requests continuation', async () => {
+    for (const endTurn of [undefined, true]) {
+      const published = []
+      let caught: unknown
+      try {
+        for await (const event of adaptResponsesStreamToAnthropic(
+          (async function* () {
+            yield {
+              type: 'response.completed',
+              response: {
+                id: 'resp-empty',
+                status: 'completed',
+                ...(endTurn === undefined ? {} : { end_turn: endTurn }),
+              },
+            }
+          })(),
+          'gpt-5.5',
+        )) {
+          published.push(event)
+        }
+      } catch (error) {
+        caught = error
+      }
+
+      expect(published).toEqual([])
+      expect((caught as { code?: string }).code).toBe('server_error')
+      expect(isRetryableCompatError(caught)).toBe(true)
+    }
+  })
+
+  test('rejects whitespace-only streamed and done-item text', async () => {
+    for (const endTurn of [undefined, true]) {
+      for (const textEvent of [
+        {
+          type: 'response.output_text.delta',
+          output_index: 0,
+          delta: '  \n\t',
+        },
+        {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: {
+            type: 'message',
+            content: [{ type: 'output_text', text: '  \n\t' }],
+          },
+        },
+      ]) {
+        const published = []
+        let caught: unknown
+        try {
+          for await (const event of adaptResponsesStreamToAnthropic(
+            (async function* () {
+              yield textEvent
+              yield {
+                type: 'response.completed',
+                response: {
+                  id: 'resp-whitespace',
+                  status: 'completed',
+                  ...(endTurn === undefined ? {} : { end_turn: endTurn }),
+                },
+              }
+            })(),
+            'gpt-5.5',
+          )) {
+            published.push(event)
+          }
+        } catch (error) {
+          caught = error
+        }
+
+        expect(published).toEqual([])
+        expect(isRetryableCompatError(caught)).toBe(true)
+      }
+    }
+  })
+
+  test('emits done-only refusal text as an observable response', async () => {
+    const output = []
+
+    for await (const event of adaptResponsesStreamToAnthropic(
+      (async function* () {
+        yield {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: {
+            type: 'message',
+            content: [
+              {
+                type: 'refusal',
+                refusal: 'I cannot help with that request.',
+              },
+            ],
+          },
+        }
+        yield {
+          type: 'response.completed',
+          response: { status: 'completed', end_turn: true },
+        }
+      })(),
+      'gpt-5.5',
+    )) {
+      output.push(event)
+    }
+
+    expect(output).toContainEqual({
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: 'I cannot help with that request.',
+      },
+    })
+  })
+
+  test('rejects reasoning-only end_turn without publishing the failed attempt', async () => {
+    const published = []
+    let caught: unknown
+
+    try {
+      for await (const event of adaptResponsesStreamToAnthropic(
+        (async function* () {
+          yield {
+            type: 'response.output_item.added',
+            output_index: 0,
+            item: { type: 'reasoning', summary: [] },
+          }
+          yield {
+            type: 'response.reasoning_summary_text.delta',
+            output_index: 0,
+            delta: 'Reasoning without a final answer.',
+          }
+          yield {
+            type: 'response.output_item.done',
+            output_index: 0,
+            item: {
+              type: 'reasoning',
+              summary: [
+                {
+                  type: 'summary_text',
+                  text: 'Reasoning without a final answer.',
+                },
+              ],
+              encrypted_content: 'encrypted-reasoning',
+            },
+          }
+          yield {
+            type: 'response.completed',
+            response: {
+              id: 'resp-reasoning-only',
+              status: 'completed',
+              end_turn: true,
+            },
+          }
+        })(),
+        'gpt-5.6-sol',
+      )) {
+        published.push(event)
+      }
+    } catch (error) {
+      caught = error
+    }
+
+    expect(published).toEqual([])
+    expect(isRetryableCompatError(caught)).toBe(true)
   })
 
   test('emits text from completed message output items when text deltas are absent', async () => {
@@ -2229,7 +2398,7 @@ describe('adaptResponsesStreamToAnthropic', () => {
       },
       {
         type: 'response.completed',
-        response: { status: 'completed' },
+        response: { status: 'completed', end_turn: true },
       },
     ]
     const output = []
@@ -2420,7 +2589,7 @@ describe('adaptResponsesStreamToAnthropic', () => {
       },
       {
         type: 'response.completed',
-        response: { status: 'completed' },
+        response: { status: 'completed', end_turn: false },
       },
     ]
     const output = []
@@ -2496,7 +2665,10 @@ describe('adaptResponsesStreamToAnthropic', () => {
           encrypted_content: 'encrypted-summary',
         },
       },
-      { type: 'response.completed', response: { status: 'completed' } },
+      {
+        type: 'response.completed',
+        response: { status: 'completed', end_turn: false },
+      },
     ]
     const output = []
     for await (const event of adaptResponsesStreamToAnthropic(
@@ -2556,7 +2728,11 @@ describe('adaptResponsesStreamToAnthropic', () => {
     const rawStream = (async function* () {
       yield {
         type: 'response.completed',
-        response: { id: 'resp-complete', status: 'completed' },
+        response: {
+          id: 'resp-complete',
+          status: 'completed',
+          end_turn: false,
+        },
       }
       yield {
         type: 'error',

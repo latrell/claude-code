@@ -720,18 +720,32 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
   })
 
-  test('preserves a valid empty completion as an AssistantMessage', async () => {
-    _nextEvents = [
-      makeMessageStart(),
-      makeMessageDelta('end_turn', 0),
-      makeMessageStop(),
-    ]
+  test('retries an empty completion and publishes only recovered text', async () => {
+    const emptyCompletion = async function* () {
+      yield makeMessageStart()
+      yield makeMessageDelta('end_turn', 0)
+      yield makeMessageStop()
+    }
+    const recoveredCompletion = async function* () {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 1)
+      yield makeMessageStop()
+    }
 
-    const { assistantMessages } = await runQueryModel(_nextEvents)
+    const { assistantMessages, streamEvents, otherOutputs } =
+      await runQueryModel([], {}, [emptyCompletion, recoveredCompletion])
 
+    expect(_createCallCount).toBe(2)
     expect(assistantMessages).toHaveLength(1)
-    expect(assistantMessages[0]!.message.content).toEqual([])
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'recovered' },
+    ])
     expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
+    expect(JSON.stringify(streamEvents)).toContain('recovered')
+    expect(otherOutputs.some(item => item.type === 'system')).toBe(true)
   })
 
   test('assembled AssistantMessage has stop_reason tool_use', async () => {
@@ -768,6 +782,30 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     const contentMsg = assistantMessages[0]!
     expect(contentMsg.message.stop_reason).toBe('max_tokens')
     // Second item is the error signal (has apiError set)
+    expect(assistantMessages[1]!.apiError).toBe('max_output_tokens')
+  })
+
+  test('preserves thinking-only max_tokens for output-limit recovery', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'thinking'),
+      makeThinkingDelta(0, 'budget exhausted while reasoning'),
+      makeContentBlockStop(0),
+      makeMessageDelta('max_tokens', 8192),
+      makeMessageStop(),
+    ]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents)
+
+    expect(_createCallCount).toBe(1)
+    expect(assistantMessages).toHaveLength(2)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      {
+        type: 'thinking',
+        thinking: 'budget exhausted while reasoning',
+        signature: '',
+      },
+    ])
     expect(assistantMessages[1]!.apiError).toBe('max_output_tokens')
   })
 
@@ -923,24 +961,37 @@ describe('queryModelOpenAI — no duplicate AssistantMessage (partialMessage res
     expect(assistantMessages).toHaveLength(1)
   })
 
-  test('preserves a completed thinking-only response', async () => {
-    _nextEvents = [
-      makeMessageStart(),
-      makeContentBlockStart(0, 'thinking'),
-      makeThinkingDelta(0, 'completed reasoning'),
-      makeContentBlockStop(0),
-      makeMessageDelta('end_turn', 8),
-      makeMessageStop(),
-    ]
+  test('retries a completed thinking-only response without publishing it', async () => {
+    const thinkingOnlyCompletion = async function* () {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'thinking')
+      yield makeThinkingDelta(0, 'completed reasoning')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 8)
+      yield makeMessageStop()
+    }
+    const recoveredCompletion = async function* () {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'visible answer')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 2)
+      yield makeMessageStop()
+    }
 
-    const { assistantMessages } = await runQueryModel(_nextEvents)
+    const { assistantMessages, streamEvents } = await runQueryModel([], {}, [
+      thinkingOnlyCompletion,
+      recoveredCompletion,
+    ])
 
+    expect(_createCallCount).toBe(2)
     expect(assistantMessages).toHaveLength(1)
     expect(assistantMessages[0]!.isApiErrorMessage).not.toBe(true)
     expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
     expect(assistantMessages[0]!.message.content).toEqual([
-      { type: 'thinking', thinking: 'completed reasoning', signature: '' },
+      { type: 'text', text: 'visible answer' },
     ])
+    expect(JSON.stringify(streamEvents)).not.toContain('completed reasoning')
   })
 
   test('reports thinking-only EOF without publishing partial reasoning', async () => {
@@ -1095,7 +1146,7 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
     )
   })
 
-  test('classifies missing finish_reason after output as an incomplete server response', async () => {
+  test('retries missing finish_reason before visible output and recovers', async () => {
     async function* endsWithoutFinishReason(): AsyncGenerator<
       BetaRawMessageStreamEvent,
       void
@@ -1103,23 +1154,54 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
       yield makeMessageStart()
       yield makeContentBlockStart(0, 'thinking')
       yield makeThinkingDelta(0, 'unfinished')
-      throw new TypeError(
+      const error = new TypeError(
         'OpenAI-compatible API stream ended before receiving a finish_reason terminal event; the response may be incomplete, please retry',
       )
+      Object.assign(error, { retryable: true })
+      throw error
     }
 
-    const { assistantMessages } = await runQueryModel([], {}, [
+    async function* succeedsAfterRetry(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered after incomplete reasoning')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 4)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, streamEvents } = await runQueryModel([], {}, [
       endsWithoutFinishReason,
+      succeedsAfterRetry,
     ])
 
-    expect(_createCallCount).toBe(1)
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'recovered after incomplete reasoning' },
+    ])
+    expect(JSON.stringify(streamEvents)).not.toContain('unfinished')
+  })
+
+  test('reports persistent empty completions as an explicit server error', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeMessageDelta('end_turn', 0),
+      makeMessageStop(),
+    ]
+
+    const { assistantMessages, streamEvents } = await runQueryModel(_nextEvents)
+
+    expect(_createCallCount).toBe(4)
+    expect(streamEvents).toEqual([])
     expect(assistantMessages).toHaveLength(1)
     expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
-    expect(assistantMessages[0]!.apiError).toBe('api_error')
     expect(assistantMessages[0]!.error).toBe('server_error')
-    expect(assistantMessages[0]!.errorDetails).toContain('finish_reason')
-    expect(JSON.stringify(assistantMessages[0]!.message)).not.toContain(
-      'unfinished',
+    expect(assistantMessages[0]!.errorDetails).toContain(
+      'completed without text or a tool call',
     )
   })
 })

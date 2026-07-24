@@ -70,6 +70,10 @@ import {
   hasExhaustedCompatRetries,
   startStreamEagerly,
 } from '../compatRetry.js'
+import {
+  EmptyOpenAICompletionError,
+  holdUntilObservableOpenAIOutput,
+} from './observableOutputGuard.js'
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -138,8 +142,9 @@ function isOpenAIConvertibleMessage(
   return msg.type === 'assistant' || msg.type === 'user'
 }
 
-function isIncompleteOpenAIStreamError(error: unknown): error is Error {
+function isInvalidOpenAIStreamError(error: unknown): error is Error {
   if (!(error instanceof Error)) return false
+  if (error instanceof EmptyOpenAICompletionError) return true
   return (
     error.message.includes('terminal event') &&
     (error.message.includes('finish_reason') ||
@@ -470,28 +475,31 @@ export async function* queryModelOpenAI(
       adaptedStream = yield* withCompatRetry(
         async innerSignal =>
           startStreamEagerly(
-            adaptOpenAIStreamToAnthropic(
-              await getOpenAIClient({
-                maxRetries: 0,
-                fetchOverride: options.fetchOverride as unknown as typeof fetch,
-                source: options.querySource,
-                envOverride: options.providerRuntimeConfig?.env,
-              }).chat.completions.create(
-                buildOpenAIRequestBody({
-                  model: openaiModel,
-                  messages: openaiMessages,
-                  tools: openaiTools,
-                  toolChoice: openaiToolChoice,
-                  enableThinking,
-                  maxTokens,
-                  temperatureOverride: options.temperatureOverride,
-                  isDeepSeekV4: useDeepSeekV4Sampling,
-                  reasoningEffort: chatCompletionsReasoningEffort,
-                  thinkingTokenBudget,
-                }) as unknown as ChatCompletionCreateParamsStreaming,
-                { signal: innerSignal },
+            holdUntilObservableOpenAIOutput(
+              adaptOpenAIStreamToAnthropic(
+                await getOpenAIClient({
+                  maxRetries: 0,
+                  fetchOverride:
+                    options.fetchOverride as unknown as typeof fetch,
+                  source: options.querySource,
+                  envOverride: options.providerRuntimeConfig?.env,
+                }).chat.completions.create(
+                  buildOpenAIRequestBody({
+                    model: openaiModel,
+                    messages: openaiMessages,
+                    tools: openaiTools,
+                    toolChoice: openaiToolChoice,
+                    enableThinking,
+                    maxTokens,
+                    temperatureOverride: options.temperatureOverride,
+                    isDeepSeekV4: useDeepSeekV4Sampling,
+                    reasoningEffort: chatCompletionsReasoningEffort,
+                    thinkingTokenBudget,
+                  }) as unknown as ChatCompletionCreateParamsStreaming,
+                  { signal: innerSignal },
+                ),
+                openaiModel,
               ),
-              openaiModel,
             ),
           ),
         { signal, provider: 'openai' },
@@ -659,7 +667,7 @@ export async function* queryModelOpenAI(
     if (isAbortError(error)) throw error
 
     const msg = error instanceof Error ? error.message : String(error)
-    const incompleteStreamError = isIncompleteOpenAIStreamError(error)
+    const invalidStreamError = isInvalidOpenAIStreamError(error)
     logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
 
     if (isChatGPTCodexContextLengthError(error)) {
@@ -678,12 +686,12 @@ export async function* queryModelOpenAI(
     yield createAssistantAPIErrorMessage({
       content: `${prefix} ${msg}`,
       apiError: 'api_error',
-      error: incompleteStreamError
+      error: invalidStreamError
         ? 'server_error'
         : ((error instanceof Error
             ? error
             : new Error(String(error))) as unknown as SDKAssistantMessageError),
-      ...(incompleteStreamError ? { errorDetails: msg } : undefined),
+      ...(invalidStreamError ? { errorDetails: msg } : undefined),
     })
   }
 }

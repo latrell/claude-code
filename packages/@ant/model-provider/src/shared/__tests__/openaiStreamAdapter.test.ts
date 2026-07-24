@@ -278,6 +278,30 @@ describe('adaptOpenAIStreamToAnthropic', () => {
     expect(msgDelta.delta.stop_reason).toBe('end_turn')
   })
 
+  test('rejects content_filter without publishing or retrying it', async () => {
+    const published = []
+    let caught: unknown
+
+    try {
+      for await (const event of adaptOpenAIStreamToAnthropic(
+        mockStream([
+          makeChunk({
+            choices: [{ index: 0, delta: {}, finish_reason: 'content_filter' }],
+          }),
+        ]),
+        'test-model',
+      )) {
+        published.push(event)
+      }
+    } catch (error) {
+      caught = error
+    }
+
+    expect(published).toEqual([])
+    expect((caught as { code?: string }).code).toBe('content_filter')
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+  })
+
   test('forces tool_use stop_reason when tool_calls present but finish_reason is stop', async () => {
     // Some backends (e.g., certain OpenAI-compatible endpoints) incorrectly
     // return finish_reason "stop" when they actually made tool calls.

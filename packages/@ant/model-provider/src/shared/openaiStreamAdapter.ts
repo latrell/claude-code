@@ -57,6 +57,16 @@ class IncompleteOpenAIStreamError extends TypeError {
   readonly retryable = true
 }
 
+class OpenAIContentFilterError extends Error {
+  readonly code = 'content_filter'
+  readonly retryable = false
+
+  constructor() {
+    super('OpenAI-compatible API response was blocked by the content filter')
+    this.name = 'OpenAIContentFilterError'
+  }
+}
+
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
   model: string,
@@ -96,6 +106,10 @@ export async function* adaptOpenAIStreamToAnthropic(
   for await (const chunk of stream) {
     const choice = chunk.choices?.[0]
     const delta = choice?.delta
+
+    if (choice?.finish_reason === 'content_filter') {
+      throw new OpenAIContentFilterError()
+    }
 
     // Extract usage from any chunk that carries it.
     if (chunk.usage) {
@@ -382,7 +396,7 @@ function mapFinishReason(reason: string): string {
     case 'length':
       return 'max_tokens'
     case 'content_filter':
-      return 'end_turn'
+      return 'refusal'
     default:
       return 'end_turn'
   }

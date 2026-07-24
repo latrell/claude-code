@@ -94,6 +94,7 @@ function textFromContent(content: unknown): string {
       if (!part || typeof part !== 'object') return ''
       const record = part as Record<string, unknown>
       if (typeof record.text === 'string') return record.text
+      if (typeof record.refusal === 'string') return record.refusal
       return ''
     })
     .filter(Boolean)
@@ -864,6 +865,7 @@ export async function* adaptResponsesStreamToAnthropic(
   let currentContentIndex = -1
   let textBlockOpen = false
   let hasTextDelta = false
+  let pendingTextPrefix = ''
   let latestReasoningOutputIndex = -1
 
   const ensureStarted = async function* () {
@@ -983,6 +985,14 @@ export async function* adaptResponsesStreamToAnthropic(
       type === 'response.output_text.delta' ||
       type === 'response.refusal.delta'
     ) {
+      const text = String(event.delta ?? '')
+      if (!hasTextDelta && !text.trim()) {
+        pendingTextPrefix += text
+        continue
+      }
+      const emittedText = hasTextDelta ? text : pendingTextPrefix + text
+      pendingTextPrefix = ''
+      hasTextDelta = true
       for await (const reasoningEvent of flushPendingReasoning()) {
         yield reasoningEvent
       }
@@ -996,12 +1006,10 @@ export async function* adaptResponsesStreamToAnthropic(
           content_block: { type: 'text', text: '' },
         } as BetaRawMessageStreamEvent
       }
-      const text = String(event.delta ?? '')
-      if (text) hasTextDelta = true
       yield {
         type: 'content_block_delta',
         index: currentContentIndex,
-        delta: { type: 'text_delta', text },
+        delta: { type: 'text_delta', text: emittedText },
       } as BetaRawMessageStreamEvent
       continue
     }
@@ -1073,7 +1081,7 @@ export async function* adaptResponsesStreamToAnthropic(
         })
       } else if (outputIndex >= 0) {
         const text = textFromResponsesMessageItem(item)
-        if (text) {
+        if (text.trim()) {
           responseTextByOutputIndex.set(outputIndex, text)
         }
       }
@@ -1181,7 +1189,7 @@ export async function* adaptResponsesStreamToAnthropic(
           textFromResponsesMessageItem(event.item) ||
           responseTextByOutputIndex.get(outputIndex) ||
           ''
-        if (text) {
+        if (text.trim()) {
           for await (const reasoningEvent of flushPendingReasoning()) {
             yield reasoningEvent
           }
@@ -1245,13 +1253,31 @@ export async function* adaptResponsesStreamToAnthropic(
           { code: 'server_error', retryable: true },
         )
       }
-      if (turnSession && typeof response.end_turn === 'boolean') {
-        turnSession.lastResponseEndTurn = response.end_turn
+      const endTurn =
+        typeof response.end_turn === 'boolean' ? response.end_turn : undefined
+      if (turnSession && endTurn !== undefined) {
+        turnSession.lastResponseEndTurn = endTurn
       }
-      // A completion without content is still a valid assistant message. Start
-      // it here, but do not start on transport-only lifecycle events such as
-      // response.created/response.in_progress: a disconnect after those events
-      // must remain inside startStreamEagerly's retry scope.
+      if (
+        endTurn !== false &&
+        !hasTextDelta &&
+        emittedTextOutputIndexes.size === 0 &&
+        completedFunctionCallIndexes.size === 0
+      ) {
+        throw new ChatGPTResponsesAPIError(
+          'ChatGPT Responses API completed without text or a tool call',
+          {
+            code: 'server_error',
+            retryable: true,
+            responseId:
+              typeof response.id === 'string' ? response.id : undefined,
+          },
+        )
+      }
+      // An empty completion is only valid when the Codex backend explicitly
+      // requests another sample with end_turn=false. Do not start on
+      // transport-only lifecycle events such as response.created or
+      // response.in_progress so failed/empty attempts stay retryable.
       if (textBlockOpen) {
         yield {
           type: 'content_block_stop',
