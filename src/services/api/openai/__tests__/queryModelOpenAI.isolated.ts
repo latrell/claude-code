@@ -1,13 +1,13 @@
 /**
  * Tests for queryModelOpenAI in index.ts.
  *
- * Focused on the two bugs fixed:
+ * Focused on stream completion invariants:
  *  1. stop_reason was always null in the assembled AssistantMessage because
  *     partialMessage (from message_start) has stop_reason: null, and the
  *     stop_reason captured from message_delta was never applied.
- *  2. partialMessage was not reset to null after message_stop, so the safety
- *     fallback at the end of the loop would yield a second identical
- *     AssistantMessage (causing doubled content in the next API request).
+ *  2. A stream without message_stop must be reported as incomplete instead of
+ *     promoting partial text, thinking, or tool arguments to a successful
+ *     AssistantMessage.
  *
  * Strategy: mock getOpenAIClient + adaptOpenAIStreamToAnthropic so we can
  * feed pre-built Anthropic events directly into queryModelOpenAI and inspect
@@ -608,10 +608,11 @@ mock.module('../../../../utils/messages.js', () => ({
   createAssistantAPIErrorMessage: (opts: any) => ({
     type: 'assistant',
     isApiErrorMessage: true,
+    apiError: opts.apiError,
+    error: opts.error,
     errorDetails: opts.errorDetails,
     message: {
       content: [{ type: 'text', text: opts.content }],
-      apiError: opts.apiError,
     },
     uuid: 'error-uuid',
     timestamp: new Date().toISOString(),
@@ -767,34 +768,58 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     const contentMsg = assistantMessages[0]!
     expect(contentMsg.message.stop_reason).toBe('max_tokens')
     // Second item is the error signal (has apiError set)
-    const errorMsg = assistantMessages[1]!.message as any
-    expect(errorMsg.apiError).toBe('max_output_tokens')
+    expect(assistantMessages[1]!.apiError).toBe('max_output_tokens')
   })
 
-  test('stop_reason is null when no message_delta was received (safety fallback path)', async () => {
-    // Stream ends without message_stop — triggers the safety fallback branch.
-    // stop_reason stays null since no message_delta was ever seen.
+  test('reports partial text as an API error when message_stop is missing', async () => {
     _nextEvents = [
       makeMessageStart(),
       makeContentBlockStart(0, 'text'),
       makeTextDelta(0, 'partial'),
       makeContentBlockStop(0),
-      // No message_delta / message_stop
     ]
 
     const { assistantMessages } = await runQueryModel(_nextEvents)
 
-    // Safety fallback should yield the partial content
     expect(assistantMessages).toHaveLength(1)
-    expect(assistantMessages[0]!.message.stop_reason).toBeNull()
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.apiError).toBe('api_error')
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(assistantMessages[0]!.errorDetails).toContain('message_stop')
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'message_stop terminal event',
+    )
+    expect(JSON.stringify(assistantMessages[0]!.message)).not.toContain(
+      'partial',
+    )
   })
 
-  test('does not turn a transport-only start into an empty completion', async () => {
+  test('reports a start-only stream as an API error', async () => {
     _nextEvents = [makeMessageStart()]
 
     const { assistantMessages } = await runQueryModel(_nextEvents)
 
-    expect(assistantMessages).toHaveLength(0)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.apiError).toBe('api_error')
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'message_stop terminal event',
+    )
+  })
+
+  test('does not accept message_delta without message_stop', async () => {
+    _nextEvents = [makeMessageStart(), makeMessageDelta('end_turn', 0)]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents)
+
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.apiError).toBe('api_error')
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'message_stop terminal event',
+    )
   })
 })
 
@@ -898,18 +923,45 @@ describe('queryModelOpenAI — no duplicate AssistantMessage (partialMessage res
     expect(assistantMessages).toHaveLength(1)
   })
 
-  test('safety fallback path still yields message when stream ends without message_stop', async () => {
-    // Simulates a stream that cuts off without the normal termination sequence.
+  test('preserves a completed thinking-only response', async () => {
     _nextEvents = [
       makeMessageStart(),
-      makeContentBlockStart(0, 'text'),
-      makeTextDelta(0, 'abrupt end'),
-      // No content_block_stop, no message_delta, no message_stop
+      makeContentBlockStart(0, 'thinking'),
+      makeThinkingDelta(0, 'completed reasoning'),
+      makeContentBlockStop(0),
+      makeMessageDelta('end_turn', 8),
+      makeMessageStop(),
     ]
 
     const { assistantMessages } = await runQueryModel(_nextEvents)
 
     expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).not.toBe(true)
+    expect(assistantMessages[0]!.message.stop_reason).toBe('end_turn')
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'thinking', thinking: 'completed reasoning', signature: '' },
+    ])
+  })
+
+  test('reports thinking-only EOF without publishing partial reasoning', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'thinking'),
+      makeThinkingDelta(0, 'unfinished reasoning'),
+    ]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents)
+
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.apiError).toBe('api_error')
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'message_stop terminal event',
+    )
+    expect(JSON.stringify(assistantMessages[0]!.message)).not.toContain(
+      'unfinished reasoning',
+    )
   })
 })
 
@@ -1040,6 +1092,34 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
     expect(assistantMessages).toHaveLength(1)
     expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
       'API Error: terminated',
+    )
+  })
+
+  test('classifies missing finish_reason after output as an incomplete server response', async () => {
+    async function* endsWithoutFinishReason(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'thinking')
+      yield makeThinkingDelta(0, 'unfinished')
+      throw new TypeError(
+        'OpenAI-compatible API stream ended before receiving a finish_reason terminal event; the response may be incomplete, please retry',
+      )
+    }
+
+    const { assistantMessages } = await runQueryModel([], {}, [
+      endsWithoutFinishReason,
+    ])
+
+    expect(_createCallCount).toBe(1)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.apiError).toBe('api_error')
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(assistantMessages[0]!.errorDetails).toContain('finish_reason')
+    expect(JSON.stringify(assistantMessages[0]!.message)).not.toContain(
+      'unfinished',
     )
   })
 })

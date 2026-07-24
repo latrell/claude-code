@@ -138,6 +138,15 @@ function isOpenAIConvertibleMessage(
   return msg.type === 'assistant' || msg.type === 'user'
 }
 
+function isIncompleteOpenAIStreamError(error: unknown): error is Error {
+  if (!(error instanceof Error)) return false
+  return (
+    error.message.includes('terminal event') &&
+    (error.message.includes('finish_reason') ||
+      error.message.includes('message_stop'))
+  )
+}
+
 /** Resolve the wire model without crossing the API-key/ChatGPT boundary. */
 export function resolveOpenAITransportModel(
   model: string,
@@ -150,8 +159,7 @@ export function resolveOpenAITransportModel(
 
 /**
  * Assemble the final AssistantMessage (and optional max_tokens error) from
- * accumulated stream state. Extracted to avoid duplication between the
- * `message_stop` handler and the post-loop safety fallback.
+ * accumulated stream state after the authoritative `message_stop` event.
  */
 function assembleFinalAssistantOutputs(params: {
   partialMessage: BetaMessage | null
@@ -166,7 +174,6 @@ function assembleFinalAssistantOutputs(params: {
   }
   stopReason: string | null
   maxTokens: number
-  allowEmptyContent: boolean
 }): (AssistantMessage | SystemAPIErrorMessage)[] {
   const {
     partialMessage,
@@ -176,7 +183,6 @@ function assembleFinalAssistantOutputs(params: {
     usage,
     stopReason,
     maxTokens,
-    allowEmptyContent,
   } = params
   const outputs: (AssistantMessage | SystemAPIErrorMessage)[] = []
 
@@ -185,7 +191,7 @@ function assembleFinalAssistantOutputs(params: {
     .map(k => contentBlocks[Number(k)])
     .filter(Boolean)
 
-  if (partialMessage && (allowEmptyContent || allBlocks.length > 0)) {
+  if (partialMessage) {
     outputs.push({
       message: {
         ...partialMessage,
@@ -499,6 +505,7 @@ export async function* queryModelOpenAI(
     const contentBlocks: Record<number, Record<string, unknown>> = {}
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null
+    let receivedMessageStop = false
     let stopReason: string | null = null
     let usage = {
       input_tokens: 0,
@@ -572,6 +579,7 @@ export async function* queryModelOpenAI(
           break
         }
         case 'message_stop': {
+          receivedMessageStop = true
           // Assemble ONE AssistantMessage with ALL content blocks, matching the
           // Anthropic SDK path. Real usage (input + output tokens) is available
           // here and injected so tokenCountWithEstimation() can read it.
@@ -584,15 +592,13 @@ export async function* queryModelOpenAI(
               usage,
               stopReason,
               maxTokens,
-              allowEmptyContent: true,
             })) {
               if (output.type === 'assistant') {
                 collectedMessages.push(output)
               }
               yield output
             }
-            // Reset partialMessage so the post-loop safety fallback does not
-            // yield a second identical AssistantMessage.
+            // A terminal event can only publish this response once.
             partialMessage = null
           }
           // Track cost and token usage
@@ -620,6 +626,15 @@ export async function* queryModelOpenAI(
       } as StreamEvent
     }
 
+    // Never promote streamed fragments to a successful AssistantMessage. A
+    // provider EOF is only authoritative after message_stop; without it text,
+    // reasoning, or tool arguments may all be truncated.
+    if (!receivedMessageStop) {
+      throw new TypeError(
+        'OpenAI API stream ended before receiving a message_stop terminal event; the response may be incomplete, please retry',
+      )
+    }
+
     // Record LLM observation in Langfuse (no-op if not configured)
     recordLLMObservation(options.langfuseTrace ?? null, {
       model: openaiModel,
@@ -638,28 +653,13 @@ export async function* queryModelOpenAI(
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
       ...(enableThinking && { thinking: { type: 'enabled' } }),
     })
-
-    // Safety: if stream ended without message_stop, assemble and yield whatever we have
-    if (partialMessage) {
-      for (const output of assembleFinalAssistantOutputs({
-        partialMessage,
-        contentBlocks,
-        tools,
-        agentId: options.agentId,
-        usage,
-        stopReason,
-        maxTokens,
-        allowEmptyContent: false,
-      })) {
-        yield output
-      }
-    }
   } catch (error) {
     if (error instanceof StopConfirmationError) throw error
     if (signal.aborted) return
     if (isAbortError(error)) throw error
 
     const msg = error instanceof Error ? error.message : String(error)
+    const incompleteStreamError = isIncompleteOpenAIStreamError(error)
     logForDebugging(`[OpenAI] Error: ${msg}`, { level: 'error' })
 
     if (isChatGPTCodexContextLengthError(error)) {
@@ -678,9 +678,12 @@ export async function* queryModelOpenAI(
     yield createAssistantAPIErrorMessage({
       content: `${prefix} ${msg}`,
       apiError: 'api_error',
-      error: (error instanceof Error
-        ? error
-        : new Error(String(error))) as unknown as SDKAssistantMessageError,
+      error: incompleteStreamError
+        ? 'server_error'
+        : ((error instanceof Error
+            ? error
+            : new Error(String(error))) as unknown as SDKAssistantMessageError),
+      ...(incompleteStreamError ? { errorDetails: msg } : undefined),
     })
   }
 }

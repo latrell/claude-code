@@ -53,6 +53,10 @@ function hasSemanticDelta(
   return false
 }
 
+class IncompleteOpenAIStreamError extends TypeError {
+  readonly retryable = true
+}
+
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
   model: string,
@@ -316,6 +320,17 @@ export async function* adaptOpenAIStreamToAnthropic(
       pendingFinishReason = choice.finish_reason
       pendingHasToolCalls = toolBlocks.size > 0
     }
+  }
+
+  // A clean iterator EOF is not a successful Chat Completions response. The
+  // provider must send finish_reason so downstream consumers can distinguish a
+  // completed turn from a truncated text, reasoning, or tool-call block.
+  // Throw before synthesizing content_block_stop: Grok assembles messages at
+  // block boundaries and must not publish an interrupted block as complete.
+  if (pendingFinishReason === null) {
+    throw new IncompleteOpenAIStreamError(
+      'OpenAI-compatible API stream ended before receiving a finish_reason terminal event; the response may be incomplete, please retry',
+    )
   }
 
   // Safety: close any remaining open blocks

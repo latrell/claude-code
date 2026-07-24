@@ -84,20 +84,54 @@ describe('adaptOpenAIStreamToAnthropic', () => {
     expect(events[1].type).toBe('content_block_start')
   })
 
-  test('ignores transport-only bootstrap chunks before semantic output', async () => {
-    const events = await collectEvents([
-      makeChunk({
-        choices: [
-          {
-            index: 0,
-            delta: { role: 'assistant', content: '' },
-            finish_reason: null,
-          },
-        ],
-      }),
-    ])
+  test('rejects a bootstrap-only stream that ends without finish_reason', async () => {
+    await expect(
+      collectEvents([
+        makeChunk({
+          choices: [
+            {
+              index: 0,
+              delta: { role: 'assistant', content: '' },
+              finish_reason: null,
+            },
+          ],
+        }),
+      ]),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('finish_reason terminal event'),
+      retryable: true,
+    })
+  })
 
-    expect(events).toHaveLength(0)
+  test('rejects partial content without synthesizing terminal events', async () => {
+    const events: any[] = []
+
+    await expect(
+      (async () => {
+        for await (const event of adaptOpenAIStreamToAnthropic(
+          mockStream([
+            makeChunk({
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: 'partial' },
+                  finish_reason: null,
+                },
+              ],
+            }),
+          ]),
+          'gpt-4o',
+        )) {
+          events.push(event)
+        }
+      })(),
+    ).rejects.toThrow('finish_reason terminal event')
+
+    expect(events.map(event => event.type)).toEqual([
+      'message_start',
+      'content_block_start',
+      'content_block_delta',
+    ])
   })
 
   test('does not emit message_start before a bootstrap-only stream error', async () => {
