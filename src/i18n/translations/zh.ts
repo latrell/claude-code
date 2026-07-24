@@ -1839,6 +1839,11 @@ const zh: Record<string, string> = {
 
   // ── API Error prefix ────────────────────────────────────────────
   'API Error': 'API 错误',
+  'API Error (retries exhausted)': 'API 错误（重试次数已用尽）',
+  'DeepSeek V4 returned no final answer or tool call.':
+    'DeepSeek V4 未返回最终答复或工具调用。',
+  'DeepSeek V4 repeatedly returned no final answer or tool call.':
+    'DeepSeek V4 多次未返回最终答复或工具调用。',
 
   // ── Bundled skill descriptions (model-invocable, user-visible in /help) ─
   'Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".':

@@ -10,9 +10,10 @@
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { APIConnectionError } from 'openai'
+import { APIConnectionError, APIError } from 'openai'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
+import { normalizeCompatProviderError } from '../compatErrors.js'
 import {
   hasExhaustedCompatRetries,
   isCompatConnectionInterruptionError,
@@ -267,6 +268,69 @@ describe('isRetryableCompatError', () => {
 
   test('generic APIError with 409 status 可重试', () => {
     expect(isRetryableCompatError(new MockAPIError(409, 'Conflict'))).toBe(true)
+  })
+
+  test('DeepSeek V4 semantic-empty 在 SSE 元数据缺失时仍可重试，但真实 400 优先', () => {
+    const statuslessError = new Error(
+      'DeepSeek V4 semantic-empty response; retry request',
+    )
+    const clientError = new MockAPIError(
+      400,
+      'DeepSeek V4 semantic-empty response; retry request',
+    )
+
+    expect(isRetryableCompatError(statuslessError)).toBe(true)
+    expect(isRetryableCompatError(clientError)).toBe(false)
+  })
+
+  test('OpenAI SDK 的 HTTP 200 SSE 数值 code/type 元数据保留服务端重试语义', () => {
+    const streamServerError = new APIError(
+      undefined,
+      {
+        type: 'InternalServerError',
+        code: 500,
+        message: 'stream generation failed',
+      },
+      undefined,
+      undefined,
+    )
+    const streamClientError = new APIError(
+      undefined,
+      {
+        type: 'InvalidRequestError',
+        code: 400,
+        message: 'invalid stream request',
+      },
+      undefined,
+      undefined,
+    )
+
+    expect(streamServerError.status).toBeUndefined()
+    expect(isRetryableCompatError(streamServerError)).toBe(true)
+    expect(isCompatConnectionInterruptionError(streamServerError)).toBe(false)
+    expect(isRetryableCompatError(streamClientError)).toBe(false)
+  })
+
+  test('用户中断和显式 non-retryable 决定优先于 semantic-empty 文案', () => {
+    const aborted = new Error(
+      'DeepSeek V4 semantic-empty response; retry request',
+    )
+    aborted.name = 'AbortError'
+    const explicitlyTerminal = Object.assign(
+      new Error('DeepSeek V4 semantic-empty response; retry request'),
+      { retryable: false },
+    )
+    const sdkUserAbort = new MockAPIUserAbortError(
+      'DeepSeek V4 semantic-empty response; retry request',
+    )
+
+    expect(isRetryableCompatError(aborted)).toBe(false)
+    expect(isRetryableCompatError(explicitlyTerminal)).toBe(false)
+    expect(normalizeCompatProviderError(aborted)).toBe(aborted)
+    expect(normalizeCompatProviderError(sdkUserAbort)).toBe(sdkUserAbort)
+    expect(normalizeCompatProviderError(explicitlyTerminal)).toBe(
+      explicitlyTerminal,
+    )
   })
 
   test('Responses 流内瞬态错误码可重试，invalid 错误码不可重试', () => {
@@ -541,6 +605,54 @@ describe('withCompatRetry', () => {
     const progress = await gen.next()
     expect(progress.done).toBe(false)
     expect((progress.value as SystemAPIErrorMessage).retryInMs).toBe(11_054)
+    await gen.return('cancel-test' as never)
+  })
+
+  test('DeepSeek V4 semantic-empty 重试进度使用结构化且友好的显示文案', async () => {
+    const upstreamError = new APIError(
+      undefined,
+      {
+        type: 'InternalServerError',
+        code: 500,
+        message: 'DeepSeek V4 semantic-empty response; retry request',
+      },
+      undefined,
+      undefined,
+    )
+    const gen = withCompatRetry(
+      async () => {
+        throw upstreamError
+      },
+      {
+        maxRetries: 1,
+        signal: new AbortController().signal,
+        provider: 'openai',
+      },
+    )
+
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    const message = progress.value as SystemAPIErrorMessage
+    expect(String(message.message!.content)).toContain('DeepSeek V4')
+    expect(String(message.message!.content)).not.toContain('semantic-empty')
+    expect(String(message.message!.content)).not.toContain('retry request')
+    expect((message.error as unknown as { code?: string }).code).toBe(
+      'deepseek_v4_semantic_empty',
+    )
+    expect((message.error as unknown as { status?: number }).status).toBe(500)
+    expect((message.error as unknown as { type?: string }).type).toBe(
+      'InternalServerError',
+    )
+    expect(
+      (message.error as unknown as { providerCode?: unknown }).providerCode,
+    ).toBe(500)
+    expect((message.error as unknown as { cause?: unknown }).cause).toBe(
+      upstreamError,
+    )
+    expect((message.error as unknown as { error?: unknown }).error).toBe(
+      upstreamError.error,
+    )
+    expect(JSON.stringify(message.error)).toContain('"status":500')
     await gen.return('cancel-test' as never)
   })
 

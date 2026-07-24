@@ -13,6 +13,9 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 const { t, tf } = await import('../t.js')
+const { localizedAPIErrorDetail, localizedAPIErrorPrefix } = await import(
+  '../apiError.js'
+)
 const { localizedDetachedAuxiliaryStopMessage, localizedStopErrorMessage } =
   await import('../stop.js')
 const { StopConfirmationError } = await import(
@@ -268,6 +271,29 @@ describe('t', () => {
     ])
     expect(localizedDetachedAuxiliaryStopMessage(terminal)).toBe(
       '已请求停止，但无法确认一个或多个后台请求已经停止，它们可能仍在运行。请查看调试日志了解详情。',
+    )
+  })
+
+  test('localizes DeepSeek V4 semantic-empty errors without exposing provider internals', () => {
+    const error = Object.assign(
+      new Error('DeepSeek V4 semantic-empty response; retry request'),
+      { code: 'deepseek_v4_semantic_empty' },
+    )
+
+    mockLanguage = '简体中文'
+    expect(localizedAPIErrorPrefix(false)).toBe('API 错误')
+    expect(localizedAPIErrorPrefix(true)).toBe('API 错误（重试次数已用尽）')
+    expect(localizedAPIErrorDetail(error, 'retrying')).toBe(
+      'DeepSeek V4 未返回最终答复或工具调用。',
+    )
+    expect(localizedAPIErrorDetail(error, 'retries_exhausted')).toBe(
+      'DeepSeek V4 多次未返回最终答复或工具调用。',
+    )
+
+    mockLanguage = 'English'
+    expect(localizedAPIErrorPrefix(true)).toBe('API Error (retries exhausted)')
+    expect(localizedAPIErrorDetail(error, 'retrying')).toBe(
+      'DeepSeek V4 returned no final answer or tool call.',
     )
   })
 

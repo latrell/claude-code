@@ -27,6 +27,11 @@ import { disableKeepAlive } from 'src/utils/proxy.js'
 import { sleep } from 'src/utils/sleep.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import { waitForProviderAbortSettlement } from './providerCancellation.js'
+import {
+  isDeepSeekV4SemanticEmptyError,
+  normalizeCompatProviderError,
+} from './compatErrors.js'
+import { localizedAPIErrorDetail } from 'src/i18n/apiError.js'
 
 // ---------------------------------------------------------------------------
 // 常量 — 比 firstParty（DEFAULT_MAX_RETRIES=10）保守，避免在第三方 API 上产生
@@ -109,6 +114,16 @@ const RETRYABLE_PROVIDER_ERROR_CODES = new Set([
   'vector_store_timeout',
 ])
 
+const RETRYABLE_PROVIDER_ERROR_TYPES = new Set([
+  'servererror',
+  'server_error',
+  'internalservererror',
+  'internal_server_error',
+  'internal_error',
+  'ratelimiterror',
+  'rate_limit_error',
+])
+
 function getErrorCodes(error: unknown): string[] {
   const seen = new Set<object>()
   const codes: string[] = []
@@ -127,6 +142,47 @@ function getErrorCodes(error: unknown): string[] {
   }
 
   return codes
+}
+
+function getHTTPStatusLikeErrorCode(error: unknown): number | undefined {
+  const seen = new Set<object>()
+  let current = getErrorRecord(error)
+
+  for (let depth = 0; current && depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
+    if (seen.has(current)) break
+    seen.add(current)
+
+    const code = current.code
+    if (
+      typeof code === 'number' &&
+      Number.isInteger(code) &&
+      code >= 100 &&
+      code <= 599
+    ) {
+      return code
+    }
+
+    current = getErrorRecord(current.cause)
+  }
+
+  return undefined
+}
+
+function getErrorTypes(error: unknown): string[] {
+  const seen = new Set<object>()
+  const types: string[] = []
+  let current = getErrorRecord(error)
+
+  for (let depth = 0; current && depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
+    if (seen.has(current)) break
+    seen.add(current)
+
+    const type = getStringField(current, 'type')
+    if (type !== undefined) types.push(type.toLowerCase())
+    current = getErrorRecord(current.cause)
+  }
+
+  return types
 }
 
 function getErrorStatus(error: unknown): number | undefined {
@@ -207,6 +263,8 @@ export function isCompatConnectionInterruptionError(error: unknown): boolean {
  * 8. Bun fetch 的 socket 层错误（"The socket connection was closed
  *    unexpectedly" / error.code ConnectionClosed 等）——HTTP/2 keep-alive
  *    连接被服务端/LB 闲置关闭后复用时触发，性质同 ECONNRESET
+ * 9. DeepSeek V4 服务端明确要求重试的 semantic-empty 生成结果
+ * 10. OpenAI SDK 对 HTTP 200 SSE 内错误生成的数值 code/type 元数据
  *
  * 不重试的：
  * - APIUserAbortError（用户中断）/ AbortError
@@ -235,6 +293,43 @@ export function isRetryableCompatError(error: unknown): boolean {
   if (status === 408 || status === 409 || status === 429) return true
   if (status !== undefined && status >= 500 && status < 600) return true
   if (status !== undefined && status >= 400 && status < 500) return false
+
+  // The OpenAI SDK represents an error embedded in an otherwise successful
+  // SSE response as APIError(status=undefined). vLLM supplies the HTTP-like
+  // status in numeric `code` and the category in `type`, so preserve those
+  // server semantics instead of treating the error as unknown.
+  const statusLikeCode = getHTTPStatusLikeErrorCode(error)
+  if (
+    statusLikeCode === 408 ||
+    statusLikeCode === 409 ||
+    statusLikeCode === 429
+  ) {
+    return true
+  }
+  if (
+    statusLikeCode !== undefined &&
+    statusLikeCode >= 500 &&
+    statusLikeCode < 600
+  ) {
+    return true
+  }
+  if (
+    statusLikeCode !== undefined &&
+    statusLikeCode >= 400 &&
+    statusLikeCode < 500
+  ) {
+    return false
+  }
+
+  if (
+    getErrorTypes(error).some(type => RETRYABLE_PROVIDER_ERROR_TYPES.has(type))
+  ) {
+    return true
+  }
+
+  // Metadata can be stripped from an HTTP 200 SSE error. The DeepSeek V4
+  // parser's exact provider signal is the final structured fallback.
+  if (isDeepSeekV4SemanticEmptyError(error)) return true
 
   if (
     typeof error === 'object' &&
@@ -334,6 +429,7 @@ function createRetryProgressMessage(
   provider: string,
 ): SystemAPIErrorMessage {
   const msg = error instanceof Error ? error.message : String(error)
+  const displayMessage = localizedAPIErrorDetail(error, 'retrying', msg)
   const delay = formatDuration(delayMs, { hideTrailingZeros: true })
   return {
     type: 'system',
@@ -344,7 +440,7 @@ function createRetryProgressMessage(
       role: 'user',
       content: tf(
         '[{provider}] Retry {attempt}/{maxRetries} in {delay}: {message}',
-        { provider, attempt, maxRetries, delay, message: msg },
+        { provider, attempt, maxRetries, delay, message: displayMessage },
       ),
     },
     retryInMs: delayMs,
@@ -469,12 +565,12 @@ export async function* withCompatRetry<T>(
         options.abortSettlementGraceMs,
       )
       return result
-    } catch (error: unknown) {
+    } catch (caughtError: unknown) {
       // A cancellation settlement timeout is stronger than the signal's
       // generic aborted state. Preserve it so callers cannot claim Stop was
       // confirmed, and never retry an unconfirmed still-live request.
-      if (error instanceof StopConfirmationError) {
-        throw error
+      if (caughtError instanceof StopConfirmationError) {
+        throw caughtError
       }
       // Fetch/SDK implementations do not agree on the error shape produced by
       // AbortSignal (AbortError, APIUserAbortError, or even a socket error).
@@ -484,6 +580,7 @@ export async function* withCompatRetry<T>(
         throw new AbortError('Request was aborted.')
       }
 
+      const error = normalizeCompatProviderError(caughtError)
       lastError = error
 
       const retryable = isRetryableCompatError(error)

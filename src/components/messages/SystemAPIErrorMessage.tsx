@@ -7,6 +7,7 @@ import { useInterval } from 'usehooks-ts';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { t, tf } from '../../i18n/t.js';
+import { localizedAPIErrorDetail } from '../../i18n/apiError.js';
 
 const MAX_API_ERROR_CHARS = 1000;
 
@@ -37,7 +38,7 @@ export function SystemAPIErrorMessage({
 
   const retryInSecondsLive = Math.max(0, Math.round((_retryInMs - countdownMs) / 1000));
 
-  const formatted = formatAPIError(_error);
+  const formatted = localizedAPIErrorDetail(_error, 'retrying', formatAPIError(_error));
   const truncated = !verbose && formatted.length > MAX_API_ERROR_CHARS;
 
   return (

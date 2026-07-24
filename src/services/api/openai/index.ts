@@ -70,6 +70,11 @@ import {
   hasExhaustedCompatRetries,
   startStreamEagerly,
 } from '../compatRetry.js'
+import { isDeepSeekV4SemanticEmptyError } from '../compatErrors.js'
+import {
+  localizedAPIErrorDetail,
+  localizedAPIErrorPrefix,
+} from '../../../i18n/apiError.js'
 import {
   EmptyOpenAICompletionError,
   holdUntilObservableOpenAIOutput,
@@ -145,6 +150,7 @@ function isOpenAIConvertibleMessage(
 function isInvalidOpenAIStreamError(error: unknown): error is Error {
   if (!(error instanceof Error)) return false
   if (error instanceof EmptyOpenAICompletionError) return true
+  if (isDeepSeekV4SemanticEmptyError(error)) return true
   return (
     error.message.includes('terminal event') &&
     (error.message.includes('finish_reason') ||
@@ -680,11 +686,15 @@ export async function* queryModelOpenAI(
     }
 
     // Distinguish "retries exhausted" from truly unretryable errors
-    const prefix = hasExhaustedCompatRetries(error)
-      ? 'API Error (retries exhausted):'
-      : 'API Error:'
+    const retriesExhausted = hasExhaustedCompatRetries(error)
+    const prefix = localizedAPIErrorPrefix(retriesExhausted)
+    const displayMessage = localizedAPIErrorDetail(
+      error,
+      retriesExhausted ? 'retries_exhausted' : 'failed',
+      msg,
+    )
     yield createAssistantAPIErrorMessage({
-      content: `${prefix} ${msg}`,
+      content: `${prefix}: ${displayMessage}`,
       apiError: 'api_error',
       error: invalidStreamError
         ? 'server_error'

@@ -15,6 +15,7 @@
  */
 import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { APIError } from 'openai'
 import type {
   AssistantMessage,
   StreamEvent,
@@ -1124,6 +1125,58 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
     expect(otherOutputs.some(item => item.type === 'system')).toBe(true)
   })
 
+  test('retries the DeepSeek V4 HTTP 200 SSE semantic-empty server error', async () => {
+    async function* failsWithServerSemanticEmpty(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'thinking')
+      yield makeThinkingDelta(0, 'discarded failed attempt')
+      throw new APIError(
+        undefined,
+        {
+          type: 'InternalServerError',
+          code: 500,
+          message: 'DeepSeek V4 semantic-empty response; retry request',
+        },
+        undefined,
+        undefined,
+      )
+    }
+
+    async function* succeedsAfterRetry(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered answer')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 5)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, otherOutputs, streamEvents } =
+      await runQueryModel([], {}, [
+        failsWithServerSemanticEmpty,
+        succeedsAfterRetry,
+      ])
+
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'recovered answer' },
+    ])
+    expect(JSON.stringify(streamEvents)).not.toContain(
+      'discarded failed attempt',
+    )
+    const progress = otherOutputs.find(item => item.type === 'system')
+    expect(progress).toBeDefined()
+    expect(String(progress.message.content)).not.toContain('semantic-empty')
+    expect(progress.error.code).toBe('deepseek_v4_semantic_empty')
+  })
+
   test('does not retry terminated after adapted output was yielded', async () => {
     async function* breaksAfterTextDelta(): AsyncGenerator<
       BetaRawMessageStreamEvent,
@@ -1202,6 +1255,46 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
     expect(assistantMessages[0]!.error).toBe('server_error')
     expect(assistantMessages[0]!.errorDetails).toContain(
       'completed without text or a tool call',
+    )
+  })
+
+  test('localizes a persistent DeepSeek V4 server semantic-empty failure while retaining diagnostics', async () => {
+    async function* failsWithServerSemanticEmpty(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      throw new APIError(
+        undefined,
+        {
+          type: 'InternalServerError',
+          code: 500,
+          message: 'DeepSeek V4 semantic-empty response; retry request',
+        },
+        undefined,
+        undefined,
+      )
+    }
+
+    const { assistantMessages } = await runQueryModel([], {}, [
+      failsWithServerSemanticEmpty,
+      failsWithServerSemanticEmpty,
+      failsWithServerSemanticEmpty,
+      failsWithServerSemanticEmpty,
+    ])
+
+    expect(_createCallCount).toBe(4)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.isApiErrorMessage).toBe(true)
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    expect(JSON.stringify(assistantMessages[0]!.message)).toContain(
+      'DeepSeek V4',
+    )
+    expect(JSON.stringify(assistantMessages[0]!.message)).not.toContain(
+      'semantic-empty response',
+    )
+    expect(assistantMessages[0]!.errorDetails).toBe(
+      'DeepSeek V4 semantic-empty response; retry request',
     )
   })
 })
