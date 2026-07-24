@@ -109,6 +109,26 @@ describe('getStaticModelsForConnection', () => {
       provider('mimo').models.find(model => model.id === 'mimo-v2-flash')
         ?.deprecated,
     ).toContain('2026-06-30')
+    expect(
+      provider('deepseek').models.map(
+        ({
+          id,
+          contextWindow,
+          contextWindowTokens,
+          maxOutputTokens,
+          maxThinkingTokens,
+        }) => [
+          id,
+          contextWindow,
+          contextWindowTokens,
+          maxOutputTokens,
+          maxThinkingTokens,
+        ],
+      ),
+    ).toEqual([
+      ['deepseek-v4-pro', '1M', 1_000_000, 384_000, 64_000],
+      ['deepseek-v4-flash', '1M', 1_000_000, 384_000, 64_000],
+    ])
   })
 
   test('anthropic kinds expose default + alias entries', () => {

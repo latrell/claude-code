@@ -29,12 +29,16 @@ import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/language.ts', () => ({
+  getResolvedLanguage: () => 'en',
+}))
 
 // ── Workspace API key mock ──────────────────────────────────────────────────
 const mockApiKey = 'sk-ant-api03-test-skill-store-key'
 
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
+  fileSuffixForOauthConfig: () => '',
 }))
 
 const prepareWorkspaceApiRequestMock = mock(async () => ({

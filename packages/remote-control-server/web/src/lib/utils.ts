@@ -1,5 +1,14 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { getResolvedLanguage, type ResolvedLanguage } from './i18n'
+
+const DURATION_UNITS: Record<
+  ResolvedLanguage,
+  { hour: string; minute: string; second: string }
+> = {
+  en: { hour: 'h', minute: 'm', second: 's' },
+  zh: { hour: '时', minute: '分', second: '秒' },
+}
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -16,6 +25,31 @@ export function esc(str: string | null | undefined): string {
 export function formatTime(ts: number | null | undefined): string {
   if (!ts) return ''
   return new Date(ts * 1000).toLocaleString()
+}
+
+/**
+ * Format an elapsed duration measured in seconds using the Web UI language.
+ * Keeps seconds visible while adding minute and hour components as needed.
+ */
+export function formatDurationSeconds(
+  durationSeconds: number,
+  language: ResolvedLanguage = getResolvedLanguage(),
+): string {
+  const totalSeconds = Number.isFinite(durationSeconds)
+    ? Math.max(0, Math.floor(durationSeconds))
+    : 0
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const units = DURATION_UNITS[language]
+
+  if (hours > 0) {
+    return `${hours}${units.hour} ${minutes}${units.minute} ${seconds}${units.second}`
+  }
+  if (minutes > 0) {
+    return `${minutes}${units.minute} ${seconds}${units.second}`
+  }
+  return `${seconds}${units.second}`
 }
 
 export function statusClass(status: string | null | undefined): string {

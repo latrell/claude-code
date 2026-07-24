@@ -558,7 +558,7 @@ const zh: Record<string, string> = {
   RPM: '请求/分钟',
   TPM: '词元/分钟',
   'Rate limit': '速率限制',
-  '{label} ({mins}min)': '{label}（{mins} 分钟）',
+  '{label} ({duration})': '{label}（{duration}）',
   'Daily tokens': '每日词元',
   '{tokens} tokens used on {date}': '{date} 已使用 {tokens} 词元',
   'Loading usage data\u2026': '正在加载用量数据\u2026',
@@ -902,7 +902,30 @@ const zh: Record<string, string> = {
 
   // ── Spinner thinking state fragments ───────────────────────────
   'thinking{effort}': '思考中{effort}',
-  'thought for {n}s': '思考了 {n} 秒',
+  'thought for {duration}': '思考了 {duration}',
+  Sleep: '休眠',
+  'Sleep: {duration}': '休眠：{duration}',
+  'Sleep interrupted after {duration}': '休眠在 {duration} 后中断',
+  'Slept for {duration}': '已休眠 {duration}',
+  'Command timed out after {duration}': '命令在 {duration} 后超时',
+  'Tool {tool} is running…': '工具 {tool} 正在运行…',
+  'Tool {tool} running for {duration}…': '工具 {tool} 已运行 {duration}…',
+  'wait {duration}': '等待 {duration}',
+  'Waited {duration}.': '已等待 {duration}。',
+  'Held {key} for {duration}': '已按住 {key} {duration}',
+  'Server unreachable for {duration}, giving up.':
+    '服务器已连续 {duration} 无法访问，正在放弃。',
+  'Connection error, retrying in {delay} ({elapsed} elapsed): {error}':
+    '连接错误，将在 {delay} 后重试（已持续 {elapsed}）：{error}',
+  'Persistent errors for {duration}, giving up.':
+    '错误已持续 {duration}，正在放弃。',
+  'Poll failed, retrying in {delay} ({elapsed} elapsed): {error}':
+    '轮询失败，将在 {delay} 后重试（已持续 {elapsed}）：{error}',
+  'Failed to stop work {workId} (attempt {attempt}/{maxAttempts}), retrying in {delay}: {error}':
+    '停止工作 {workId} 失败（第 {attempt}/{maxAttempts} 次），将在 {delay} 后重试：{error}',
+  'Session timed out after {duration}': '会话在 {duration} 后超时',
+  '[{provider}] Retry {attempt}/{maxRetries} in {delay}: {message}':
+    '[{provider}] 第 {attempt}/{maxRetries} 次重试，将在 {delay} 后重试：{message}',
 
   // ── TagTabs ────────────────────────────────────────────────────
   Resume: '恢复会话',
@@ -1843,10 +1866,11 @@ const zh: Record<string, string> = {
   '(⏎ to configure)': '（⏎ 配置）',
 
   // ── Remote (CCR) command descriptions ──────────────────────────
-  '~10–30 min · Claude Code on the web drafts an advanced plan you can edit and approve. See https://code.claude.com/docs/en/claude-code-on-the-web':
-    '约 10–30 分钟 · Claude Code 网页版起草高级计划，您可以编辑和批准。详见 https://code.claude.com/docs/en/claude-code-on-the-web',
-  '~10–20 min · Finds and verifies bugs in your branch. Runs in Claude Code on the web. See https://code.claude.com/docs/en/claude-code-on-the-web':
-    '约 10–20 分钟 · 查找并验证分支中的错误。在 Claude Code 网页版中运行。详见 https://code.claude.com/docs/en/claude-code-on-the-web',
+  '~{minDuration}–{maxDuration} · Claude Code on the web drafts an advanced plan you can edit and approve. See {url}':
+    '约 {minDuration}–{maxDuration} · Claude Code 网页版起草高级计划，您可以编辑和批准。详见 {url}',
+  '~{minDuration}–{maxDuration} · Finds and verifies bugs in your branch. Runs in Claude Code on the web. See {url}':
+    '约 {minDuration}–{maxDuration} · 查找并验证分支中的错误。在 Claude Code 网页版中运行。详见 {url}',
+  'a few minutes': '几分钟',
 
   'Manage memory stores': '管理记忆存储',
   'Manage Claude Code plugins and marketplaces': '管理 Claude Code 插件和市场',
@@ -3541,8 +3565,8 @@ const zh: Record<string, string> = {
     'LSP 服务器 "{serverName}" 因信号 {signal} 崩溃',
   'LSP server "{serverName}" {method} failed: {error}':
     'LSP 服务器 "{serverName}" {method} 失败：{error}',
-  'LSP server "{serverName}" timed out on {method} after {timeoutMs}ms':
-    'LSP 服务器 "{serverName}" 在 {method} 上超时（{timeoutMs}ms）',
+  'LSP server "{serverName}" timed out on {method} after {duration}':
+    'LSP 服务器 "{serverName}" 在 {method} 上超时（{duration}）',
   'Authentication successful for {serverName}. The server will connect when the agent runs.':
     '{serverName} 认证成功。服务器将在智能体运行时连接。',
   'Marketplace {name} already on disk — declared in {scope} settings':
@@ -4563,7 +4587,7 @@ const zh: Record<string, string> = {
   'Autofix PR': '自动修复 PR',
   'Track:': '跟踪：',
   'Monitor already active: {repo}#{number}': '监控已在运行：{repo}#{number}',
-  'gh pr view timed out after {timeout}ms': 'gh pr view 在 {timeout}ms 后超时',
+  'gh pr view timed out after {duration}': 'gh pr view 在 {duration} 后超时',
   'gh pr view exited {code}: {stderr}':
     'gh pr view 以退出码 {code} 结束：{stderr}',
   'gh pr view JSON parse failed: {error}': 'gh pr view JSON 解析失败：{error}',
@@ -6249,14 +6273,14 @@ const zh: Record<string, string> = {
   to: '至',
   'show all': '显示全部',
   'indexing…': '索引中…',
-  'indexed in {ms}ms': '索引完成，耗时 {ms}ms',
+  'indexed in {duration}': '索引完成，耗时 {duration}',
   'no matches': '无匹配',
   'worker request': 'worker 请求',
   'sandbox request': '沙箱请求',
   'dialog open': '对话框已打开',
   'input needed': '需要输入',
-  'Worktree creation took {secs}s. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.':
-    'worktree 创建耗时 {secs} 秒。对于大型仓库，可在 .claude/settings.json 中设置 `worktree.sparsePaths`，只检出需要的目录。',
+  'Worktree creation took {duration}. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.':
+    'worktree 创建耗时 {duration}。对于大型仓库，可在 .claude/settings.json 中设置 `worktree.sparsePaths`，只检出需要的目录。',
   'Allow network connection to {host}?': '允许网络连接到 {host} 吗？',
   'Error: sandbox required but unavailable: {reason}':
     '错误：需要沙箱但不可用：{reason}',
@@ -6776,12 +6800,12 @@ const zh: Record<string, string> = {
   '[{name}] Tool call timed out: {toolName}':
     '[{name}] 工具调用超时：{toolName}',
   'Bridge client disconnected': '桥接客户端已断开连接',
-  '[{name}] Connection attempt timed out after 5000ms':
-    '[{name}] 连接尝试在 5000ms 后超时',
+  '[{name}] Connection attempt timed out after {duration}':
+    '[{name}] 连接尝试在 {duration} 后超时',
   '[{name}] Cannot send request: not connected':
     '[{name}] 无法发送请求：未连接',
-  '[{name}] Tool request timed out after {timeout}ms':
-    '[{name}] 工具请求在 {timeout}ms 后超时',
+  '[{name}] Tool request timed out after {duration}':
+    '[{name}] 工具请求在 {duration} 后超时',
   '[{name}] Insecure socket directory permissions: {mode} (expected 0700). Directory may have been tampered with.':
     '[{name}] 套接字目录权限不安全：{mode}（应为 0700）。目录可能已被篡改。',
   'Socket directory not owned by current user (uid: {uid}, dir uid: {dirUid}). Potential security risk.':
@@ -6906,8 +6930,8 @@ const zh: Record<string, string> = {
     '已拦截：{sleepPattern}。请使用 run_in_background: true 在后台运行阻塞命令 — 完成时您会收到通知。对于流式事件（查看日志、轮询 API），请使用 Monitor 工具。如果确实需要延时（限流、刻意节奏），请保持在 2 秒以内。',
   '<error>Command was aborted before completion</error>':
     '<error>命令在完成前已中止</error>',
-  'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.':
-    '命令超过了助手模式阻塞预算（{blockingBudget} 秒），已被移至后台运行，ID 为：{backgroundTaskId}。它仍在运行 — 完成时您会收到通知。输出正写入：{outputPath}。在助手模式下，请将长时间运行的工作委派给子 agent，或使用 run_in_background 保持对话响应。',
+  'Command exceeded the assistant-mode blocking budget ({blockingBudget}) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.':
+    '命令超过了助手模式阻塞预算（{blockingBudget}），已被移至后台运行，ID 为：{backgroundTaskId}。它仍在运行 — 完成时您会收到通知。输出正写入：{outputPath}。在助手模式下，请将长时间运行的工作委派给子 agent，或使用 run_in_background 保持对话响应。',
   'Command was manually backgrounded by user with ID: {backgroundTaskId}. Output is being written to: {outputPath}':
     '命令已由用户手动转入后台，ID 为：{backgroundTaskId}。输出正写入：{outputPath}',
   'Command running in background with ID: {backgroundTaskId}. Output is being written to: {outputPath}':
@@ -7076,8 +7100,8 @@ const zh: Record<string, string> = {
     '创建一个新团队以协调多个 agent',
   'Already leading team "{existingTeam}". A leader can only manage one team at a time. Use TeamDelete to end the current team before creating a new one.':
     '已在领导团队“{existingTeam}”。一个 leader 同时只能管理一个团队。请先使用 TeamDelete 结束当前团队，再创建新团队。',
-  'Shutdown requested for active teammate(s): {requested}. Cleanup is still blocked after waiting {waitMs}ms: {memberNames}.':
-    '已请求关闭活跃队友：{requested}。等待 {waitMs}ms 后清理仍被阻塞：{memberNames}。',
+  'Shutdown requested for active teammate(s): {requested}. Cleanup is still blocked after waiting {duration}: {memberNames}.':
+    '已请求关闭活跃队友：{requested}。等待 {duration} 后清理仍被阻塞：{memberNames}。',
   'Shutdown requested for active teammate(s): {requested}. Cleanup is blocked until they exit: {memberNames}.':
     '已请求关闭活跃队友：{requested}。清理将在它们退出前保持阻塞：{memberNames}。',
   'Cannot cleanup team with {count} active member(s): {memberNames}. Use requestShutdown to gracefully terminate teammates first.':
@@ -7094,15 +7118,18 @@ const zh: Record<string, string> = {
   'No links found.\n\n': '未找到链接。\n\n',
   '\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.':
     '\n提醒：您必须在给用户的回复中以 markdown 超链接形式包含上述来源。',
-  'MCP connection timed out after {timeoutMs}ms':
-    'MCP 连接在 {timeoutMs}ms 后超时',
-  'Connection to {serverName} timed out after {timeoutMs}ms':
-    '连接 {serverName} 在 {timeoutMs}ms 后超时',
+  'MCP connection timed out after {duration}': 'MCP 连接在 {duration} 后超时',
+  'Connection to {serverName} timed out after {duration}':
+    '连接 {serverName} 在 {duration} 后超时',
   'Session expired for {serverName}': '{serverName} 的会话已过期',
   'MCP server "{serverName}" requires re-authorization (token expired)':
     'MCP 服务器“{serverName}”需要重新授权（token 已过期）',
-  'MCP server "{serverName}" tool "{tool}" timed out after {timeout}s':
-    'MCP 服务器“{serverName}”的工具“{tool}”在 {timeout}s 后超时',
+  'MCP server "{serverName}" tool "{tool}" timed out after {duration}':
+    'MCP 服务器“{serverName}”的工具“{tool}”在 {duration} 后超时',
+  'MCP server "{serverName}" connection timed out after {duration}':
+    'MCP 服务器“{serverName}”连接在 {duration} 后超时',
+  'ChatGPT device auth timed out after {duration}':
+    'ChatGPT 设备认证在 {duration} 后超时',
   'Server {serverName} is not connected': '服务器 {serverName} 未连接',
   'No API key configured for JWT signing': '未配置用于 JWT 签名的 API key',
   'Session not found': '未找到会话',

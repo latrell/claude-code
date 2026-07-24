@@ -6,6 +6,7 @@
 
 import { spawn } from 'node:child_process'
 import { t, tf } from '../../i18n/t.js'
+import { formatDuration } from '../../utils/format.js'
 import { terminateProcessTree } from '../../utils/processTermination.js'
 import {
   type AutofixOutcomeProbeResult,
@@ -159,7 +160,9 @@ function runGhPrView(
     const timer = setTimeout(() => {
       stopAndReject(
         new Error(
-          tf('gh pr view timed out after {timeout}ms', { timeout: timeoutMs }),
+          tf('gh pr view timed out after {duration}', {
+            duration: formatDuration(timeoutMs, { hideTrailingZeros: true }),
+          }),
         ),
       )
     }, timeoutMs)

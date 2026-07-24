@@ -37,7 +37,7 @@ function formatTokenUsage(goal: GoalState): string {
  * - Forbids scope reduction
  */
 export function buildContinuationPrompt(goal: GoalState): string {
-  const elapsed = formatGoalElapsed(goal)
+  const elapsed = formatGoalElapsed(goal, 'en')
   const tokenInfo = formatTokenUsage(goal)
   const turnInfo = `Continuation turns executed: ${goal.turnsExecuted}`
 
@@ -92,7 +92,7 @@ Your token budget for this goal has been exhausted.
 
 - Goal: ${goal.objective}
 - Tokens used: ${goal.tokensUsed}${goal.tokenBudget !== null ? ` / ${goal.tokenBudget}` : ''}
-- Active time: ${formatGoalElapsed(goal)}
+- Active time: ${formatGoalElapsed(goal, 'en')}
 
 **Stop all substantive work immediately.** Do NOT start new file edits, tool calls, or explorations.
 
@@ -136,7 +136,7 @@ Follow the same Completion Audit and Blocked Audit rules described in prior goal
  * Kept short to minimise prompt-cache displacement.
  */
 export function buildGoalContextBlock(goal: GoalState): string {
-  const elapsed = formatGoalElapsed(goal)
+  const elapsed = formatGoalElapsed(goal, 'en')
   const elapsedMs = getActiveElapsedMs(goal)
   const budget =
     goal.tokenBudget !== null ? ` budget="${goal.tokenBudget}"` : ''

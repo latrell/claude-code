@@ -77,6 +77,28 @@ describe('getChatGPTSubscriptionPlan state', () => {
   })
 })
 
+describe('DeepSeek model capabilities', () => {
+  test('uses dedicated 1M context and official 384K output metadata', async () => {
+    const { getModelMaxOutputTokens, modelSupports1M } = await import(
+      '../context.js'
+    )
+
+    for (const model of [
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'OpenRouter/DeepSeek/deepseek-v4-flash',
+    ]) {
+      expect(modelSupports1M(model)).toBe(true)
+      expect(getModelMaxOutputTokens(model)).toEqual({
+        default: 32_000,
+        upperLimit: 384_000,
+      })
+    }
+  })
+})
+
 describe('getContextWindowForModel with ChatGPT plan', () => {
   let origOpenAIAuthMode: string | undefined
   let origClaudeCodeUseOpenAI: string | undefined

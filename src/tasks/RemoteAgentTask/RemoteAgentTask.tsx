@@ -23,6 +23,7 @@ import {
 } from '../../utils/background/remote/remoteSession.js';
 export type { BackgroundRemoteSessionPrecondition };
 import { logForDebugging } from '../../utils/debug.js';
+import { formatDuration } from '../../utils/format.js';
 import { logError } from '../../utils/log.js';
 import { StopConfirmationError } from '../../utils/stopConfirmation.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
@@ -1028,7 +1029,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
             result && result.subtype !== 'success'
               ? 'remote session returned an error'
               : reviewTimedOut && !sessionDone
-                ? 'remote session exceeded 30 minutes'
+                ? `remote session exceeded ${formatDuration(REMOTE_REVIEW_TIMEOUT_MS, { hideTrailingZeros: true })}`
                 : 'no review output — orchestrator may have exited early';
           enqueueRemoteReviewFailureNotification(taskId, reason, context.setAppState);
           void evictTaskOutput(taskId);
@@ -1077,7 +1078,11 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
             status: 'failed',
             endTime: Date.now(),
           }));
-          enqueueRemoteReviewFailureNotification(taskId, 'remote session exceeded 30 minutes', context.setAppState);
+          enqueueRemoteReviewFailureNotification(
+            taskId,
+            `remote session exceeded ${formatDuration(REMOTE_REVIEW_TIMEOUT_MS, { hideTrailingZeros: true })}`,
+            context.setAppState,
+          );
           void evictTaskOutput(taskId);
           void removeRemoteAgentMetadata(taskId);
           return; // Stop polling

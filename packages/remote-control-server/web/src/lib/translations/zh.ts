@@ -83,6 +83,9 @@ const zh: Record<string, string> = {
   Claude: 'Claude',
   'Uploaded image': '上传的图片',
   Expand: '展开',
+  'Thinking...': '思考中...',
+  'Thought for a few seconds': '思考了几秒',
+  'Thought for {duration}': '思考了 {duration}',
 
   // ModelSelectorPicker
   'Select a model…': '选择模型…',

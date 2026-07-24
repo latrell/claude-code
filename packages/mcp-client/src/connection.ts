@@ -6,6 +6,7 @@ import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { tf } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 import { terminateProcessTree } from 'src/utils/processTermination.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import type { McpClientDependencies } from './interfaces.js'
@@ -96,7 +97,9 @@ export async function withConnectionTimeout<T>(
       await onTimeout()
       reject(
         new Error(
-          tf('MCP connection timed out after {timeoutMs}ms', { timeoutMs }),
+          tf('MCP connection timed out after {duration}', {
+            duration: formatDuration(timeoutMs, { hideTrailingZeros: true }),
+          }),
         ),
       )
     }, timeoutMs)

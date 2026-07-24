@@ -3,6 +3,7 @@ import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,
   openAICompatSupportsThinkingControl,
+  resolveOpenAIThinkingTokenBudget,
 } from '../requestBody.js'
 
 // Re-register envUtils.js with correct isEnvDefinedFalsy and isEnvTruthy to
@@ -255,6 +256,89 @@ describe('openAICompatSupportsThinkingControl', () => {
         OPENAI_ENABLE_THINKING: '1',
       }),
     ).toBe(true)
+  })
+})
+
+describe('resolveOpenAIThinkingTokenBudget', () => {
+  test('uses half the output budget up to the DeepSeek 64k reasoning ceiling', () => {
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 384_000,
+      }),
+    ).toBe(64_000)
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 16_000,
+      }),
+    ).toBe(8_000)
+  })
+
+  test('omits the extension for other models, disabled thinking, or tiny side queries', () => {
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: false,
+        maxTokens: 8000,
+      }),
+    ).toBeUndefined()
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: false,
+        isDeepSeekV4: true,
+        maxTokens: 8000,
+      }),
+    ).toBeUndefined()
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 256,
+      }),
+    ).toBeUndefined()
+  })
+
+  test('supports explicit positive and unlimited overrides', () => {
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 8000,
+        env: { OPENAI_THINKING_TOKEN_BUDGET: '6000' },
+      }),
+    ).toBe(6000)
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 8000,
+        env: { OPENAI_THINKING_TOKEN_BUDGET: '-1' },
+      }),
+    ).toBe(-1)
+  })
+
+  test('clamps a positive override to the model reasoning ceiling', () => {
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 384_000,
+        maxThinkingTokens: 64_000,
+        env: { OPENAI_THINKING_TOKEN_BUDGET: '128000' },
+      }),
+    ).toBe(64_000)
+    expect(
+      resolveOpenAIThinkingTokenBudget({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        maxTokens: 16_000,
+        maxThinkingTokens: 64_000,
+        env: { OPENAI_THINKING_TOKEN_BUDGET: '128000' },
+      }),
+    ).toBe(16_000)
   })
 })
 

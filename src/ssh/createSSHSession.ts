@@ -11,6 +11,7 @@ import { probeRemote } from './SSHProbe.js'
 import { deployBinary } from './SSHDeploy.js'
 import { buildCliLaunch } from '../utils/cliLaunch.js'
 import { logForDebugging } from '../utils/debug.js'
+import { formatDuration } from '../utils/format.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import { randomUUID } from 'crypto'
 import {
@@ -449,7 +450,7 @@ async function waitForInit(
       }
       if (timedOut) {
         throw new SSHSessionError(
-          'Remote CLI did not initialize within 30 seconds. Check SSH connectivity and remote binary.',
+          `Remote CLI did not initialize within ${formatDuration(INIT_TIMEOUT_MS, { hideTrailingZeros: true })}. Check SSH connectivity and remote binary.`,
         )
       }
 
@@ -493,7 +494,7 @@ async function waitForInit(
   }
 
   throw new SSHSessionError(
-    'Remote CLI did not initialize within 30 seconds. Check SSH connectivity and remote binary.',
+    `Remote CLI did not initialize within ${formatDuration(INIT_TIMEOUT_MS, { hideTrailingZeros: true })}. Check SSH connectivity and remote binary.`,
   )
 }
 

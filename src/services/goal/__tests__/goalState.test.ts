@@ -380,6 +380,14 @@ describe('formatGoalStatusLabel', () => {
 describe('formatGoalElapsed', () => {
   test('returns "0s" for brand-new goals', () => {
     const g = setGoal('x', { sessionId: SESSION })
-    expect(formatGoalElapsed(g)).toBe('0s')
+    expect(formatGoalElapsed(g, 'en')).toBe('0s')
+  })
+
+  test('formats hours in English and Chinese', () => {
+    const g = setGoal('x', { sessionId: SESSION })
+    pauseGoal(SESSION)
+    g.accumulatedActiveMs = 3_661_000
+    expect(formatGoalElapsed(g, 'en')).toBe('1h 1m 1s')
+    expect(formatGoalElapsed(g, 'zh')).toBe('1时 1分 1秒')
   })
 })

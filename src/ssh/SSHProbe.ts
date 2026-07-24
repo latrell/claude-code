@@ -1,4 +1,5 @@
 import { logForDebugging } from 'src/utils/debug.js'
+import { formatDuration } from 'src/utils/format.js'
 
 const PROBE_TIMEOUT_MS = 15_000
 
@@ -44,7 +45,7 @@ export async function probeRemote(
         () =>
           reject(
             new SSHProbeError(
-              `SSH probe timed out after ${PROBE_TIMEOUT_MS / 1000}s`,
+              `SSH probe timed out after ${formatDuration(PROBE_TIMEOUT_MS, { hideTrailingZeros: true })}`,
             ),
           ),
         PROBE_TIMEOUT_MS,

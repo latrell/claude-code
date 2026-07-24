@@ -28,6 +28,7 @@ import {
 import { isEnterpriseSubscriber, isTeamSubscriber } from '../../utils/auth.js'
 import { detectCurrentRepositoryWithHost } from '../../utils/detectRepository.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { formatDuration } from '../../utils/format.js'
 import { getDefaultBranch, gitExe } from '../../utils/git.js'
 import { teleportToRemote } from '../../utils/teleport.js'
 
@@ -307,13 +308,14 @@ export async function launchRemoteReview(
   })
   logEvent('tengu_review_remote_launched', {})
   const sessionUrl = getRemoteTaskSessionUrl(session.id)
+  const estimate = `${formatDuration(10 * 60_000, { hideTrailingZeros: true })}–${formatDuration(20 * 60_000, { hideTrailingZeros: true })}`
   // Concise — the tool-output block is visible to the user, so the model
   // shouldn't echo the same info. Just enough for Claude to acknowledge the
   // launch without restating the target/URL (both already printed above).
   return [
     {
       type: 'text',
-      text: `Ultrareview launched for ${target} (~10–20 min, runs in the cloud). Track: ${sessionUrl}${resolvedBillingNote} Findings arrive via task-notification. Briefly acknowledge the launch to the user without repeating the target or URL — both are already visible in the tool output above.`,
+      text: `Ultrareview launched for ${target} (~${estimate}, runs in the cloud). Track: ${sessionUrl}${resolvedBillingNote} Findings arrive via task-notification. Briefly acknowledge the launch to the user without repeating the target or URL — both are already visible in the tool output above.`,
     },
   ]
 }

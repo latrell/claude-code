@@ -24,6 +24,9 @@ import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/language.ts', () => ({
+  getResolvedLanguage: () => 'en',
+}))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 const mockAccessToken = 'test-token-triggers'
@@ -37,6 +40,7 @@ mock.module('src/services/oauth/client.js', () => ({
 }))
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
+  fileSuffixForOauthConfig: () => '',
 }))
 mock.module('src/utils/teleport/api.js', () => ({
   getOAuthHeaders: (token: string) => ({

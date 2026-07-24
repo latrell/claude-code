@@ -31,7 +31,7 @@ import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote 
 import { isEnvTruthy } from './envUtils.js';
 import { TeleportOperationError, toError } from './errors.js';
 import { execFileNoThrow } from './execFileNoThrow.js';
-import { truncateToWidth } from './format.js';
+import { formatDuration, truncateToWidth } from './format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from './git.js';
 import { safeParseJSON } from './json.js';
 import { logError } from './log.js';
@@ -55,7 +55,7 @@ import { StopConfirmationError } from './stopConfirmation.js';
 
 export class RemoteStopDeadlineError extends Error {
   constructor(operation: string, timeoutMs: number) {
-    super(`${operation} timed out after ${timeoutMs}ms`);
+    super(`${operation} timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`);
     this.name = 'RemoteStopDeadlineError';
   }
 }

@@ -1,6 +1,7 @@
 // MCP typed error hierarchy
 
 import { tf } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 
 /**
  * Base error class for all MCP-related errors.
@@ -49,9 +50,9 @@ export class McpTimeoutError extends McpError {
     public readonly timeoutMs: number,
   ) {
     super(
-      tf('Connection to {serverName} timed out after {timeoutMs}ms', {
+      tf('Connection to {serverName} timed out after {duration}', {
         serverName,
-        timeoutMs,
+        duration: formatDuration(timeoutMs, { hideTrailingZeros: true }),
       }),
       serverName,
       'TIMEOUT',

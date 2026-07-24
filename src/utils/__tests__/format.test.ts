@@ -1,16 +1,19 @@
 import { describe, expect, test } from 'bun:test'
 import {
   formatFileSize,
-  formatSecondsShort,
   formatDuration,
+  formatMillisecondsShort,
   formatNumber,
-  formatTokens,
+  formatRetryAfter,
+  formatSecondsShort,
   formatRelativeTime,
   formatRelativeTimeAgo,
   formatLogMetadata,
   formatResetText,
   formatResetTime,
+  formatTokens,
 } from '../format'
+import { getResolvedLanguage } from '../language.js'
 
 describe('formatFileSize', () => {
   test('formats bytes', () => {
@@ -36,29 +39,59 @@ describe('formatFileSize', () => {
 
 describe('formatSecondsShort', () => {
   test('formats milliseconds to seconds', () => {
-    expect(formatSecondsShort(1234)).toBe('1.2s')
+    expect(formatSecondsShort(1234, { language: 'en' })).toBe('1.2s')
   })
 
   test('formats zero', () => {
-    expect(formatSecondsShort(0)).toBe('0.0s')
+    expect(formatSecondsShort(0, { language: 'en' })).toBe('0.0s')
   })
 
   test('formats sub-second', () => {
-    expect(formatSecondsShort(500)).toBe('0.5s')
+    expect(formatSecondsShort(500, { language: 'en' })).toBe('0.5s')
+  })
+
+  test('formats seconds with Chinese units', () => {
+    expect(formatSecondsShort(1234, { language: 'zh' })).toBe('1.2秒')
+  })
+})
+
+describe('formatMillisecondsShort', () => {
+  test('formats milliseconds with English and Chinese units', () => {
+    expect(formatMillisecondsShort(499.6, { language: 'en' })).toBe('500ms')
+    expect(formatMillisecondsShort(499.6, { language: 'zh' })).toBe('500毫秒')
+  })
+})
+
+describe('formatRetryAfter', () => {
+  test('formats numeric seconds and preserves HTTP dates', () => {
+    expect(formatRetryAfter('3661', { language: 'en' })).toBe('1h 1m 1s')
+    expect(formatRetryAfter('3661', { language: 'zh' })).toBe('1时 1分 1秒')
+    expect(formatRetryAfter('Wed, 21 Oct 2015 07:28:00 GMT')).toBe(
+      'Wed, 21 Oct 2015 07:28:00 GMT',
+    )
   })
 })
 
 describe('formatDuration', () => {
   test('formats 0 as 0s', () => {
-    expect(formatDuration(0)).toBe('0s')
+    expect(formatDuration(0, { language: 'en' })).toBe('0s')
   })
 
   test('formats seconds', () => {
-    expect(formatDuration(5000)).toBe('5s')
+    expect(formatDuration(5000, { language: 'en' })).toBe('5s')
+  })
+
+  test('formats sub-second durations and normalizes invalid values', () => {
+    expect(formatDuration(1, { language: 'en' })).toBe('1ms')
+    expect(formatDuration(1, { language: 'zh' })).toBe('1毫秒')
+    expect(formatDuration(500, { language: 'en' })).toBe('0.5s')
+    expect(formatDuration(500, { language: 'zh' })).toBe('0.5秒')
+    expect(formatDuration(-1, { language: 'en' })).toBe('0s')
+    expect(formatDuration(Number.NaN, { language: 'zh' })).toBe('0秒')
   })
 
   test('formats minutes and seconds', () => {
-    expect(formatDuration(125000)).toBe('2m 5s')
+    expect(formatDuration(125000, { language: 'en' })).toBe('2m 5s')
   })
 
   test('formats minutes and seconds with Chinese units', () => {
@@ -74,16 +107,26 @@ describe('formatDuration', () => {
   })
 
   test('formats hours', () => {
-    expect(formatDuration(3661000)).toBe('1h 1m 1s')
+    expect(formatDuration(3661000, { language: 'en' })).toBe('1h 1m 1s')
   })
 
   test('formats days', () => {
-    expect(formatDuration(90000000)).toBe('1d 1h 0m')
+    expect(formatDuration(90000000, { language: 'en' })).toBe('1d 1h 0m')
   })
 
   test('hideTrailingZeros removes zero components', () => {
-    expect(formatDuration(3600000, { hideTrailingZeros: true })).toBe('1h')
-    expect(formatDuration(60000, { hideTrailingZeros: true })).toBe('1m')
+    expect(
+      formatDuration(3600000, {
+        hideTrailingZeros: true,
+        language: 'en',
+      }),
+    ).toBe('1h')
+    expect(
+      formatDuration(60000, {
+        hideTrailingZeros: true,
+        language: 'en',
+      }),
+    ).toBe('1m')
     expect(
       formatDuration(3600000, {
         hideTrailingZeros: true,
@@ -93,14 +136,30 @@ describe('formatDuration', () => {
   })
 
   test('mostSignificantOnly returns largest unit', () => {
-    expect(formatDuration(90000000, { mostSignificantOnly: true })).toBe('1d')
-    expect(formatDuration(3661000, { mostSignificantOnly: true })).toBe('1h')
+    expect(
+      formatDuration(90000000, {
+        mostSignificantOnly: true,
+        language: 'en',
+      }),
+    ).toBe('1d')
+    expect(
+      formatDuration(3661000, {
+        mostSignificantOnly: true,
+        language: 'en',
+      }),
+    ).toBe('1h')
     expect(
       formatDuration(3661000, {
         mostSignificantOnly: true,
         language: 'zh',
       }),
     ).toBe('1时')
+  })
+
+  test('uses the resolved UI language by default', () => {
+    expect(formatDuration(21 * 60_000 + 42_000)).toBe(
+      getResolvedLanguage() === 'zh' ? '21分 42秒' : '21m 42s',
+    )
   })
 })
 
@@ -149,36 +208,51 @@ describe('formatRelativeTime', () => {
 
   test('formats seconds ago', () => {
     const date = new Date('2026-01-15T11:59:30Z')
-    expect(formatRelativeTime(date, { now })).toBe('30s ago')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('30s ago')
   })
 
   test('formats minutes ago', () => {
     const date = new Date('2026-01-15T11:55:00Z')
-    expect(formatRelativeTime(date, { now })).toBe('5m ago')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('5m ago')
   })
 
   test('formats future time', () => {
     const date = new Date('2026-01-15T13:00:00Z')
-    expect(formatRelativeTime(date, { now })).toBe('in 1h')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('in 1h')
   })
 
   test('handles zero difference', () => {
-    expect(formatRelativeTime(now, { now })).toBe('0s ago')
+    expect(formatRelativeTime(now, { now, language: 'en' })).toBe('0s ago')
   })
 
   test('formats hours ago', () => {
     const date = new Date('2026-01-15T09:00:00Z')
-    expect(formatRelativeTime(date, { now })).toBe('3h ago')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('3h ago')
   })
 
   test('formats days ago', () => {
     const date = new Date('2026-01-13T12:00:00Z')
-    expect(formatRelativeTime(date, { now })).toBe('2d ago')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('2d ago')
   })
 
   test('formats weeks ago', () => {
     const date = new Date('2026-01-01T12:00:00Z')
-    expect(formatRelativeTime(date, { now })).toBe('2w ago')
+    expect(formatRelativeTime(date, { now, language: 'en' })).toBe('2w ago')
+  })
+
+  test('formats compact Chinese past and future units', () => {
+    expect(
+      formatRelativeTime(new Date('2026-01-15T09:00:00Z'), {
+        now,
+        language: 'zh',
+      }),
+    ).toBe('3时前')
+    expect(
+      formatRelativeTime(new Date('2026-01-15T12:05:00Z'), {
+        now,
+        language: 'zh',
+      }),
+    ).toBe('5分后')
   })
 })
 
@@ -187,50 +261,50 @@ describe('formatRelativeTimeAgo', () => {
 
   test("formats past date with 'ago' suffix", () => {
     const date = new Date('2026-01-15T11:59:30Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toBe('30s ago')
   })
 
   test("formats future date without 'ago' suffix", () => {
     const date = new Date('2026-01-15T13:00:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toBe('in 1h')
   })
 
   test('formats minutes ago', () => {
     const date = new Date('2026-01-15T11:55:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toBe('5m ago')
   })
 
   test('formats hours ago', () => {
     const date = new Date('2026-01-15T09:00:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toBe('3h ago')
   })
 
   test('formats days ago', () => {
     const date = new Date('2026-01-13T12:00:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toBe('2d ago')
   })
 
   test('handles date equal to now as past', () => {
     // date === now, treated as past (not future)
-    const result = formatRelativeTimeAgo(now, { now })
+    const result = formatRelativeTimeAgo(now, { now, language: 'en' })
     expect(result).toBe('0s ago')
   })
 
   test('uses numeric always for past dates', () => {
     // Should always use numeric format for past dates
     const date = new Date('2026-01-15T11:59:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).toContain('ago')
   })
 
   test("future date does not contain 'ago'", () => {
     const date = new Date('2026-01-15T14:00:00Z')
-    const result = formatRelativeTimeAgo(date, { now })
+    const result = formatRelativeTimeAgo(date, { now, language: 'en' })
     expect(result).not.toContain('ago')
   })
 })
@@ -240,85 +314,112 @@ describe('formatLogMetadata', () => {
   const modified = new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
 
   test('includes relative time and message count', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 10,
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 10,
+      },
+      'en',
+    )
     expect(result).toContain('ago')
     expect(result).toContain('10 messages')
   })
 
   test('uses fileSize instead of messageCount when provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 5,
-      fileSize: 1536,
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 5,
+        fileSize: 1536,
+      },
+      'en',
+    )
     expect(result).toContain('1.5KB')
     expect(result).not.toContain('messages')
   })
 
   test('includes gitBranch when provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-      gitBranch: 'main',
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+        gitBranch: 'main',
+      },
+      'en',
+    )
     expect(result).toContain('main')
   })
 
   test('omits gitBranch when not provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+      },
+      'en',
+    )
     // Should not have a dangling separator from missing branch
     expect(result).not.toMatch(/^ · | · $/)
   })
 
   test('includes tag when provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-      tag: 'my-tag',
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+        tag: 'my-tag',
+      },
+      'en',
+    )
     expect(result).toContain('#my-tag')
   })
 
   test('includes agentSetting when provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-      agentSetting: 'custom-agent',
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+        agentSetting: 'custom-agent',
+      },
+      'en',
+    )
     expect(result).toContain('@custom-agent')
   })
 
   test('includes prNumber when provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-      prNumber: 42,
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+        prNumber: 42,
+      },
+      'en',
+    )
     expect(result).toContain('#42')
   })
 
   test('includes prRepository with prNumber when both provided', () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 3,
-      prNumber: 99,
-      prRepository: 'owner/repo',
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 3,
+        prNumber: 99,
+        prRepository: 'owner/repo',
+      },
+      'en',
+    )
     expect(result).toContain('owner/repo#99')
   })
 
   test("parts are joined with ' · ' separator", () => {
-    const result = formatLogMetadata({
-      modified,
-      messageCount: 5,
-      gitBranch: 'feat/x',
-    })
+    const result = formatLogMetadata(
+      {
+        modified,
+        messageCount: 5,
+        gitBranch: 'feat/x',
+      },
+      'en',
+    )
     expect(result).toContain(' · ')
   })
 })

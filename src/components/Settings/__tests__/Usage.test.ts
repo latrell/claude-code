@@ -160,10 +160,9 @@ describe('codexBucketToLimitBar', () => {
       resetsAtSeconds: 0,
     }
     const result = codexBucketToLimitBar(bucket)
-    expect([
-      'Primary rate limit (300min)',
-      '主要速率限制（300 分钟）',
-    ]).toContain(result.title)
+    expect(['Primary rate limit (5h)', '主要速率限制（5时）']).toContain(
+      result.title,
+    )
   })
 
   test('builds title from labelKey alone when windowMinutes is absent', () => {
@@ -190,7 +189,7 @@ describe('codexBucketToLimitBar', () => {
       resetsAtSeconds: 0,
     }
     const result = codexBucketToLimitBar(bucket)
-    expect(['gpt-4.1 (60min)', 'gpt-4.1（60 分钟）']).toContain(result.title)
+    expect(['gpt-4.1 (1h)', 'gpt-4.1（1时）']).toContain(result.title)
   })
 
   test('falls back to pre-formatted label when labelKey is absent', () => {

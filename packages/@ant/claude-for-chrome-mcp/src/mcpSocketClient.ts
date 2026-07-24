@@ -1,4 +1,5 @@
 import { t, tf } from '../../../../src/i18n/t.js'
+import { formatDuration } from '../../../../src/utils/format.js'
 import { promises as fsPromises } from 'fs'
 import { createConnection } from 'net'
 import type { Socket } from 'net'
@@ -275,8 +276,9 @@ class McpSocketClient {
         }
         reject(
           new SocketConnectionError(
-            tf('[{name}] Connection attempt timed out after 5000ms', {
+            tf('[{name}] Connection attempt timed out after {duration}', {
               name: serverName,
+              duration: formatDuration(5000, { hideTrailingZeros: true }),
             }),
           ),
         )
@@ -313,9 +315,11 @@ class McpSocketClient {
         this.responseCallback = null
         reject(
           new SocketConnectionError(
-            tf('[{name}] Tool request timed out after {timeout}ms', {
+            tf('[{name}] Tool request timed out after {duration}', {
               name: serverName,
-              timeout: timeoutMs,
+              duration: formatDuration(timeoutMs, {
+                hideTrailingZeros: true,
+              }),
             }),
           ),
         )

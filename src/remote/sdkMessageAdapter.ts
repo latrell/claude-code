@@ -16,6 +16,7 @@ import type {
   SystemMessage,
 } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
+import { formatDuration } from '../utils/format.js'
 import { fromSDKCompactMetadata } from '../utils/messages/mappers.js'
 import { createUserMessage } from '../utils/messages.js'
 import { t, tf } from '../i18n/t.js'
@@ -115,10 +116,20 @@ function convertStatusMessage(msg: SDKStatusMessage): SystemMessage | null {
 function convertToolProgressMessage(
   msg: SDKToolProgressMessage,
 ): SystemMessage {
+  const content =
+    msg.elapsed_time_seconds === undefined
+      ? tf('Tool {tool} is running…', { tool: msg.tool_name })
+      : tf('Tool {tool} running for {duration}…', {
+          tool: msg.tool_name,
+          duration: formatDuration(msg.elapsed_time_seconds * 1000, {
+            hideTrailingZeros: true,
+          }),
+        })
+
   return {
     type: 'system',
     subtype: 'informational',
-    content: `Tool ${msg.tool_name} running for ${msg.elapsed_time_seconds}s…`,
+    content,
     level: 'info',
     uuid: msg.uuid!,
     timestamp: new Date().toISOString(),

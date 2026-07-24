@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import type { AgentColorName } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
+import { formatDuration } from '../../../utils/format.js'
 import { getPlatform, type Platform } from '../../../utils/platform.js'
 import { isInWindowsTerminal } from './detection.js'
 import { registerWindowsTerminalBackend } from './registry.js'
@@ -206,7 +207,7 @@ export class WindowsTerminalBackend implements PaneBackend {
         () =>
           resolve({
             stdout: '',
-            stderr: `${command} timed out after ${timeoutMs}ms`,
+            stderr: `${command} timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
             code: 1,
           }),
         timeoutMs + 50,
@@ -479,7 +480,7 @@ export class WindowsTerminalBackend implements PaneBackend {
         processIdentity = await waitForPidFile(pane.pidFile, timeoutMs)
       } catch (err) {
         throw new Error(
-          `Windows Terminal pane failed to launch within ${timeoutMs}ms\n` +
+          `Windows Terminal pane failed to launch within ${formatDuration(timeoutMs, { hideTrailingZeros: true })}\n` +
             `  paneId: ${paneId}\n` +
             `  pidFile: ${pane.pidFile}\n` +
             `  wt.exe stdout: ${result.stdout || '(empty)'}\n` +

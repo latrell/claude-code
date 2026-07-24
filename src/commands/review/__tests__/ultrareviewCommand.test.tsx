@@ -85,6 +85,7 @@ mock.module('src/commands/review/reviewRemote.js', () => ({
 // Mock OAuth config so real fetchUltrareviewPreflight can run
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
+  fileSuffixForOauthConfig: () => '',
 }));
 
 // Mock prepareApiRequest so real fetchUltrareviewPreflight skips auth
@@ -185,6 +186,7 @@ mock.module('src/commands/review/UltrareviewOverageDialog.js', () => ({
 }));
 
 import { call } from '../ultrareviewCommand.js';
+import { t, tf } from '../../../i18n/t.js';
 
 const makeContext = () =>
   ({
@@ -229,7 +231,9 @@ describe('ultrareviewCommand.call: gate branches', () => {
 
     expect(result).toBeNull();
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('Free ultrareviews used');
+    expect(messages[0]).toContain(
+      t('Free ultrareviews used. Enable Extra Usage at https://claude.ai/settings/billing to continue.'),
+    );
     expect(messages[0]).toContain('claude.ai/settings/billing');
     expect((opts[0] as { display: string }).display).toBe('system');
     // launchRemoteReview must NOT be called when paywalled.
@@ -250,7 +254,12 @@ describe('ultrareviewCommand.call: gate branches', () => {
 
     expect(result).toBeNull();
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('Balance too low');
+    expect(messages[0]).toContain(
+      tf(
+        'Balance too low to launch ultrareview ({available} available, $10 minimum). Top up at https://claude.ai/settings/billing',
+        { available: '$4.50' },
+      ),
+    );
     expect(messages[0]).toContain('$4.50');
     expect(messages[0]).toContain('claude.ai/settings/billing');
     expect((opts[0] as { display: string }).display).toBe('system');
@@ -290,7 +299,9 @@ describe('ultrareviewCommand.call: gate branches', () => {
 
     expect(result).toBeNull();
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('Ultrareview failed to launch');
+    expect(messages[0]).toContain(
+      t('Ultrareview failed to launch the remote session. Check that this is a GitHub repo and try again.'),
+    );
     expect((opts[0] as { display: string }).display).toBe('system');
   });
 

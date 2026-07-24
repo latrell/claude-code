@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { getSlowOperations } from '../bootstrap/state.js';
 import { Text, useInterval } from '@anthropic/ink';
 import { t } from '../i18n/t.js';
+import { formatMillisecondsShort } from '../utils/format.js';
 
 // Show DevBar for dev builds or all ants
 function shouldShowDevBar(): boolean {
@@ -34,7 +35,7 @@ export function DevBar(): React.ReactNode {
   // Single-line format so short terminals don't lose rows to dev noise.
   const recentOps = slowOps
     .slice(-3)
-    .map(op => `${op.operation} (${Math.round(op.durationMs)}ms)`)
+    .map(op => `${op.operation} (${formatMillisecondsShort(op.durationMs)})`)
     .join(' · ');
 
   return (

@@ -17,7 +17,7 @@ import {
 import { isChatGPTAuthEnabled } from '../../services/api/openai/chatgptAuth.js';
 import { fetchCursorUsage, type CursorUsageSnapshot } from '../../services/api/cursor/cursorUsage.js';
 import { getAPIProvider } from '../../utils/model/providers.js';
-import { formatResetText } from '../../utils/format.js';
+import { formatDuration, formatResetText } from '../../utils/format.js';
 import { logError } from '../../utils/log.js';
 import { jsonStringify } from '../../utils/slowOperations.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -125,7 +125,12 @@ export function codexBucketToLimitBar(bucket: CodexRateLimitBucket): { title: st
   // server-provided labels (additional_rate_limits) pass through t() unchanged.
   const title = bucket.labelKey
     ? bucket.windowMinutes
-      ? tf('{label} ({mins}min)', { label: t(bucket.labelKey), mins: bucket.windowMinutes })
+      ? tf('{label} ({duration})', {
+          label: t(bucket.labelKey),
+          duration: formatDuration(bucket.windowMinutes * 60_000, {
+            hideTrailingZeros: true,
+          }),
+        })
       : t(bucket.labelKey)
     : bucket.label;
   return {

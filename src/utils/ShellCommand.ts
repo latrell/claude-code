@@ -2,6 +2,7 @@ import type { ChildProcess } from 'child_process'
 import { stat } from 'fs/promises'
 import type { Readable } from 'stream'
 import { generateTaskId } from '../Task.js'
+import { tf } from '../i18n/t.js'
 import {
   AbortSettlementTimeoutError,
   waitForBoundedSettlement,
@@ -558,7 +559,9 @@ class ShellCommandImpl implements ShellCommand {
       )
     } else if (this.#timedOut) {
       result.stderr = prependStderr(
-        `Command timed out after ${formatDuration(this.#timeout)}`,
+        tf('Command timed out after {duration}', {
+          duration: formatDuration(this.#timeout),
+        }),
         result.stderr,
       )
     }

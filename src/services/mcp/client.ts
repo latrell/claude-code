@@ -1,4 +1,4 @@
-import { t } from '../../i18n/t.js'
+import { t, tf } from '../../i18n/t.js'
 import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
@@ -75,6 +75,7 @@ import {
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
 import { getMCPUserAgent } from '../../utils/http.js'
+import { formatDuration } from '../../utils/format.js'
 import { maybeNotifyIDEConnected } from '../../utils/ide.js'
 import {
   type ImageLimits,
@@ -1079,7 +1080,15 @@ export const connectToServer = memoize(
           transport.close().catch(() => {})
           reject(
             new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
-              `MCP server "${name}" connection timed out after ${getConnectionTimeoutMs()}ms`,
+              tf(
+                'MCP server "{serverName}" connection timed out after {duration}',
+                {
+                  serverName: name,
+                  duration: formatDuration(getConnectionTimeoutMs(), {
+                    hideTrailingZeros: true,
+                  }),
+                },
+              ),
               'MCP connection timeout',
             ),
           )
@@ -3074,7 +3083,16 @@ export async function callMCPTool({
         (reject, name, tool, timeoutMs) => {
           reject(
             new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
-              `MCP server "${name}" tool "${tool}" timed out after ${Math.floor(timeoutMs / 1000)}s`,
+              tf(
+                'MCP server "{serverName}" tool "{tool}" timed out after {duration}',
+                {
+                  serverName: name,
+                  tool,
+                  duration: formatDuration(timeoutMs, {
+                    hideTrailingZeros: true,
+                  }),
+                },
+              ),
               'MCP tool timeout',
             ),
           )

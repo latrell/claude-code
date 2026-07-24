@@ -2,7 +2,8 @@
 
 import { useControllableState } from '@radix-ui/react-use-controllable-state';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
-import { cn } from '../../src/lib/utils';
+import { t, tf } from '../../src/lib/i18n';
+import { cn, formatDurationSeconds } from '../../src/lib/utils';
 import { BrainIcon, ChevronDownIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { createContext, memo, useCallback, useContext, useEffect, useState } from 'react';
@@ -113,12 +114,12 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
-    return <Shimmer duration={1}>Thinking...</Shimmer>;
+    return <Shimmer duration={1}>{t('Thinking...')}</Shimmer>;
   }
   if (duration === undefined) {
-    return <p>Thought for a few seconds</p>;
+    return <p>{t('Thought for a few seconds')}</p>;
   }
-  return <p>Thought for {duration} seconds</p>;
+  return <p>{tf('Thought for {duration}', { duration: formatDurationSeconds(duration) })}</p>;
 };
 
 export const ReasoningTrigger = memo(

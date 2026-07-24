@@ -187,7 +187,11 @@ export function SpinnerAnimationRow({
     thinkingStatus === 'thinking'
       ? tf('thinking{effort}', { effort: effortSuffix })
       : typeof thinkingStatus === 'number'
-        ? tf('thought for {n}s', { n: Math.max(1, Math.round(thinkingStatus / 1000)) })
+        ? tf('thought for {duration}', {
+            duration: formatDuration(Math.max(1000, thinkingStatus), {
+              hideTrailingZeros: true,
+            }),
+          })
         : null;
   let thinkingWidthValue = thinkingText ? stringWidth(thinkingText) : 0;
 

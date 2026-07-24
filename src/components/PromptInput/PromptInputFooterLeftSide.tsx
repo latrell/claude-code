@@ -129,7 +129,7 @@ function ProactiveCountdown(): React.ReactNode {
   return <Text dimColor>waiting {formatDuration(remainingSeconds * 1000, { mostSignificantOnly: true })}</Text>;
 }
 
-/** Compact "goal (1h22min)" pill for the footer — colored by status. */
+/** Compact localized goal elapsed-time pill for the footer. */
 function GoalElapsedIndicator(): React.ReactNode {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -144,18 +144,8 @@ function GoalElapsedIndicator(): React.ReactNode {
 
   const elapsedMs = goalModule.getActiveElapsedMs(goal);
   const totalSeconds = Math.floor(elapsedMs / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  let timeStr: string;
-  if (hours >= 1) {
-    timeStr = `${hours}h${minutes}min`;
-  } else if (minutes >= 1) {
-    timeStr = `${minutes}min`;
-  } else {
-    timeStr = `${seconds}s`;
-  }
+  const displayMs = totalSeconds >= 60 ? Math.floor(totalSeconds / 60) * 60_000 : totalSeconds * 1000;
+  const timeStr = formatDuration(displayMs, { hideTrailingZeros: true });
 
   let color: string | undefined;
   switch (goal.status) {

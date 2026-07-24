@@ -17,6 +17,7 @@ import {
   type ProviderUsagePublication,
 } from '../../providerUsage/store.js'
 import { getProxyFetchOptions } from '../../../utils/proxy.js'
+import { formatDuration } from '../../../utils/format.js'
 import { getAPIProvider } from '../../../utils/model/providers.js'
 import {
   chatGPTCodexModelSupportsImages,
@@ -497,12 +498,12 @@ async function* parseSSE(
   let terminalEventDeadline: number | undefined
   const createStreamIdleTimeoutError = (): ChatGPTResponsesAPIError =>
     new ChatGPTResponsesAPIError(
-      `ChatGPT Responses API stream idle timeout after ${idleTimeoutMs}ms`,
+      `ChatGPT Responses API stream idle timeout after ${formatDuration(idleTimeoutMs, { hideTrailingZeros: true })}`,
       { code: 'server_error' },
     )
   const createTerminalEventTimeoutError = (): ChatGPTResponsesAPIError =>
     new ChatGPTResponsesAPIError(
-      `ChatGPT Responses API terminal event timeout after ${terminalEventGraceMs}ms`,
+      `ChatGPT Responses API terminal event timeout after ${formatDuration(terminalEventGraceMs, { hideTrailingZeros: true })}`,
       { code: 'server_error', retryable: true },
     )
   const cancelReaderOnAbort = (): void => {

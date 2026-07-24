@@ -582,7 +582,10 @@ mock.module('../../../../utils/context.js', () => ({
   is1mContextDisabled: () => false,
   has1mContext: () => false,
   modelSupports1M: () => false,
-  getModelMaxOutputTokens: () => ({ upperLimit: 8192, default: 8192 }),
+  getModelMaxOutputTokens: (model: string) =>
+    model === 'deepseek-v4-flash'
+      ? { upperLimit: 384_000, default: 32_000 }
+      : { upperLimit: 8192, default: 8192 },
   getContextWindowForModel: () => 200_000,
   getSonnet1mExpTreatmentEnabled: () => false,
   calculateContextPercentages: () => ({
@@ -1056,6 +1059,43 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
+  })
+
+  test('uses the official DeepSeek V4 output limit and a separate reasoning ceiling', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'text'),
+      makeTextDelta(0, 'hi'),
+      makeContentBlockStop(0),
+      makeMessageDelta('end_turn', 5),
+      makeMessageStop(),
+    ]
+
+    await runQueryModel(_nextEvents, { OPENAI_MODEL: 'deepseek-v4-flash' })
+
+    expect(_lastCreateArgs).not.toBeNull()
+    expect(_lastCreateArgs!.max_tokens).toBe(384000)
+    expect(_lastCreateArgs!.thinking_token_budget).toBe(64000)
+  })
+
+  test('honors an explicit DeepSeek output-token override', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'text'),
+      makeTextDelta(0, 'hi'),
+      makeContentBlockStop(0),
+      makeMessageDelta('end_turn', 5),
+      makeMessageStop(),
+    ]
+
+    await runQueryModel(_nextEvents, {
+      OPENAI_MODEL: 'deepseek-v4-flash',
+      OPENAI_MAX_TOKENS: '16000',
+    })
+
+    expect(_lastCreateArgs).not.toBeNull()
+    expect(_lastCreateArgs!.max_tokens).toBe(16000)
+    expect(_lastCreateArgs!.thinking_token_budget).toBe(8000)
   })
 })
 

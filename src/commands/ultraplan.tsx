@@ -2,6 +2,7 @@ import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
 import { getRemoteSessionUrl } from '../constants/product.js';
+import { tf } from '../i18n/t.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -18,6 +19,7 @@ import {
 import type { LocalJSXCommandCall } from '../types/command.js';
 import { logForDebugging } from '../utils/debug.js';
 import { errorMessage } from '../utils/errors.js';
+import { formatDuration } from '../utils/format.js';
 import { logError } from '../utils/log.js';
 import { enqueuePendingNotification } from '../utils/messageQueueManager.js';
 import { updateTaskState } from '../utils/task/framework.js';
@@ -494,7 +496,20 @@ const call: LocalJSXCommandCall = async (onDone, context, args) => {
 export default {
   type: 'local-jsx',
   name: 'ultraplan',
-  description: `~10–30 min · Claude Code on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
+  get description() {
+    return tf(
+      '~{minDuration}–{maxDuration} · Claude Code on the web drafts an advanced plan you can edit and approve. See {url}',
+      {
+        minDuration: formatDuration(10 * 60_000, {
+          hideTrailingZeros: true,
+        }),
+        maxDuration: formatDuration(30 * 60_000, {
+          hideTrailingZeros: true,
+        }),
+        url: CCR_TERMS_URL,
+      },
+    );
+  },
   argumentHint: '<prompt>',
   // isEnabled: () => process.env.USER_TYPE === 'ant',
   isEnabled: () => isUltraplanEnabled(),

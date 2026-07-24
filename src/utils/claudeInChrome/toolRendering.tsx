@@ -4,8 +4,8 @@ import { supportsHyperlinks } from '@anthropic/ink';
 import { Link, Text } from '@anthropic/ink';
 import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '@claude-code-best/builtin-tools/tools/MCPTool/UI.js';
 import type { MCPToolResult } from '../../utils/mcpValidation.js';
-import { truncateToWidth } from '../format.js';
-import { t } from '../../i18n/t.js';
+import { formatDuration, truncateToWidth } from '../format.js';
+import { t, tf } from '../../i18n/t.js';
 import { trackClaudeInChromeTabId } from './common.js';
 
 export type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -89,7 +89,11 @@ function renderChromeToolUseMessage(
         } else if (action === 'scroll' && typeof input.scroll_direction === 'string') {
           secondaryInfo.push(`scroll ${input.scroll_direction}`);
         } else if (action === 'wait' && typeof input.duration === 'number') {
-          secondaryInfo.push(`wait ${input.duration}s`);
+          secondaryInfo.push(
+            tf('wait {duration}', {
+              duration: formatDuration(input.duration * 1000, { hideTrailingZeros: true }),
+            }),
+          );
         } else if (action === 'left_click_drag') {
           secondaryInfo.push('drag');
         } else {

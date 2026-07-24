@@ -4,6 +4,7 @@ import {
   ALL_PHASE,
   capTabsForDisplay,
   filterActiveRuns,
+  formatDuration,
   mergePhases,
   filterAgentsByPhase,
   tabLabel,
@@ -205,4 +206,11 @@ test('capTabsForDisplay: maxTabs=0 -> all folded into overflow (degenerate but d
   const capped = capTabsForDisplay(runs, 0)
   expect(capped.runs).toEqual([])
   expect(capped.overflow).toBe(1)
+})
+
+test('formatDuration: localizes seconds, minutes, and hours', () => {
+  expect(formatDuration(42_000, 'en')).toBe('42s')
+  expect(formatDuration(21 * 60_000 + 42_000, 'zh')).toBe('21分 42秒')
+  expect(formatDuration(3_661_000, 'en')).toBe('1h 1m')
+  expect(formatDuration(3_661_000, 'zh')).toBe('1时 1分')
 })

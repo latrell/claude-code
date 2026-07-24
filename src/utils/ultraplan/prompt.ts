@@ -1,4 +1,6 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook'
+import { t } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 import simple_plan from './prompts/simple_plan.txt'
 import visual_plan from './prompts/visual_plan.txt'
 import three_subagents_with_critique from './prompts/three_subagents_with_critique.txt'
@@ -32,7 +34,9 @@ export function getPromptText(id: PromptIdentifier): string {
 }
 
 const DEFAULT_DIALOG = {
-  timeEstimate: 'a few minutes',
+  get timeEstimate() {
+    return t('a few minutes')
+  },
   dialogBody:
     "Interactive planning on the web where you can edit and leave targeted comments on Claude's plan.",
   dialogPipeline: 'Plan → Edit → Execute',
@@ -48,7 +52,9 @@ export const DIALOG_CONFIG = {
   simple_plan: DEFAULT_DIALOG,
   visual_plan: DEFAULT_DIALOG,
   three_subagents_with_critique: {
-    timeEstimate: '~10–30 min',
+    get timeEstimate() {
+      return `~${formatDuration(10 * 60_000, { hideTrailingZeros: true })}–${formatDuration(30 * 60_000, { hideTrailingZeros: true })}`
+    },
     dialogBody:
       "Interactive planning on the web where you can edit and leave targeted comments on Claude's plan.",
     dialogPipeline: 'Scope → Critique → Edit → Execute',

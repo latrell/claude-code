@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SessionEvent, EventPayload } from '../types';
-import { esc, truncate, cn, extractEventText, isConversationClearedStatus } from '../lib/utils';
+import { esc, truncate, cn, extractEventText, formatDurationSeconds, isConversationClearedStatus } from '../lib/utils';
 
 // ============================================================
 // Tool Trace State
@@ -819,7 +819,7 @@ function LoadingIndicator({ verb }: { verb: string }) {
     <div className="flex items-center gap-2 text-sm text-text-secondary">
       <span className="animate-glimmer text-brand">{SPINNER_CYCLE[frame]}</span>
       <span className="animate-glimmer">{esc(verb)}…</span>
-      <span className="text-text-muted">{elapsed}s</span>
+      <span className="text-text-muted">{formatDurationSeconds(elapsed)}</span>
     </div>
   );
 }

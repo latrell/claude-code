@@ -4,6 +4,7 @@ import {
   waitForBoundedSettlement,
 } from '../../utils/abortSettlement.js'
 import { AbortError } from '../../utils/errors.js'
+import { formatDuration } from '../../utils/format.js'
 import { StopConfirmationError } from '../../utils/stopConfirmation.js'
 
 const PROVIDER_ABORT_SETTLEMENT_GRACE_MS = 2_000
@@ -24,7 +25,7 @@ export async function waitForProviderAbortSettlement<T>(
   } catch (error) {
     if (error instanceof AbortSettlementTimeoutError) {
       throw new StopConfirmationError(
-        `${operation} did not settle within ${abortGraceMs}ms after abort`,
+        `${operation} did not settle within ${formatDuration(abortGraceMs, { hideTrailingZeros: true })} after abort`,
         [error],
       )
     }
@@ -194,7 +195,7 @@ export async function* guardAsyncIterableCancellation<T>(
             if (!(iterationError instanceof StopConfirmationError)) {
               // biome-ignore lint/correctness/noUnsafeFinally: return() timeout is stronger than normal return/AbortError and must reach the Stop caller.
               throw new StopConfirmationError(
-                `${operation} return() did not settle within ${returnTimeoutMs}ms`,
+                `${operation} return() did not settle within ${formatDuration(returnTimeoutMs, { hideTrailingZeros: true })}`,
                 iterationError === undefined
                   ? [returnError]
                   : [iterationError, returnError],

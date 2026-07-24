@@ -1,4 +1,5 @@
 import { logForDebugging } from '../debug.js'
+import { formatDuration } from '../format.js'
 import { withResolvers } from '../withResolvers.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
 
@@ -42,7 +43,11 @@ function release(): void {
 const TIMEOUT_MS = 30_000
 
 function timeoutReject(reject: (e: Error) => void): void {
-  reject(new Error(`computer-use native call exceeded ${TIMEOUT_MS}ms`))
+  reject(
+    new Error(
+      `computer-use native call exceeded ${formatDuration(TIMEOUT_MS, { hideTrailingZeros: true })}`,
+    ),
+  )
 }
 
 /**

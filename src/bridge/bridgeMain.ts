@@ -18,7 +18,12 @@ import { rcLog } from './rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { isEnvTruthy, isInProtectedNamespace } from '../utils/envUtils.js'
 import { errorMessage } from '../utils/errors.js'
-import { truncateToWidth } from '../utils/format.js'
+import {
+  formatDuration,
+  formatMillisecondsShort,
+  formatSecondsShort,
+  truncateToWidth,
+} from '../utils/format.js'
 import { logError } from '../utils/log.js'
 import { sleep } from '../utils/sleep.js'
 import { createAgentWorktree, removeAgentWorktree } from '../utils/worktree.js'
@@ -29,7 +34,6 @@ import {
   isSuppressible403,
   validateBridgeId,
 } from './bridgeApi.js'
-import { formatDuration } from './bridgeStatusUtil.js'
 import { createBridgeLogger } from './bridgeUI.js'
 import { createCapacityWake } from './capacityWake.js'
 import { describeAxiosError } from './debugUtils.js'
@@ -493,7 +497,7 @@ export async function runBridgeLoop(
       const durationMs = Date.now() - startTime
 
       logForDebugging(
-        `[bridge:session] sessionId=${sessionId} workId=${workId ?? 'unknown'} exited status=${status} duration=${formatDuration(durationMs)}`,
+        `[bridge:session] sessionId=${sessionId} workId=${workId ?? 'unknown'} exited status=${status} duration=${formatDuration(durationMs, { language: 'en' })}`,
       )
       logEvent('tengu_bridge_session_done', {
         status:
@@ -640,7 +644,7 @@ export async function runBridgeLoop(
           Date.now() - (connErrorStart ?? generalErrorStart ?? Date.now())
         logger.logReconnected(disconnectedMs)
         logForDebugging(
-          `[bridge:poll] Reconnected after ${formatDuration(disconnectedMs)}`,
+          `[bridge:poll] Reconnected after ${formatDuration(disconnectedMs, { language: 'en' })}`,
         )
         logEvent('tengu_bridge_reconnected', {
           disconnected_ms: disconnectedMs,
@@ -1336,7 +1340,9 @@ export async function runBridgeLoop(
         const elapsed = now - connErrorStart
         if (elapsed >= backoffConfig.connGiveUpMs) {
           logger.logError(
-            `Server unreachable for ${Math.round(elapsed / 60_000)} minutes, giving up.`,
+            tf('Server unreachable for {duration}, giving up.', {
+              duration: formatDuration(elapsed, { hideTrailingZeros: true }),
+            }),
           )
           logEvent('tengu_bridge_poll_give_up', {
             error_type:
@@ -1359,13 +1365,15 @@ export async function runBridgeLoop(
           ? Math.min(connBackoff * 2, backoffConfig.connCapMs)
           : backoffConfig.connInitialMs
         const delay = addJitter(connBackoff)
+        const delayText = formatDelay(delay)
+        const elapsedText = formatDuration(elapsed)
         logger.logVerbose(
-          `Connection error, retrying in ${formatDelay(delay)} (${Math.round(elapsed / 1000)}s elapsed): ${errMsg}`,
+          tf(
+            'Connection error, retrying in {delay} ({elapsed} elapsed): {error}',
+            { delay: delayText, elapsed: elapsedText, error: errMsg },
+          ),
         )
-        logger.updateReconnectingStatus(
-          formatDelay(delay),
-          formatDuration(elapsed),
-        )
+        logger.updateReconnectingStatus(delayText, elapsedText)
         // The poll_due heartbeat-loop exit leaves a healthy lease exposed to
         // this backoff path. Heartbeat before each sleep so /poll outages
         // (the VerifyEnvironmentSecretAuth DB path heartbeat was introduced
@@ -1402,7 +1410,9 @@ export async function runBridgeLoop(
         const elapsed = now - generalErrorStart
         if (elapsed >= backoffConfig.generalGiveUpMs) {
           logger.logError(
-            `Persistent errors for ${Math.round(elapsed / 60_000)} minutes, giving up.`,
+            tf('Persistent errors for {duration}, giving up.', {
+              duration: formatDuration(elapsed, { hideTrailingZeros: true }),
+            }),
           )
           logEvent('tengu_bridge_poll_give_up', {
             error_type:
@@ -1425,13 +1435,16 @@ export async function runBridgeLoop(
           ? Math.min(generalBackoff * 2, backoffConfig.generalCapMs)
           : backoffConfig.generalInitialMs
         const delay = addJitter(generalBackoff)
+        const delayText = formatDelay(delay)
+        const elapsedText = formatDuration(elapsed)
         logger.logVerbose(
-          `Poll failed, retrying in ${formatDelay(delay)} (${Math.round(elapsed / 1000)}s elapsed): ${errMsg}`,
+          tf('Poll failed, retrying in {delay} ({elapsed} elapsed): {error}', {
+            delay: delayText,
+            elapsed: elapsedText,
+            error: errMsg,
+          }),
         )
-        logger.updateReconnectingStatus(
-          formatDelay(delay),
-          formatDuration(elapsed),
-        )
+        logger.updateReconnectingStatus(delayText, elapsedText)
         if (getPollIntervalConfig().non_exclusive_heartbeat_interval_ms > 0) {
           await heartbeatActiveWorkItems()
         }
@@ -1655,7 +1668,9 @@ function addJitter(ms: number): number {
 }
 
 function formatDelay(ms: number): string {
-  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`
+  if (ms < 1000) return formatMillisecondsShort(ms)
+  if (ms < 60_000) return formatSecondsShort(ms)
+  return formatDuration(ms, { hideTrailingZeros: true })
 }
 
 /**
@@ -1698,7 +1713,16 @@ async function stopWorkWithRetry(
       if (attempt < MAX_ATTEMPTS) {
         const delay = addJitter(baseDelayMs * 2 ** (attempt - 1))
         logger.logVerbose(
-          `Failed to stop work ${workId} (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${formatDelay(delay)}: ${errMsg}`,
+          tf(
+            'Failed to stop work {workId} (attempt {attempt}/{maxAttempts}), retrying in {delay}: {error}',
+            {
+              workId,
+              attempt,
+              maxAttempts: MAX_ATTEMPTS,
+              delay: formatDelay(delay),
+              error: errMsg,
+            },
+          ),
         )
         await sleep(delay)
       } else {
@@ -1722,14 +1746,16 @@ async function onSessionTimeout(
   stopRemoteWork: () => Promise<void>,
 ): Promise<void> {
   logForDebugging(
-    `[bridge:session] sessionId=${sessionId} timed out after ${formatDuration(timeoutMs)}`,
+    `[bridge:session] sessionId=${sessionId} timed out after ${formatDuration(timeoutMs, { language: 'en' })}`,
   )
   logEvent('tengu_bridge_session_timeout', {
     timeout_ms: timeoutMs,
   })
   logger.logSessionFailed(
     sessionId,
-    `Session timed out after ${formatDuration(timeoutMs)}`,
+    tf('Session timed out after {duration}', {
+      duration: formatDuration(timeoutMs),
+    }),
   )
   timedOutSessions.add(sessionId)
   // Tell the server to stop immediately while the local process tree drains.
@@ -2214,8 +2240,9 @@ export async function bridgeMain(args: string[]): Promise<void> {
       process.exit(1)
     }
     const { pointer, dir: pointerDir } = found
-    const ageMin = Math.round(pointer.ageMs / 60_000)
-    const ageStr = ageMin < 60 ? `${ageMin}m` : `${Math.round(ageMin / 60)}h`
+    const ageStr = formatDuration(pointer.ageMs, {
+      mostSignificantOnly: true,
+    })
     const fromWt =
       pointerDir !== dir ? tf(' from worktree {dir}', { dir: pointerDir }) : ''
     console.error(

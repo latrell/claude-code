@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { logForDebugging } from 'src/utils/debug.js'
+import { tf } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 import { SUBAGENT_CREDENTIAL_SCOPE } from 'src/utils/model/subagentProvider.js'
 
 const ISSUER = 'https://auth.openai.com'
@@ -381,7 +383,11 @@ async function pollForAuthorizationCode(
       setTimeout(resolve, deviceCode.intervalSeconds * 1000),
     )
   }
-  throw new Error('ChatGPT device auth timed out after 15 minutes')
+  throw new Error(
+    tf('ChatGPT device auth timed out after {duration}', {
+      duration: formatDuration(15 * 60_000, { hideTrailingZeros: true }),
+    }),
+  )
 }
 
 async function exchangeAuthorizationCode(params: {

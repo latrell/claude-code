@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { formatDurationSeconds } from '../lib/utils';
 
 const SPINNER_FRAMES = ['·', '✢', '✱', '✶', '✻', '✽'];
 const SPINNER_CYCLE = [...SPINNER_FRAMES, ...SPINNER_FRAMES.slice().reverse()];
@@ -44,7 +45,7 @@ export function LoadingIndicator({ verb = 'Thinking', stalled = false }: Loading
       >
         {verb}…
       </span>
-      <span className="ml-auto text-xs font-mono text-text-muted">{elapsed}s</span>
+      <span className="ml-auto text-xs font-mono text-text-muted">{formatDurationSeconds(elapsed)}</span>
     </div>
   );
 }

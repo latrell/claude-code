@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { MessageResponse } from '../../components/MessageResponse.js';
 import { Text } from '@anthropic/ink';
-import { truncateToWidth } from '../format.js';
+import { formatDuration, truncateToWidth } from '../format.js';
 import type { MCPToolResult } from '../mcpValidation.js';
-import { t } from '../../i18n/t.js';
+import { t, tf } from '../../i18n/t.js';
 
 type CuToolInput = Record<string, unknown> & {
   coordinate?: [number, number];
@@ -18,6 +18,38 @@ type CuToolInput = Record<string, unknown> & {
 
 function fmtCoord(c: [number, number] | undefined): string {
   return c ? `(${c[0]}, ${c[1]})` : '';
+}
+
+function getResultText(output: MCPToolResult): string | undefined {
+  if (typeof output === 'string') return output;
+  if (!Array.isArray(output) || output.length !== 1) return undefined;
+  const block = output[0];
+  return block?.type === 'text' ? block.text : undefined;
+}
+
+function localizeDurationResult(output: MCPToolResult): string | undefined {
+  const text = getResultText(output);
+  if (!text) return undefined;
+
+  const waited = /^Waited (\d+(?:\.\d+)?)s\.$/.exec(text);
+  if (waited?.[1]) {
+    return tf('Waited {duration}.', {
+      duration: formatDuration(Number(waited[1]) * 1000, {
+        hideTrailingZeros: true,
+      }),
+    });
+  }
+
+  const held = /^Held (.+) for (\d+(?:\.\d+)?)s$/.exec(text);
+  if (held?.[1] && held[2]) {
+    return tf('Held {key} for {duration}', {
+      key: held[1],
+      duration: formatDuration(Number(held[2]) * 1000, {
+        hideTrailingZeros: true,
+      }),
+    });
+  }
+  return undefined;
 }
 
 const RESULT_SUMMARY: Readonly<Partial<Record<string, string>>> = {
@@ -104,7 +136,9 @@ export function getComputerUseMCPRenderingOverrides(toolName: string): {
         }
 
         case 'wait':
-          return typeof input.duration === 'number' ? `${input.duration}s` : '';
+          return typeof input.duration === 'number'
+            ? formatDuration(input.duration * 1000, { hideTrailingZeros: true })
+            : '';
 
         case 'write_clipboard':
           return typeof input.text === 'string' ? `"${truncateToWidth(input.text, 40)}"` : '';
@@ -130,7 +164,15 @@ export function getComputerUseMCPRenderingOverrides(toolName: string): {
     },
 
     renderToolResultMessage(output, _progress, { verbose }) {
-      if (verbose || typeof output !== 'object' || output === null) return null;
+      if (verbose) {
+        const localizedDurationResult = localizeDurationResult(output);
+        return localizedDurationResult ? (
+          <MessageResponse>
+            <Text>{localizedDurationResult}</Text>
+          </MessageResponse>
+        ) : null;
+      }
+      if (typeof output !== 'object' || output === null) return null;
 
       // Non-verbose: one-line dim summary, like Chrome's pattern.
       const summary = RESULT_SUMMARY[toolName];

@@ -3,6 +3,29 @@
 import { getRelativeTimeFormat, getTimeZone } from './intl.js'
 import { getResolvedLanguage, type ResolvedLanguage } from './language.js'
 
+type DurationUnitLabels = {
+  day: string
+  hour: string
+  minute: string
+  second: string
+  millisecond: string
+}
+
+const DURATION_UNITS: Record<ResolvedLanguage, DurationUnitLabels> = {
+  en: { day: 'd', hour: 'h', minute: 'm', second: 's', millisecond: 'ms' },
+  zh: {
+    day: '天',
+    hour: '时',
+    minute: '分',
+    second: '秒',
+    millisecond: '毫秒',
+  },
+}
+
+type DurationLanguageOptions = {
+  language?: ResolvedLanguage
+}
+
 /**
  * BCP-47 locale for date/time display, following the app's resolved UI
  * language. Keeps reset-time labels ("Aug 5" vs "8月5日") in sync with the
@@ -37,8 +60,36 @@ export function formatFileSize(sizeInBytes: number): string {
  * Unlike formatDuration, always keeps the decimal — use for sub-minute timings
  * where the fractional second is meaningful (TTFT, hook durations, etc.).
  */
-export function formatSecondsShort(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`
+export function formatSecondsShort(
+  ms: number,
+  options?: DurationLanguageOptions,
+): string {
+  const language = options?.language ?? getResolvedLanguage()
+  const durationMs = Number.isFinite(ms) ? Math.max(0, ms) : 0
+  return `${(durationMs / 1000).toFixed(1)}${DURATION_UNITS[language].second}`
+}
+
+/** Formats milliseconds with a localized compact unit. */
+export function formatMillisecondsShort(
+  ms: number,
+  options?: DurationLanguageOptions,
+): string {
+  const language = options?.language ?? getResolvedLanguage()
+  const durationMs = Number.isFinite(ms) ? Math.max(0, ms) : 0
+  return `${Math.round(durationMs)}${DURATION_UNITS[language].millisecond}`
+}
+
+/** Format an HTTP Retry-After value, preserving non-numeric HTTP dates. */
+export function formatRetryAfter(
+  retryAfter: string,
+  options?: DurationLanguageOptions,
+): string {
+  const seconds = Number(retryAfter)
+  if (!Number.isFinite(seconds) || seconds < 0) return retryAfter
+  return formatDuration(seconds * 1000, {
+    hideTrailingZeros: true,
+    language: options?.language,
+  })
 }
 
 export function formatDuration(
@@ -46,33 +97,36 @@ export function formatDuration(
   options?: {
     hideTrailingZeros?: boolean
     mostSignificantOnly?: boolean
-    /** Explicit display language. Omitted to preserve compact English units. */
+    /** Explicit override for logs/protocols; display calls follow the UI language. */
     language?: ResolvedLanguage
   },
 ): string {
-  const units =
-    options?.language === 'zh'
-      ? { day: '天', hour: '时', minute: '分', second: '秒' }
-      : { day: 'd', hour: 'h', minute: 'm', second: 's' }
+  const language = options?.language ?? getResolvedLanguage()
+  const units = DURATION_UNITS[language]
+  const durationMs = Number.isFinite(ms) ? Math.max(0, ms) : 0
 
-  if (ms < 60000) {
+  if (durationMs < 60000) {
     // Special case for 0
-    if (ms === 0) {
+    if (durationMs === 0) {
       return `0${units.second}`
     }
+    // Avoid displaying very short durations as a misleading "0.0s".
+    if (durationMs < 100) {
+      return `${Math.round(durationMs)}${units.millisecond}`
+    }
     // For durations < 1s, show 1 decimal place (e.g., 0.5s)
-    if (ms < 1) {
-      const s = (ms / 1000).toFixed(1)
+    if (durationMs < 1000) {
+      const s = (durationMs / 1000).toFixed(1)
       return `${s}${units.second}`
     }
-    const s = Math.floor(ms / 1000).toString()
+    const s = Math.floor(durationMs / 1000).toString()
     return `${s}${units.second}`
   }
 
-  let days = Math.floor(ms / 86400000)
-  let hours = Math.floor((ms % 86400000) / 3600000)
-  let minutes = Math.floor((ms % 3600000) / 60000)
-  let seconds = Math.round((ms % 60000) / 1000)
+  let days = Math.floor(durationMs / 86400000)
+  let hours = Math.floor((durationMs % 86400000) / 3600000)
+  let minutes = Math.floor((durationMs % 3600000) / 60000)
+  let seconds = Math.round((durationMs % 60000) / 1000)
 
   // Handle rounding carry-over (e.g., 59.5s rounds to 60s)
   if (seconds === 60) {
@@ -161,48 +215,73 @@ type RelativeTimeStyle = 'long' | 'short' | 'narrow'
 type RelativeTimeOptions = {
   style?: RelativeTimeStyle
   numeric?: 'always' | 'auto'
+  language?: ResolvedLanguage
 }
 
 export function formatRelativeTime(
   date: Date,
   options: RelativeTimeOptions & { now?: Date } = {},
 ): string {
-  const { style = 'narrow', numeric = 'always', now = new Date() } = options
+  const {
+    style = 'narrow',
+    numeric = 'always',
+    language = getResolvedLanguage(),
+    now = new Date(),
+  } = options
   const diffInMs = date.getTime() - now.getTime()
   // Use Math.trunc to truncate towards zero for both positive and negative values
   const diffInSeconds = Math.trunc(diffInMs / 1000)
 
   // Define time intervals with custom short units
   const intervals = [
-    { unit: 'year', seconds: 31536000, shortUnit: 'y' },
-    { unit: 'month', seconds: 2592000, shortUnit: 'mo' },
-    { unit: 'week', seconds: 604800, shortUnit: 'w' },
-    { unit: 'day', seconds: 86400, shortUnit: 'd' },
-    { unit: 'hour', seconds: 3600, shortUnit: 'h' },
-    { unit: 'minute', seconds: 60, shortUnit: 'm' },
-    { unit: 'second', seconds: 1, shortUnit: 's' },
+    { unit: 'year', seconds: 31536000, shortUnit: 'y', zhUnit: '年' },
+    { unit: 'month', seconds: 2592000, shortUnit: 'mo', zhUnit: '月' },
+    { unit: 'week', seconds: 604800, shortUnit: 'w', zhUnit: '周' },
+    { unit: 'day', seconds: 86400, shortUnit: 'd', zhUnit: '天' },
+    { unit: 'hour', seconds: 3600, shortUnit: 'h', zhUnit: '时' },
+    { unit: 'minute', seconds: 60, shortUnit: 'm', zhUnit: '分' },
+    { unit: 'second', seconds: 1, shortUnit: 's', zhUnit: '秒' },
   ] as const
 
   // Find the appropriate unit
-  for (const { unit, seconds: intervalSeconds, shortUnit } of intervals) {
+  for (const {
+    unit,
+    seconds: intervalSeconds,
+    shortUnit,
+    zhUnit,
+  } of intervals) {
     if (Math.abs(diffInSeconds) >= intervalSeconds) {
       const value = Math.trunc(diffInSeconds / intervalSeconds)
       // For short style, use custom format
       if (style === 'narrow') {
+        if (language === 'zh') {
+          return diffInSeconds < 0
+            ? `${Math.abs(value)}${zhUnit}前`
+            : `${value}${zhUnit}后`
+        }
         return diffInSeconds < 0
           ? `${Math.abs(value)}${shortUnit} ago`
           : `in ${value}${shortUnit}`
       }
       // For days and longer, use long style regardless of the style parameter
-      return getRelativeTimeFormat('long', numeric).format(value, unit)
+      return getRelativeTimeFormat(
+        language === 'zh' ? 'zh-CN' : 'en',
+        'long',
+        numeric,
+      ).format(value, unit)
     }
   }
 
   // For values less than 1 second
   if (style === 'narrow') {
+    if (language === 'zh') return diffInSeconds <= 0 ? '0秒前' : '0秒后'
     return diffInSeconds <= 0 ? '0s ago' : 'in 0s'
   }
-  return getRelativeTimeFormat(style, numeric).format(0, 'second')
+  return getRelativeTimeFormat(
+    language === 'zh' ? 'zh-CN' : 'en',
+    style,
+    numeric,
+  ).format(0, 'second')
 }
 
 export function formatRelativeTimeAgo(
@@ -222,22 +301,25 @@ export function formatRelativeTimeAgo(
 /**
  * Formats log metadata for display (time, size or message count, branch, tag, PR)
  */
-export function formatLogMetadata(log: {
-  modified: Date
-  messageCount: number
-  fileSize?: number
-  gitBranch?: string
-  tag?: string
-  agentSetting?: string
-  prNumber?: number
-  prRepository?: string
-}): string {
+export function formatLogMetadata(
+  log: {
+    modified: Date
+    messageCount: number
+    fileSize?: number
+    gitBranch?: string
+    tag?: string
+    agentSetting?: string
+    prNumber?: number
+    prRepository?: string
+  },
+  language: ResolvedLanguage = getResolvedLanguage(),
+): string {
   const sizeOrCount =
     log.fileSize !== undefined
       ? formatFileSize(log.fileSize)
       : `${log.messageCount} messages`
   const parts = [
-    formatRelativeTimeAgo(log.modified, { style: 'short' }),
+    formatRelativeTimeAgo(log.modified, { style: 'short', language }),
     ...(log.gitBranch ? [log.gitBranch] : []),
     sizeOrCount,
   ]

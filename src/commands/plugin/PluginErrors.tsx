@@ -1,5 +1,6 @@
 import { t, tf } from '../../i18n/t.js';
 import { getPluginErrorMessage, type PluginError } from '../../types/plugin.js';
+import { formatDuration } from '../../utils/format.js';
 
 export function formatErrorMessage(error: PluginError): string {
   switch (error.type) {
@@ -95,10 +96,10 @@ export function formatErrorMessage(error: PluginError): string {
             exitCode: error.exitCode ?? 'unknown',
           });
     case 'lsp-request-timeout':
-      return tf('LSP server "{serverName}" timed out on {method} after {timeoutMs}ms', {
+      return tf('LSP server "{serverName}" timed out on {method} after {duration}', {
         serverName: error.serverName,
         method: error.method,
-        timeoutMs: error.timeoutMs,
+        duration: formatDuration(error.timeoutMs, { hideTrailingZeros: true }),
       });
     case 'lsp-request-failed':
       return tf('LSP server "{serverName}" {method} failed: {error}', {

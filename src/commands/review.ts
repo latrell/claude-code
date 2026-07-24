@@ -1,7 +1,8 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.js'
 import type { Command } from '../commands.js'
 import { isUltrareviewEnabled } from './review/ultrareviewEnabled.js'
-import { t } from '../i18n/t.js'
+import { t, tf } from '../i18n/t.js'
+import { formatDuration } from '../utils/format.js'
 
 // Legal wants the explicit surface name plus a docs link visible before the
 // user triggers, so the description carries "Claude Code on the web" + URL.
@@ -51,7 +52,20 @@ const review: Command = {
 const ultrareview: Command = {
   type: 'local-jsx',
   name: 'ultrareview',
-  description: `~10–20 min · Finds and verifies bugs in your branch. Runs in Claude Code on the web. See ${CCR_TERMS_URL}`,
+  get description() {
+    return tf(
+      '~{minDuration}–{maxDuration} · Finds and verifies bugs in your branch. Runs in Claude Code on the web. See {url}',
+      {
+        minDuration: formatDuration(10 * 60_000, {
+          hideTrailingZeros: true,
+        }),
+        maxDuration: formatDuration(20 * 60_000, {
+          hideTrailingZeros: true,
+        }),
+        url: CCR_TERMS_URL,
+      },
+    )
+  },
   isEnabled: () => isUltrareviewEnabled(),
   load: () => import('./review/ultrareviewCommand.js'),
 }

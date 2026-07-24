@@ -26,6 +26,7 @@ import { createAbortController, createChildAbortController } from '../../utils/a
 import { AbortSettlementTimeoutError, waitForBoundedSettlement } from '../../utils/abortSettlement.js';
 import { registerCleanup } from '../../utils/cleanupRegistry.js';
 import { getSearchExtraToolsOrReadInfo } from '../../utils/collapseReadSearch.js';
+import { formatDuration } from '../../utils/format.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
 import { StopConfirmationError } from '../../utils/stopConfirmation.js';
@@ -656,7 +657,7 @@ export async function killAsyncAgent(
       // The deadline and the runner can resolve in the same turn. Prefer the
       // concrete runner settlement if its finally won before this catch runs.
       if (!stopSettlementConfirmed) {
-        const message = `Agent task ${taskId} execution did not settle within ${LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS}ms after the stop request`;
+        const message = `Agent task ${taskId} execution did not settle within ${formatDuration(LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS, { hideTrailingZeros: true })} after the stop request`;
         // Do not publish a fake failed terminal state or discard the only
         // settlement handle. The runner may still be alive; retaining both the
         // running task and its execution record lets a second Stop wait again,

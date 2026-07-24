@@ -16,6 +16,7 @@ import type { ReleaseChannel } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { formatDuration } from '../format.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { sleep } from '../sleep.js'
@@ -213,7 +214,9 @@ function getStallTimeoutMs(): number {
 
 class StallTimeoutError extends Error {
   constructor() {
-    super('Download stalled: no data received for 60 seconds')
+    super(
+      `Download stalled: no data received for ${formatDuration(getStallTimeoutMs(), { hideTrailingZeros: true })}`,
+    )
     this.name = 'StallTimeoutError'
   }
 }

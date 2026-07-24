@@ -1,6 +1,7 @@
 import type { LspServerConfig } from '../services/lsp/types.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
 import type { BundledSkillDefinition } from '../skills/bundledSkills.js'
+import { formatDuration } from '../utils/format.js'
 import type {
   CommandMetadata,
   PluginAuthor,
@@ -342,7 +343,7 @@ export function getPluginErrorMessage(error: PluginError): string {
       }
       return `Plugin "${error.plugin}" LSP server "${error.serverName}" crashed with exit code ${error.exitCode ?? 'unknown'}`
     case 'lsp-request-timeout':
-      return `Plugin "${error.plugin}" LSP server "${error.serverName}" timed out on ${error.method} request after ${error.timeoutMs}ms`
+      return `Plugin "${error.plugin}" LSP server "${error.serverName}" timed out on ${error.method} request after ${formatDuration(error.timeoutMs, { hideTrailingZeros: true })}`
     case 'lsp-request-failed':
       return `Plugin "${error.plugin}" LSP server "${error.serverName}" ${error.method} request failed: ${error.error}`
     case 'marketplace-blocked-by-policy':

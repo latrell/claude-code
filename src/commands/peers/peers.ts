@@ -1,4 +1,5 @@
 import type { LocalCommandCall } from '../../types/command.js'
+import { formatRelativeTimeAgo } from '../../utils/format.js'
 import { listPeers, isPeerAlive } from '../../utils/udsClient.js'
 import {
   formatUdsAddress,
@@ -53,12 +54,5 @@ export const call: LocalCommandCall = async (_args, _context) => {
 }
 
 function formatAge(startedAt: number): string {
-  const elapsed = Date.now() - startedAt
-  const seconds = Math.floor(elapsed / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h ${remainingMinutes}m ago`
+  return formatRelativeTimeAgo(new Date(startedAt))
 }

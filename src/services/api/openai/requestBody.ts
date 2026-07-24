@@ -15,6 +15,48 @@ export type OpenAICompatibleChatCompletionRequest = Omit<
   chat_template_kwargs?: { thinking: boolean; enable_thinking: boolean }
   /** Third-party endpoints may accept extensions beyond the OpenAI SDK union. */
   reasoning_effort?: string
+  /** DeepSeek V4 extension: cap reasoning separately from total output. */
+  thinking_token_budget?: number
+}
+
+const DEEPSEEK_V4_MAX_DEFAULT_THINKING_TOKEN_BUDGET = 64_000
+const DEEPSEEK_V4_MIN_BUDGETED_OUTPUT_TOKENS = 2_048
+
+/**
+ * Bound DeepSeek V4's reasoning phase while reserving room for final text or
+ * a tool call. Without a separate budget, `reasoning_effort=max` can consume
+ * the entire total-output limit and return no user-visible answer.
+ *
+ * OPENAI_THINKING_TOKEN_BUDGET=-1 explicitly restores the endpoint's
+ * unlimited-thinking behavior. Positive integer overrides are passed through.
+ */
+export function resolveOpenAIThinkingTokenBudget(params: {
+  enableThinking: boolean
+  isDeepSeekV4: boolean
+  maxTokens: number
+  maxThinkingTokens?: number
+  env?: Record<string, string | undefined>
+}): number | undefined {
+  const {
+    enableThinking,
+    isDeepSeekV4,
+    maxTokens,
+    maxThinkingTokens = DEEPSEEK_V4_MAX_DEFAULT_THINKING_TOKEN_BUDGET,
+    env = process.env,
+  } = params
+  if (!enableThinking || !isDeepSeekV4) return undefined
+
+  const rawOverride = env.OPENAI_THINKING_TOKEN_BUDGET?.trim()
+  if (rawOverride) {
+    const parsed = Number(rawOverride)
+    if (parsed === -1) return -1
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return Math.min(parsed, maxThinkingTokens, maxTokens)
+    }
+  }
+
+  if (maxTokens < DEEPSEEK_V4_MIN_BUDGETED_OUTPUT_TOKENS) return undefined
+  return Math.min(maxThinkingTokens, Math.floor(maxTokens / 2))
 }
 
 /**
@@ -67,10 +109,10 @@ export function isOpenAIThinkingEnabled(
  * 2. OPENAI_MAX_TOKENS env var (OpenAI-specific, useful for local models
  *    with small context windows, e.g. RTX 3060 12GB running 65536-token models)
  * 3. CLAUDE_CODE_MAX_OUTPUT_TOKENS env var (generic override)
- * 4. upperLimit default (64000)
+ * 4. provider default supplied by the caller
  */
 export function resolveOpenAIMaxTokens(
-  upperLimit: number,
+  providerDefault: number,
   maxOutputTokensOverride?: number,
   env: Record<string, string | undefined> = process.env,
 ): number {
@@ -82,7 +124,7 @@ export function resolveOpenAIMaxTokens(
     (env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
       ? parseInt(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, 10) || undefined
       : undefined) ??
-    upperLimit
+    providerDefault
   )
 }
 
@@ -111,6 +153,8 @@ export function buildOpenAIRequestBody(params: {
    * specific extensions such as max. Only sent when defined.
    */
   reasoningEffort?: string
+  /** DeepSeek V4 extension; undefined omits the field for other endpoints. */
+  thinkingTokenBudget?: number
 }): OpenAICompatibleChatCompletionRequest {
   const {
     model,
@@ -121,6 +165,7 @@ export function buildOpenAIRequestBody(params: {
     maxTokens,
     temperatureOverride,
     reasoningEffort,
+    thinkingTokenBudget,
   } = params
   return {
     model,
@@ -136,6 +181,9 @@ export function buildOpenAIRequestBody(params: {
     // GLM…). Undefined = field omitted entirely.
     ...(reasoningEffort !== undefined && {
       reasoning_effort: reasoningEffort,
+    }),
+    ...(thinkingTokenBudget !== undefined && {
+      thinking_token_budget: thinkingTokenBudget,
     }),
     // Enable chain-of-thought output for DeepSeek and MiMo models.
     // When active, temperature/top_p/presence_penalty/frequency_penalty are ignored.

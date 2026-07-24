@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { formatTokens } from '../utils/format.js';
+import { formatDuration, formatTokens } from '../utils/format.js';
+import { getResolvedLanguage, type ResolvedLanguage } from '../utils/language.js';
 import { t, tf } from '../i18n/t.js';
 import { T } from '../i18n/TText.js';
 import { Select } from './CustomSelect/index.js';
@@ -50,17 +51,15 @@ export function IdleReturnDialog({ idleMinutes, totalInputTokens, onDone }: Prop
   );
 }
 
-function formatIdleDuration(minutes: number): string {
+export function formatIdleDuration(minutes: number, language: ResolvedLanguage = getResolvedLanguage()): string {
   if (minutes < 1) {
-    return '< 1m';
+    return `< ${formatDuration(60_000, {
+      hideTrailingZeros: true,
+      language,
+    })}`;
   }
-  if (minutes < 60) {
-    return `${Math.floor(minutes)}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = Math.floor(minutes % 60);
-  if (remainingMinutes === 0) {
-    return `${hours}h`;
-  }
-  return `${hours}h ${remainingMinutes}m`;
+  return formatDuration(Math.floor(minutes) * 60_000, {
+    hideTrailingZeros: true,
+    language,
+  });
 }

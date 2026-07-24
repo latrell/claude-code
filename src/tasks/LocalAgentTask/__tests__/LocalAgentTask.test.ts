@@ -70,6 +70,7 @@ const {
   isLocalAgentTask,
   LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS,
 } = await import('../LocalAgentTask.js')
+const { formatDuration } = await import('../../../utils/format.js')
 
 // ─── Helpers ───
 
@@ -475,7 +476,7 @@ describe('killAsyncAgent', () => {
     })
 
     await expect(stop).rejects.toThrow(
-      `did not settle within ${LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS}ms after the stop request`,
+      `did not settle within ${formatDuration(LOCAL_AGENT_STOP_SETTLEMENT_TIMEOUT_MS, { hideTrailingZeros: true })} after the stop request`,
     )
     expect(getState().tasks[task.agentId].status).toBe('running')
     expect(getState().tasks[task.agentId].error).toBeUndefined()

@@ -4,6 +4,7 @@ import type { InitializeParams } from 'vscode-languageserver-protocol'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
+import { formatDuration } from '../../utils/format.js'
 import { logError } from '../../utils/log.js'
 import { sleep } from '../../utils/sleep.js'
 import type { createLSPClient as createLSPClientType } from './LSPClient.js'
@@ -241,7 +242,7 @@ export function createLSPServerInstance(
         await withTimeout(
           initPromise,
           config.startupTimeout,
-          `LSP server '${name}' timed out after ${config.startupTimeout}ms during initialization`,
+          `LSP server '${name}' timed out after ${formatDuration(config.startupTimeout, { hideTrailingZeros: true })} during initialization`,
         )
       } else {
         await initPromise

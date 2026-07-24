@@ -3,7 +3,7 @@ import { MessageResponse } from 'src/components/MessageResponse.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import { Box, Text } from '@anthropic/ink';
 import type { ProgressMessage } from 'src/types/message.js';
-import { truncate } from 'src/utils/format.js';
+import { formatDuration, formatMillisecondsShort, truncate } from 'src/utils/format.js';
 import type { Output, SearchResult, WebSearchProgress } from './WebSearchTool.js';
 import { tf } from 'src/i18n/t.js';
 
@@ -95,8 +95,8 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
   const { searchCount } = getSearchSummary(output.results ?? []);
   const timeDisplay =
     output.durationSeconds >= 1
-      ? `${Math.round(output.durationSeconds)}s`
-      : `${Math.round(output.durationSeconds * 1000)}ms`;
+      ? formatDuration(Math.round(output.durationSeconds) * 1000, { hideTrailingZeros: true })
+      : formatMillisecondsShort(output.durationSeconds * 1000);
 
   return (
     <Box justifyContent="space-between" width="100%">

@@ -10,6 +10,7 @@
 
 import * as path from 'path'
 import type { Writable } from 'stream'
+import { formatDuration } from '../../format.js'
 
 interface BridgeRequest {
   id: number
@@ -111,7 +112,11 @@ export async function call<T = unknown>(
     // Timeout
     const timer = setTimeout(() => {
       pendingRequests.delete(id)
-      reject(new Error(`Bridge call ${method} timed out after ${timeoutMs}ms`))
+      reject(
+        new Error(
+          `Bridge call ${method} timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
+        ),
+      )
     }, timeoutMs)
 
     // Clear timeout on resolve/reject

@@ -35,7 +35,10 @@ import {
 } from './responsesAdapter.js'
 import { PROMPT_TOO_LONG_ERROR_MESSAGE } from '../errors.js'
 import { resolveChatGPTResponsesReasoningEffort } from './reasoningEffort.js'
-import { resolveOpenAICompatibleReasoningEffort } from '../../connections/effortTransport.js'
+import {
+  isDeepSeekV4ReasoningModel,
+  resolveOpenAICompatibleReasoningEffort,
+} from '../../connections/effortTransport.js'
 import { mapThinkingEffortToEffortValue } from '../../connections/thinkingEffort.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/api.js'
@@ -51,6 +54,7 @@ import { calculateUSDCost } from '../../../utils/modelCost.js'
 import {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
+  resolveOpenAIThinkingTokenBudget,
   buildOpenAIRequestBody,
 } from './requestBody.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
@@ -67,9 +71,11 @@ import {
 export {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
+  resolveOpenAIThinkingTokenBudget,
   buildOpenAIRequestBody,
 }
 import { getModelMaxOutputTokens } from '../../../utils/context.js'
+import { findChinaProviderModel } from '../../../utils/chinaLlmProviders.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import { getSessionId } from '../../../bootstrap/state.js'
@@ -371,24 +377,33 @@ export async function* queryModelOpenAI(
     //     thinking is enabled the thinking phase consumes the entire budget
     //     leaving no tokens for the final response.
     //
-    //     Use upperLimit (not the slot-cap default) because the Anthropic path's
-    //     slot-reservation cap (CAPPED_DEFAULT_MAX_TOKENS=8k) is paired with an
-    //     auto-retry at 64k in query.ts. The OpenAI path has no such retry, so
-    //     using the capped 8k default would silently truncate responses in
-    //     multi-turn conversations where thinking consumes most of the budget.
+    //     Keep the provider's full upper limit. A slow local endpoint is allowed
+    //     to run for a long time as long as it keeps making semantic progress;
+    //     DeepSeek's reasoning phase is bounded separately below so it cannot
+    //     consume all output room before producing a final answer.
     //
     //     Override priority:
     //     1. options.maxOutputTokensOverride (programmatic)
     //     2. OPENAI_MAX_TOKENS env var (OpenAI-specific, useful for local models
     //        with small context windows, e.g. RTX 3060 12GB running 65536-token models)
     //     3. CLAUDE_CODE_MAX_OUTPUT_TOKENS env var (generic override)
-    //     4. upperLimit default (64000)
+    //     4. upperLimit default
     const { upperLimit } = getModelMaxOutputTokens(openaiModel)
     const maxTokens = resolveOpenAIMaxTokens(
       upperLimit,
       options.maxOutputTokensOverride,
       providerEnv,
     )
+    const providerModel = findChinaProviderModel(openaiModel)
+    const thinkingTokenBudget = resolveOpenAIThinkingTokenBudget({
+      enableThinking,
+      isDeepSeekV4: isDeepSeekV4ReasoningModel(openaiModel),
+      maxTokens,
+      maxThinkingTokens: providerModel?.maxThinkingTokens,
+      // Connection-scoped env owns credentials/routing, while process env may
+      // still provide request-control overrides such as the thinking budget.
+      env: { ...process.env, ...providerEnv },
+    })
 
     logForDebugging(
       `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}`,
@@ -459,6 +474,7 @@ export async function* queryModelOpenAI(
                   maxTokens,
                   temperatureOverride: options.temperatureOverride,
                   reasoningEffort: chatCompletionsReasoningEffort,
+                  thinkingTokenBudget,
                 }) as unknown as ChatCompletionCreateParamsStreaming,
                 { signal: innerSignal },
               ),

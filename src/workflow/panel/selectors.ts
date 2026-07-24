@@ -1,4 +1,9 @@
 import type { AgentProgress, RunProgress } from '../progress/store.js'
+import { formatDuration as formatDisplayDuration } from '../../utils/format.js'
+import {
+  getResolvedLanguage,
+  type ResolvedLanguage,
+} from '../../utils/language.js'
 import type { PhaseStatus } from './status.js'
 
 /** Title of the fixed "no filter" item (first row of the sidebar). */
@@ -126,13 +131,18 @@ export function tabLabel(workflowName: string, runId: string): string {
   return `${workflowName}#${runId.slice(-4)}`
 }
 
-/** milliseconds -> compact duration (<60s -> `Ns`; <60m -> `MmSSs`; otherwise `HhMMm`). Used by the panel header. */
-export function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const ss = s % 60
-  if (m < 60) return `${m}m${String(ss).padStart(2, '0')}s`
-  const h = Math.floor(m / 60)
-  return `${h}h${String(m % 60).padStart(2, '0')}m`
+/** Compact localized duration used by the panel header. */
+export function formatDuration(
+  ms: number,
+  language: ResolvedLanguage = getResolvedLanguage(),
+): string {
+  const wholeSeconds = Math.floor(ms / 1000)
+  const displayMs =
+    wholeSeconds >= 3600
+      ? Math.floor(wholeSeconds / 60) * 60_000
+      : wholeSeconds * 1000
+  return formatDisplayDuration(displayMs, {
+    hideTrailingZeros: true,
+    language,
+  })
 }

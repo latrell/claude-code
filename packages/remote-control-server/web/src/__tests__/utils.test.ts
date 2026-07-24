@@ -2,6 +2,7 @@ import { afterEach, describe, test, expect } from 'bun:test'
 
 const {
   formatTime,
+  formatDurationSeconds,
   statusClass,
   isClosedSessionStatus,
   truncate,
@@ -18,6 +19,10 @@ type UuidCrypto = {
 const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(
   globalThis,
   'crypto',
+)
+const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'localStorage',
 )
 
 function setCryptoForTest(value: UuidCrypto): void {
@@ -36,8 +41,31 @@ function restoreCryptoForTest(): void {
   }
 }
 
+function setLanguageForTest(language: 'en' | 'zh'): void {
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: {
+      getItem: (key: string) => (key === 'rcs_lang' ? language : null),
+    },
+  })
+}
+
+function restoreLocalStorageForTest(): void {
+  if (originalLocalStorageDescriptor) {
+    Object.defineProperty(
+      globalThis,
+      'localStorage',
+      originalLocalStorageDescriptor,
+    )
+  } else {
+    Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+}
+
 afterEach(() => {
   restoreCryptoForTest()
+  restoreLocalStorageForTest()
 })
 
 // =============================================================================
@@ -60,6 +88,34 @@ describe('formatTime', () => {
   test('formats valid unix timestamp', () => {
     const result = formatTime(1700000000)
     expect(result).toContain('2023')
+  })
+})
+
+// =============================================================================
+// formatDurationSeconds()
+// =============================================================================
+
+describe('formatDurationSeconds', () => {
+  test('formats seconds, minutes, and hours in English', () => {
+    expect(formatDurationSeconds(42, 'en')).toBe('42s')
+    expect(formatDurationSeconds(21 * 60 + 42, 'en')).toBe('21m 42s')
+    expect(formatDurationSeconds(3600 + 60 + 1, 'en')).toBe('1h 1m 1s')
+  })
+
+  test('formats seconds, minutes, and hours in Chinese', () => {
+    expect(formatDurationSeconds(42, 'zh')).toBe('42秒')
+    expect(formatDurationSeconds(21 * 60 + 42, 'zh')).toBe('21分 42秒')
+    expect(formatDurationSeconds(3600 + 60 + 1, 'zh')).toBe('1时 1分 1秒')
+  })
+
+  test('uses the resolved Web language by default', () => {
+    setLanguageForTest('zh')
+    expect(formatDurationSeconds(3600)).toBe('1时 0分 0秒')
+  })
+
+  test('normalizes invalid and negative durations to zero', () => {
+    expect(formatDurationSeconds(-1, 'en')).toBe('0s')
+    expect(formatDurationSeconds(Number.NaN, 'zh')).toBe('0秒')
   })
 })
 

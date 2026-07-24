@@ -9,6 +9,12 @@ export type ProviderModel = {
   inputPricePerMTok: number
   outputPricePerMTok: number
   contextWindow: string
+  /** Machine-readable context window used outside the connection preset UI. */
+  contextWindowTokens?: number
+  /** Provider-documented maximum Chat Completions output tokens. */
+  maxOutputTokens?: number
+  /** Client policy ceiling for an explicit reasoning-token budget. */
+  maxThinkingTokens?: number
   free?: boolean
   tags?: string[]
   deprecated?: string
@@ -59,6 +65,9 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
         inputPricePerMTok: 3,
         outputPricePerMTok: 6,
         contextWindow: '1M',
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 384_000,
+        maxThinkingTokens: 64_000,
         tags: ['推荐', '代码能力强'],
       },
       {
@@ -67,6 +76,9 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
         inputPricePerMTok: 1,
         outputPricePerMTok: 2,
         contextWindow: '1M',
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 384_000,
+        maxThinkingTokens: 64_000,
         tags: ['快速'],
       },
     ],
@@ -273,6 +285,25 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
 
 export function findChinaProviderById(id: string): ProviderPreset | undefined {
   return CHINA_LLM_PROVIDERS.find(p => p.id === id)
+}
+
+/** Exact provider-model capability lookup, including current DeepSeek aliases. */
+export function findChinaProviderModel(id: string): ProviderModel | undefined {
+  const normalized = id.trim().toLowerCase()
+  const deepSeekMatch =
+    /(?:^|[/:])(deepseek-(?:v4-(?:flash|pro)|chat|reasoner))(?:$|[/:@])/.exec(
+      normalized,
+    )
+  const leaf = deepSeekMatch?.[1] ?? normalized
+  const canonical =
+    leaf === 'deepseek-chat' || leaf === 'deepseek-reasoner'
+      ? 'deepseek-v4-flash'
+      : leaf
+  for (const provider of CHINA_LLM_PROVIDERS) {
+    const model = provider.models.find(candidate => candidate.id === canonical)
+    if (model) return model
+  }
+  return undefined
 }
 
 export function resolveChinaProviderBaseURL(

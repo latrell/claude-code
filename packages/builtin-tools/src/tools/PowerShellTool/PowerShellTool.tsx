@@ -28,7 +28,7 @@ import type { AssistantMessage } from 'src/types/message.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from 'src/utils/errors.js';
-import { truncate } from 'src/utils/format.js';
+import { formatDuration, truncate } from 'src/utils/format.js';
 import { lazySchema } from 'src/utils/lazySchema.js';
 import { logError } from 'src/utils/log.js';
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
@@ -525,8 +525,14 @@ export const PowerShellTool = buildTool({
       const outputPath = getTaskOutputPath(backgroundTaskId);
       if (assistantAutoBackgrounded) {
         backgroundInfo = tf(
-          'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
-          { blockingBudget: ASSISTANT_BLOCKING_BUDGET_MS / 1000, backgroundTaskId, outputPath },
+          'Command exceeded the assistant-mode blocking budget ({blockingBudget}) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
+          {
+            blockingBudget: formatDuration(ASSISTANT_BLOCKING_BUDGET_MS, {
+              hideTrailingZeros: true,
+            }),
+            backgroundTaskId,
+            outputPath,
+          },
         );
       } else if (backgroundedByUser) {
         backgroundInfo = tf(

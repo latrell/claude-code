@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
+import { formatDuration } from '../../utils/format.js'
 import type { Subprocess } from 'bun'
 import { debugMock } from '../../../tests/mocks/debug'
 
@@ -50,7 +51,7 @@ describe('waitForSSHProcessExit', () => {
     })
 
     await expect(waitForSSHProcessExit(proc, 1, terminate)).rejects.toThrow(
-      'SSH process timed out after 1ms',
+      `SSH process timed out after ${formatDuration(1, { hideTrailingZeros: true })}`,
     )
     expect(terminate).toHaveBeenCalledWith(proc)
   })

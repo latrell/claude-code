@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { formatDuration } from 'src/utils/format.js'
 import {
   McpError,
   McpConnectionError,
@@ -49,7 +50,9 @@ describe('McpTimeoutError', () => {
     const err = new McpTimeoutError('my-server', 5000)
     expect(err.code).toBe('TIMEOUT')
     expect(err.timeoutMs).toBe(5000)
-    expect(err.message).toContain('5000')
+    expect(err.message).toContain(
+      formatDuration(5000, { hideTrailingZeros: true }),
+    )
   })
 })
 

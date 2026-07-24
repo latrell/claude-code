@@ -22,6 +22,9 @@ import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/language.ts', () => ({
+  getResolvedLanguage: () => 'en',
+}))
 
 // ── Analytics mock ──────────────────────────────────────────────────────────
 const realAnalytics = await import('src/services/analytics/index.js')
@@ -42,6 +45,7 @@ mock.module('src/services/oauth/client.js', () => ({
 }))
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
+  fileSuffixForOauthConfig: () => '',
 }))
 // Spread real teleport/api so any export not explicitly stubbed (like
 // prepareApiRequest, axiosGetWithRetry, type guards, schemas)

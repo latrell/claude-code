@@ -34,7 +34,7 @@ import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { isENOENT, ShellError } from 'src/utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from 'src/utils/file.js';
 import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/fileHistory.js';
-import { truncate } from 'src/utils/format.js';
+import { formatDuration, truncate } from 'src/utils/format.js';
 import { getFsImplementation } from 'src/utils/fsOperations.js';
 import { lazySchema } from 'src/utils/lazySchema.js';
 import { expandPath } from 'src/utils/path.js';
@@ -745,8 +745,14 @@ export const BashTool = buildTool({
       const outputPath = getTaskOutputPath(backgroundTaskId);
       if (assistantAutoBackgrounded) {
         backgroundInfo = tf(
-          'Command exceeded the assistant-mode blocking budget ({blockingBudget}s) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
-          { blockingBudget: ASSISTANT_BLOCKING_BUDGET_MS / 1000, backgroundTaskId, outputPath },
+          'Command exceeded the assistant-mode blocking budget ({blockingBudget}) and was moved to the background with ID: {backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: {outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.',
+          {
+            blockingBudget: formatDuration(ASSISTANT_BLOCKING_BUDGET_MS, {
+              hideTrailingZeros: true,
+            }),
+            backgroundTaskId,
+            outputPath,
+          },
         );
       } else if (backgroundedByUser) {
         backgroundInfo = tf(

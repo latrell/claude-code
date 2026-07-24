@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { logForDebugging } from '../debug.js'
+import { formatDuration } from '../format.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { getCachedPowerShellPath } from '../shell/powershellDetection.js'
 import { jsonParse } from '../slowOperations.js'
@@ -1219,7 +1220,7 @@ async function parsePowerShellCommandImpl(
   if (timedOut) {
     return makeInvalidResult(
       command,
-      `pwsh timed out after ${parseTimeoutMs}ms (2 attempts)`,
+      `pwsh timed out after ${formatDuration(parseTimeoutMs, { hideTrailingZeros: true })} (2 attempts)`,
       'PwshTimeout',
     )
   }

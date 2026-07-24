@@ -16,6 +16,7 @@
 import { feature } from 'bun:bundle'
 import { basename } from 'path'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
+import { formatDuration } from '../../utils/format.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { ENTRYPOINT_NAME } from '../../memdir/memdir.js'
 import {
@@ -742,7 +743,7 @@ export function initExtractMemories(): void {
         }
       }
       throw new StopConfirmationError(
-        `Memory extraction did not settle within ${timeoutMs}ms`,
+        `Memory extraction did not settle within ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
       )
     }
     // A completed shutdown drain is also an owner observation boundary. Only

@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { logForDebugging } from 'src/utils/debug.js'
+import { formatDuration } from 'src/utils/format.js'
 import type { Subprocess } from 'bun'
 import { terminateSSHProcess } from './terminateSSHProcess.js'
 
@@ -45,12 +46,12 @@ export async function waitForSSHProcessExit(
     confirmed = await terminateProcess(proc)
   } catch (error) {
     throw new Error(
-      `SSH process timed out after ${timeoutMs}ms and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+      `SSH process timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })} and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
   if (!confirmed) {
     throw new Error(
-      `SSH process timed out after ${timeoutMs}ms; process-tree termination could not be confirmed`,
+      `SSH process timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}; process-tree termination could not be confirmed`,
     )
   }
 
@@ -76,7 +77,9 @@ export async function waitForSSHProcessExit(
   } finally {
     if (exitTimer) clearTimeout(exitTimer)
   }
-  throw new Error(`SSH process timed out after ${timeoutMs}ms`)
+  throw new Error(
+    `SSH process timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
+  )
 }
 
 async function runSshCommand(

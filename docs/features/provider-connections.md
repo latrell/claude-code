@@ -106,6 +106,8 @@ OpenAI Chat Completions 连接还可保存 `thinkingEffortTransport`：
 
 DeepSeek V4 的官方实际档位只有 High/Max：`low/medium → high`、`xhigh/max → max`。识别到 canonical V4 模型 id（以及迁移期 legacy alias）后，连接 UI 只提供 High/Max；选择 Max 才会保存 `thinkingEffortTransport=passthrough` 并发送 `reasoning_effort=max`。旧档案中的 low/medium 或 `max + compatible` 不会静默改写，UI 会标明它们当前实际为 High，用户可重新选择以归一化档案。
 
+DeepSeek V4 使用专属模型能力：1M 上下文、官方 384K 总输出上限、默认最高 64K 思考预算，不再落入未知模型的通用 64K 输出回退。自托管 DGX 即使吞吐较低，只要流和引擎指标仍有语义进展，就不会按执行时长提前终止。为避免思考阶段吃完全部输出空间，Chat Completions 请求会单独发送 `thinking_token_budget`：默认取总输出上限的一半且最高 64K，其余空间留给最终答案或工具调用。`OPENAI_THINKING_TOKEN_BUDGET=<正整数>` 可显式覆盖（仍受模型思考上限和总输出上限约束），设为 `-1` 可显式恢复端点的无限思考预算。
+
 识别依据是固定模型 id（无固定模型时才回退到 DeepSeek preset/官方 host），不根据连接名称猜测，也不会把任意包含 `deepseek` 的旧 R1/V3、自托管模型都声明为支持 V4 协议。通用 ChatGPT 中转站和未知第三方模型仍保留兼容/原样两种 Max 选择，由用户按中转站文档决定。
 
 `chatgpt-oauth` 使用 ChatGPT Responses API，由已知模型能力目录决定 `max/xhigh` 的实际值，不使用这个 Chat Completions 开关。通过 Base URL/API Key 配置的 ChatGPT 中转站属于 `openai-compat`，应根据中转站及其下游模型文档选择兼容或原样模式。

@@ -11,6 +11,7 @@ import { distRoot } from './distRoot.js'
 import { isEnvDefinedFalsy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { findExecutable } from './findExecutable.js'
+import { formatDuration } from './format.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
 import { countCharInString } from './stringUtils.js'
@@ -496,9 +497,10 @@ export async function ripGrep(
       // If we timed out with no results, throw an error so Claude knows the search
       // didn't complete rather than thinking there were no matches
       if (isTimeout && lines.length === 0) {
+        const timeoutMs = (getPlatform() === 'wsl' ? 60 : 20) * 1000
         reject(
           new RipgrepTimeoutError(
-            `Ripgrep search timed out after ${getPlatform() === 'wsl' ? 60 : 20} seconds. The search may have matched files but did not complete in time. Try searching a more specific path or pattern.`,
+            `Ripgrep search timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}. The search may have matched files but did not complete in time. Try searching a more specific path or pattern.`,
             lines,
           ),
         )

@@ -34,6 +34,7 @@ import {
   toError,
 } from '../errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { formatDuration } from '../format.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { gitExe } from '../git.js'
 import { logError } from '../log.js'
@@ -659,10 +660,12 @@ function enhanceGitPullErrorMessages(result: {
   // Detect execa timeout kills via the error field (stderr won't contain "timed out"
   // when the process is killed by SIGTERM — the timeout info is only in error)
   if (result.error?.includes('timed out')) {
-    const timeoutSec = Math.round(getPluginGitTimeoutMs() / 1000)
+    const timeout = formatDuration(getPluginGitTimeoutMs(), {
+      hideTrailingZeros: true,
+    })
     return {
       ...result,
-      stderr: `Git pull timed out after ${timeoutSec}s. Try increasing the timeout via CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS environment variable.\n\nOriginal error: ${result.stderr}`,
+      stderr: `Git pull timed out after ${timeout}. Try increasing the timeout via CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS environment variable.\n\nOriginal error: ${result.stderr}`,
     }
   }
 
@@ -911,7 +914,7 @@ export async function gitClone(
   if (result.error?.includes('timed out')) {
     return {
       ...result,
-      stderr: `Git clone timed out after ${Math.round(timeoutMs / 1000)}s. The repository may be too large for the current timeout. Set CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS to increase it (e.g., 300000 for 5 minutes).\n\nOriginal error: ${result.stderr}`,
+      stderr: `Git clone timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}. The repository may be too large for the current timeout. Set CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS to increase it (e.g., 300000 for 5 minutes).\n\nOriginal error: ${result.stderr}`,
     }
   }
 
@@ -1095,10 +1098,12 @@ async function cacheMarketplaceFromGit(
   // Attempt incremental update; fall back to re-clone if the repo is absent,
   // stale, or otherwise not updatable. Using pull-first avoids a stat-before-operate
   // TOCTOU check: gitPull returns non-zero when cachePath is missing or has no .git.
-  const timeoutSec = Math.round(getPluginGitTimeoutMs() / 1000)
+  const timeout = formatDuration(getPluginGitTimeoutMs(), {
+    hideTrailingZeros: true,
+  })
   safeCallProgress(
     onProgress,
-    `Refreshing marketplace cache (timeout: ${timeoutSec}s)…`,
+    `Refreshing marketplace cache (timeout: ${timeout})…`,
   )
 
   // Reconcile sparse-checkout config before pulling. If this requires a re-clone
@@ -1153,7 +1158,7 @@ async function cacheMarketplaceFromGit(
   const refMessage = ref ? ` (ref: ${ref})` : ''
   safeCallProgress(
     onProgress,
-    `Cloning repository (timeout: ${timeoutSec}s): ${redactUrlCredentials(gitUrl)}${refMessage}`,
+    `Cloning repository (timeout: ${timeout}): ${redactUrlCredentials(gitUrl)}${refMessage}`,
   )
   const cloneStarted = performance.now()
   const result = await gitClone(gitUrl, cachePath, ref, sparsePaths)

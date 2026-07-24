@@ -19,8 +19,10 @@
 
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { randomUUID } from 'crypto'
+import { tf } from 'src/i18n/t.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { AbortError, errorMessage } from 'src/utils/errors.js'
+import { formatDuration } from 'src/utils/format.js'
 import { disableKeepAlive } from 'src/utils/proxy.js'
 import { sleep } from 'src/utils/sleep.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
@@ -332,6 +334,7 @@ function createRetryProgressMessage(
   provider: string,
 ): SystemAPIErrorMessage {
   const msg = error instanceof Error ? error.message : String(error)
+  const delay = formatDuration(delayMs, { hideTrailingZeros: true })
   return {
     type: 'system',
     subtype: 'api_error',
@@ -339,7 +342,10 @@ function createRetryProgressMessage(
     timestamp: new Date().toISOString(),
     message: {
       role: 'user',
-      content: `[${provider}] 第 ${attempt}/${maxRetries} 次重试，${Math.round(delayMs / 1000)}s 后重试：${msg}`,
+      content: tf(
+        '[{provider}] Retry {attempt}/{maxRetries} in {delay}: {message}',
+        { provider, attempt, maxRetries, delay, message: msg },
+      ),
     },
     retryInMs: delayMs,
     retryAttempt: attempt,
@@ -511,7 +517,7 @@ export async function* withCompatRetry<T>(
       )
 
       logForDebugging(
-        `[${options.provider}] 第 ${attempt + 1}/${maxRetries} 次重试，${Math.round(delayMs / 1000)}s 后重试`,
+        `[${options.provider}] Retry ${attempt + 1}/${maxRetries} in ${formatDuration(delayMs, { hideTrailingZeros: true, language: 'en' })}`,
       )
 
       yield createRetryProgressMessage(

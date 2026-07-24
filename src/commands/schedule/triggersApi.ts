@@ -13,6 +13,7 @@
  */
 
 import axios from 'axios'
+import { formatRetryAfter } from '../../utils/format.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { assertSubscriptionBaseUrl } from '../../services/auth/hostGuard.js'
 import { getOAuthHeaders, prepareApiRequest } from '../../utils/teleport/api.js'
@@ -122,7 +123,9 @@ function classifyError(err: unknown): TriggersApiError {
         (err.response?.headers as Record<string, string> | undefined)?.[
           'retry-after'
         ] ?? ''
-      const detail = retryAfter ? ` Retry after ${retryAfter}s.` : ''
+      const detail = retryAfter
+        ? ` Retry after ${formatRetryAfter(retryAfter)}.`
+        : ''
       return new TriggersApiError(`Rate limit exceeded.${detail}`, 429)
     }
     const msg =

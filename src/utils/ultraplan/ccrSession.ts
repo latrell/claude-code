@@ -11,6 +11,7 @@ import type {
 import type { SDKMessage } from '../../entrypoints/agentSdkTypes.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/constants.js'
 import { logForDebugging } from '../debug.js'
+import { formatDuration } from '../format.js'
 import { sleep } from '../sleep.js'
 import { isTransientNetworkError } from '../teleport/api.js'
 import {
@@ -298,8 +299,8 @@ export async function pollForApprovedExitPlanMode(
 
   throw new UltraplanPollError(
     scanner.everSeenPending
-      ? `no approval after ${timeoutMs / 1000}s`
-      : `ExitPlanMode never reached after ${timeoutMs / 1000}s (the remote container failed to start, or session ID mismatch?)`,
+      ? `no approval after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`
+      : `ExitPlanMode never reached after ${formatDuration(timeoutMs, { hideTrailingZeros: true })} (the remote container failed to start, or session ID mismatch?)`,
     scanner.everSeenPending ? 'timeout_pending' : 'timeout_no_plan',
     scanner.rejectCount,
   )

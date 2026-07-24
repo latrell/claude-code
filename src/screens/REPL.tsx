@@ -80,7 +80,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { handleRemoteInterrupt, waitForActiveTurnSettlement } from '../bridge/remoteInterruptHandling.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
-import { formatTokens, truncateToWidth } from '../utils/format.js';
+import { formatDuration, formatMillisecondsShort, formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import {
   claimConsumableQueuedAutonomyCommands,
@@ -732,7 +732,11 @@ function TranscriptSearchBar({
       {indexStatus === 'building' ? (
         <Text dimColor>{t('indexing…')} </Text>
       ) : indexStatus ? (
-        <Text dimColor>{tf('indexed in {ms}ms', { ms: indexStatus.ms })} </Text>
+        <Text dimColor>
+          {tf('indexed in {duration}', {
+            duration: formatMillisecondsShort(indexStatus.ms),
+          })}{' '}
+        </Text>
       ) : count === 0 && query ? (
         <Text color="error">{t('no matches')} </Text>
       ) : count > 0 ? (
@@ -2087,13 +2091,13 @@ export function REPL({
     if (!wt?.creationDurationMs || wt.usedSparsePaths) return;
     if (wt.creationDurationMs < 15_000) return;
     worktreeTipShownRef.current = true;
-    const secs = Math.round(wt.creationDurationMs / 1000);
+    const duration = formatDuration(wt.creationDurationMs, { hideTrailingZeros: true });
     setMessages(prev => [
       ...prev,
       createSystemMessage(
         tf(
-          'Worktree creation took {secs}s. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.',
-          { secs },
+          'Worktree creation took {duration}. For large repos, set `worktree.sparsePaths` in .claude/settings.json to check out only the directories you need.',
+          { duration },
         ),
         'info',
       ),

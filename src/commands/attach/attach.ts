@@ -9,6 +9,7 @@ import {
   type TcpEndpoint,
 } from '../../utils/pipeTransport.js'
 import { addSlaveClient } from '../../hooks/useMasterMonitor.js'
+import { formatDuration } from '../../utils/format.js'
 
 export const call: LocalCommandCall = async (args, context) => {
   const targetName = args.trim()
@@ -79,7 +80,7 @@ export const call: LocalCommandCall = async (args, context) => {
       client.disconnect()
       resolve({
         type: 'text',
-        value: `Attach to "${targetName}" timed out (no response within 5s).`,
+        value: `Attach to "${targetName}" timed out (no response within ${formatDuration(5000, { hideTrailingZeros: true })}).`,
       })
     }, 5000)
 

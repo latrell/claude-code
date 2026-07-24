@@ -1,10 +1,12 @@
 import zh from './translations/zh'
 
+export type ResolvedLanguage = 'en' | 'zh'
+
 /**
  * Detect language from browser or stored preference.
  * 'zh' when navigator.language starts with 'zh', otherwise 'en'.
  */
-function getResolvedLanguage(): 'en' | 'zh' {
+export function getResolvedLanguage(): ResolvedLanguage {
   try {
     const stored = localStorage.getItem('rcs_lang')
     if (stored === 'zh') return 'zh'

@@ -21,6 +21,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import type { PermissionDecision } from '../types/permissions.js'
 import type { PermissionUpdate } from './permissions/PermissionUpdateSchema.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
+import { formatDuration } from './format.js'
 import { logError } from './log.js'
 import { attachNdjsonFramer } from './ndjsonFramer.js'
 
@@ -390,7 +391,7 @@ export class PipeClient extends EventEmitter {
       const timer = setTimeout(() => {
         reject(
           new Error(
-            `TCP connection to "${this.targetName}" at ${host}:${port} timed out after ${timeoutMs}ms`,
+            `TCP connection to "${this.targetName}" at ${host}:${port} timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
           ),
         )
       }, timeoutMs)
@@ -441,7 +442,7 @@ export class PipeClient extends EventEmitter {
         () => {
           reject(
             new Error(
-              `Connection to pipe "${this.targetName}" timed out after ${timeoutMs}ms`,
+              `Connection to pipe "${this.targetName}" timed out after ${formatDuration(timeoutMs, { hideTrailingZeros: true })}`,
             ),
           )
         },

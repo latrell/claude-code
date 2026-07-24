@@ -2,6 +2,8 @@ import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import type { ToolResultBlockParam, ToolUseContext } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
+import { t, tf } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { notifyAutomationStateChanged } from 'src/utils/sessionState.js'
 import { SLEEP_TOOL_NAME, DESCRIPTION, SLEEP_TOOL_PROMPT } from './prompt.js'
@@ -84,17 +86,35 @@ export const SleepTool = buildTool({
   },
 
   renderToolUseMessage(input: Partial<SleepInput>) {
-    const secs = input.duration_seconds ?? '?'
-    return `Sleep: ${secs}s`
+    return input.duration_seconds === undefined
+      ? t('Sleep')
+      : tf('Sleep: {duration}', {
+          duration: formatDuration(input.duration_seconds * 1000, {
+            hideTrailingZeros: true,
+          }),
+        })
+  },
+
+  renderToolResultMessage(content: SleepOutput) {
+    const duration = formatDuration(content.slept_seconds * 1000, {
+      hideTrailingZeros: true,
+    })
+    return content.interrupted
+      ? tf('Sleep interrupted after {duration}', { duration })
+      : tf('Slept for {duration}', { duration })
   },
 
   mapToolResultToToolResultBlockParam(
     content: SleepOutput,
     toolUseID: string,
   ): ToolResultBlockParam {
+    const duration = formatDuration(content.slept_seconds * 1000, {
+      hideTrailingZeros: true,
+      language: 'en',
+    })
     const msg = content.interrupted
-      ? `Sleep interrupted after ${content.slept_seconds}s`
-      : `Slept for ${content.slept_seconds}s`
+      ? `Sleep interrupted after ${duration}`
+      : `Slept for ${duration}`
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',

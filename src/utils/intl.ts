@@ -50,17 +50,18 @@ export function getWordSegmenter(): Intl.Segmenter {
   return wordSegmenter
 }
 
-// RelativeTimeFormat cache (keyed by style:numeric)
+// RelativeTimeFormat cache (keyed by locale:style:numeric)
 const rtfCache = new Map<string, Intl.RelativeTimeFormat>()
 
 export function getRelativeTimeFormat(
+  locale: string,
   style: 'long' | 'short' | 'narrow',
   numeric: 'always' | 'auto',
 ): Intl.RelativeTimeFormat {
-  const key = `${style}:${numeric}`
+  const key = `${locale}:${style}:${numeric}`
   let rtf = rtfCache.get(key)
   if (!rtf) {
-    rtf = new Intl.RelativeTimeFormat('en', { style, numeric })
+    rtf = new Intl.RelativeTimeFormat(locale, { style, numeric })
     rtfCache.set(key, rtf)
   }
   return rtf

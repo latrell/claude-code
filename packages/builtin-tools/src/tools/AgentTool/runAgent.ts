@@ -42,6 +42,7 @@ import type {
   UserMessage,
 } from 'src/types/message.js'
 import { createAttachmentMessage } from 'src/utils/attachments.js'
+import { formatDuration } from 'src/utils/format.js'
 import {
   AbortSettlementTimeoutError,
   waitForAbortSettlement,
@@ -164,7 +165,7 @@ export async function waitForAgentOperation<T>(
       abandoned = true
       if (didResolve) disposeLateValue(resolvedValue as T)
       throw new StopConfirmationError(
-        `${operation} did not settle within ${abortGraceMs}ms after abort`,
+        `${operation} did not settle within ${formatDuration(abortGraceMs, { hideTrailingZeros: true })} after abort`,
         [error],
       )
     }

@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeEach, afterEach, describe, expect, test } from 'bun:test'
+import { formatDuration } from '../../../format.js'
 import { WindowsTerminalBackend } from '../WindowsTerminalBackend'
 
 type Call = { command: string; args: string[] }
@@ -172,8 +173,8 @@ describe('WindowsTerminalBackend', () => {
       caught = err
     }
     expect(caught).toBeInstanceOf(Error)
-    expect((caught as Error).message).toMatch(
-      /Windows Terminal pane failed to launch within 300ms/,
+    expect((caught as Error).message).toContain(
+      `Windows Terminal pane failed to launch within ${formatDuration(300, { hideTrailingZeros: true })}`,
     )
   })
 
@@ -286,7 +287,9 @@ describe('WindowsTerminalBackend', () => {
     expect(caught).toBeInstanceOf(Error)
     // Inner error from waitForPidFile must reach the wrapped diagnostic message.
     const msg = (caught as Error).message
-    expect(msg).toMatch(/failed to launch within 400ms/)
+    expect(msg).toContain(
+      `failed to launch within ${formatDuration(400, { hideTrailingZeros: true })}`,
+    )
     expect(msg).toMatch(/not a valid pid|invalid pid|123abc/)
   })
 

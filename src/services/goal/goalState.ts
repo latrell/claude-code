@@ -8,6 +8,11 @@
 import type { GoalState, GoalStatus } from '../../types/logs.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { formatDuration } from '../../utils/format.js'
+import {
+  getResolvedLanguage,
+  type ResolvedLanguage,
+} from '../../utils/language.js'
 
 export const BLOCKED_CONSECUTIVE_THRESHOLD = 3
 export const MAX_GOAL_TURNS = 150
@@ -301,13 +306,13 @@ export function _setGoalFromPersistedState(
   goals.set(resolveSessionId(sessionId), state)
 }
 
-/** Format the elapsed time as "Xm Ys" / "Ys" for UI display. */
-export function formatGoalElapsed(goal: GoalState): string {
+/** Format elapsed time for display, using whole seconds and the UI language. */
+export function formatGoalElapsed(
+  goal: GoalState,
+  language: ResolvedLanguage = getResolvedLanguage(),
+): string {
   const elapsedMs = getActiveElapsedMs(goal)
-  const seconds = Math.floor(elapsedMs / 1000)
-  const minutes = Math.floor(seconds / 60)
-  if (minutes === 0) return `${seconds}s`
-  return `${minutes}m ${seconds % 60}s`
+  return formatDuration(Math.floor(elapsedMs / 1000) * 1000, { language })
 }
 
 /** Human-readable status label for UI. */

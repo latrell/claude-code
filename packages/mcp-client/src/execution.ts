@@ -6,6 +6,7 @@ import type { ConnectedMCPServer } from './types.js'
 import type { McpClientDependencies } from './interfaces.js'
 import { McpToolCallError, McpAuthError } from './errors.js'
 import { tf } from 'src/i18n/t.js'
+import { formatDuration } from 'src/utils/format.js'
 
 // ============================================================================
 // Constants
@@ -169,11 +170,13 @@ function createTimeoutPromise(
       reject(
         new Error(
           tf(
-            'MCP server "{serverName}" tool "{tool}" timed out after {timeout}s',
+            'MCP server "{serverName}" tool "{tool}" timed out after {duration}',
             {
               serverName,
               tool,
-              timeout: Math.floor(timeoutMs / 1000),
+              duration: formatDuration(timeoutMs, {
+                hideTrailingZeros: true,
+              }),
             },
           ),
         ),

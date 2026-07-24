@@ -197,9 +197,13 @@ async function fetchInstances() {
 
 function uptime(start) {
   var s = Math.floor((Date.now() - start) / 1000);
-  if (s < 60) return s + 's';
-  if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
-  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+  var zh = typeof navigator !== 'undefined' && navigator.language.toLowerCase().indexOf('zh') === 0;
+  var second = zh ? '秒' : 's';
+  var minute = zh ? '分' : 'm';
+  var hour = zh ? '时' : 'h';
+  if (s < 60) return s + second;
+  if (s < 3600) return Math.floor(s/60) + minute + ' ' + (s%60) + second;
+  return Math.floor(s/3600) + hour + ' ' + Math.floor((s%3600)/60) + minute;
 }
 
 function esc(s) {

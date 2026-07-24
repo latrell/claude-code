@@ -4,6 +4,7 @@ import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getCursorContextWindowForModel } from '../services/api/cursor/models.js'
 import { getConnectionContextWindow } from '../services/connections/contextWindows.js'
 import { getGlobalConfig } from './config.js'
+import { findChinaProviderModel } from './chinaLlmProviders.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { resolveAntModel } from './model/antModels.js'
@@ -76,7 +77,9 @@ export function modelSupports1M(
     )
   }
   const canonical = getCanonicalName(model)
+  const providerModel = findChinaProviderModel(canonical)
   return (
+    (providerModel?.contextWindowTokens ?? 0) >= 1_000_000 ||
     canonical.includes('claude-fable-5') ||
     canonical.includes('claude-sonnet-5') ||
     canonical.includes('claude-sonnet-4') ||
@@ -170,6 +173,19 @@ export function getContextWindowForModel(
   const connectionWindow = getConnectionContextWindow(model)
   if (connectionWindow !== undefined) {
     return connectionWindow
+  }
+
+  // Static provider capability: also covers env-only OpenAI-compatible setups
+  // that do not have a saved /connect profile.
+  const providerModel = findChinaProviderModel(getCanonicalName(model))
+  if (providerModel?.contextWindowTokens) {
+    if (
+      providerModel.contextWindowTokens > MODEL_CONTEXT_WINDOW_DEFAULT &&
+      is1mContextDisabled()
+    ) {
+      return MODEL_CONTEXT_WINDOW_DEFAULT
+    }
+    return providerModel.contextWindowTokens
   }
 
   const cap = getModelCapability(model)
@@ -289,6 +305,17 @@ export function getModelMaxOutputTokens(model: string): {
   }
 
   const m = getCanonicalName(model)
+  const providerModel = findChinaProviderModel(m)
+
+  if (providerModel?.maxOutputTokens) {
+    return {
+      default: Math.min(
+        MAX_OUTPUT_TOKENS_DEFAULT,
+        providerModel.maxOutputTokens,
+      ),
+      upperLimit: providerModel.maxOutputTokens,
+    }
+  }
 
   if (m.includes('fable-5')) {
     defaultTokens = 64_000
