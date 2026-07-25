@@ -145,6 +145,7 @@ async function runQueryModel(
     OPENAI_API_KEY: 'test-key',
     OPENAI_AUTH_MODE: undefined,
     OPENAI_MODEL: undefined,
+    OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT: undefined,
   } satisfies Record<string, string | undefined>
   const effectiveEnvOverrides = { ...defaultEnvOverrides, ...envOverrides }
   const saved: Record<string, string | undefined> = {}
@@ -796,7 +797,10 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
       makeMessageStop(),
     ]
 
-    const { assistantMessages } = await runQueryModel(_nextEvents)
+    const { assistantMessages } = await runQueryModel(_nextEvents, {
+      OPENAI_MODEL: 'deepseek-v4-flash',
+      OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT: '1',
+    })
 
     expect(_createCallCount).toBe(1)
     expect(assistantMessages).toHaveLength(2)
@@ -1177,6 +1181,129 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
     expect(progress.error.code).toBe('deepseek_v4_semantic_empty')
   })
 
+  test('discards cross-chunk DeepSeek V4 structural leakage and retries the whole attempt', async () => {
+    async function* malformedAttempt(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'discarded <｜DS')
+      yield makeTextDelta(0, 'ML｜tool_calls> attempt')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 8)
+      yield makeMessageStop()
+    }
+
+    async function* recoveredAttempt(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'clean recovered answer')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 4)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, otherOutputs, streamEvents } =
+      await runQueryModel(
+        [],
+        {
+          OPENAI_MODEL: 'deepseek-v4-flash',
+          OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT: '1',
+        },
+        [malformedAttempt, recoveredAttempt],
+      )
+
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'clean recovered answer' },
+    ])
+    expect(JSON.stringify(streamEvents)).not.toContain('｜DSML｜')
+    expect(JSON.stringify(streamEvents)).not.toContain('discarded')
+    const progress = otherOutputs.find(item => item.type === 'system')
+    expect(progress.error.code).toBe('deepseek_v4_malformed_output')
+    expect(String(progress.message.content)).not.toContain(
+      'malformed structural output',
+    )
+  })
+
+  test('retries the exact statusless malformed-output server signal after partial text', async () => {
+    async function* serverRejectedAttempt(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'discarded before parser failure')
+      throw new APIError(
+        undefined,
+        {
+          type: 'InternalServerError',
+          code: 500,
+          message: 'DeepSeek V4 malformed structural output; retry request',
+        },
+        undefined,
+        undefined,
+      )
+    }
+
+    async function* recoveredAttempt(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'recovered from server signal')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 4)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, otherOutputs, streamEvents } =
+      await runQueryModel(
+        [],
+        {
+          OPENAI_MODEL: 'deepseek-v4-flash',
+          OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT: '1',
+        },
+        [serverRejectedAttempt, recoveredAttempt],
+      )
+
+    expect(_createCallCount).toBe(2)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'recovered from server signal' },
+    ])
+    expect(JSON.stringify(streamEvents)).not.toContain('discarded')
+    const progress = otherOutputs.find(item => item.type === 'system')
+    expect(progress.error.code).toBe('deepseek_v4_malformed_output')
+    expect(String(progress.message.content)).not.toContain('retry request')
+  })
+
+  test('keeps normal V4 streaming behavior when structural validation is disabled', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'text'),
+      makeTextDelta(0, 'ordinary model output <｜DS'),
+      makeTextDelta(0, 'ML｜literal>'),
+      makeContentBlockStop(0),
+      makeMessageDelta('end_turn', 4),
+      makeMessageStop(),
+    ]
+
+    const { assistantMessages } = await runQueryModel(_nextEvents, {
+      OPENAI_MODEL: 'deepseek-v4-flash',
+    })
+
+    expect(_createCallCount).toBe(1)
+    expect(assistantMessages[0]!.message.content).toEqual([
+      { type: 'text', text: 'ordinary model output <｜DSML｜literal>' },
+    ])
+  })
+
   test('does not retry terminated after adapted output was yielded', async () => {
     async function* breaksAfterTextDelta(): AsyncGenerator<
       BetaRawMessageStreamEvent,
@@ -1297,6 +1424,42 @@ describe('queryModelOpenAI — stream recovery boundary', () => {
       'DeepSeek V4 semantic-empty response; retry request',
     )
   })
+
+  test('localizes persistent DeepSeek V4 malformed output without exposing markers', async () => {
+    async function* malformedAttempt(): AsyncGenerator<
+      BetaRawMessageStreamEvent,
+      void
+    > {
+      yield makeMessageStart()
+      yield makeContentBlockStart(0, 'text')
+      yield makeTextDelta(0, 'bad ｜DSML｜ output')
+      yield makeContentBlockStop(0)
+      yield makeMessageDelta('end_turn', 4)
+      yield makeMessageStop()
+    }
+
+    const { assistantMessages, streamEvents } = await runQueryModel(
+      [],
+      {
+        OPENAI_MODEL: 'deepseek-v4-flash',
+        OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT: '1',
+      },
+      [malformedAttempt, malformedAttempt, malformedAttempt, malformedAttempt],
+    )
+
+    expect(_createCallCount).toBe(4)
+    expect(streamEvents).toEqual([])
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]!.error).toBe('server_error')
+    const visibleMessage = JSON.stringify(assistantMessages[0]!.message)
+    expect(visibleMessage).toContain('DeepSeek V4')
+    expect(visibleMessage).not.toContain('｜DSML｜')
+    expect(visibleMessage).not.toContain('malformed structural output')
+    expect(visibleMessage).not.toContain('retry request')
+    expect(assistantMessages[0]!.errorDetails).toBe(
+      'DeepSeek V4 malformed structural output; retry request',
+    )
+  })
 })
 
 describe('queryModelOpenAI — max_tokens forwarded to request', () => {
@@ -1333,6 +1496,30 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
     expect(_lastCreateArgs!.max_tokens).toBe(384000)
     expect(_lastCreateArgs!.thinking_token_budget).toBe(64000)
     expect(_lastCreateArgs!.temperature).toBe(1)
+  })
+
+  test('uses OPENAI_TEMPERATURE from the scoped DeepSeek connection', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeContentBlockStart(0, 'text'),
+      makeTextDelta(0, 'hi'),
+      makeContentBlockStop(0),
+      makeMessageDelta('end_turn', 5),
+      makeMessageStop(),
+    ]
+
+    await runQueryModel(_nextEvents, {}, [], {
+      providerRuntimeConfig: {
+        env: {
+          OPENAI_API_KEY: 'test-key',
+          OPENAI_MODEL: 'deepseek-v4-flash',
+          OPENAI_TEMPERATURE: '0',
+        },
+      },
+    })
+
+    expect(_lastCreateArgs).not.toBeNull()
+    expect(_lastCreateArgs!.temperature).toBe(0)
   })
 
   test('honors an explicit DeepSeek output-token override', async () => {

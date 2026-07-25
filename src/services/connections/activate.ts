@@ -183,6 +183,16 @@ export function envForConnection(
       // left behind by a previous 'off' activation.
       env.OPENAI_ENABLE_THINKING =
         connection.thinkingEffort === 'off' ? '0' : undefined
+      env.OPENAI_TEMPERATURE =
+        connection.temperature !== undefined
+          ? String(connection.temperature)
+          : undefined
+      env.OPENAI_MAX_TOKENS =
+        connection.maxOutputTokens !== undefined
+          ? String(connection.maxOutputTokens)
+          : undefined
+      env.OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT =
+        connection.validateDeepSeekV4Output === true ? '1' : undefined
       break
     }
     case 'chatgpt-oauth': {

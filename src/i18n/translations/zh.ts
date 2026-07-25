@@ -1849,6 +1849,10 @@ const zh: Record<string, string> = {
     'DeepSeek V4 未返回最终答复或工具调用。',
   'DeepSeek V4 repeatedly returned no final answer or tool call.':
     'DeepSeek V4 多次未返回最终答复或工具调用。',
+  'DeepSeek V4 returned an invalidly formatted answer.':
+    'DeepSeek V4 返回的答复格式异常。',
+  'DeepSeek V4 repeatedly returned invalidly formatted answers.':
+    'DeepSeek V4 多次返回格式异常的答复。',
 
   // ── Bundled skill descriptions (model-invocable, user-visible in /help) ─
   'Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".':

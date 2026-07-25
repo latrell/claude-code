@@ -1,6 +1,9 @@
 const DEEPSEEK_V4_SEMANTIC_EMPTY_MESSAGE = 'deepseek v4 semantic-empty response'
+const DEEPSEEK_V4_MALFORMED_OUTPUT_MESSAGE =
+  'deepseek v4 malformed structural output; retry request'
 
 export const DEEPSEEK_V4_SEMANTIC_EMPTY_CODE = 'deepseek_v4_semantic_empty'
+export const DEEPSEEK_V4_MALFORMED_OUTPUT_CODE = 'deepseek_v4_malformed_output'
 
 function getErrorRecord(error: unknown): Record<string, unknown> | undefined {
   return error && typeof error === 'object'
@@ -35,6 +38,35 @@ export function isDeepSeekV4SemanticEmptyError(error: unknown): boolean {
             ? current
             : ''
     if (message.toLowerCase().includes(DEEPSEEK_V4_SEMANTIC_EMPTY_MESSAGE)) {
+      return true
+    }
+
+    if (!record || seen.has(record)) break
+    seen.add(record)
+    current = record.cause
+  }
+
+  return false
+}
+
+/** Detect the server/client retry signal for leaked DeepSeek V4 structure. */
+export function isDeepSeekV4MalformedOutputError(error: unknown): boolean {
+  const seen = new Set<object>()
+  let current: unknown = error
+
+  for (let depth = 0; depth < 8; depth++) {
+    const record = getErrorRecord(current)
+    if (record?.code === DEEPSEEK_V4_MALFORMED_OUTPUT_CODE) return true
+
+    const message =
+      current instanceof Error
+        ? current.message
+        : typeof record?.message === 'string'
+          ? record.message
+          : typeof current === 'string'
+            ? current
+            : ''
+    if (message.toLowerCase().includes(DEEPSEEK_V4_MALFORMED_OUTPUT_MESSAGE)) {
       return true
     }
 
@@ -99,8 +131,68 @@ export class DeepSeekV4SemanticEmptyResponseError extends Error {
   }
 }
 
+/** Stable client-side shape for malformed DeepSeek V4 structural output. */
+export class DeepSeekV4MalformedOutputError extends Error {
+  readonly code = DEEPSEEK_V4_MALFORMED_OUTPUT_CODE
+  readonly retryable = true
+  readonly status: number
+  readonly type: string
+  readonly providerCode: unknown
+  readonly param: unknown
+  readonly headers: unknown
+  readonly requestID: unknown
+  readonly error: unknown
+
+  constructor(upstreamError?: unknown) {
+    const message =
+      upstreamError === undefined
+        ? 'DeepSeek V4 malformed structural output; retry request'
+        : getCompatErrorMessage(upstreamError)
+    super(message)
+    const record = getErrorRecord(upstreamError)
+    const numericCode =
+      typeof record?.code === 'number' &&
+      Number.isInteger(record.code) &&
+      record.code >= 100 &&
+      record.code <= 599
+        ? record.code
+        : undefined
+
+    this.name = 'DeepSeekV4MalformedOutputError'
+    this.status =
+      typeof record?.status === 'number' ? record.status : (numericCode ?? 500)
+    this.type =
+      typeof record?.type === 'string' ? record.type : 'InternalServerError'
+    this.providerCode = record?.code
+    this.param = record?.param
+    this.headers = record?.headers
+    this.requestID = record?.requestID
+    this.error = record?.error ?? {
+      type: this.type,
+      code: this.providerCode ?? this.status,
+      message: this.message,
+    }
+
+    if (upstreamError !== undefined) {
+      Object.defineProperty(this, 'cause', {
+        configurable: true,
+        enumerable: false,
+        value: upstreamError,
+      })
+      if (upstreamError instanceof Error && upstreamError.stack) {
+        this.stack = upstreamError.stack
+      }
+    }
+  }
+}
+
 export function normalizeCompatProviderError(error: unknown): unknown {
-  if (error instanceof DeepSeekV4SemanticEmptyResponseError) return error
+  if (
+    error instanceof DeepSeekV4SemanticEmptyResponseError ||
+    error instanceof DeepSeekV4MalformedOutputError
+  ) {
+    return error
+  }
 
   // Structured non-retryable decisions and actual client-error statuses remain
   // authoritative. The semantic fallback is for status-less SSE errors.
@@ -131,6 +223,9 @@ export function normalizeCompatProviderError(error: unknown): unknown {
     statusLikeValue !== 429
   ) {
     return error
+  }
+  if (isDeepSeekV4MalformedOutputError(error)) {
+    return new DeepSeekV4MalformedOutputError(error)
   }
   return isDeepSeekV4SemanticEmptyError(error)
     ? new DeepSeekV4SemanticEmptyResponseError(error)

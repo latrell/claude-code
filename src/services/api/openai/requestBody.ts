@@ -49,11 +49,31 @@ export function resolveOpenAIRequestTemperature(params: {
   enableThinking: boolean
   isDeepSeekV4: boolean
   temperatureOverride?: number
+  env?: Record<string, string | undefined>
 }): number | undefined {
-  const { enableThinking, isDeepSeekV4, temperatureOverride } = params
-  if (!enableThinking) return temperatureOverride
+  const {
+    enableThinking,
+    isDeepSeekV4,
+    temperatureOverride,
+    env = process.env,
+  } = params
+  const rawConnectionTemperature = env.OPENAI_TEMPERATURE?.trim()
+  const parsedConnectionTemperature = rawConnectionTemperature
+    ? Number(rawConnectionTemperature)
+    : undefined
+  const connectionTemperature =
+    parsedConnectionTemperature !== undefined &&
+    Number.isFinite(parsedConnectionTemperature)
+      ? parsedConnectionTemperature
+      : undefined
+
+  if (!enableThinking) return temperatureOverride ?? connectionTemperature
   if (!isDeepSeekV4) return undefined
-  return temperatureOverride ?? DEEPSEEK_V4_THINKING_TEMPERATURE
+  return (
+    temperatureOverride ??
+    connectionTemperature ??
+    DEEPSEEK_V4_THINKING_TEMPERATURE
+  )
 }
 
 /**
@@ -181,6 +201,8 @@ export function buildOpenAIRequestBody(params: {
   enableThinking: boolean
   maxTokens: number
   temperatureOverride?: number
+  /** Connection-scoped request settings. */
+  env?: Record<string, string | undefined>
   /** Whether DeepSeek V4's reasoning-mode sampling contract applies. */
   isDeepSeekV4?: boolean
   /**
@@ -200,6 +222,7 @@ export function buildOpenAIRequestBody(params: {
     enableThinking,
     maxTokens,
     temperatureOverride,
+    env = process.env,
     isDeepSeekV4 = false,
     reasoningEffort,
     thinkingTokenBudget,
@@ -208,6 +231,7 @@ export function buildOpenAIRequestBody(params: {
     enableThinking,
     isDeepSeekV4,
     temperatureOverride,
+    env,
   })
   return {
     model,

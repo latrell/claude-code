@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { isRetryableCompatError } from '../../compatRetry.js'
+import { DeepSeekV4MalformedOutputError } from '../../compatErrors.js'
 import {
   EmptyOpenAICompletionError,
+  holdDeepSeekV4AttemptUntilValidated,
   holdUntilObservableOpenAIOutput,
 } from '../observableOutputGuard.js'
 
@@ -21,6 +23,18 @@ async function collect(
 ): Promise<BetaRawMessageStreamEvent[]> {
   const output: BetaRawMessageStreamEvent[] = []
   for await (const item of holdUntilObservableOpenAIOutput(
+    eventStream(events),
+  )) {
+    output.push(item)
+  }
+  return output
+}
+
+async function collectDeepSeek(
+  events: BetaRawMessageStreamEvent[],
+): Promise<BetaRawMessageStreamEvent[]> {
+  const output: BetaRawMessageStreamEvent[] = []
+  for await (const item of holdDeepSeekV4AttemptUntilValidated(
     eventStream(events),
   )) {
     output.push(item)
@@ -229,5 +243,107 @@ describe('holdUntilObservableOpenAIOutput', () => {
     expect(published).toEqual([])
     expect((caught as Error).message).toContain('message_stop terminal event')
     expect(isRetryableCompatError(caught)).toBe(true)
+  })
+})
+
+describe('holdDeepSeekV4AttemptUntilValidated', () => {
+  function textCompletion(
+    chunks: string[],
+    stopReason = 'end_turn',
+  ): BetaRawMessageStreamEvent[] {
+    return [
+      messageStart,
+      event({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      }),
+      ...chunks.map(text =>
+        event({
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text },
+        }),
+      ),
+      event({ type: 'content_block_stop', index: 0 }),
+      messageDelta(stopReason),
+      messageStop,
+    ]
+  }
+
+  test('buffers through message_stop before publishing its first event', async () => {
+    let terminalWasRequested = false
+    async function* trackedStream() {
+      for (const item of textCompletion(['valid answer'])) {
+        if (item.type === 'message_stop') terminalWasRequested = true
+        yield item
+      }
+    }
+
+    const guarded = holdDeepSeekV4AttemptUntilValidated(trackedStream())
+    const first = await guarded.next()
+
+    expect(terminalWasRequested).toBe(true)
+    expect(first.value?.type).toBe('message_start')
+    await guarded.return()
+  })
+
+  test('rejects a cross-chunk DSML marker without publishing the bad attempt', async () => {
+    const published: BetaRawMessageStreamEvent[] = []
+    let caught: unknown
+
+    try {
+      for await (const item of holdDeepSeekV4AttemptUntilValidated(
+        eventStream(textCompletion(['prefix ｜DS', 'ML｜ suffix'])),
+      )) {
+        published.push(item)
+      }
+    } catch (error) {
+      caught = error
+    }
+
+    expect(published).toEqual([])
+    expect(caught).toBeInstanceOf(DeepSeekV4MalformedOutputError)
+    expect((caught as DeepSeekV4MalformedOutputError).code).toBe(
+      'deepseek_v4_malformed_output',
+    )
+    expect(isRetryableCompatError(caught)).toBe(true)
+  })
+
+  test.each([
+    '<think>',
+    '</think>',
+    '<THINK>',
+  ])('rejects complete reserved thinking tag %s', async marker => {
+    await expect(
+      collectDeepSeek(textCompletion(['answer ', marker])),
+    ).rejects.toBeInstanceOf(DeepSeekV4MalformedOutputError)
+  })
+
+  test('allows ordinary XML and code-like angle brackets', async () => {
+    const output = await collectDeepSeek(
+      textCompletion([
+        'Use <div><reason>ok</reason></div> and `value < limit`; ',
+        '<thinker> is an ordinary element.',
+      ]),
+    )
+
+    expect(output.at(-1)?.type).toBe('message_stop')
+  })
+
+  test('preserves malformed-looking max-token output for existing recovery', async () => {
+    const output = await collectDeepSeek(
+      textCompletion(['partial ｜DSML｜ output'], 'max_tokens'),
+    )
+
+    expect(output.at(-1)?.type).toBe('message_stop')
+    expect(
+      output.some(
+        item =>
+          item.type === 'content_block_delta' &&
+          item.delta.type === 'text_delta' &&
+          item.delta.text.includes('｜DSML｜'),
+      ),
+    ).toBe(true)
   })
 })

@@ -1,4 +1,5 @@
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { DeepSeekV4MalformedOutputError } from '../compatErrors.js'
 
 /**
  * A terminal Chat Completions response without text or a tool call is complete
@@ -82,4 +83,67 @@ export async function* holdUntilObservableOpenAIOutput(
   if (!released) {
     throw new IncompleteObservableOpenAIStreamError()
   }
+}
+
+function containsDeepSeekV4ReservedStructure(text: string): boolean {
+  return text.includes('｜DSML｜') || /<\/?think>/i.test(text)
+}
+
+/**
+ * Keep an entire DeepSeek V4 Chat Completions attempt inside the retry
+ * boundary. Its parser can occasionally leak reserved structural markers only
+ * after ordinary text has already begun, when an append-only consumer can no
+ * longer discard the attempt safely.
+ *
+ * The complete adapted attempt is therefore validated before its first event
+ * is published. `max_tokens` remains authoritative so the existing truncation
+ * recovery path still receives partial reasoning/text exactly as before.
+ */
+export async function* holdDeepSeekV4AttemptUntilValidated(
+  source: AsyncIterable<BetaRawMessageStreamEvent>,
+): AsyncGenerator<BetaRawMessageStreamEvent, void> {
+  const pending: BetaRawMessageStreamEvent[] = []
+  let visibleText = ''
+  let hasToolCall = false
+  let stopReason: string | null = null
+
+  for await (const event of source) {
+    pending.push(event)
+
+    if (event.type === 'content_block_start') {
+      if (event.content_block.type === 'tool_use') {
+        hasToolCall = true
+      } else if (event.content_block.type === 'text') {
+        visibleText += event.content_block.text
+      }
+    } else if (
+      event.type === 'content_block_delta' &&
+      event.delta.type === 'text_delta'
+    ) {
+      visibleText += event.delta.text
+    } else if (
+      event.type === 'message_delta' &&
+      event.delta.stop_reason !== null
+    ) {
+      stopReason = event.delta.stop_reason
+    }
+
+    if (event.type !== 'message_stop') continue
+
+    if (stopReason === 'max_tokens') {
+      yield* pending
+      return
+    }
+    if (containsDeepSeekV4ReservedStructure(visibleText)) {
+      throw new DeepSeekV4MalformedOutputError()
+    }
+    if (!hasToolCall && visibleText.trim().length === 0) {
+      throw new EmptyOpenAICompletionError()
+    }
+
+    yield* pending
+    return
+  }
+
+  throw new IncompleteObservableOpenAIStreamError()
 }

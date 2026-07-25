@@ -336,6 +336,29 @@ describe('t', () => {
     )
   })
 
+  test('localizes DeepSeek V4 malformed output without exposing structural internals', () => {
+    const error = Object.assign(
+      new Error('DeepSeek V4 malformed structural output; retry request'),
+      { code: 'deepseek_v4_malformed_output' },
+    )
+
+    mockLanguage = '简体中文'
+    expect(localizedAPIErrorDetail(error, 'retrying')).toBe(
+      'DeepSeek V4 返回的答复格式异常。',
+    )
+    expect(localizedAPIErrorDetail(error, 'retries_exhausted')).toBe(
+      'DeepSeek V4 多次返回格式异常的答复。',
+    )
+
+    mockLanguage = 'English'
+    const displayed = localizedAPIErrorDetail(error, 'retrying')
+    expect(displayed).toBe(
+      'DeepSeek V4 returned an invalidly formatted answer.',
+    )
+    expect(displayed).not.toContain('malformed structural output')
+    expect(displayed).not.toContain('retry request')
+  })
+
   test('translates cache hit rate warnings', () => {
     mockLanguage = '简体中文'
     expect(

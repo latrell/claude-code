@@ -3,6 +3,7 @@ import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,
   openAICompatSupportsThinkingControl,
+  resolveOpenAIRequestTemperature,
   resolveOpenAIThinkingTokenBudget,
   usesDeepSeekV4RecommendedSampling,
 } from '../requestBody.js'
@@ -449,6 +450,52 @@ describe('buildOpenAIRequestBody — thinking params', () => {
       isDeepSeekV4: true,
     })
     expect(body.temperature).toBe(0)
+  })
+
+  test('uses connection OPENAI_TEMPERATURE before the DeepSeek V4 default', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: true,
+      isDeepSeekV4: true,
+      env: { OPENAI_TEMPERATURE: '0' },
+    })
+    expect(body.temperature).toBe(0)
+  })
+
+  test('keeps programmatic temperature above the connection setting', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: true,
+      isDeepSeekV4: true,
+      temperatureOverride: 0.7,
+      env: { OPENAI_TEMPERATURE: '0' },
+    })
+    expect(body.temperature).toBe(0.7)
+  })
+
+  test.each([
+    '',
+    'NaN',
+    'Infinity',
+    '-Infinity',
+    'not-a-number',
+  ])('ignores invalid OPENAI_TEMPERATURE=%s', rawTemperature => {
+    expect(
+      resolveOpenAIRequestTemperature({
+        enableThinking: true,
+        isDeepSeekV4: true,
+        env: { OPENAI_TEMPERATURE: rawTemperature },
+      }),
+    ).toBe(1)
+  })
+
+  test('uses connection temperature when thinking is disabled', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      enableThinking: false,
+      env: { OPENAI_TEMPERATURE: '0.25' },
+    })
+    expect(body.temperature).toBe(0.25)
   })
 
   test('excludes temperature when thinking is off and no override', () => {

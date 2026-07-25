@@ -28,6 +28,7 @@ import { sleep } from 'src/utils/sleep.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
 import { waitForProviderAbortSettlement } from './providerCancellation.js'
 import {
+  isDeepSeekV4MalformedOutputError,
   isDeepSeekV4SemanticEmptyError,
   normalizeCompatProviderError,
 } from './compatErrors.js'
@@ -329,7 +330,12 @@ export function isRetryableCompatError(error: unknown): boolean {
 
   // Metadata can be stripped from an HTTP 200 SSE error. The DeepSeek V4
   // parser's exact provider signal is the final structured fallback.
-  if (isDeepSeekV4SemanticEmptyError(error)) return true
+  if (
+    isDeepSeekV4SemanticEmptyError(error) ||
+    isDeepSeekV4MalformedOutputError(error)
+  ) {
+    return true
+  }
 
   if (
     typeof error === 'object' &&

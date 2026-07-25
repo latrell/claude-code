@@ -47,6 +47,7 @@ import {
   toolMatchesName,
 } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { isEnvTruthy } from '../../../utils/envUtils.js'
 import { isAbortError } from '../../../utils/errors.js'
 import { StopConfirmationError } from '../../../utils/stopConfirmation.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
@@ -70,13 +71,17 @@ import {
   hasExhaustedCompatRetries,
   startStreamEagerly,
 } from '../compatRetry.js'
-import { isDeepSeekV4SemanticEmptyError } from '../compatErrors.js'
+import {
+  isDeepSeekV4MalformedOutputError,
+  isDeepSeekV4SemanticEmptyError,
+} from '../compatErrors.js'
 import {
   localizedAPIErrorDetail,
   localizedAPIErrorPrefix,
 } from '../../../i18n/apiError.js'
 import {
   EmptyOpenAICompletionError,
+  holdDeepSeekV4AttemptUntilValidated,
   holdUntilObservableOpenAIOutput,
 } from './observableOutputGuard.js'
 export {
@@ -150,6 +155,7 @@ function isOpenAIConvertibleMessage(
 function isInvalidOpenAIStreamError(error: unknown): error is Error {
   if (!(error instanceof Error)) return false
   if (error instanceof EmptyOpenAICompletionError) return true
+  if (isDeepSeekV4MalformedOutputError(error)) return true
   if (isDeepSeekV4SemanticEmptyError(error)) return true
   return (
     error.message.includes('terminal event') &&
@@ -342,6 +348,9 @@ export async function* queryModelOpenAI(
     const enableThinking = isOpenAIThinkingEnabled(openaiModel, providerEnv)
     const isDeepSeekV4 = isDeepSeekV4ReasoningModel(openaiModel)
     const useDeepSeekV4Sampling = usesDeepSeekV4RecommendedSampling(openaiModel)
+    const validateDeepSeekV4Output =
+      useDeepSeekV4Sampling &&
+      isEnvTruthy(providerEnv.OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT)
     const openAIConvertibleMessages = messagesForAPI.filter(
       isOpenAIConvertibleMessage,
     )
@@ -479,35 +488,37 @@ export async function* queryModelOpenAI(
       })()
     } else {
       adaptedStream = yield* withCompatRetry(
-        async innerSignal =>
-          startStreamEagerly(
-            holdUntilObservableOpenAIOutput(
-              adaptOpenAIStreamToAnthropic(
-                await getOpenAIClient({
-                  maxRetries: 0,
-                  fetchOverride:
-                    options.fetchOverride as unknown as typeof fetch,
-                  source: options.querySource,
-                  envOverride: options.providerRuntimeConfig?.env,
-                }).chat.completions.create(
-                  buildOpenAIRequestBody({
-                    model: openaiModel,
-                    messages: openaiMessages,
-                    tools: openaiTools,
-                    toolChoice: openaiToolChoice,
-                    enableThinking,
-                    maxTokens,
-                    temperatureOverride: options.temperatureOverride,
-                    isDeepSeekV4: useDeepSeekV4Sampling,
-                    reasoningEffort: chatCompletionsReasoningEffort,
-                    thinkingTokenBudget,
-                  }) as unknown as ChatCompletionCreateParamsStreaming,
-                  { signal: innerSignal },
-                ),
-                openaiModel,
-              ),
+        async innerSignal => {
+          const attempt = adaptOpenAIStreamToAnthropic(
+            await getOpenAIClient({
+              maxRetries: 0,
+              fetchOverride: options.fetchOverride as unknown as typeof fetch,
+              source: options.querySource,
+              envOverride: options.providerRuntimeConfig?.env,
+            }).chat.completions.create(
+              buildOpenAIRequestBody({
+                model: openaiModel,
+                messages: openaiMessages,
+                tools: openaiTools,
+                toolChoice: openaiToolChoice,
+                enableThinking,
+                maxTokens,
+                temperatureOverride: options.temperatureOverride,
+                env: providerEnv,
+                isDeepSeekV4: useDeepSeekV4Sampling,
+                reasoningEffort: chatCompletionsReasoningEffort,
+                thinkingTokenBudget,
+              }) as unknown as ChatCompletionCreateParamsStreaming,
+              { signal: innerSignal },
             ),
-          ),
+            openaiModel,
+          )
+          return startStreamEagerly(
+            validateDeepSeekV4Output
+              ? holdDeepSeekV4AttemptUntilValidated(attempt)
+              : holdUntilObservableOpenAIOutput(attempt),
+          )
+        },
         { signal, provider: 'openai' },
       )
     }

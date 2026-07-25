@@ -128,6 +128,19 @@ export const ConnectionSchema = z.object({
    */
   thinkingEffortTransport: ThinkingEffortTransportSchema.optional(),
   /**
+   * Optional OpenAI-compatible sampling override scoped to this connection.
+   * This is useful for self-hosted model variants whose serving recipe differs
+   * from the canonical model default without changing every OpenAI connection.
+   */
+  temperature: z.number().finite().min(0).max(2).optional(),
+  /** Optional per-connection cap for generated tokens. */
+  maxOutputTokens: z.number().int().positive().optional(),
+  /**
+   * Buffer and validate a DeepSeek V4 attempt before publishing it so a
+   * malformed model-native control envelope can be discarded and retried.
+   */
+  validateDeepSeekV4Output: z.boolean().optional(),
+  /**
    * Context window (tokens) for the pinned `model`. Synced by
    * updateConnectionModel() and the lazy migration in store.ts; read first
    * by getConnectionContextWindow().

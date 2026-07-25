@@ -166,6 +166,9 @@ const ENV_KEYS = [
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
   'OPENAI_ENABLE_THINKING',
+  'OPENAI_TEMPERATURE',
+  'OPENAI_MAX_TOKENS',
+  'OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT',
   'GEMINI_BASE_URL',
   'GEMINI_API_KEY',
   'GEMINI_MODEL',
@@ -394,6 +397,28 @@ describe('envForConnection', () => {
     expect(withHigh).toHaveProperty('OPENAI_ENABLE_THINKING', undefined)
     const withoutEffort = envForConnection(openaiConn(), null)
     expect(withoutEffort).toHaveProperty('OPENAI_ENABLE_THINKING', undefined)
+  })
+
+  test('openai-compat scopes sampling and output limits to one connection', () => {
+    const tuned = envForConnection(
+      openaiConn({
+        temperature: 0,
+        maxOutputTokens: 8192,
+        validateDeepSeekV4Output: true,
+      }),
+      null,
+    )
+    expect(tuned.OPENAI_TEMPERATURE).toBe('0')
+    expect(tuned.OPENAI_MAX_TOKENS).toBe('8192')
+    expect(tuned.OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT).toBe('1')
+
+    const defaults = envForConnection(openaiConn(), null)
+    expect(defaults).toHaveProperty('OPENAI_TEMPERATURE', undefined)
+    expect(defaults).toHaveProperty('OPENAI_MAX_TOKENS', undefined)
+    expect(defaults).toHaveProperty(
+      'OPENAI_VALIDATE_DEEPSEEK_V4_OUTPUT',
+      undefined,
+    )
   })
 
   test('gemini and grok also expose the connection default model', () => {

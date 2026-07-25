@@ -13,7 +13,10 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { APIConnectionError, APIError } from 'openai'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { StopConfirmationError } from 'src/utils/stopConfirmation.js'
-import { normalizeCompatProviderError } from '../compatErrors.js'
+import {
+  DeepSeekV4MalformedOutputError,
+  normalizeCompatProviderError,
+} from '../compatErrors.js'
 import {
   hasExhaustedCompatRetries,
   isCompatConnectionInterruptionError,
@@ -283,6 +286,36 @@ describe('isRetryableCompatError', () => {
     expect(isRetryableCompatError(clientError)).toBe(false)
   })
 
+  test('DeepSeek V4 malformed structural output 精确信号在无 HTTP 状态时归一化重试', () => {
+    const upstreamError = new APIError(
+      undefined,
+      {
+        type: 'InternalServerError',
+        code: 500,
+        message: 'DeepSeek V4 malformed structural output; retry request',
+      },
+      undefined,
+      undefined,
+    )
+    const clientError = new MockAPIError(
+      400,
+      'DeepSeek V4 malformed structural output; retry request',
+    )
+
+    expect(isRetryableCompatError(upstreamError)).toBe(true)
+    const normalized = normalizeCompatProviderError(upstreamError)
+    expect(normalized).toBeInstanceOf(DeepSeekV4MalformedOutputError)
+    expect((normalized as DeepSeekV4MalformedOutputError).code).toBe(
+      'deepseek_v4_malformed_output',
+    )
+    expect((normalized as DeepSeekV4MalformedOutputError).status).toBe(500)
+    expect((normalized as DeepSeekV4MalformedOutputError).cause).toBe(
+      upstreamError,
+    )
+    expect(isRetryableCompatError(clientError)).toBe(false)
+    expect(normalizeCompatProviderError(clientError)).toBe(clientError)
+  })
+
   test('OpenAI SDK 的 HTTP 200 SSE 数值 code/type 元数据保留服务端重试语义', () => {
     const streamServerError = new APIError(
       undefined,
@@ -311,7 +344,7 @@ describe('isRetryableCompatError', () => {
     expect(isRetryableCompatError(streamClientError)).toBe(false)
   })
 
-  test('用户中断和显式 non-retryable 决定优先于 semantic-empty 文案', () => {
+  test('用户中断和显式 non-retryable 决定优先于 DeepSeek V4 重试信号', () => {
     const aborted = new Error(
       'DeepSeek V4 semantic-empty response; retry request',
     )
@@ -323,6 +356,14 @@ describe('isRetryableCompatError', () => {
     const sdkUserAbort = new MockAPIUserAbortError(
       'DeepSeek V4 semantic-empty response; retry request',
     )
+    const malformedAbort = new Error(
+      'DeepSeek V4 malformed structural output; retry request',
+    )
+    malformedAbort.name = 'AbortError'
+    const malformedTerminal = Object.assign(
+      new Error('DeepSeek V4 malformed structural output; retry request'),
+      { retryable: false },
+    )
 
     expect(isRetryableCompatError(aborted)).toBe(false)
     expect(isRetryableCompatError(explicitlyTerminal)).toBe(false)
@@ -330,6 +371,12 @@ describe('isRetryableCompatError', () => {
     expect(normalizeCompatProviderError(sdkUserAbort)).toBe(sdkUserAbort)
     expect(normalizeCompatProviderError(explicitlyTerminal)).toBe(
       explicitlyTerminal,
+    )
+    expect(isRetryableCompatError(malformedAbort)).toBe(false)
+    expect(isRetryableCompatError(malformedTerminal)).toBe(false)
+    expect(normalizeCompatProviderError(malformedAbort)).toBe(malformedAbort)
+    expect(normalizeCompatProviderError(malformedTerminal)).toBe(
+      malformedTerminal,
     )
   })
 
@@ -653,6 +700,45 @@ describe('withCompatRetry', () => {
       upstreamError.error,
     )
     expect(JSON.stringify(message.error)).toContain('"status":500')
+    await gen.return('cancel-test' as never)
+  })
+
+  test('DeepSeek V4 malformed 重试进度隐藏内部协议信号', async () => {
+    const upstreamError = new APIError(
+      undefined,
+      {
+        type: 'InternalServerError',
+        code: 500,
+        message: 'DeepSeek V4 malformed structural output; retry request',
+      },
+      undefined,
+      undefined,
+    )
+    const gen = withCompatRetry(
+      async () => {
+        throw upstreamError
+      },
+      {
+        maxRetries: 1,
+        signal: new AbortController().signal,
+        provider: 'openai',
+      },
+    )
+
+    const progress = await gen.next()
+    expect(progress.done).toBe(false)
+    const message = progress.value as SystemAPIErrorMessage
+    expect(String(message.message!.content)).toContain('DeepSeek V4')
+    expect(String(message.message!.content)).not.toContain(
+      'malformed structural output',
+    )
+    expect(String(message.message!.content)).not.toContain('retry request')
+    expect((message.error as unknown as { code?: string }).code).toBe(
+      'deepseek_v4_malformed_output',
+    )
+    expect((message.error as unknown as { cause?: unknown }).cause).toBe(
+      upstreamError,
+    )
     await gen.return('cancel-test' as never)
   })
 
